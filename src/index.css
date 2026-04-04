@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,6 +6,47 @@
 
 @layer base {
   :root {
+    --background: 220 25% 6%;
+    --foreground: 150 10% 95%;
+
+    --card: 220 25% 9%;
+    --card-foreground: 150 10% 95%;
+
+    --popover: 220 25% 9%;
+    --popover-foreground: 150 10% 95%;
+
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 14%;
+    --secondary-foreground: 150 10% 95%;
+
+    --muted: 220 20% 13%;
+    --muted-foreground: 150 10% 55%;
+
+    --accent: 220 20% 14%;
+    --accent-foreground: 150 10% 95%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 16%;
+    --input: 220 20% 16%;
+    --ring: 160 84% 39%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 220 25% 8%;
+    --sidebar-foreground: 150 10% 90%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 20% 12%;
+    --sidebar-accent-foreground: 150 10% 90%;
+    --sidebar-border: 220 20% 15%;
+    --sidebar-ring: 160 84% 39%;
+  }
+
+  .light {
     --background: 0 0% 100%;
     --foreground: 220 20% 10%;
 
@@ -34,8 +75,6 @@
     --input: 150 15% 90%;
     --ring: 160 84% 39%;
 
-    --radius: 0.75rem;
-
     --sidebar-background: 150 20% 98%;
     --sidebar-foreground: 220 15% 26%;
     --sidebar-primary: 160 84% 39%;
@@ -43,45 +82,6 @@
     --sidebar-accent: 155 30% 95%;
     --sidebar-accent-foreground: 220 15% 10%;
     --sidebar-border: 150 15% 91%;
-    --sidebar-ring: 160 84% 39%;
-  }
-
-  .dark {
-    --background: 220 25% 6%;
-    --foreground: 150 10% 95%;
-
-    --card: 220 25% 8%;
-    --card-foreground: 150 10% 95%;
-
-    --popover: 220 25% 8%;
-    --popover-foreground: 150 10% 95%;
-
-    --primary: 160 84% 39%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 20% 15%;
-    --secondary-foreground: 150 10% 95%;
-
-    --muted: 220 20% 15%;
-    --muted-foreground: 150 10% 65%;
-
-    --accent: 220 20% 15%;
-    --accent-foreground: 150 10% 95%;
-
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 220 20% 18%;
-    --input: 220 20% 18%;
-    --ring: 160 84% 39%;
-
-    --sidebar-background: 220 25% 8%;
-    --sidebar-foreground: 150 10% 90%;
-    --sidebar-primary: 160 84% 39%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 20% 12%;
-    --sidebar-accent-foreground: 150 10% 90%;
-    --sidebar-border: 220 20% 15%;
     --sidebar-ring: 160 84% 39%;
   }
 }
@@ -100,6 +100,10 @@
 @layer utilities {
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-emerald-400;
+  }
+
+  .font-display {
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
   }
 
   @keyframes scroll-left {
@@ -135,5 +139,49 @@
 
   .animate-word-rotate {
     animation: word-rotate 8s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+
+  .animate-float {
+    animation: float 4s ease-in-out infinite;
+  }
+
+  .animate-float-delayed {
+    animation: float 4s ease-in-out 1s infinite;
+  }
+
+  .animate-float-slow {
+    animation: float 6s ease-in-out 0.5s infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.5); }
+  }
+
+  .animate-pulse-dot {
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes ticker-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .animate-ticker {
+    animation: ticker-scroll 20s linear infinite;
   }
 }

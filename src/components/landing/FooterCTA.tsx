@@ -1,28 +1,42 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, MessageCircle } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useInView } from "@/hooks/useInView";
+import { cn } from "@/lib/utils";
 
 export default function FooterCTA() {
   const { ref, inView } = useInView();
 
   return (
-    <section ref={ref} className="py-20 md:py-28">
+    <section ref={ref} className="py-24 md:py-32">
       <div className="container mx-auto px-4">
-        <div className={`relative max-w-4xl mx-auto bg-primary rounded-3xl p-8 md:p-16 text-center overflow-hidden transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-          <div className="absolute inset-0 bg-gradient-to-br from-primary to-emerald-600 opacity-90" />
+        <div className={cn(
+          "relative max-w-4xl mx-auto rounded-3xl p-10 md:p-16 text-center overflow-hidden transition-all duration-700",
+          inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+        )}>
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/10 to-emerald-500/10 border border-primary/20 rounded-3xl" />
+          <div className="absolute inset-0 bg-card/80 rounded-3xl" />
+          
           <div className="relative z-10 space-y-6">
-            <div className="w-16 h-16 rounded-2xl bg-primary-foreground/20 flex items-center justify-center mx-auto">
-              <MessageCircle className="w-8 h-8 text-primary-foreground" />
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground">
-              Comece agora a vender mais pelo WhatsApp
+            <p className="text-primary font-semibold text-sm uppercase tracking-widest">Pronto para crescer?</p>
+            <h2 className="text-3xl md:text-4xl font-display font-bold">
+              Transforme conversas em <span className="text-gradient">receita previsível</span>
             </h2>
-            <p className="text-primary-foreground/80 text-lg max-w-xl mx-auto">
-              Junte-se a mais de 200 empresas que já transformaram seu marketing conversacional com a LTV Boost.
+            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
+              Junte-se a 200+ e-commerces que já geram R$47M+ em vendas com marketing conversacional inteligente.
             </p>
-            <Button size="lg" variant="secondary" className="gap-2 text-base">
-              Agendar Demo Gratuita <ArrowRight className="w-4 h-4" />
-            </Button>
+            <div className="flex flex-wrap justify-center gap-4">
+              <Button asChild size="lg" className="h-14 px-8 text-base font-bold shadow-xl shadow-primary/25 hover:scale-[1.02] transition-all gap-2">
+                <a href="/signup">
+                  Agendar Demo Gratuita <ArrowRight className="w-5 h-5" />
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="lg" className="h-14 px-8 text-base border-border/50">
+                <a href="#planos">Ver Planos</a>
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Trial de 14 dias grátis · Sem cartão de crédito · Setup em 5 minutos
+            </p>
           </div>
         </div>
       </div>
