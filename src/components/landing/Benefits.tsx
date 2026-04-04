@@ -1,57 +1,77 @@
 import { useInView } from "@/hooks/useInView";
-import { Repeat, Heart, Rocket, Eye } from "lucide-react";
+import { Repeat, Heart, Rocket, Eye, ArrowUpRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const benefits = [
-  { icon: Repeat, title: "Automação Completa", desc: "Automatize fluxos de atendimento, vendas e pós-venda sem perder o toque humano." },
-  { icon: Heart, title: "Fidelização Real", desc: "Crie programas de relacionamento que transformam compradores em clientes fiéis." },
-  { icon: Rocket, title: "Campanhas que Convertem", desc: "Segmentação inteligente e mensagens personalizadas que geram resultados." },
-  { icon: Eye, title: "Insights em Tempo Real", desc: "Dashboards completos com métricas que importam para tomar decisões rápidas." },
+  {
+    icon: Repeat,
+    title: "Automação que Vende",
+    desc: "Carrinho abandonado, win-back, pós-venda e cross-sell rodando 24/7 no piloto automático.",
+    metric: "+340%",
+    metricLabel: "em vendas recorrentes",
+  },
+  {
+    icon: Heart,
+    title: "Fidelização Real",
+    desc: "Programas de recompra inteligentes que transformam compradores únicos em clientes fiéis.",
+    metric: "67%",
+    metricLabel: "taxa de retenção",
+  },
+  {
+    icon: Rocket,
+    title: "Campanhas que Convertem",
+    desc: "Segmentação RFM + IA para enviar a mensagem certa, na hora certa, pelo canal certo.",
+    metric: "94%",
+    metricLabel: "taxa de abertura",
+  },
+  {
+    icon: Eye,
+    title: "Insights Acionáveis",
+    desc: "Dashboards de LTV, cohorts e funil que mostram exatamente onde você está perdendo dinheiro.",
+    metric: "12x",
+    metricLabel: "ROI médio",
+  },
 ];
 
 export default function Benefits() {
   const { ref, inView } = useInView();
 
   return (
-    <section ref={ref} className="py-20 md:py-28 bg-muted/30">
+    <section ref={ref} className="py-24 md:py-32">
       <div className="container mx-auto px-4">
-        <div className={`text-center max-w-2xl mx-auto mb-16 transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Visão <span className="text-primary">360°</span> do seu cliente
+        <div className={cn(
+          "text-center max-w-2xl mx-auto mb-16 transition-all duration-700",
+          inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+        )}>
+          <p className="text-primary font-semibold text-sm mb-3 uppercase tracking-widest">Resultados comprovados</p>
+          <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
+            Por que líderes de e-commerce <span className="text-gradient">escolhem a LTV Boost</span>
           </h2>
-          <p className="text-muted-foreground text-lg">
-            Tudo que você precisa para entender, engajar e reter seus clientes em um único lugar.
-          </p>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {benefits.map(({ icon: Icon, title, desc }, idx) => (
+        <div className="grid sm:grid-cols-2 gap-5 max-w-4xl mx-auto">
+          {benefits.map(({ icon: Icon, title, desc, metric, metricLabel }, idx) => (
             <div
               key={title}
-              className={`p-6 rounded-2xl bg-card border shadow-sm hover:shadow-md transition-all duration-500 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
+              className={cn(
+                "group p-6 rounded-2xl bg-card border border-border/50 hover:border-primary/30 transition-all duration-500",
+                inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+              )}
               style={{ transitionDelay: `${idx * 100}ms` }}
             >
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-                <Icon className="w-6 h-6 text-primary" />
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                  <Icon className="w-6 h-6 text-primary" />
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-display font-bold text-primary">{metric}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{metricLabel}</p>
+                </div>
               </div>
-              <h3 className="font-semibold text-lg mb-2">{title}</h3>
+              <h3 className="font-display font-bold text-lg mb-2">{title}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
             </div>
           ))}
-        </div>
-
-        <div className={`mt-16 bg-card border rounded-2xl p-8 shadow-sm transition-all duration-700 delay-300 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-          <h3 className="font-semibold text-lg mb-4 text-center">Receita Influenciada pela LTV Boost</h3>
-          <div className="flex items-end justify-center gap-3 h-40">
-            {[35, 48, 42, 65, 58, 78, 72, 88, 82, 95, 90, 100].map((h, i) => (
-              <div key={i} className="flex flex-col items-center gap-1">
-                <div
-                  className="w-6 md:w-10 bg-primary/80 rounded-t-md transition-all duration-700"
-                  style={{ height: inView ? `${h}%` : "0%", transitionDelay: `${i * 50}ms` }}
-                />
-                <span className="text-[10px] text-muted-foreground">{["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][i]}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </section>
