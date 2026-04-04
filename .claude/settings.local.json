@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find '/c/Users/Douglas - Performanc/Documents/Whats/review-hub/src' -type f -name *.tsx -o -name *.ts -o -name *.json)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "WebFetch(domain:www.userevi.com)",
+      "WebSearch",
+      "WebFetch(domain:www.reviewflowz.com)",
+      "WebFetch(domain:userevi.com)",
+      "Bash(grep -E \"\\\\.tsx$\")"
+    ]
+  }
+}

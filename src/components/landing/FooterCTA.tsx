@@ -18,7 +18,7 @@ export default function FooterCTA() {
               Comece agora a vender mais pelo WhatsApp
             </h2>
             <p className="text-primary-foreground/80 text-lg max-w-xl mx-auto">
-              Junte-se a mais de 200 empresas que já transformaram seu marketing conversacional com a ConversaHub.
+              Junte-se a mais de 200 empresas que já transformaram seu marketing conversacional com a LTV Boost.
             </p>
             <Button size="lg" variant="secondary" className="gap-2 text-base">
               Agendar Demo Gratuita <ArrowRight className="w-4 h-4" />

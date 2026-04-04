@@ -5,7 +5,7 @@ const testimonials = [
   {
     name: "Carolina Mendes",
     role: "CEO, ModaFit",
-    text: "A ConversaHub transformou completamente nossa estratégia de relacionamento. O ROI foi impressionante desde o primeiro mês.",
+    text: "A LTV Boost transformou completamente nossa estratégia de relacionamento. O ROI foi impressionante desde o primeiro mês.",
   },
   {
     name: "Ricardo Oliveira",

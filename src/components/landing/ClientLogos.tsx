@@ -8,7 +8,7 @@ export default function ClientLogos() {
     <section className="py-12 border-y bg-muted/30">
       <div className="container mx-auto px-4 mb-6">
         <p className="text-center text-sm text-muted-foreground font-medium">
-          Empresas que já confiam na ConversaHub
+          Empresas que já confiam na LTV Boost
         </p>
       </div>
       <div className="overflow-hidden">

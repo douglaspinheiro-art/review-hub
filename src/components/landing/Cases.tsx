@@ -12,7 +12,7 @@ export default function Cases() {
             Cases de <span className="text-primary">Sucesso</span>
           </h2>
           <p className="text-muted-foreground text-lg">
-            Resultados reais de empresas que transformaram seu marketing com a ConversaHub.
+            Resultados reais de empresas que transformaram seu marketing com a LTV Boost.
           </p>
         </div>
 
@@ -24,7 +24,7 @@ export default function Cases() {
               </div>
               <h3 className="text-2xl font-bold">ModaFit aumentou o faturamento em 340% com marketing no WhatsApp</h3>
               <p className="text-muted-foreground">
-                Em apenas 6 meses, a ModaFit triplicou sua base de clientes recorrentes usando campanhas automatizadas e chatbot inteligente da ConversaHub.
+                Em apenas 6 meses, a ModaFit triplicou sua base de clientes recorrentes usando campanhas automatizadas e chatbot inteligente da LTV Boost.
               </p>
             </div>
             <div className="flex md:flex-col gap-6 md:gap-8">

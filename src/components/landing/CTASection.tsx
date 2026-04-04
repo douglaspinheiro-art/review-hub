@@ -20,10 +20,12 @@ export default function CTASection() {
             Vamos <span className="text-primary">começar?</span>
           </h2>
           <p className="text-muted-foreground text-lg mb-6">
-            Veja exemplos do que você pode enviar via WhatsApp com a ConversaHub.
+            Veja exemplos do que você pode enviar via WhatsApp com a LTV Boost.
           </p>
-          <Button size="lg" className="gap-2">
-            Agendar Demo <ArrowRight className="w-4 h-4" />
+          <Button asChild size="lg" className="gap-2">
+            <a href="#agendar-demo">
+              Agendar Demo <ArrowRight className="w-4 h-4" />
+            </a>
           </Button>
         </div>
 

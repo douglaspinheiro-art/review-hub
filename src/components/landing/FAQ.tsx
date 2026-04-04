@@ -8,7 +8,7 @@ import {
 
 const faqs = [
   {
-    q: "Preciso ter WhatsApp Business API para usar a ConversaHub?",
+    q: "Preciso ter WhatsApp Business API para usar a LTV Boost?",
     a: "Sim, a plataforma utiliza a API oficial do WhatsApp Business. Nós cuidamos de toda a configuração e integração para você, sem complicação.",
   },
   {

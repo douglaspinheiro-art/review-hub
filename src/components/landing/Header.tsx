@@ -16,9 +16,9 @@ export default function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b">
       <div className="container mx-auto flex items-center justify-between h-16 px-4">
-        <a href="#" className="flex items-center gap-2 font-bold text-xl">
+        <a href="/" className="flex items-center gap-2 font-bold text-xl">
           <MessageCircle className="h-7 w-7 text-primary" />
-          <span>ConversaHub</span>
+          <span>LTV Boost</span>
         </a>
 
         <nav className="hidden md:flex items-center gap-8">
@@ -30,8 +30,12 @@ export default function Header() {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
-          <Button variant="ghost" size="sm">Login</Button>
-          <Button size="sm">Agendar Demo</Button>
+          <Button asChild variant="ghost" size="sm">
+            <a href="/login">Entrar</a>
+          </Button>
+          <Button asChild size="sm">
+            <a href="/signup">Começar grátis</a>
+          </Button>
         </div>
 
         <Sheet open={open} onOpenChange={setOpen}>
@@ -45,7 +49,12 @@ export default function Header() {
                   {l.label}
                 </a>
               ))}
-              <Button className="mt-4 w-full">Agendar Demo</Button>
+              <Button asChild variant="ghost" className="w-full justify-start">
+                <a href="/login" onClick={() => setOpen(false)}>Entrar</a>
+              </Button>
+              <Button asChild className="w-full">
+                <a href="/signup" onClick={() => setOpen(false)}>Começar grátis</a>
+              </Button>
             </nav>
           </SheetContent>
         </Sheet>

@@ -40,7 +40,7 @@ export default function Benefits() {
         </div>
 
         <div className={`mt-16 bg-card border rounded-2xl p-8 shadow-sm transition-all duration-700 delay-300 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-          <h3 className="font-semibold text-lg mb-4 text-center">Receita Influenciada pela ConversaHub</h3>
+          <h3 className="font-semibold text-lg mb-4 text-center">Receita Influenciada pela LTV Boost</h3>
           <div className="flex items-end justify-center gap-3 h-40">
             {[35, 48, 42, 65, 58, 78, 72, 88, 82, 95, 90, 100].map((h, i) => (
               <div key={i} className="flex flex-col items-center gap-1">
