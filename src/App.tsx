@@ -92,6 +92,7 @@ const Calculadora = lazy(() => import("./pages/Calculadora.tsx"));
 const Benchmark = lazy(() => import("./pages/Benchmark.tsx"));
 const PlanosPage = lazy(() => import("./pages/Planos.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Lazily loaded dashboard pages
@@ -166,6 +167,7 @@ const App = () => (
           <Route path="/agencias" element={<Navigate to="/afiliados" replace />} />
           <Route path="/relatorio-anual" element={<RelatorioAnual />} />
           <Route path="/pontos/:slug" element={<Pontos />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Demo dashboard — sem login */}
           <Route path="/demo" element={<DemoRoute><Dashboard /></DemoRoute>} />

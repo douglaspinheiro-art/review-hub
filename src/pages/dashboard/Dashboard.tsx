@@ -24,7 +24,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProblems, useDashboardStats } from "@/hooks/useDashboard";
 import { predictNextOrder } from "@/lib/ltv-predictor";
 import {
-  mockLoja, mockMetricas,
   mockEventosSazonais,
 } from "@/lib/mock-data";
 
@@ -42,9 +41,10 @@ export default function Dashboard() {
   const { data: problems = [] } = useProblems();
   const { data: statsData } = useDashboardStats(period);
 
-  // Use real data if available, fallback to mock/calculations
-  const revenueRecovered = statsData?.revenueLast30 ?? 14850;
-  const revenueGrowth = statsData?.revGrowth ?? 15;
+  // Use real data only — no mock fallbacks
+  const revenueRecovered = statsData?.revenueLast30 ?? 0;
+  const revenueGrowth = statsData?.revGrowth ?? 0;
+  const hasData = revenueRecovered > 0 || problems.length > 0;
 
   const { data: whatsappConnections = [] } = useQuery({
     queryKey: ["whatsapp_connections_status"],
@@ -137,28 +137,18 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Dados sensíveis ao período selecionado
-  const periodData = {
-    7:  { roi: "18.2", recovered: 3_200,  clients: 192 },
-    30: { roi: "26.6", recovered: 14_850, clients: 847 },
-    90: { roi: "89.4", recovered: 42_100, clients: 2_541 },
-  } as const;
-
-  const pd = periodData[period];
-
+  // Real data from queries — no hardcoded values
+  const roi = revenueRecovered > 0 ? (revenueRecovered / 297).toFixed(1) : "0";
+  
   const stats = [
-    { label: "LTV Boost ROI",  value: `${pd.roi}x`,  trend: period === 7 ? +8  : period === 30 ? +15 : +22, icon: Zap,       color: "text-emerald-500" },
-    { label: "Recuperado",     value: `R$ ${pd.recovered.toLocaleString("pt-BR")}`, trend: +8,  icon: DollarSign, color: "text-primary" },
-    { label: "Conversão",      value: `${(((mockMetricas.pedido || 0) / (mockMetricas.visitantes || 1)) * 100).toFixed(2)}%`, trend: -2, icon: TrendingUp },
-    { label: "Novos Clientes", value: pd.clients.toLocaleString("pt-BR"), trend: +12, icon: Users },
+    { label: "LTV Boost ROI",  value: `${roi}x`,  trend: revenueGrowth, icon: Zap, color: "text-emerald-500" },
+    { label: "Recuperado",     value: `R$ ${revenueRecovered.toLocaleString("pt-BR")}`, trend: revenueGrowth, icon: DollarSign, color: "text-primary" },
+    { label: "Conversão",      value: `${statsData?.conversionRate?.toFixed(2) ?? "0.00"}%`, trend: 0, icon: TrendingUp },
+    { label: "Novos Clientes", value: (statsData?.newContacts ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
   ];
 
   const pendingCount = problems.length;
   const pendingValue = problems.reduce((acc, p) => acc + Number(p.impacto_estimado || 0), 0);
-
-  const idealPurchaseCount = period === 7 ? 38  : period === 30 ? 124 : 387;
-  const estimatedRevenue   = period === 7 ? 4_800 : period === 30 ? 18_600 : 52_400;
-  const atRiskCount        = period === 7 ? 12  : period === 30 ? 47  : 143;
 
   return (
     <>
@@ -246,13 +236,21 @@ export default function Dashboard() {
             <h1 className="text-4xl font-black font-syne tracking-tighter uppercase italic">
               Radar de <span className="text-primary">Lucro</span>
             </h1>
-            <p className="text-muted-foreground text-sm font-medium">
-              Você tem <span className="text-foreground font-bold underline">R$ 58.400</span> parados no funil. Vamos recuperar?
-            </p>
-            <p className="text-xs font-bold flex items-center gap-1.5 text-emerald-500">
-              <TrendingUp className="w-3.5 h-3.5" />
-              R$ 47.320 já recuperados para você desde que assinou.
-            </p>
+            {pendingValue > 0 ? (
+              <p className="text-muted-foreground text-sm font-medium">
+                Você tem <span className="text-foreground font-bold underline">R$ {pendingValue.toLocaleString("pt-BR")}</span> parados no funil. Vamos recuperar?
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-sm font-medium">
+                Conecte sua loja para começar a recuperar receita.
+              </p>
+            )}
+            {revenueRecovered > 0 && (
+              <p className="text-xs font-bold flex items-center gap-1.5 text-emerald-500">
+                <TrendingUp className="w-3.5 h-3.5" />
+                R$ {revenueRecovered.toLocaleString("pt-BR")} já recuperados para você.
+              </p>
+            )}
 
             {/* CTA principal — sempre visível acima do fold */}
             <div className="flex items-center gap-3 pt-3">
@@ -467,10 +465,10 @@ export default function Dashboard() {
             </div>
             <div onClick={() => navigate("/dashboard/funil")} className="cursor-pointer group">
               <CHSGauge
-                score={mockLoja.conversion_health_score}
-                label={mockLoja.chs_label}
-                breakdown={mockLoja.chs_breakdown}
-                historico={mockLoja.chs_historico}
+                score={statsData?.chs ?? 0}
+                label={statsData?.chsLabel ?? "Sem dados"}
+                breakdown={statsData?.chsBreakdown}
+                historico={statsData?.chsHistory}
                 className="h-full border-none shadow-2xl shadow-primary/5 bg-card/50 backdrop-blur-xl group-hover:scale-[1.02] transition-transform duration-500"
               />
             </div>
@@ -674,16 +672,16 @@ export default function Dashboard() {
                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Radar de Recompra</span>
                   </div>
                   <h3 className="text-2xl font-black font-syne tracking-tighter uppercase italic">
-                    <span className="text-primary">{idealPurchaseCount} clientes</span> no momento ideal de compra
+                    <span className="text-primary">{statsData?.idealPurchaseCount ?? 0} clientes</span> no momento ideal de compra
                   </h3>
                   <div className="grid grid-cols-3 gap-6 pt-2">
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Potencial de Receita</p>
-                      <p className="text-xl font-black font-syne">R$ {estimatedRevenue.toLocaleString("pt-BR")}</p>
+                      <p className="text-xl font-black font-syne">R$ {(statsData?.estimatedRevenue ?? 0).toLocaleString("pt-BR")}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Risco de Churn</p>
-                      <p className="text-xl font-black font-syne text-red-500">{atRiskCount} lojas</p>
+                      <p className="text-xl font-black font-syne text-red-500">{statsData?.atRiskCount ?? 0} clientes</p>
                     </div>
                     <div className="flex items-end pb-1">
                       <Button size="sm" className="h-9 font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/20" onClick={() => navigate("/dashboard/campanhas")}>
