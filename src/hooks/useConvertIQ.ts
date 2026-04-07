@@ -288,8 +288,8 @@ export function useGerarDiagnostico() {
       const uid = await getUid();
       if (!uid) throw new Error("Não autenticado");
 
-      const { data: diagRow, error: diagErr } = await supabase
-        .from("diagnostics")
+      const { data: diagRow, error: diagErr } = await (supabase
+        .from("diagnostics") as any)
         .insert({
           user_id: uid,
           status: "pending",
