@@ -8,37 +8,46 @@ export interface Database {
           id: string;
           full_name: string | null;
           company_name: string | null;
+          avatar_url: string | null;
           plan: "starter" | "growth" | "scale" | "enterprise";
+          role: "user" | "admin";
           trial_ends_at: string | null;
           onboarding_completed: boolean;
-          avatar_url: string | null;
+          ia_negotiation_enabled: boolean | null;
+          ia_max_discount_pct: number | null;
+          social_proof_enabled: boolean | null;
+          pix_key: string | null;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["profiles"]["Row"], "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Insert: Partial<Database["public"]["Tables"]["profiles"]["Row"]> & { id: string };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Row"]>;
       };
-      whatsapp_connections: {
+      stores: {
         Row: {
           id: string;
           user_id: string;
-          instance_name: string;
-          phone_number: string | null;
-          status: "disconnected" | "connecting" | "connected" | "error";
-          evolution_api_url: string | null;
-          evolution_api_key: string | null;
-          webhook_url: string | null;
-          connected_at: string | null;
+          name: string;
+          segment: string | null;
+          plataforma: string | null;
+          url: string | null;
+          ticket_medio: number | null;
+          ga4_property_id: string | null;
+          ga4_access_token: string | null;
+          pix_key: string | null;
+          conversion_health_score: number;
+          chs_history: Json;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["whatsapp_connections"]["Row"], "id" | "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["whatsapp_connections"]["Insert"]>;
+        Insert: Omit<Database["public"]["Tables"]["stores"]["Row"], "id" | "created_at" | "updated_at" | "conversion_health_score" | "chs_history"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["stores"]["Insert"]>;
       };
       contacts: {
         Row: {
           id: string;
           user_id: string | null;
+          store_id: string | null;
           name: string;
           phone: string;
           email: string | null;
@@ -50,127 +59,8 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["contacts"]["Row"], "id" | "created_at" | "updated_at">;
+        Insert: Omit<Database["public"]["Tables"]["contacts"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["contacts"]["Insert"]>;
-      };
-      conversations: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          store_id: string | null;
-          contact_id: string;
-          status: "open" | "closed" | "pending";
-          assigned_to: string | null;
-          last_message: string | null;
-          last_message_at: string | null;
-          unread_count: number;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["conversations"]["Row"], "id" | "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["conversations"]["Insert"]>;
-      };
-      messages: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          conversation_id: string;
-          content: string;
-          direction: "inbound" | "outbound";
-          status: "sent" | "delivered" | "read" | "failed";
-          type: "text" | "image" | "audio" | "document" | "template";
-          external_id: string | null;
-          created_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["messages"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["messages"]["Insert"]>;
-      };
-      campaigns: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          name: string;
-          message: string;
-          channel: "whatsapp" | "email" | "sms";
-          subject: string | null;
-          status: "draft" | "scheduled" | "running" | "completed" | "paused" | "failed";
-          tags: string[] | null;
-          scheduled_at: string | null;
-          sent_count: number;
-          delivered_count: number;
-          read_count: number;
-          reply_count: number;
-          total_contacts: number;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["campaigns"]["Row"], "id" | "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["campaigns"]["Insert"]>;
-      };
-      campaign_segments: {
-        Row: {
-          id: string;
-          campaign_id: string;
-          type: "all" | "tag" | "status" | "rfm" | "custom";
-          filters: Json;
-          estimated_reach: number;
-          created_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["campaign_segments"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["campaign_segments"]["Insert"]>;
-      };
-      abandoned_carts: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          source: "shopify" | "nuvemshop" | "tray" | "vtex" | "woocommerce" | "custom";
-          external_id: string | null;
-          customer_name: string | null;
-          customer_phone: string;
-          customer_email: string | null;
-          cart_value: number;
-          cart_items: Json;
-          recovery_url: string | null;
-          status: "pending" | "message_sent" | "recovered" | "expired";
-          message_sent_at: string | null;
-          recovered_at: string | null;
-          raw_payload: Json | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["abandoned_carts"]["Row"], "id" | "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["abandoned_carts"]["Insert"]>;
-      };
-      analytics_daily: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          store_id: string | null;
-          date: string;
-          messages_sent: number;
-          messages_delivered: number;
-          messages_read: number;
-          new_contacts: number;
-          active_conversations: number;
-          revenue_influenced: number;
-          created_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["analytics_daily"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["analytics_daily"]["Insert"]>;
-      };
-      stores: {
-        Row: {
-          id: string;
-          user_id: string;
-          name: string;
-          segment: string | null;
-          conversion_health_score: number;
-          chs_history: Json;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["stores"]["Row"], "id" | "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["stores"]["Insert"]>;
       };
       customers_v3: {
         Row: {
@@ -192,8 +82,120 @@ export interface Database {
           customer_health_score: number;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["customers_v3"]["Row"], "id" | "created_at">;
+        Insert: Omit<Database["public"]["Tables"]["customers_v3"]["Row"], "id" | "created_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["customers_v3"]["Insert"]>;
+      };
+      conversations: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          store_id: string | null;
+          contact_id: string;
+          status: "open" | "closed" | "pending";
+          assigned_to: string | null;
+          last_message: string | null;
+          last_message_at: string | null;
+          unread_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["conversations"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["conversations"]["Insert"]>;
+      };
+      messages: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          conversation_id: string;
+          content: string;
+          direction: "inbound" | "outbound";
+          status: "sent" | "delivered" | "read" | "failed";
+          type: "text" | "image" | "audio" | "document" | "template";
+          external_id: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["messages"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["messages"]["Insert"]>;
+      };
+      campaigns: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          store_id: string | null;
+          name: string;
+          message: string;
+          channel: "whatsapp" | "email" | "sms";
+          subject: string | null;
+          status: "draft" | "scheduled" | "running" | "completed" | "paused" | "failed";
+          tags: string[] | null;
+          scheduled_at: string | null;
+          sent_count: number;
+          delivered_count: number;
+          read_count: number;
+          reply_count: number;
+          total_contacts: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["campaigns"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["campaigns"]["Insert"]>;
+      };
+      campaign_segments: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          type: "all" | "tag" | "status" | "rfm" | "custom";
+          filters: Json;
+          estimated_reach: number;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["campaign_segments"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["campaign_segments"]["Insert"]>;
+      };
+      abandoned_carts: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          store_id: string | null;
+          source: "shopify" | "nuvemshop" | "tray" | "vtex" | "woocommerce" | "custom";
+          external_id: string | null;
+          customer_name: string | null;
+          customer_phone: string;
+          customer_email: string | null;
+          cart_value: number;
+          cart_items: Json;
+          recovery_url: string | null;
+          status: "pending" | "message_sent" | "recovered" | "expired";
+          message_sent_at: string | null;
+          recovered_at: string | null;
+          campaign_id: string | null;
+          automation_id: string | null;
+          value: number | null;
+          shipping_value: number | null;
+          payment_failure_reason: string | null;
+          raw_payload: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["abandoned_carts"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["abandoned_carts"]["Insert"]>;
+      };
+      analytics_daily: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          store_id: string | null;
+          date: string;
+          messages_sent: number;
+          messages_delivered: number;
+          messages_read: number;
+          new_contacts: number;
+          active_conversations: number;
+          revenue_influenced: number;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["analytics_daily"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["analytics_daily"]["Insert"]>;
       };
       opportunities: {
         Row: {
@@ -206,12 +208,13 @@ export interface Database {
           root_cause: string | null;
           severity: "critico" | "alto" | "medio" | "oportunidade" | null;
           estimated_impact: number | null;
+          impacto_estimado: number | null;
           status: "novo" | "snoozed" | "em_tratamento" | "resolvido" | "ignorado";
           detected_at: string;
           resolved_at: string | null;
           dados_json: Json | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["opportunities"]["Row"], "id" | "detected_at">;
+        Insert: Omit<Database["public"]["Tables"]["opportunities"]["Row"], "id" | "detected_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["opportunities"]["Insert"]>;
       };
       prescriptions: {
@@ -234,8 +237,38 @@ export interface Database {
           status: "aguardando_aprovacao" | "aprovada" | "em_execucao" | "concluida" | "rejeitada";
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["prescriptions"]["Row"], "id" | "created_at">;
+        Insert: Omit<Database["public"]["Tables"]["prescriptions"]["Row"], "id" | "created_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["prescriptions"]["Insert"]>;
+      };
+      diagnostics_v3: {
+        Row: {
+          id: string;
+          store_id: string | null;
+          diagnostic_json: Json | null;
+          chs: number | null;
+          chs_label: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["diagnostics_v3"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["diagnostics_v3"]["Insert"]>;
+      };
+      whatsapp_connections: {
+        Row: {
+          id: string;
+          user_id: string;
+          store_id: string | null;
+          instance_name: string;
+          phone_number: string | null;
+          status: "disconnected" | "connecting" | "connected" | "error";
+          evolution_api_url: string | null;
+          evolution_api_key: string | null;
+          webhook_url: string | null;
+          connected_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["whatsapp_connections"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["whatsapp_connections"]["Insert"]>;
       };
       system_config: {
         Row: {
@@ -244,7 +277,7 @@ export interface Database {
           maintenance_message: string | null;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["system_config"]["Row"], "updated_at">;
+        Insert: Omit<Database["public"]["Tables"]["system_config"]["Row"], "updated_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["system_config"]["Insert"]>;
       };
       integrations: {
@@ -259,7 +292,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["integrations"]["Row"], "id" | "created_at" | "updated_at">;
+        Insert: Omit<Database["public"]["Tables"]["integrations"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["integrations"]["Insert"]>;
       };
       lojas: {
@@ -273,10 +306,11 @@ export interface Database {
           ticket_medio: number | null;
           ga4_property_id: string | null;
           ga4_access_token: string | null;
+          pix_key: string | null;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["lojas"]["Row"], "id" | "created_at" | "updated_at">;
+        Insert: Omit<Database["public"]["Tables"]["lojas"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["lojas"]["Insert"]>;
       };
       metricas_funil: {
@@ -293,7 +327,7 @@ export interface Database {
           receita: number;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["metricas_funil"]["Row"], "id" | "created_at">;
+        Insert: Omit<Database["public"]["Tables"]["metricas_funil"]["Row"], "id" | "created_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["metricas_funil"]["Insert"]>;
       };
       diagnosticos: {
@@ -311,7 +345,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["diagnosticos"]["Row"], "id" | "created_at" | "updated_at">;
+        Insert: Omit<Database["public"]["Tables"]["diagnosticos"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["diagnosticos"]["Insert"]>;
       };
       configuracoes_convertiq: {
@@ -324,8 +358,141 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["configuracoes_convertiq"]["Row"], "id" | "created_at" | "updated_at">;
+        Insert: Omit<Database["public"]["Tables"]["configuracoes_convertiq"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
         Update: Partial<Database["public"]["Tables"]["configuracoes_convertiq"]["Insert"]>;
+      };
+      automations: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          trigger: "cart_abandoned" | "custom" | "customer_birthday" | "customer_inactive" | "new_contact" | "order_delivered";
+          message_template: string;
+          delay_minutes: number;
+          is_active: boolean;
+          sent_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["automations"]["Row"], "id" | "created_at" | "updated_at" | "sent_count"> & { id?: string; sent_count?: number };
+        Update: Partial<Database["public"]["Tables"]["automations"]["Insert"]>;
+      };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: string;
+          title: string;
+          body: string | null;
+          action_url: string | null;
+          read_at: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["notifications"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["notifications"]["Insert"]>;
+      };
+      nps_responses: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          score: number;
+          comment: string | null;
+          responded_at: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["nps_responses"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["nps_responses"]["Insert"]>;
+      };
+      cs_alerts: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          type: string;
+          score: number | null;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["cs_alerts"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["cs_alerts"]["Insert"]>;
+      };
+      api_keys: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          key_prefix: string;
+          key_hash: string;
+          key_preview: string;
+          environment: "production" | "sandbox";
+          scopes: string[];
+          last_used_at: string | null;
+          expires_at: string | null;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["api_keys"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["api_keys"]["Insert"]>;
+      };
+      agente_ia_config: {
+        Row: {
+          id: string;
+          user_id: string;
+          loja_id: string;
+          ativo: boolean;
+          modo: string;
+          personalidade_preset: string;
+          prompt_sistema: string;
+          conhecimento_loja: string;
+          tom_de_voz: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["agente_ia_config"]["Row"], "id"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["agente_ia_config"]["Insert"]>;
+      };
+      attribution_events: {
+        Row: {
+          id: string;
+          user_id: string;
+          order_id: string | null;
+          order_value: number;
+          order_date: string | null;
+          customer_phone: string | null;
+          source_platform: string | null;
+          attributed_message_id: string | null;
+          attributed_campaign_id: string | null;
+          attributed_automation_id: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["attribution_events"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["attribution_events"]["Insert"]>;
+      };
+      webhook_logs: {
+        Row: {
+          id: string;
+          plataforma: string | null;
+          loja_id: string | null;
+          payload_bruto: Json | null;
+          status_processamento: string | null;
+          erro_mensagem: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["webhook_logs"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["webhook_logs"]["Insert"]>;
+      };
+      products_v3: {
+        Row: {
+          id: string;
+          store_id: string;
+          user_id: string;
+          name: string;
+          sku: string | null;
+          price: number | null;
+          stock: number | null;
+          category: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["products_v3"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["products_v3"]["Insert"]>;
       };
     };
   };
