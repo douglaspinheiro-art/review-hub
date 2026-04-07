@@ -496,6 +496,7 @@ export interface Database {
       };
     };
   };
+}
 
 export type Recomendacao = {
   prioridade: "alta" | "media" | "baixa";
