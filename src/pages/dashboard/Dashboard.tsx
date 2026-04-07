@@ -156,6 +156,10 @@ export default function Dashboard() {
   const pendingCount = problems.length;
   const pendingValue = problems.reduce((acc, p) => acc + Number(p.impacto_estimado || 0), 0);
 
+  const idealPurchaseCount = period === 7 ? 38  : period === 30 ? 124 : 387;
+  const estimatedRevenue   = period === 7 ? 4_800 : period === 30 ? 18_600 : 52_400;
+  const atRiskCount        = period === 7 ? 12  : period === 30 ? 47  : 143;
+
   return (
     <>
       <div className="space-y-10 pb-28 md:pb-20">
