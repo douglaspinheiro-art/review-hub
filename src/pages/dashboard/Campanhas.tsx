@@ -123,19 +123,18 @@ export default function Campanhas() {
 
   const duplicateMutation = useMutation({
     mutationFn: async (campaign: typeof campaigns[number]) => {
-      const { error } = await (supabase.from("campaigns") as any).insert({
+      const { error } = await (supabase.from("campaigns") as any).insert([{
         user_id: user!.id,
         name: `${campaign.name} (cópia)`,
         message: campaign.message,
         channel: campaign.channel,
-        tags: (campaign as any).tags ?? [],
         status: "draft",
         total_contacts: 0,
         sent_count: 0,
         delivered_count: 0,
         read_count: 0,
         reply_count: 0,
-      });
+      }]);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -341,13 +340,13 @@ export default function Campanhas() {
                           </Badge>
                         );
                       })()}
-                      {c.ab_variant && (
+                      {(c as any).ab_variant && (
                         <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20 flex items-center gap-1">
                           <FlaskConical className="w-2.5 h-2.5" />
-                          Variante {c.ab_variant.toUpperCase()}
+                          Variante {(c as any).ab_variant.toUpperCase()}
                         </Badge>
                       )}
-                      {c.ab_variant && c.winner_variant === c.ab_variant && (
+                      {(c as any).ab_variant && (c as any).winner_variant === (c as any).ab_variant && (
                         <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-700 border-yellow-500/20 flex items-center gap-1">
                           <Trophy className="w-2.5 h-2.5" />
                           Vencedora

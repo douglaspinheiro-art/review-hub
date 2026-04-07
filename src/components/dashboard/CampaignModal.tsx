@@ -178,7 +178,7 @@ export default function CampaignModal({
         delivered_count: 0,
         read_count: 0,
         reply_count: 0,
-      });
+      }]);
       if (error) throw error;
     },
     onSuccess: () => {
