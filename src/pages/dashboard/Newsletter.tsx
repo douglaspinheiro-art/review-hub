@@ -61,7 +61,7 @@ export default function Newsletter() {
   const initialized = useRef(false);
 
   // ── Load existing draft ──────────────────────────────────────────────────────
-  const { isLoading } = useQuery({
+  const { data: existingCampaign, isLoading } = useQuery({
     queryKey: ["newsletter_draft", campaignId],
     queryFn: async () => {
       if (!campaignId) return null;
