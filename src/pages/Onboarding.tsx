@@ -23,9 +23,9 @@ export default function Onboarding() {
   const [searchParams] = useSearchParams();
   const perda = searchParams.get("perda");
 
-  // This wizard has been replaced by the /diagnostico flow — redirect immediately
+  // Redirect to diagnostico flow instead of signup loop
   useEffect(() => {
-    navigate("/signup", { replace: true });
+    navigate("/diagnostico", { replace: true });
   }, [navigate]);
 
   const [channels, setChannels] = useState<string[]>([]);
