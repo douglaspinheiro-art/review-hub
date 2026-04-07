@@ -85,7 +85,7 @@ export default function Billing() {
   const [showCancelModal, setShowCancelModal] = useState(false);
 
   const revenueAtRisk = problems.reduce((acc, p) => acc + Number(p.impacto_estimado || 0), 0);
-  const totalRecovered = stats?.recoveredValue ?? 0;
+  const totalRecovered = stats?.revenueLast30 ?? 0;
 
   const handleConfirmCancel = () => {
     setShowCancelModal(false);

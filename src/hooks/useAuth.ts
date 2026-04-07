@@ -10,6 +10,10 @@ interface Profile {
   role: "user" | "admin";
   trial_ends_at: string | null;
   onboarding_completed: boolean;
+  ia_negotiation_enabled: boolean | null;
+  ia_max_discount_pct: number | null;
+  social_proof_enabled: boolean | null;
+  pix_key: string | null;
 }
 
 export function useAuth() {
