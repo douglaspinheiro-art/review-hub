@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemo } from "@/contexts/DemoContext";
 import { toast } from "sonner";
 import { useEffect } from "react";
 
@@ -18,6 +19,7 @@ interface ProtectedRouteProps {
 
 export default function ProtectedRoute({ children, requiredPlan }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
+  const { isDemo } = useDemo();
   const location = useLocation();
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function ProtectedRoute({ children, requiredPlan }: ProtectedRout
     }
   }, [loading, user, profile, requiredPlan]);
 
-  if (loading) {
+  if (!isDemo && loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -40,7 +42,7 @@ export default function ProtectedRoute({ children, requiredPlan }: ProtectedRout
     );
   }
 
-  if (!user) {
+  if (!isDemo && !user) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 

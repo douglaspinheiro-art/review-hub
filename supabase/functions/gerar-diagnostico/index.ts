@@ -214,51 +214,51 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
 
     // Salvar diagnóstico no banco
     if (loja_id) {
-      await supabase.from("diagnosticos").insert({
-        loja_id,
-        diagnostico_json: diag,
+      await supabase.from("diagnostics_v3").insert({
+        store_id: loja_id,
+        diagnostic_json: diag,
         chs,
         chs_label
       });
       
       // Atualizar CHS da loja
-      await supabase.from("lojas").update({
+      await supabase.from("stores").update({
         conversion_health_score: chs,
-        chs_historico: supabase.rpc('append_chs_history', { new_score: chs, new_label: chs_label })
+        chs_history: supabase.rpc('append_chs_history', { new_score: chs, new_label: chs_label })
       }).eq("id", loja_id);
 
       // Criar problemas e prescrições sugeridas
       for (const p of diag.problemas) {
-        const { data: probData } = await supabase.from("problemas").insert({
-          loja_id,
-          tipo: p.tipo,
-          titulo: p.titulo,
-          descricao: p.descricao,
-          severidade: p.severidade,
-          impacto_estimado: p.impacto_reais,
-          causa_raiz: p.causa_raiz,
+        const { data: probData } = await supabase.from("opportunities").insert({
+          store_id: loja_id,
+          user_id: (await supabase.from("stores").select("user_id").eq("id", loja_id).single()).data?.user_id,
+          type: p.tipo,
+          title: p.titulo,
+          description: p.descricao,
+          severity: p.severidade,
+          estimated_impact: p.impacto_reais,
+          root_cause: p.causa_raiz,
           dados_json: p
         }).select().single();
 
         if (probData && p.prescricao_sugerida) {
           const s = p.prescricao_sugerida;
-          await supabase.from("prescricoes").insert({
-            loja_id,
-            problema_id: probData.id,
-            titulo: s.titulo,
-            descricao: s.descricao || p.descricao,
-            canal_execucao: s.canal,
-            segmento_alvo: s.segmento,
-            perfil_comportamental_alvo: s.perfil_comportamental,
-            num_clientes_alvo: s.num_clientes_estimado,
-            desconto_percentual: s.desconto_valor,
-            desconto_tipo: s.desconto_tipo,
-            melhor_horario: s.melhor_horario,
-            custo_estimado: s.custo_estimado,
-            potencial_estimado: s.potencial_estimado,
-            roi_estimado: s.roi_estimado,
+          await supabase.from("prescriptions").insert({
+            store_id: loja_id,
+            user_id: probData.user_id,
+            opportunity_id: probData.id,
+            title: s.titulo,
+            description: s.descricao || p.descricao,
+            execution_channel: s.canal,
+            segment_target: s.segmento,
+            behavioral_profile_target: s.perfil_comportamental,
+            num_clients_target: s.num_clientes_estimado,
+            discount_value: s.desconto_valor,
+            discount_type: s.desconto_tipo,
+            estimated_potential: s.potencial_estimado,
+            estimated_roi: s.roi_estimado,
             template_json: { mensagem: s.mensagem_base, prazo: s.prazo_resultado_dias },
-            ab_teste_ativo: s.ab_teste_recomendado
+            status: 'aguardando_aprovacao'
           });
         }
       }

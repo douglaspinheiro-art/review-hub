@@ -111,10 +111,10 @@ function d3Html(name: string, hasIntegration: boolean): string {
         🔍 Já pensou em diagnosticar seu funil?
       </p>
       <p style="color:#1e40af;font-size:13px;margin:0">
-        O ConvertIQ identifica onde você está perdendo conversões e gera um plano de ação com IA.
+        O Diagnostics identifica onde você está perdendo conversões e gera um plano de ação com IA.
       </p>
     </div>
-    <a href="${APP_URL}/dashboard/convertiq"
+    <a href="${APP_URL}/dashboard/diagnostico"
        style="display:inline-block;background:#3b82f6;color:#fff;font-weight:600;font-size:14px;
               padding:12px 24px;border-radius:8px;text-decoration:none">
       Ver diagnóstico de conversão →

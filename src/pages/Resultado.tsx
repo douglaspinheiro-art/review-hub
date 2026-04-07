@@ -1,25 +1,41 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { 
-  CheckCircle2, ArrowRight, Zap, TrendingUp, 
+import {
+  CheckCircle2, ArrowRight, Zap, TrendingUp,
   AlertCircle, Shield, ShoppingBag, Users, Star,
-  Lock, ChevronDown, Smartphone, Monitor
+  Lock, ChevronDown, Smartphone, Monitor, Send, MessageCircle, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { CHSGauge } from "@/components/dashboard/CHSGauge";
 import { mockLoja, mockMetricas, mockProblemas } from "@/lib/mock-data";
+import { toast } from "sonner";
 
 export default function Resultado() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const perdaUrl = searchParams.get("perda");
+
   const [billingCycle, setBillingCycle] = useState<"mensal" | "anual">("mensal");
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   const m = mockMetricas;
   const chs = mockLoja.conversion_health_score;
   const displayPerda = perdaUrl ? Number(perdaUrl) : m.perda_mensal;
+
+  const handleSendTest = () => {
+    setIsSendingTest(true);
+    setTimeout(() => {
+      setIsSendingTest(false);
+      toast.success("Mensagem de teste enviada para seu WhatsApp!");
+    }, 1500);
+  };
+
+  const handleActivate = () => {
+    navigate("/dashboard");
+    toast.success("Bem-vindo ao LTV Boost! Configure sua loja para começar.");
+  };
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
@@ -30,7 +46,7 @@ export default function Resultado() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
             <span className="font-bold tracking-tighter">LTV BOOST</span>
           </div>
-          <Button size="sm" onClick={() => navigate('/signup')} className="font-bold rounded-xl h-9">
+          <Button size="sm" onClick={handleActivate} className="font-bold rounded-xl h-9">
             Ativar minha conta
           </Button>
         </div>
@@ -62,7 +78,7 @@ export default function Resultado() {
           <div className="space-y-1">
             <p className="text-sm font-bold uppercase tracking-widest text-red-500/80">Você está perdendo</p>
             <div className="text-5xl font-black font-jetbrains text-red-500 tracking-tighter">
-              R$ {m.perda_mensal.toLocaleString('pt-BR')} <span className="text-lg opacity-50">/ mês</span>
+              R$ {displayPerda.toLocaleString('pt-BR')} <span className="text-lg opacity-50">/ mês</span>
             </div>
             <p className="text-xs text-muted-foreground">vs. benchmark do seu segmento (2.8%)</p>
           </div>
@@ -126,7 +142,23 @@ export default function Resultado() {
                       <div className="text-xs text-muted-foreground italic border-l-2 border-primary/30 pl-3 mb-4">
                         "Oi [Nome]! Frete grátis pra você hoje 🎁..."
                       </div>
-                      <Button variant="outline" className="w-full h-10 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-primary hover:text-primary-foreground border-primary/30">Ver detalhes da ação</Button>
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={handleSendTest}
+                          disabled={isSendingTest}
+                          variant="outline" 
+                          className="flex-1 h-10 text-[10px] font-bold uppercase tracking-widest rounded-xl border-primary/30 hover:bg-primary/10"
+                        >
+                          {isSendingTest ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : <Send className="w-3 h-3 mr-2" />}
+                          Enviar Teste
+                        </Button>
+                        <Button 
+                          onClick={handleActivate}
+                          className="flex-1 h-10 text-[10px] font-bold uppercase tracking-widest rounded-xl bg-primary text-primary-foreground"
+                        >
+                          Executar Ação
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-4 space-y-2">
@@ -193,40 +225,42 @@ export default function Resultado() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div className="bg-[#13131A] border border-[#1E1E2E] rounded-3xl p-8 space-y-8">
               <div className="space-y-2">
-                <h3 className="text-xl font-bold uppercase tracking-widest">Starter</h3>
+                <h3 className="text-xl font-bold uppercase tracking-widest">Crescimento</h3>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black">R$ 197</span>
+                  <span className="text-3xl font-black">R$ 897</span>
                   <span className="text-muted-foreground text-sm font-bold">/mês</span>
                 </div>
+                <p className="text-[10px] text-muted-foreground">ou R$ 747/mês no plano anual</p>
               </div>
               <ul className="space-y-4">
-                {["1 canal", "3 prescrições/mês", "WhatsApp Marketing", "5 jornadas prontas", "Segmentação RFM"].map((f, i) => (
+                {["5.000 contatos", "10.000 msgs/mês", "3 WhatsApp", "Carrinho Abandonado", "Chatbot + IA", "Segmentação RFM"].map((f, i) => (
                   <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {f}
                   </li>
                 ))}
               </ul>
-              <Button variant="outline" className="w-full h-12 rounded-xl font-bold border-[#1E1E2E]">Começar grátis — 14 dias</Button>
+              <Button variant="outline" onClick={handleActivate} className="w-full h-12 rounded-xl font-bold border-[#1E1E2E]">Começar grátis — 14 dias</Button>
             </div>
 
             <div className="bg-gradient-to-br from-[#1A1A2E] to-[#0A0A0F] border-2 border-primary rounded-3xl p-8 space-y-8 relative overflow-hidden">
               <div className="absolute top-0 right-0 bg-primary text-black px-4 py-1 text-[10px] font-black uppercase tracking-widest rounded-bl-xl">MAIS POPULAR</div>
               <div className="space-y-2">
-                <h3 className="text-xl font-bold uppercase tracking-widest text-primary italic">Growth</h3>
+                <h3 className="text-xl font-bold uppercase tracking-widest text-primary italic">Escala</h3>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-primary">R$ 497</span>
+                  <span className="text-3xl font-black text-primary">R$ 1.997</span>
                   <span className="text-muted-foreground text-sm font-bold">/mês</span>
                 </div>
+                <p className="text-[10px] text-primary/60">ou R$ 1.664/mês no plano anual</p>
               </div>
               <ul className="space-y-4">
                 {[
-                  "3 canais + Marketplaces",
-                  "Prescrições ILIMITADAS",
-                  "WhatsApp + Email + SMS",
-                  "Unified Profile 360º",
-                  "Revenue Forecast IA",
-                  "A/B Testing automático",
-                  "Proteção de Frequência"
+                  "10.000 contatos / 50K msgs",
+                  "WhatsApp ilimitado",
+                  "Prescrições + Automações IA",
+                  "Benchmark Score exclusivo",
+                  "Multi-canal (WA + SMS + Email)",
+                  "API pública + White-label",
+                  "Gerente de sucesso dedicado",
                 ].map((f, i) => (
                   <li key={i} className="flex items-center gap-3 text-sm font-bold">
                     <CheckCircle2 className="w-4 h-4 text-primary" /> {f}
@@ -236,15 +270,47 @@ export default function Resultado() {
               <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4 space-y-1 text-center">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Potencial identificado</p>
                 <p className="text-2xl font-black text-primary">R$ 57.400/mês</p>
-                <p className="text-[9px] text-muted-foreground font-bold">ROI Estimado: 115x</p>
+                <p className="text-[9px] text-muted-foreground font-bold">ROI Estimado: 82x</p>
               </div>
-              <Button className="w-full h-14 rounded-xl font-black text-lg bg-gradient-to-r from-emerald-500 to-blue-600 shadow-lg shadow-emerald-500/20 hover:scale-[1.02] transition-all">Ativar Growth — 14 dias grátis</Button>
+              <Button onClick={handleActivate} className="w-full h-14 rounded-xl font-black text-lg bg-gradient-to-r from-emerald-500 to-blue-600 shadow-lg shadow-emerald-500/20 hover:scale-[1.02] transition-all">Ativar Escala — 14 dias grátis</Button>
             </div>
           </div>
         </div>
 
+        {/* Comunidade */}
+        <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-3xl p-8 text-center space-y-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-[10px] font-black px-3 py-1 rounded-full border border-primary/20 uppercase tracking-[0.2em]">
+              <Users className="w-3 h-3" /> Comunidade exclusiva
+            </div>
+            <h3 className="text-2xl font-black font-syne tracking-tighter">Elite E-commerce Brasil</h3>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              Grupo exclusivo com 1.200+ lojistas. Benchmarks semanais, táticas reais e suporte entre pares.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <a
+              href="https://wa.me/5511999999999?text=Quero+entrar+na+comunidade+Elite+E-commerce"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-xl transition-colors text-sm"
+            >
+              <MessageCircle className="w-4 h-4" /> Entrar no grupo WhatsApp
+            </a>
+            <a
+              href="https://t.me/eliteecommercebr"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 border border-border/50 hover:bg-white/5 text-white font-bold px-6 py-3 rounded-xl transition-colors text-sm"
+            >
+              Telegram →
+            </a>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Gratuito para todos os usuários LTV Boost · Aprovação em até 24h</p>
+        </div>
+
         <div className="text-center space-y-4 pt-12 border-t border-[#1E1E2E]">
-          <p className="text-sm font-bold text-muted-foreground uppercase tracking-[0.2em]">🛡️ Garantia de 14 dias · ⏱ Cada dia custa R$ 1.947</p>
+          <p className="text-sm font-bold text-muted-foreground uppercase tracking-[0.2em]">🛡️ Garantia de 14 dias · Cancele quando quiser</p>
         </div>
       </div>
     </div>

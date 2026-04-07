@@ -1,91 +1,105 @@
+import { useState } from "react";
 import { useInView } from "@/hooks/useInView";
 import { Button } from "@/components/ui/button";
-import { Check, ArrowRight, Zap } from "lucide-react";
+import { Check, ArrowRight, Zap, ShieldCheck, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PLANS = [
   {
     name: "Starter",
-    price: "Grátis",
-    period: "",
-    description: "Para começar e testar",
+    price: "R$ 447",
+    period: "/mês",
+    description: "Lojas até R$ 80k/mês",
     highlight: false,
-    cta: "Criar conta grátis",
+    badge: "Success Fee: 3%",
+    feeExample: "Ex: recuperou R$ 5k → paga R$ 150 de fee",
+    cta: "Começar agora",
     ctaHref: "/signup",
     features: [
-      "500 mensagens/mês",
-      "200 contatos",
-      "1 conexão WhatsApp",
-      "Campanhas manuais",
-      "Analytics básico",
-      "1 integração de e-commerce",
+      "3% sobre receita recuperada",
+      "150 msgs WhatsApp inclusas",
+      "1.500 e-mails inclusos",
+      "1.000 clientes no perfil",
+      "Radar de Lucro Básico",
+      "Flow Engine (Carrinho/PIX)",
+      "1 integração e-commerce",
     ],
   },
   {
-    name: "Crescimento",
-    price: "R$ 197",
+    name: "Growth",
+    price: "R$ 897",
     period: "/mês",
-    description: "Para e-commerces em expansão",
+    description: "Lojas até R$ 500k/mês",
     highlight: true,
-    badge: "Mais popular",
-    cta: "Começar trial grátis",
+    badge: "Success Fee: 2%",
+    feeExample: "Ex: recuperou R$ 20k → paga R$ 400 de fee",
+    cta: "Começar agora",
     ctaHref: "/signup",
     features: [
-      "10.000 mensagens/mês",
-      "5.000 contatos",
-      "3 conexões WhatsApp",
-      "Campanhas automatizadas",
-      "Carrinho abandonado",
-      "RFM + segmentação avançada",
-      "Chatbot com templates",
-      "Gestão de reviews Google",
-      "IA para respostas automáticas",
-      "Até 5 integrações",
+      "2% sobre receita recuperada",
+      "500 msgs WhatsApp inclusas",
+      "5.000 e-mails inclusos",
+      "5.000 clientes no perfil",
+      "CHS Score + Prescrições",
+      "Agente IA Negociador",
+      "Até 3 integrações",
     ],
   },
   {
-    name: "Escala",
-    price: "R$ 497",
+    name: "Scale",
+    price: "R$ 1.997",
     period: "/mês",
-    description: "Para operações de alto volume",
+    description: "Lojas acima de R$ 500k/mês",
     highlight: false,
-    cta: "Começar trial grátis",
+    badge: "Success Fee: 1%",
+    feeExample: "Ex: recuperou R$ 100k → paga R$ 1.000 de fee",
+    cta: "Começar agora",
     ctaHref: "/signup",
     features: [
-      "50.000 mensagens/mês",
-      "25.000 contatos",
-      "Conexões ilimitadas",
-      "Flow builder visual de chatbot",
-      "Analytics avançado (cohorts, LTV)",
-      "Multi-canal (WhatsApp + SMS + e-mail)",
-      "API pública completa",
-      "White-label para agências",
-      "Gerente de sucesso dedicado",
-      "Integrações ilimitadas",
+      "1% sobre receita recuperada",
+      "2.000 msgs WhatsApp inclusas",
+      "15.000 e-mails inclusos",
+      "3.000 SMS inclusos",
+      "10.000 clientes no perfil",
+      "Revenue Forecast Total",
+      "Relatório executivo semanal em PDF",
+      "API & Webhooks ilimitados",
     ],
   },
   {
     name: "Enterprise",
-    price: "Sob consulta",
-    period: "",
-    description: "Para grandes redes e franquias",
+    price: "A partir de R$ 5.000",
+    period: "/mês",
+    description: "Grandes redes e franquias",
     highlight: false,
+    badge: undefined,
+    feeExample: "Taxas e limites negociados conforme volume e SLA",
     cta: "Falar com consultor",
     ctaHref: "/contato",
     features: [
-      "Tudo do Escala",
-      "Volume de mensagens personalizado",
-      "SLA dedicado e suporte 24/7",
-      "Infraestrutura dedicada",
-      "Integração com ERPs (Bling, SAP)",
-      "Benchmark setorial exclusivo",
-      "Treinamento e onboarding da equipe",
+      "Taxas personalizadas",
+      "Volume de msgs ilimitado",
+      "Treinamento de IA sob medida",
+      "SLA de 99.9% e Suporte 24/7",
+      "Integração com ERPs",
+      "Customer Success dedicado",
+      "Relatórios white-label",
     ],
   },
 ];
 
+const ANNUAL_DISCOUNT = 0.20; // 20% off
+
+function applyDiscount(price: string, annual: boolean): string {
+  if (!annual || price === "Custom" || price.startsWith("A partir")) return price;
+  const num = parseInt(price.replace(/\D/g, ""), 10);
+  const discounted = Math.round(num * (1 - ANNUAL_DISCOUNT));
+  return `R$ ${discounted.toLocaleString("pt-BR")}`;
+}
+
 export default function Pricing() {
   const { ref, inView } = useInView();
+  const [annual, setAnnual] = useState(false);
 
   return (
     <section id="planos" ref={ref} className="py-20 md:py-28">
@@ -100,12 +114,37 @@ export default function Pricing() {
             <Zap className="w-3.5 h-3.5" />
             14 dias grátis, sem cartão de crédito
           </div>
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Preços <span className="text-primary">transparentes</span>
+          <h2 className="text-3xl md:text-5xl font-black font-syne tracking-tighter uppercase italic mb-4">
+            Investimento em <span className="text-primary">Inteligência</span>
           </h2>
-          <p className="text-muted-foreground text-lg">
-            Sem surpresas. Cancele quando quiser. Comece grátis e faça upgrade conforme seu crescimento.
+          <p className="text-muted-foreground text-lg mb-4">
+            Sua assinatura se paga em média nas primeiras 48h de operação.
           </p>
+
+          {/* Annual / Monthly toggle */}
+          <div className="flex items-center justify-center gap-4 mt-6">
+            <span className={cn("text-sm font-bold transition-colors", !annual ? "text-foreground" : "text-muted-foreground")}>
+              Mensal
+            </span>
+            <button
+              onClick={() => setAnnual(a => !a)}
+              className={cn(
+                "relative w-12 h-6 rounded-full border transition-all duration-300",
+                annual ? "bg-primary border-primary" : "bg-muted border-border"
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all duration-300",
+                annual ? "left-6" : "left-0.5"
+              )} />
+            </button>
+            <span className={cn("text-sm font-bold transition-colors flex items-center gap-1.5", annual ? "text-foreground" : "text-muted-foreground")}>
+              Anual
+              <span className="text-[9px] font-black bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-widest">
+                -20%
+              </span>
+            </span>
+          </div>
         </div>
 
         <div
@@ -133,15 +172,18 @@ export default function Pricing() {
               <div className="mb-5">
                 <h3 className="font-bold text-base">{plan.name}</h3>
                 <p className="text-muted-foreground text-xs mt-0.5">{plan.description}</p>
-                <p className="mt-3 text-3xl font-extrabold">
-                  {plan.price}
+                <p className="mt-3 flex items-end gap-1.5">
+                  <span className="text-3xl font-extrabold">{applyDiscount(plan.price, annual)}</span>
                   {plan.period && (
-                    <span className="text-sm font-normal text-muted-foreground">{plan.period}</span>
+                    <span className="text-sm font-normal text-muted-foreground pb-0.5">{plan.period}</span>
                   )}
                 </p>
+                {annual && plan.price !== "Custom" && !plan.price.startsWith("A partir") && (
+                  <p className="text-[10px] text-muted-foreground/60 mt-0.5 line-through">{plan.price}/mês</p>
+                )}
               </div>
 
-              <ul className="space-y-2.5 mb-6 flex-1">
+              <ul className="space-y-2.5 mb-4 flex-1">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm">
                     <Check className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
@@ -149,6 +191,12 @@ export default function Pricing() {
                   </li>
                 ))}
               </ul>
+
+              {plan.feeExample && (
+                <p className="text-[10px] text-muted-foreground/60 italic bg-muted/40 rounded-lg px-3 py-2 mb-4 leading-relaxed">
+                  {plan.feeExample}
+                </p>
+              )}
 
               <Button
                 asChild
@@ -167,6 +215,22 @@ export default function Pricing() {
         <p className="text-center text-sm text-muted-foreground mt-8">
           Mensagens adicionais: <strong>R$ 15 por 1.000</strong> · Todos os planos incluem suporte via WhatsApp
         </p>
+
+        {/* Guarantee & Risk Reversal */}
+        <div className={cn(
+          "mt-12 max-w-2xl mx-auto bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left transition-all duration-700 delay-300",
+          inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+        )}>
+          <div className="shrink-0 w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <ShieldCheck className="w-6 h-6 text-emerald-500" />
+          </div>
+          <div>
+            <p className="font-bold text-sm mb-1">Garantia de resultado em 30 dias</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Se o LTV Boost não recuperar ao menos o valor da sua mensalidade nos primeiros 30 dias, você recebe desconto integral no mês seguinte. Cancele quando quiser, sem multa ou fidelidade.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   );

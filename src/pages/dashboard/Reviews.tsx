@@ -109,7 +109,7 @@ export default function Reviews() {
   async function generateAiReply(review: Review) {
     setGeneratingId(review.id);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-reply", {
+      const { data, error } = await supabase.functions.invoke("ai-reply-suggest", {
         body: {
           review_id: review.id,
           content: review.content,

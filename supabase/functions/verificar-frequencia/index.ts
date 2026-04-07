@@ -1,95 +1,53 @@
+/**
+ * LTV Boost v4 — Frequency Capping (Anti-Spam)
+ * Checks if a customer should receive a message based on store policy
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const cors = {
+const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
   try {
-    const { loja_id, cliente_ids, canal, prescricao_id } = await req.json();
-
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Busca configurações de frequência
-    const { data: config } = await supabase
-      .from("configuracoes_v3")
-      .select("cap_msgs_whatsapp_semana, cap_msgs_email_semana, cooldown_pos_compra_dias")
-      .eq("loja_id", loja_id)
-      .single();
+    const { customer_id, store_id, channel } = await req.json();
 
-    const cap = canal === "whatsapp"
-      ? (config?.cap_msgs_whatsapp_semana ?? 2)
-      : (config?.cap_msgs_email_semana ?? 3);
+    if (!customer_id || !store_id || !channel) throw new Error("Missing parameters");
 
-    const cooldownDias = config?.cooldown_pos_compra_dias ?? 7;
-    const umaSemanAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const cooldownDate = new Date(Date.now() - cooldownDias * 24 * 60 * 60 * 1000).toISOString();
+    // 1. Get store anti-spam config (default to 2 per week)
+    const { data: config } = await supabase.from("settings_v3").select("cap_msgs_whatsapp_week").eq("store_id", store_id).maybeSingle();
+    const cap = config?.cap_msgs_whatsapp_week || 2;
 
-    // Clientes que já receberam mensagens demais essa semana
-    const { data: clientesComCap } = await supabase
-      .from("comunicacoes_enviadas")
-      .select("cliente_id")
-      .eq("loja_id", loja_id)
-      .eq("canal", canal)
-      .gte("enviado_em", umaSemanAtras)
-      .in("cliente_id", cliente_ids);
+    // 2. Count messages sent in the last 7 days to this customer
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const contagem: Record<string, number> = {};
-    for (const c of clientesComCap ?? []) {
-      contagem[c.cliente_id] = (contagem[c.cliente_id] ?? 0) + 1;
-    }
+    const { count, error } = await supabase
+      .from("communications_sent")
+      .select("id", { count: "exact" })
+      .eq("store_id", store_id)
+      .eq("customer_id", customer_id)
+      .eq("channel", channel)
+      .gte("sent_at", sevenDaysAgo.toISOString());
 
-    // Clientes em cooldown pós-compra
-    const { data: clientesCooldown } = await supabase
-      .from("clientes")
-      .select("id")
-      .eq("loja_id", loja_id)
-      .in("id", cliente_ids)
-      .gte("ultima_compra_em", cooldownDate);
+    if (error) throw error;
 
-    // Clientes com opt-out
-    const { data: clientesOptOut } = await supabase
-      .from("clientes")
-      .select("id")
-      .eq("loja_id", loja_id)
-      .in("id", cliente_ids)
-      .eq(canal === "whatsapp" ? "whatsapp_opt_out" : "email_opt_out", true);
+    const allowed = (count || 0) < cap;
 
-    const idsComCap = Object.entries(contagem).filter(([, n]) => n >= cap).map(([id]) => id);
-    const idsCooldown = (clientesCooldown ?? []).map((c: any) => c.id);
-    const idsOptOut = (clientesOptOut ?? []).map((c: any) => c.id);
-
-    const excluidos = new Set([
-      ...idsComCap,
-      ...idsCooldown,
-      ...idsOptOut,
-    ]);
-
-    const clientesAptos = cliente_ids.filter((id: string) => !excluidos.has(id));
-
-    return new Response(JSON.stringify({
-      success: true,
-      total_original: cliente_ids.length,
-      excluidos: excluidos.size,
-      aptos: clientesAptos.length,
-      motivos_exclusao: {
-        cap_frequencia: idsComCap.length,
-        cooldown_pos_compra: idsCooldown.length,
-        opt_out: idsOptOut.length,
-      },
-      clientes_aptos: clientesAptos,
-    }), { headers: { ...cors, "Content-Type": "application/json" } });
-  } catch (e) {
-    return new Response(
-      JSON.stringify({ success: false, error: e.message }),
-      { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ allowed, current_count: count, cap }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
   }
 });

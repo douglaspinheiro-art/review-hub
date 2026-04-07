@@ -1,84 +1,72 @@
+/**
+ * LTV Boost v4 — Conversational AI Agent
+ * Autonomous decision making for customer interactions
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const cors = {
+const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Templates de Segurança (Fallback)
-const SAFETY_TEMPLATES = [
-  "Olá! Recebi sua mensagem e já estou verificando os detalhes para você. Só um momento! 😊",
-  "Oi! Tudo bem? Estou consultando as informações aqui no sistema e já te respondo com precisão. 📦",
-  "Opa! Como vai? Vou checar isso agora mesmo e te retorno em instantes. 👍"
-];
-
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { message, contact_phone, loja_id, history = [] } = await req.json();
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { data: config } = await supabase
-      .from("agente_ia_config")
-      .select("*")
-      .eq("loja_id", loja_id)
-      .maybeSingle();
+    const { conversation_id, message_content, store_id } = await req.json();
 
-    if (!config || !config.ativo) {
-      return new Response(JSON.stringify({ success: false, error: "Agente inativo" }), { headers: cors });
-    }
+    // 1. Get Store and AI Config
+    const { data: store } = await supabase.from("stores").select("name, segment").eq("id", store_id).single();
+    const { data: aiConfig } = await supabase.from("ai_agent_config").select("*").eq("store_id", store_id).maybeSingle();
 
-    // --- LOGIC: IA CALL WITH TIMEOUT & FALLBACK ---
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    // 2. Call Claude 3.5 Sonnet to decide response
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     
-    const fetchAI = async () => {
-      const promptSistema = `
-        Persona: ${config.prompt_sistema}
-        Tom de voz: ${config.tom_de_voz}
-        Conhecimento da Loja: ${config.conhecimento_loja || "Loja de e-commerce de alta performance."}
-        REGRAS: Responda em Português Brasileiro (pt-BR). Seja direto (3-5 linhas). Use emojis moderadamente.
-      `;
+    const system = `Você é o Agente de IA da loja ${store?.name || 'LTV Boost'}.
+Seu objetivo é ajudar o cliente, resolver dúvidas e incentivar a conversão de forma natural.
+Personalidade da marca: ${aiConfig?.personality || 'Profissional e prestativa'}.
+Contexto do segmento: ${store?.segment}.
+Instruções: Nunca invente informações. Se não souber algo, direcione para um humano.`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            { role: "user", parts: [{ text: `INSTRUÇÕES DE SISTEMA: ${promptSistema}` }] },
-            ...history.slice(-5).map((h: any) => ({
-              role: h.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: h.content }]
-            })),
-            { role: "user", parts: [{ text: message }] }
-          ],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
-        })
-      });
-      const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text;
-    };
-
-    // Timeout de 8 segundos para a IA
-    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
-    
-    let aiText;
-    try {
-      aiText = await Promise.race([fetchAI(), timeout]);
-    } catch (e) {
-      console.error("AI Error or Timeout, using Safety Template:", e.message);
-      aiText = SAFETY_TEMPLATES[Math.floor(Math.random() * SAFETY_TEMPLATES.length)];
-    }
-
-    return new Response(JSON.stringify({ success: true, response: aiText, is_fallback: !aiText }), {
-      headers: { ...cors, "Content-Type": "application/json" }
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1000,
+        system,
+        messages: [{ role: "user", content: message_content }],
+      }),
     });
 
-  } catch (e) {
-    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500, headers: cors });
+    const data = await response.json();
+    const replyText = data.content[0].text;
+
+    // 3. Save as outbound message (pending dispatch)
+    await supabase.from("messages").insert({
+      conversation_id,
+      content: replyText,
+      direction: "outbound",
+      status: "pending",
+      type: "text",
+      user_id: store?.user_id
+    });
+
+    return new Response(JSON.stringify({ reply: replyText }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
   }
 });

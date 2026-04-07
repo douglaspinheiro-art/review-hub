@@ -3,130 +3,131 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 // --- Types ---
-export interface LojaV3 {
+export interface StoreV3 {
   id: string;
-  nome: string;
+  name: string;
   conversion_health_score: number;
   chs_label: string;
-  chs_historico: any[];
-  segmento: string;
+  chs_history: any[];
+  segment: string;
 }
 
-export interface MetricasFunilV3 {
-  visitantes: number;
-  produto_visto: number;
-  carrinho: number;
+export interface FunnelMetricsV3 {
+  visitors: number;
+  product_viewed: number;
+  cart: number;
   checkout: number;
-  pedido: number;
-  visitantes_mobile: number;
-  pedidos_mobile: number;
-  cvr_mobile: number;
-  cvr_desktop: number;
+  order: number;
+  mobile_visitors: number;
+  mobile_orders: number;
+  mobile_cvr: number;
+  desktop_cvr: number;
 }
 
 // --- Hooks ---
 
-export function useLojaV3(lojaId?: string) {
+export function useStoreV3(storeId?: string) {
   return useQuery({
-    queryKey: ["loja_v3", lojaId],
+    queryKey: ["store_v3", storeId],
     queryFn: async () => {
-      if (!lojaId) return null;
+      if (!storeId) return null;
       const { data, error } = await supabase
-        .from("lojas")
+        .from("stores")
         .select("*")
-        .eq("id", lojaId)
+        .eq("id", storeId)
         .single();
       if (error) throw error;
-      return data as LojaV3;
+      return data as StoreV3;
     },
-    enabled: !!lojaId,
+    enabled: !!storeId,
   });
 }
 
-export function useProblemasV3(lojaId?: string) {
+export function useOpportunitiesV3(storeId?: string) {
   return useQuery({
-    queryKey: ["problemas_v3", lojaId],
+    queryKey: ["opportunities_v3", storeId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("problemas")
+        .from("opportunities")
         .select("*")
-        .eq("loja_id", lojaId)
-        .order("detectado_em", { ascending: false });
+        .eq("store_id", storeId)
+        .order("detected_at", { ascending: false });
       if (error) throw error;
       return data;
     },
-    enabled: !!lojaId,
+    enabled: !!storeId,
   });
 }
 
-export function usePrescricoesV3(lojaId?: string) {
+export function usePrescriptionsV3(storeId?: string) {
   return useQuery({
-    queryKey: ["prescricoes_v3", lojaId],
+    queryKey: ["prescriptions_v3", storeId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("prescricoes")
-        .select("*, problemas(*)")
-        .eq("loja_id", lojaId)
+        .from("prescriptions")
+        .select("*, opportunities(*)")
+        .eq("store_id", storeId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
-    enabled: !!lojaId,
+    enabled: !!storeId,
   });
 }
 
-export function useProdutosV3(lojaId?: string, filter = "todos") {
+export function useProductsV3(storeId?: string, filter = "todos") {
   return useQuery({
-    queryKey: ["produtos_v3", lojaId, filter],
+    queryKey: ["products_v3", storeId, filter],
     queryFn: async () => {
-      let query = supabase.from("produtos").select("*").eq("loja_id", lojaId);
+      let query = supabase.from("products").select("*").eq("store_id", storeId);
       
-      if (filter === "estoque_critico") query = query.lt("estoque", 5);
-      if (filter === "baixa_cvr") query = query.lt("taxa_conversao_produto", 10);
+      if (filter === "estoque_critico") query = query.lt("stock", 5);
+      if (filter === "baixa_cvr") query = query.lt("product_conversion_rate", 10);
 
-      const { data, error } = await query.order("receita_30d", { ascending: false });
+      const { data, error } = await query.order("revenue_30d", { ascending: false });
       if (error) throw error;
       return data;
     },
-    enabled: !!lojaId,
+    enabled: !!storeId,
   });
 }
 
-export function useMetricasV3(lojaId?: string) {
+export function useWebhookLogs(userId?: string, isAdmin?: boolean) {
   return useQuery({
-    queryKey: ["metricas_funil_v3", lojaId],
+    queryKey: ["webhook_logs", userId, isAdmin],
+    queryFn: async () => {
+      const query = supabase
+        .from("webhook_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (!isAdmin && userId) {
+        query.eq("user_id", userId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!userId,
+  });
+}
+
+export function useMetricsV3(storeId?: string) {
+  return useQuery({
+    queryKey: ["funnel_metrics_v3", storeId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("metricas_funil_v3")
+        .from("funnel_metrics_v3")
         .select("*")
-        .eq("loja_id", lojaId)
-        .order("data_referencia", { ascending: false })
+        .eq("store_id", storeId)
+        .order("reference_date", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data as MetricasFunilV3;
+      return data as unknown as FunnelMetricsV3;
     },
-    enabled: !!lojaId,
-  });
-}
-
-export function useWebhookLogs(lojaId?: string, isAdmin = false) {
-  return useQuery({
-    queryKey: ["webhook_logs", lojaId, isAdmin],
-    queryFn: async () => {
-      let query = supabase
-        .from("webhook_logs")
-        .select("*, lojas(nome)")
-        .order("created_at", { ascending: false });
-      
-      if (!isAdmin && lojaId) {
-        query = query.eq("loja_id", lojaId);
-      }
-
-      const { data, error } = await query.limit(50);
-      if (error) throw error;
-      return data;
-    },
-    enabled: isAdmin || !!lojaId,
+    enabled: !!storeId,
   });
 }

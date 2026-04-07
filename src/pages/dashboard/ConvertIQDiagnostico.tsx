@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowLeft, Sparkles, ChevronRight, Loader2, History, AlertCircle,
+  ArrowLeft, Sparkles, ChevronRight, Loader2, History, AlertCircle, Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLoja, useLatestDiagnostico, useDiagnosticos, DiagnosticoJSON, Problema } from "@/hooks/useConvertIQ";
+import CampaignModal, { ProdutoParaCampanha } from "@/components/dashboard/CampaignModal";
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 const sevConfig = {
@@ -25,7 +26,7 @@ function SevBadge({ sev }: { sev: keyof typeof sevConfig }) {
 }
 
 // ─── Problem card ─────────────────────────────────────────────────────────────
-function ProblemaCard({ p, i }: { p: Problema; i: number }) {
+function ProblemaCard({ p, i, onCriarCampanha }: { p: Problema; i: number; onCriarCampanha: () => void }) {
   return (
     <div className={cn(
       "bg-card border rounded-2xl p-5 space-y-3",
@@ -37,11 +38,21 @@ function ProblemaCard({ p, i }: { p: Problema; i: number }) {
       </div>
       <h3 className="font-semibold text-sm leading-snug">{p.titulo}</h3>
       <p className="text-sm text-muted-foreground leading-relaxed">{p.descricao}</p>
-      <div className="pt-1 border-t">
-        <p className="text-xs text-muted-foreground">Impacto estimado</p>
-        <p className="font-mono font-bold text-red-500">
-          R$ {p.impacto_reais.toLocaleString("pt-BR")}/mês
-        </p>
+      <div className="pt-1 border-t flex items-end justify-between gap-2">
+        <div>
+          <p className="text-xs text-muted-foreground">Impacto estimado</p>
+          <p className="font-mono font-bold text-red-500">
+            R$ {p.impacto_reais.toLocaleString("pt-BR")}/mês
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 text-xs font-bold gap-1.5 rounded-xl shrink-0"
+          onClick={onCriarCampanha}
+        >
+          <Megaphone className="w-3.5 h-3.5" /> Criar campanha
+        </Button>
       </div>
     </div>
   );
@@ -111,6 +122,11 @@ function HistoryModal({ diags, onClose }: {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ConvertIQDiagnostico() {
   const [showHistory, setShowHistory] = useState(false);
+  const [campaignModal, setCampaignModal] = useState<{
+    open: boolean;
+    objective: "recovery" | "rebuy" | "loyalty" | "lancamento";
+    nome?: string;
+  }>({ open: false, objective: "recovery" });
   const loja     = useLoja();
   const lastDiag = useLatestDiagnostico(loja.data?.id ?? null);
   const allDiags = useDiagnosticos(loja.data?.id ?? null);
@@ -128,14 +144,14 @@ export default function ConvertIQDiagnostico() {
   if (!lastDiag.data) {
     return (
       <div className="space-y-4">
-        <Link to="/dashboard/convertiq" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <Link to="/dashboard/funil" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4" /> Voltar ao dashboard
         </Link>
         <div className="bg-card border rounded-2xl p-10 text-center">
           <AlertCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
           <h2 className="font-semibold mb-1">Nenhum diagnóstico disponível</h2>
           <p className="text-sm text-muted-foreground mb-4">Volte ao dashboard e gere seu primeiro diagnóstico com IA</p>
-          <Button asChild><Link to="/dashboard/convertiq">Ir ao dashboard</Link></Button>
+          <Button asChild><Link to="/dashboard/funil">Ir ao dashboard</Link></Button>
         </div>
       </div>
     );
@@ -156,9 +172,16 @@ export default function ConvertIQDiagnostico() {
         />
       )}
 
+      {campaignModal.open && (
+        <CampaignModal
+          onClose={() => setCampaignModal(s => ({ ...s, open: false }))}
+          initialObjective={campaignModal.objective}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <Link to="/dashboard/convertiq" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <Link to="/dashboard/funil" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4" /> Voltar ao dashboard
         </Link>
         <span className="text-xs text-muted-foreground">
@@ -212,14 +235,25 @@ export default function ConvertIQDiagnostico() {
         <div className="space-y-3">
           <h2 className="font-semibold">Problemas Identificados</h2>
           <div className="grid md:grid-cols-3 gap-4">
-            {problemas.map((p, i) => <ProblemaCard key={i} p={p} i={i} />)}
+            {problemas.map((p, i) => (
+              <ProblemaCard
+                key={i}
+                p={p}
+                i={i}
+                onCriarCampanha={() => setCampaignModal({
+                  open: true,
+                  objective: p.severidade === "critico" || p.severidade === "alto" ? "recovery" : "rebuy",
+                  nome: p.titulo,
+                })}
+              />
+            ))}
           </div>
         </div>
       )}
 
       {/* CTA to plan */}
       <Button asChild className="w-full gap-2" size="lg">
-        <Link to="/dashboard/convertiq/plano">
+        <Link to="/dashboard/funil/plano">
           Ver plano de ação <ChevronRight className="w-4 h-4" />
         </Link>
       </Button>

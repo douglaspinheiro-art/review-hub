@@ -3,10 +3,10 @@ import { supabase } from "@/lib/supabase";
 
 export function useSistemaConfig() {
   return useQuery({
-    queryKey: ["sistema_config"],
+    queryKey: ["system_config"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("sistema_config")
+        .from("system_config")
         .select("*")
         .eq("id", "config_geral")
         .single();

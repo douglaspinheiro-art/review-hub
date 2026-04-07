@@ -98,17 +98,17 @@ serve(async (req: Request) => {
     }
 
     // Map GA4 events to funnel steps (with proportional fallback if events not tracked)
-    const metricas = {
-      visitantes,
-      visualizacoes_produto: eventMap["view_item"]       ?? Math.round(visitantes * 0.72),
-      adicionou_carrinho:    eventMap["add_to_cart"]     ?? Math.round(visitantes * 0.28),
-      iniciou_checkout:      eventMap["begin_checkout"]  ?? Math.round(visitantes * 0.14),
-      compras:               eventMap["purchase"]        ?? Math.round(visitantes * 0.014),
-      receita:               Math.round(receita),
-      fonte: "ga4" as const,
+    const metrics = {
+      visitors: visitantes,
+      product_views:  eventMap["view_item"]       ?? Math.round(visitantes * 0.72),
+      add_to_cart:    eventMap["add_to_cart"]     ?? Math.round(visitantes * 0.28),
+      begin_checkout: eventMap["begin_checkout"]  ?? Math.round(visitantes * 0.14),
+      purchases:      eventMap["purchase"]        ?? Math.round(visitantes * 0.014),
+      revenue:        Math.round(receita),
+      source: "ga4" as const,
     };
 
-    return new Response(JSON.stringify({ success: true, metricas }), { headers: CORS });
+    return new Response(JSON.stringify({ success: true, metrics }), { headers: CORS });
   } catch (err) {
     console.error("buscar-ga4 error:", err);
     return new Response(

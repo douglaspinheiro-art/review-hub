@@ -14,8 +14,13 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
+  const VALID_PLATFORMS = ["shopify", "nuvemshop", "vtex", "woocommerce", "tray", "yampi", "shopee", "custom"];
+
   const url = new URL(req.url);
-  const platform = url.searchParams.get("platform"); 
+  const platformRaw = url.searchParams.get("platform");
+  const platform = platformRaw && VALID_PLATFORMS.includes(platformRaw.toLowerCase())
+    ? platformRaw.toLowerCase()
+    : null;
   const lojaId = url.searchParams.get("loja_id");
 
   let rawBody = {};
@@ -42,8 +47,21 @@ serve(async (req) => {
           email: rawBody.customer?.email,
           telefone: rawBody.customer?.phone,
           status: rawBody.financial_status,
-          produtos: rawBody.line_items?.map((i: any) => ({ sku: i.sku, nome: i.title, qtd: i.quantity }))
+          produtos: (rawBody.line_items || []).map((i: any) => ({ 
+            sku: i.sku || 'N/A', 
+            nome: i.title || 'Produto Shopify', 
+            qtd: i.quantity || 1 
+          })),
+          cupom: rawBody.discount_codes?.[0]?.code,
         };
+        if (rawBody.landing_site) {
+          try {
+            const ls = new URL(rawBody.landing_site);
+            normalizedOrder.utm_source = ls.searchParams.get("utm_source");
+            normalizedOrder.utm_medium = ls.searchParams.get("utm_medium");
+            normalizedOrder.utm_campaign = ls.searchParams.get("utm_campaign");
+          } catch (e) { /* invalid URL */ }
+        }
         break;
 
       case "nuvemshop":
@@ -53,41 +71,42 @@ serve(async (req) => {
           email: rawBody.contact_email,
           telefone: rawBody.contact_phone,
           status: rawBody.status,
-          produtos: rawBody.products?.map((i: any) => ({ sku: i.sku, nome: i.name, qtd: i.quantity }))
+          produtos: (rawBody.products || []).map((i: any) => ({ 
+            sku: i.sku || 'N/A', 
+            nome: i.name || 'Produto Nuvemshop', 
+            qtd: i.quantity || 1 
+          })),
+          cupom: rawBody.coupon?.[0]?.code,
+          utm_source: rawBody.extra_params?.utm_source
         };
-        break;
-
-      case "mercado_livre":
-        // ML envia apenas a URL do recurso. Em um cenário real, precisaríamos do Token da loja.
-        // Aqui simulamos a normalização se o payload fosse completo.
-        if (rawBody.resource) {
-          normalizedOrder = {
-            external_id: rawBody.resource.split('/').pop(),
-            valor: rawBody.total_amount || 0,
-            email: rawBody.buyer?.email || `ml_${rawBody.buyer?.id}@user.com`,
-            status: 'paid',
-            produtos: []
-          };
-        }
         break;
 
       case "shopee":
         normalizedOrder = {
           external_id: rawBody.order_sn,
-          valor: rawBody.total_amount,
-          email: rawBody.buyer_username + "@shopee.com",
+          valor: rawBody.total_amount || 0,
+          email: (rawBody.buyer_username || 'shopee_user') + "@shopee.com",
           status: 'completed',
-          produtos: rawBody.item_list?.map((i: any) => ({ sku: i.item_sku, nome: i.item_name, qtd: i.model_quantity_purchased }))
+          produtos: (rawBody.item_list || []).map((i: any) => ({ 
+            sku: i.item_sku || i.item_id || 'N/A', 
+            nome: i.item_name || 'Produto Shopee', 
+            qtd: i.model_quantity_purchased || 1 
+          }))
         };
         break;
 
       case "vtex":
         normalizedOrder = {
           external_id: rawBody.orderId,
-          valor: rawBody.value / 100, // VTEX envia em centavos
+          valor: (rawBody.value || 0) / 100, 
           email: rawBody.clientProfileData?.email,
           status: rawBody.status,
-          produtos: rawBody.items?.map((i: any) => ({ sku: i.id, nome: i.name, qtd: i.quantity }))
+          produtos: (rawBody.items || []).map((i: any) => ({ 
+            sku: i.id || 'N/A', 
+            nome: i.name || 'Produto VTEX', 
+            qtd: i.quantity || 1 
+          })),
+          cupom: rawBody.marketingData?.coupon
         };
         break;
     }
@@ -109,14 +128,14 @@ serve(async (req) => {
       // 2. Upsert no Cliente
       const { data: cliente } = await supabase.from("clientes").upsert({
         loja_id: lojaId,
+        user_id: (await supabase.from("lojas").select("user_id").eq("id", lojaId).single()).data?.user_id,
         email: normalizedOrder.email,
         telefone: normalizedOrder.telefone,
         nome: normalizedOrder.email?.split('@')[0] || "Cliente Marketplace",
       }, { onConflict: 'loja_id, email' }).select().single();
 
-      // 3. Inserir Pedido
+      // 3. Inserir Pedido com Atribuição
       if (cliente) {
-        // Buscar o user_id dono desta loja
         const { data: loja } = await supabase.from("lojas").select("user_id").eq("id", lojaId).single();
 
         await supabase.from("pedidos_v3").insert({
@@ -126,8 +145,33 @@ serve(async (req) => {
           pedido_externo_id: normalizedOrder.external_id,
           valor: normalizedOrder.valor,
           status: normalizedOrder.status,
-          produtos_json: normalizedOrder.produtos
+          produtos_json: normalizedOrder.produtos,
+          cupom_utilizado: normalizedOrder.cupom,
+          utm_source: normalizedOrder.utm_source,
+          utm_medium: normalizedOrder.utm_medium,
+          utm_campaign: normalizedOrder.utm_campaign
         });
+
+        // 4. Se houver cupom, verificar se foi gerado pela IA para atribuir à campanha
+        if (normalizedOrder.cupom) {
+          const { data: aiCoupon } = await supabase
+            .from("ai_generated_coupons")
+            .select("contact_id, user_id")
+            .eq("code", normalizedOrder.cupom)
+            .maybeSingle();
+          
+          if (aiCoupon) {
+            await supabase.from("attribution_events").insert({
+              user_id: loja?.user_id,
+              order_id: normalizedOrder.external_id,
+              customer_phone: normalizedOrder.telefone,
+              order_value: normalizedOrder.valor,
+              source_platform: platform,
+              attributed_message_id: null,
+              order_date: new Date().toISOString()
+            });
+          }
+        }
 
         await supabase.from("webhook_logs").update({ status_processamento: 'sucesso' }).eq("id", logEntry.id);
       }

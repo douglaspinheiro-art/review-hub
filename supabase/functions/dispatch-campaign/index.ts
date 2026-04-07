@@ -55,6 +55,7 @@ async function evolutionSendText(
 async function resolveContacts(
   supabase: ReturnType<typeof createClient>,
   userId: string,
+  storeId: string,
   campaignId: string,
 ): Promise<Array<{ id: string; name: string; phone: string; tags: string[]; status: string }>> {
   // Get segment rules for this campaign
@@ -64,25 +65,17 @@ async function resolveContacts(
     .eq("campaign_id", campaignId);
 
   let query = supabase
-    .from("contacts")
-    .select("id, name, phone, tags, status")
-    .eq("user_id", userId)
-    .eq("status", "active");
+    .from("customers_v3")
+    .select("id, name, phone, rfm_segment")
+    .eq("store_id", storeId);
 
   if (segments && segments.length > 0) {
     const seg = segments[0];
-    if (seg.type === "tag" && seg.filters?.tag) {
-      query = query.contains("tags", [seg.filters.tag]);
-    } else if (seg.type === "status" && seg.filters?.status) {
-      query = (query as ReturnType<typeof supabase.from>) as typeof query;
-      // Re-apply status filter from segment
-      query = supabase
-        .from("contacts")
-        .select("id, name, phone, tags, status")
-        .eq("user_id", userId)
-        .eq("status", seg.filters.status);
+    if (seg.type === "rfm" && seg.filters?.rfm_segment) {
+      query = query.eq("rfm_segment", seg.filters.rfm_segment);
+    } else if (seg.type === "custom" && seg.filters?.min_spent) {
+      query = query.gte("rfm_monetary", seg.filters.min_spent);
     }
-    // RFM and custom segments: fall through to all active contacts for now
   }
 
   const { data, error } = await query;
@@ -128,7 +121,7 @@ serve(async (req: Request) => {
     // Load campaign
     const { data: campaign, error: campError } = await supabase
       .from("campaigns")
-      .select("id, name, message, status, user_id")
+      .select("id, name, message, status, store_id, user_id")
       .eq("id", campaign_id)
       .eq("user_id", user.id)
       .single();
@@ -145,14 +138,14 @@ serve(async (req: Request) => {
     const { data: conn } = await supabase
       .from("whatsapp_connections")
       .select("instance_name, evolution_api_url, evolution_api_key, status")
-      .eq("user_id", user.id)
+      .eq("store_id", campaign.store_id)
       .eq("status", "connected")
       .limit(1)
       .single();
 
     if (!conn) {
       return new Response(
-        JSON.stringify({ error: "No active WhatsApp connection. Configure in Settings." }),
+        JSON.stringify({ error: "No active WhatsApp connection for this store." }),
         { status: 422 },
       );
     }
@@ -164,7 +157,7 @@ serve(async (req: Request) => {
       .eq("id", campaign_id);
 
     // Resolve target contacts
-    const contacts = await resolveContacts(supabase, user.id, campaign_id);
+    const contacts = await resolveContacts(supabase, user.id, campaign.store_id, campaign_id);
 
     // Update total_contacts
     await supabase
@@ -199,6 +192,7 @@ serve(async (req: Request) => {
         const { data: existingConv } = await supabase
           .from("conversations")
           .select("id")
+          .eq("store_id", campaign.store_id)
           .eq("contact_id", contact.id)
           .limit(1)
           .maybeSingle();
@@ -209,6 +203,8 @@ serve(async (req: Request) => {
           const { data: newConv } = await supabase
             .from("conversations")
             .insert({
+              user_id: user.id,
+              store_id: campaign.store_id,
               contact_id: contact.id,
               status: "open",
               last_message: text,
@@ -224,6 +220,7 @@ serve(async (req: Request) => {
           const { data: msgRecord } = await supabase
             .from("messages")
             .insert({
+              user_id: user.id,
               conversation_id: conversationId,
               content: text,
               direction: "outbound",
@@ -237,6 +234,7 @@ serve(async (req: Request) => {
           // Insert send log for attribution
           await supabase.from("message_sends").insert({
             user_id: user.id,
+            store_id: campaign.store_id,
             campaign_id: campaign_id,
             contact_id: contact.id,
             message_id: msgRecord?.id ?? null,
@@ -280,16 +278,29 @@ serve(async (req: Request) => {
 
     // Update daily analytics
     const today = new Date().toISOString().split("T")[0];
-    await supabase.rpc("increment_daily_analytics_messages", {
+    const { error: rpcError } = await supabase.rpc("increment_daily_analytics_messages", {
+      p_store_id: campaign.store_id,
       p_date: today,
       p_sent: sentCount,
-    }).throwOnError().catch(() => {
-      // RPC may not exist yet — update directly
-      supabase.from("analytics_daily").upsert({
-        date: today,
-        messages_sent: sentCount,
-      }, { onConflict: "date" });
     });
+
+    if (rpcError) {
+      // Fallback: manual upsert se RPC falhar
+      console.warn("increment_daily_analytics_messages RPC failed, using fallback:", rpcError.message);
+      const { data: existing } = await supabase
+        .from("analytics_daily")
+        .select("messages_sent")
+        .eq("store_id", campaign.store_id)
+        .eq("date", today)
+        .maybeSingle();
+
+      await supabase.from("analytics_daily").upsert({
+        user_id: user.id,
+        store_id: campaign.store_id,
+        date: today,
+        messages_sent: (existing?.messages_sent ?? 0) + sentCount,
+      }, { onConflict: "store_id, date" });
+    }
 
     return new Response(
       JSON.stringify({ success: true, sent: sentCount, failed: failedCount }),
@@ -298,8 +309,8 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error("dispatch-campaign error:", err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "Internal error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
     );
   }
 });

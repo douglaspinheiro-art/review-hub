@@ -54,20 +54,27 @@ export default function Analisando() {
     // 2. Lógica visual de progresso (fake progress até 95%)
     let elapsedMs = 0;
     const totalEstimatedMs = 15000; // 15s de estimativa visual
-    
+
     const visualInterval = setInterval(() => {
       elapsedMs += 100;
       const newProgress = Math.min(95, (elapsedMs / totalEstimatedMs) * 100);
       setProgress(newProgress);
-      
+
       // Atualiza o passo atual baseado no tempo
       const stepIndex = Math.floor((elapsedMs / (totalEstimatedMs / STEPS.length)));
       if (stepIndex < STEPS.length) setCurrentStep(stepIndex);
     }, 100);
 
+    // 3. Fallback: navegar para resultado após 16s mesmo sem evento realtime
+    const fallbackTimer = setTimeout(() => {
+      setProgress(100);
+      navigate(`/resultado${perda ? `?perda=${perda}` : ""}`);
+    }, 16000);
+
     return () => {
       supabase.removeChannel(channel);
       clearInterval(visualInterval);
+      clearTimeout(fallbackTimer);
     };
   }, [navigate, perda]);
 

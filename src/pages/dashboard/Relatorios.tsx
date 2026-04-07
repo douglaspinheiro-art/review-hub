@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { 
-  BarChart3, PieChart, TrendingUp, Calendar, 
-  Download, Filter, ArrowUpRight, Users, 
-  ShoppingBag, MousePointer2, Smartphone, Monitor
+import {
+  BarChart3, PieChart, TrendingUp, Calendar,
+  Download, Filter, ArrowUpRight, Users,
+  ShoppingBag, MousePointer2, Smartphone, Monitor,
+  Share2, MessageCircle, Copy, Check, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +38,37 @@ const heatmapData = [
 
 const COLORS = ["#ef4444", "#f59e0b", "#f59e0b", "#10b981", "#3b82f6", "#6366f1", "#8b5cf6", "#10b981"];
 
+const RELATORIO_MENSAL = {
+  mes: "Março 2026",
+  recuperado: 14850,
+  novos_clientes: 847,
+  chs_inicio: 47,
+  chs_fim: 51,
+  prescricoes: 12,
+  roi: "29.8x",
+};
+
+function gerarTextoWhatsApp(r: typeof RELATORIO_MENSAL) {
+  return `📊 *Relatório LTV Boost — ${r.mes}*\n\n` +
+    `💰 Recuperado: *R$ ${r.recuperado.toLocaleString('pt-BR')}*\n` +
+    `👥 Novos clientes: *${r.novos_clientes}*\n` +
+    `🎯 CHS: *${r.chs_inicio} → ${r.chs_fim} pts (+${r.chs_fim - r.chs_inicio})*\n` +
+    `⚡ Prescrições executadas: *${r.prescricoes}*\n` +
+    `📈 ROI da assinatura: *${r.roi}*\n\n` +
+    `_Gerado pelo LTV Boost — a IA por trás dos e-commerces de elite_`;
+}
+
 export default function Relatorios() {
+  const [copied, setCopied] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const textoWA = gerarTextoWhatsApp(RELATORIO_MENSAL);
+
+  const copyTexto = () => {
+    navigator.clipboard.writeText(textoWA);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -49,17 +80,98 @@ export default function Relatorios() {
           <Button variant="outline" size="sm" className="h-10 font-bold gap-2 rounded-xl">
             <Download className="w-4 h-4" /> Exportar PDF
           </Button>
-          <Button variant="outline" size="sm" className="h-10 font-bold gap-2 rounded-xl">
-            <Filter className="w-4 h-4" /> Filtros
+          <Button
+            size="sm"
+            className="h-10 font-bold gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+            onClick={() => setShowShare(!showShare)}
+          >
+            <Share2 className="w-4 h-4" /> Compartilhar Relatório
           </Button>
         </div>
       </div>
+
+      {/* Share Panel */}
+      {showShare && (
+        <div className="bg-[#0A0A0F] border border-primary/20 rounded-2xl p-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span className="text-sm font-black uppercase tracking-widest text-primary">Relatório Mensal — {RELATORIO_MENSAL.mes}</span>
+          </div>
+          <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-white/80 whitespace-pre-line leading-relaxed border border-white/5">
+            {textoWA}
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(textoWA)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
+            >
+              <MessageCircle className="w-4 h-4" /> Enviar via WhatsApp
+            </a>
+            <Button variant="outline" size="sm" className="h-10 gap-2 text-xs font-bold rounded-xl" onClick={copyTexto}>
+              {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              {copied ? "Copiado!" : "Copiar texto"}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground italic">
+            Compartilhe com seu sócio, equipe ou mentor. Gerado automaticamente com dados reais do período.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="LTV Médio" value="R$ 1.520" trend={+8} icon={TrendingUp} />
         <MetricCard label="CAC" value="R$ 42,50" trend={-12} icon={Users} />
         <MetricCard label="ROAS Médio" value="12.4x" trend={+15} icon={ShoppingBag} />
         <MetricCard label="Churn Rate" value="4.2%" trend={-2} icon={PieChart} />
+      </div>
+
+      {/* Próximas Ações — CTAs contextuais baseados nos dados */}
+      <div className="bg-card border rounded-2xl p-6 space-y-4">
+        <h3 className="font-bold text-base flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" /> Próximas Ações Recomendadas
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            {
+              label: "Recuperar clientes em risco",
+              sub: "Prescrições de IA aguardando aprovação",
+              href: "/dashboard/prescricoes",
+              icon: BarChart3,
+              color: "text-amber-500 bg-amber-500/10",
+            },
+            {
+              label: "Criar campanha para Campeões",
+              sub: "Segmento de maior ROI histórico",
+              href: "/dashboard/campanhas",
+              icon: TrendingUp,
+              color: "text-emerald-500 bg-emerald-500/10",
+            },
+            {
+              label: "Ativar automação win-back",
+              sub: "Clientes inativos há +60 dias",
+              href: "/dashboard/automacoes",
+              icon: Users,
+              color: "text-blue-500 bg-blue-500/10",
+            },
+          ].map(({ label, sub, href, icon: Icon, color }) => (
+            <a
+              key={label}
+              href={href}
+              className="flex items-center gap-3 p-4 bg-muted/30 border border-border/50 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all group"
+            >
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${color.split(' ')[1]}`}>
+                <Icon className={`w-4 h-4 ${color.split(' ')[0]}`} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold truncate">{label}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{sub}</p>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary ml-auto shrink-0 transition-colors" />
+            </a>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

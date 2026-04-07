@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +10,7 @@ import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import { useAuth } from "@/hooks/useAuth";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
 import TelaManutencao from "./components/TelaManutencao";
+import { DemoProvider } from "@/contexts/DemoContext.tsx";
 
 const queryClient = new QueryClient();
 
@@ -17,21 +18,43 @@ function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
   const { data: config } = useSistemaConfig();
   const { profile } = useAuth();
   
-  const isManutencao = config?.manutencao_ativa;
+  const isManutencao = config?.maintenance_active;
   const isAdmin = profile?.role === "admin";
 
   if (isManutencao && !isAdmin) {
-    return <TelaManutencao mensagem={config?.mensagem_manutencao} />;
+    return <TelaManutencao mensagem={config?.maintenance_message} />;
   }
 
   return <>{children}</>;
 }
 
-function DashboardRoute({ children }: { children: React.ReactNode }) {
+function DashboardRoute({ children, requiredPlan }: { children: React.ReactNode; requiredPlan?: "starter" | "growth" | "scale" | "enterprise" }) {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute requiredPlan={requiredPlan}>
       <DashboardLayout>{children}</DashboardLayout>
     </ProtectedRoute>
+  );
+}
+
+function DemoBanner() {
+  return (
+    <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-amber-950 text-xs font-black text-center py-1.5 tracking-widest uppercase flex items-center justify-center gap-3">
+      <span>Modo Demonstração — dados fictícios</span>
+      <a href="/signup" className="underline hover:no-underline font-black">Criar conta grátis →</a>
+    </div>
+  );
+}
+
+function DemoRoute({ children }: { children: React.ReactNode }) {
+  return (
+    <DemoProvider>
+      <DemoBanner />
+      <div className="pt-7">
+        <ProtectedRoute>
+          <DashboardLayout>{children}</DashboardLayout>
+        </ProtectedRoute>
+      </div>
+    </DemoProvider>
   );
 }
 
@@ -61,8 +84,14 @@ const Privacidade = lazy(() => import("./pages/Privacidade.tsx"));
 const Termos = lazy(() => import("./pages/Termos.tsx"));
 const LGPD = lazy(() => import("./pages/LGPD.tsx"));
 const API = lazy(() => import("./pages/API.tsx"));
-const Planos = lazy(() => import("./pages/Planos.tsx"));
 const Pontos = lazy(() => import("./pages/portal/Pontos.tsx"));
+const AfiliadosPublico = lazy(() => import("./pages/AfiliadosPublico.tsx"));
+const RelatorioAnual = lazy(() => import("./pages/RelatorioAnual.tsx"));
+const Diagnostico = lazy(() => import("./pages/Diagnostico.tsx"));
+const Calculadora = lazy(() => import("./pages/Calculadora.tsx"));
+const Benchmark = lazy(() => import("./pages/Benchmark.tsx"));
+const PlanosPage = lazy(() => import("./pages/Planos.tsx"));
+const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Lazily loaded dashboard pages
@@ -92,6 +121,12 @@ const Afiliados = lazy(() => import("./pages/dashboard/Afiliados.tsx"));
 const Fidelidade = lazy(() => import("./pages/dashboard/Fidelidade.tsx"));
 const Relatorios = lazy(() => import("./pages/dashboard/Relatorios.tsx"));
 const Chatbot = lazy(() => import("./pages/dashboard/Chatbot.tsx"));
+const AgenteIA = lazy(() => import("./pages/dashboard/AgenteIA.tsx"));
+const BenchmarkScore = lazy(() => import("./pages/dashboard/BenchmarkScore.tsx"));
+const ConvertIQDiagnostico = lazy(() => import("./pages/dashboard/ConvertIQDiagnostico.tsx"));
+const ConvertIQPlano = lazy(() => import("./pages/dashboard/ConvertIQPlano.tsx"));
+const Newsletter = lazy(() => import("./pages/dashboard/Newsletter.tsx"));
+const Atribuicao = lazy(() => import("./pages/dashboard/Atribuicao.tsx"));
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -121,24 +156,47 @@ const App = () => (
           <Route path="/termos" element={<Termos />} />
           <Route path="/lgpd" element={<LGPD />} />
           <Route path="/api" element={<API />} />
-          <Route path="/planos" element={<Planos />} />
+          <Route path="/planos" element={<PlanosPage />} />
+          <Route path="/upgrade" element={<Upgrade />} />
+          <Route path="/planos/simulador" element={<PlanosPage defaultTab="simulador" />} />
+          <Route path="/diagnostico" element={<Diagnostico />} />
+          <Route path="/calculadora-abandono-carrinho" element={<Calculadora />} />
+          <Route path="/benchmark" element={<Benchmark />} />
+          <Route path="/afiliados" element={<AfiliadosPublico />} />
+          <Route path="/agencias" element={<Navigate to="/afiliados" replace />} />
+          <Route path="/relatorio-anual" element={<RelatorioAnual />} />
           <Route path="/pontos/:slug" element={<Pontos />} />
+
+          {/* Demo dashboard — sem login */}
+          <Route path="/demo" element={<DemoRoute><Dashboard /></DemoRoute>} />
+          <Route path="/demo/prescricoes" element={<DemoRoute><Prescricoes /></DemoRoute>} />
+          <Route path="/demo/funil" element={<DemoRoute><Funil /></DemoRoute>} />
+          <Route path="/demo/produtos" element={<DemoRoute><Produtos /></DemoRoute>} />
+          <Route path="/demo/canais" element={<DemoRoute><Canais /></DemoRoute>} />
+          <Route path="/demo/inbox" element={<DemoRoute><Inbox /></DemoRoute>} />
+          <Route path="/demo/campanhas" element={<DemoRoute><Campanhas /></DemoRoute>} />
+          <Route path="/demo/contatos" element={<DemoRoute><Contatos /></DemoRoute>} />
+          <Route path="/demo/rfm" element={<DemoRoute><RFM /></DemoRoute>} />
+          <Route path="/demo/automacoes" element={<DemoRoute><Automacoes /></DemoRoute>} />
+          <Route path="/demo/analytics" element={<DemoRoute><Analytics /></DemoRoute>} />
+          <Route path="/demo/relatorios" element={<DemoRoute><Relatorios /></DemoRoute>} />
 
           {/* Protected dashboard */}
           <Route path="/dashboard" element={<DashboardRoute><Dashboard /></DashboardRoute>} />
           <Route path="/dashboard/prescricoes" element={<DashboardRoute><Prescricoes /></DashboardRoute>} />
           <Route path="/dashboard/funil" element={<DashboardRoute><Funil /></DashboardRoute>} />
+          <Route path="/dashboard/funil/diagnostico" element={<DashboardRoute><ConvertIQDiagnostico /></DashboardRoute>} />
+          <Route path="/dashboard/funil/plano" element={<DashboardRoute><ConvertIQPlano /></DashboardRoute>} />
           <Route path="/dashboard/produtos" element={<DashboardRoute><Produtos /></DashboardRoute>} />
           <Route path="/dashboard/canais" element={<DashboardRoute><Canais /></DashboardRoute>} />
-          <Route path="/dashboard/forecast" element={<ProtectedRoute requiredPlan="growth"><DashboardLayout><Forecast /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/dashboard/forecast" element={<DashboardRoute requiredPlan="growth"><Forecast /></DashboardRoute>} />
           <Route path="/dashboard/em-execucao" element={<DashboardRoute><EmExecucao /></DashboardRoute>} />
           <Route path="/dashboard/inbox" element={<DashboardRoute><Inbox /></DashboardRoute>} />
           <Route path="/dashboard/campanhas" element={<DashboardRoute><Campanhas /></DashboardRoute>} />
           <Route path="/dashboard/contatos" element={<DashboardRoute><Contatos /></DashboardRoute>} />
           <Route path="/dashboard/rfm" element={<DashboardRoute><RFM /></DashboardRoute>} />
           <Route path="/dashboard/automacoes" element={<DashboardRoute><Automacoes /></DashboardRoute>} />
-          <Route path="/dashboard/chatbot" element={<DashboardRoute><Chatbot /></DashboardRoute>} />
-          <Route path="/dashboard/carrinhos" element={<DashboardRoute><CarrinhoAbandonado /></DashboardRoute>} />
+          <Route path="/dashboard/agente-ia" element={<DashboardRoute><AgenteIA /></DashboardRoute>} />
           <Route path="/dashboard/reviews" element={<DashboardRoute><Reviews /></DashboardRoute>} />
           <Route path="/dashboard/analytics" element={<DashboardRoute><Analytics /></DashboardRoute>} />
           <Route path="/dashboard/whatsapp" element={<DashboardRoute><WhatsApp /></DashboardRoute>} />
@@ -151,6 +209,11 @@ const App = () => (
           <Route path="/dashboard/afiliados" element={<DashboardRoute><Afiliados /></DashboardRoute>} />
           <Route path="/dashboard/fidelidade" element={<DashboardRoute><Fidelidade /></DashboardRoute>} />
           <Route path="/dashboard/relatorios" element={<DashboardRoute><Relatorios /></DashboardRoute>} />
+          <Route path="/dashboard/benchmark" element={<DashboardRoute><BenchmarkScore /></DashboardRoute>} />
+          <Route path="/dashboard/chatbot" element={<DashboardRoute><Chatbot /></DashboardRoute>} />
+          <Route path="/dashboard/newsletter" element={<DashboardRoute><Newsletter /></DashboardRoute>} />
+          <Route path="/dashboard/newsletter/:id" element={<DashboardRoute><Newsletter /></DashboardRoute>} />
+          <Route path="/dashboard/atribuicao" element={<DashboardRoute><Atribuicao /></DashboardRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

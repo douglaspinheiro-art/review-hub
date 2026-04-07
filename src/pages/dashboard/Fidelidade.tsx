@@ -1,165 +1,205 @@
 import { useState } from "react";
-import { 
-  Gift, Star, Trophy, Users, 
-  Plus, Settings2, ChevronRight, 
-  Coins, Award, Target, Sparkles, TrendingUp
+import {
+  Gift, Star, Trophy, Users,
+  Plus, Settings2, ChevronRight,
+  Coins, Award, Target, Sparkles, TrendingUp, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 
-const TIERS = [
-  { name: "Bronze", min: 0, color: "text-amber-700", bg: "bg-amber-700/10", multiplier: "1x" },
-  { name: "Prata", min: 500, color: "text-slate-400", bg: "bg-slate-400/10", multiplier: "1.2x" },
-  { name: "Ouro", min: 1500, color: "text-yellow-500", bg: "bg-yellow-500/10", multiplier: "1.5x" },
-  { name: "Diamante", min: 5000, color: "text-blue-400", bg: "bg-blue-400/10", multiplier: "2x" },
-];
-
 const RECOMPENSAS = [
-  { id: 1, nome: "Cupom R$ 20", pontos: 200, status: "Ativo" },
-  { id: 2, nome: "Frete Grátis", pontos: 150, status: "Ativo" },
-  { id: 3, nome: "Brinde Exclusivo", pontos: 500, status: "Pausado" },
+  { id: 1, nome: "Crédito R$ 20", valor: 20, status: "Ativo" },
+  { id: 2, nome: "Crédito R$ 50", valor: 50, status: "Ativo" },
+  { id: 3, nome: "Crédito R$ 100", valor: 100, status: "Pausado" },
 ];
 
 export default function Fidelidade() {
+  const [cashbackEnabled, setCashbackEnabled] = useState(true);
+  const [cashbackPercent, setCashbackPercent] = useState(5);
+
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Programa de Fidelidade</h1>
-          <p className="text-muted-foreground text-sm mt-1">Transforme cada real gasto em retenção e recompra.</p>
+          <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Motor de Cashback</h1>
+          <p className="text-muted-foreground text-sm mt-1">Transforme cada venda em um gatilho para a próxima compra.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="font-bold gap-2 rounded-xl">
-            <Settings2 className="w-4 h-4" /> Regras de Pontuação
+          <Button variant="outline" className="font-bold gap-2 rounded-xl border-2">
+            <Settings2 className="w-4 h-4" /> Configurar Regras
           </Button>
-          <Button className="font-bold gap-2 rounded-xl">
-            <Plus className="w-4 h-4" /> Nova Recompensa
+          <Button className="font-bold gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-900/20">
+            <Plus className="w-4 h-4" /> Novo Programa
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Clientes Ativos" value="842" trend={+5} icon={Users} />
-        <MetricCard label="Pontos Emitidos" value="124k" trend={+12} icon={Coins} />
-        <MetricCard label="Pontos Resgatados" value="38k" icon={Gift} />
-        <MetricCard label="Impacto LTV" value="+22%" trend={+4} icon={TrendingUp} className="border-emerald-500/20" />
+        <MetricCard label="Clientes com Saldo" value="1.240" trend={+8} icon={Users} />
+        <MetricCard label="Créditos Emitidos" value="R$ 24.8k" trend={+15} icon={Coins} />
+        <MetricCard label="Créditos Resgatados" value="R$ 8.2k" icon={Gift} />
+        <MetricCard label="Lucro Incremental" value="R$ 42.5k" trend={+12} icon={TrendingUp} className="border-emerald-500/30 bg-emerald-500/[0.02]" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Tiers / Níveis */}
-        <div className="bg-card border rounded-2xl p-6 lg:col-span-2">
-          <h3 className="font-bold text-base mb-6 flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-primary" /> Níveis da Comunidade
-          </h3>
-          <div className="space-y-6">
-            {TIERS.map((t, i) => (
-              <div key={t.name} className="relative">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center font-black", t.bg, t.color)}>
-                      {t.name[0]}
-                    </div>
-                    <div>
-                      <div className="font-bold text-sm">{t.name}</div>
-                      <div className="text-[10px] text-muted-foreground uppercase font-black">A partir de {t.min} pontos</div>
-                    </div>
+        {/* Configuração de Cashback */}
+        <div className="bg-card/50 backdrop-blur-sm border-2 border-border/50 rounded-[2rem] p-8 lg:col-span-2 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-emerald-500/10 transition-all duration-1000" />
+          
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="font-black font-syne text-lg tracking-tighter uppercase flex items-center gap-2">
+                <Target className="w-5 h-5 text-emerald-500" /> Programa de Cashback Ativo
+              </h3>
+              <Switch checked={cashbackEnabled} onCheckedChange={setCashbackEnabled} />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-12">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Percentual de Retorno</Label>
+                    <span className="text-2xl font-black font-mono text-emerald-500">{cashbackPercent}%</span>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-primary">{t.multiplier} pontos</div>
-                    <div className="text-[9px] text-muted-foreground uppercase font-black">Multiplicador</div>
+                  <input 
+                    type="range" min="1" max="25" step="1" 
+                    value={cashbackPercent} 
+                    onChange={(e) => setCashbackPercent(Number(e.target.value))}
+                    className="w-full accent-emerald-500 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer" 
+                  />
+                  <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
+                    * Recomendação: 5% a 8% gera o melhor equilíbrio entre margem e retenção.
+                  </p>
+                </div>
+
+                <div className="p-5 bg-background/50 rounded-2xl border border-border/30 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                      <Zap className="w-4 h-4 text-emerald-500" />
+                    </div>
+                    <span className="text-xs font-black tracking-tight">Gatilho de Expiração</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {["30 dias", "60 dias", "90 dias"].map(d => (
+                      <button key={d} className="flex-1 py-2 rounded-xl text-[10px] font-black uppercase border-2 border-transparent bg-muted/50 hover:border-emerald-500/30 transition-all">
+                        {d}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                {i < TIERS.length - 1 && (
-                  <div className="absolute left-5 top-10 w-0.5 h-6 bg-muted -z-10" />
-                )}
               </div>
-            ))}
+
+              <div className="bg-background/40 rounded-3xl p-6 border border-border/20 flex flex-col justify-center">
+                <div className="text-center space-y-2 mb-6">
+                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Impacto Estimado</p>
+                  <p className="text-3xl font-black font-mono text-emerald-500">R$ 12.440</p>
+                  <p className="text-[10px] text-muted-foreground">Extra nos próximos 30 dias</p>
+                </div>
+                <div className="space-y-2">
+                  <Progress value={75} className="h-1.5 bg-muted" />
+                  <div className="flex justify-between text-[9px] font-black uppercase text-muted-foreground/60">
+                    <span>Performance</span>
+                    <span>Alta</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Preview Widget */}
-        <div className="bg-[#13131A] border border-[#1E1E2E] rounded-3xl p-6 relative overflow-hidden flex flex-col">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <Sparkles className="w-16 h-16 text-primary" />
+        {/* Preview do Widget Premium */}
+        <div className="bg-[#0A0A0F] border-2 border-[#1E1E2E] rounded-[2rem] p-8 relative overflow-hidden flex flex-col group">
+          <div className="absolute top-0 right-0 p-6 opacity-20 group-hover:scale-110 transition-transform duration-1000">
+            <Sparkles className="w-16 h-16 text-emerald-500" />
           </div>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-6">Preview do Widget</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40 mb-10">Interface do Cliente</span>
           
-          <div className="bg-background border border-border/50 rounded-2xl p-5 space-y-4 shadow-2xl mt-auto self-center w-full max-w-[240px] transform rotate-2 hover:rotate-0 transition-transform duration-500">
+          <div className="bg-background/80 backdrop-blur-xl border-2 border-emerald-500/20 rounded-[2.5rem] p-6 space-y-6 shadow-2xl mt-auto self-center w-full max-w-[280px] transform rotate-1 group-hover:rotate-0 transition-all duration-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-primary rounded-lg flex items-center justify-center font-black text-[10px] text-primary-foreground italic">L</div>
-                <span className="text-[10px] font-bold">Clube LTV</span>
+                <div className="w-7 h-7 bg-emerald-600 rounded-xl flex items-center justify-center font-black text-[12px] text-white italic shadow-lg shadow-emerald-900/40">L</div>
+                <span className="text-[11px] font-black tracking-tighter uppercase">Clube Elite</span>
               </div>
-              <Badge variant="outline" className="text-[8px] h-4 border-emerald-500/30 text-emerald-500 px-1">OURO</Badge>
+              <Badge variant="outline" className="text-[8px] font-black h-4 border-emerald-500/30 text-emerald-500 px-2 tracking-widest">OURO</Badge>
             </div>
             
             <div className="space-y-1">
-              <p className="text-[9px] text-muted-foreground font-bold uppercase">Seu saldo</p>
-              <div className="flex items-center gap-1.5">
-                <Coins className="w-3.5 h-3.5 text-primary" />
-                <span className="text-lg font-black font-syne">1.240</span>
+              <p className="text-[9px] text-muted-foreground/60 font-black uppercase tracking-widest">Seu Saldo Disponível</p>
+              <div className="flex items-center gap-2">
+                <Coins className="w-5 h-5 text-emerald-500" />
+                <span className="text-2xl font-black font-mono tracking-tighter">R$ 142,50</span>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[8px] font-bold uppercase">
-                <span>Próximo Nível</span>
-                <span className="text-muted-foreground">260 pts faltam</span>
+            <div className="space-y-2">
+              <div className="flex justify-between text-[8px] font-black uppercase tracking-widest">
+                <span>Resgate imediato</span>
+                <span className="text-emerald-500">Disponível</span>
               </div>
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-primary w-[75%]" />
+                <div className="h-full bg-emerald-500 w-full" />
               </div>
             </div>
 
-            <Button size="sm" className="w-full h-8 text-[9px] font-black uppercase tracking-widest rounded-lg">Resgatar Prêmios</Button>
+            <Button size="sm" className="w-full h-11 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl bg-emerald-600 hover:bg-emerald-500 border-0 shadow-lg shadow-emerald-900/30">Gerar Cupom</Button>
           </div>
           
-          <p className="text-[10px] text-muted-foreground text-center mt-8 italic px-4">
-            * Widget flutuante que aparece para seus clientes logados na loja.
+          <p className="text-[10px] text-muted-foreground/40 text-center mt-10 italic px-4 font-medium leading-relaxed">
+            * Seus clientes visualizam o saldo de cashback no checkout e na área do cliente.
           </p>
         </div>
       </div>
 
-      {/* Tabela de Recompensas */}
-      <div className="bg-card border rounded-2xl overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-border/50 flex items-center justify-between">
-          <h3 className="font-bold text-sm uppercase tracking-tighter text-muted-foreground flex items-center gap-2">
-            <Gift className="w-3.5 h-3.5" /> Recompensas Ativas
+      {/* Tabela de Campanhas de Cashback */}
+      <div className="bg-card/30 backdrop-blur-sm border-2 border-border/50 rounded-[2rem] overflow-hidden">
+        <div className="p-6 border-b border-border/50 flex items-center justify-between">
+          <h3 className="font-black font-syne text-sm uppercase tracking-tighter text-muted-foreground flex items-center gap-2">
+            <Gift className="w-4 h-4" /> Histórico de Resgates
           </h3>
+          <Button variant="ghost" size="sm" className="text-[10px] font-black uppercase tracking-widest text-primary">Exportar CSV</Button>
         </div>
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-muted/30 border-b border-border/50">
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recompensa</th>
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Custo</th>
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Resgates</th>
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</th>
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-right"></th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Cliente</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Crédito Gerado</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Origem</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Status</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 text-right">Ação</th>
             </tr>
           </thead>
           <tbody>
-            {RECOMPENSAS.map((r) => (
-              <tr key={r.id} className="border-b border-border/40 hover:bg-muted/10 transition-colors">
-                <td className="px-6 py-4 font-bold text-sm">{r.nome}</td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-1.5 text-xs font-bold">
-                    <Coins className="w-3.5 h-3.5 text-primary" /> {r.pontos} pts
+            {[
+              { id: 1, nome: "Ana Paula Silva", valor: "R$ 42,50", origem: "Pedido #8421", status: "Disponível" },
+              { id: 2, nome: "Carlos Eduardo", valor: "R$ 15,00", origem: "Review Google", status: "Utilizado" },
+              { id: 3, nome: "Juliana Mendes", valor: "R$ 89,90", origem: "Campanha VIP", status: "Expirado" },
+            ].map((r) => (
+              <tr key={r.id} className="border-b border-border/20 hover:bg-primary/[0.02] transition-colors group">
+                <td className="px-8 py-5">
+                  <div className="font-black text-sm tracking-tight">{r.nome}</div>
+                </td>
+                <td className="px-8 py-5">
+                  <div className="flex items-center gap-2 text-sm font-mono font-black text-emerald-500">
+                    {r.valor}
                   </div>
                 </td>
-                <td className="px-6 py-4 text-xs font-bold">{Math.round(Math.random() * 100)} resgates</td>
-                <td className="px-6 py-4">
+                <td className="px-8 py-5 text-xs font-bold text-muted-foreground">{r.origem}</td>
+                <td className="px-8 py-5">
                   <Badge className={cn(
-                    "text-[9px] font-black uppercase border-0",
-                    r.status === "Ativo" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
+                    "text-[9px] font-black uppercase border-0 px-2 py-0.5",
+                    r.status === "Disponível" ? "bg-emerald-500/10 text-emerald-500" : 
+                    r.status === "Utilizado" ? "bg-blue-500/10 text-blue-500" : "bg-muted text-muted-foreground"
                   )}>
                     {r.status}
                   </Badge>
                 </td>
-                <td className="px-6 py-4 text-right">
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                <td className="px-8 py-5 text-right">
+                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl hover:bg-primary/10 hover:text-primary transition-all">
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </td>

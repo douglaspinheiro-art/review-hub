@@ -1,191 +1,188 @@
-import { useState } from "react";
-import { 
-  Zap, MessageCircle, Mail, Send, 
+import { useEffect, useState } from "react";
+import {
+  Zap, MessageCircle, Mail, Send,
   Plus, Play, Pause, ChevronRight,
-  UserPlus, ShoppingCart, CreditCard, 
+  UserPlus, ShoppingCart, CreditCard,
   RefreshCcw, Gift, Heart, Sparkles,
-  BarChart3, Settings2
+  BarChart3, Settings2, Clock, Loader2
 } from "lucide-react";
+import AutomacaoModal from "@/components/dashboard/AutomacaoModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
-
-const JORNADAS = [
-  {
-    id: "j1",
-    titulo: "Jornada do Novo Cliente",
-    desc: "Transforme a primeira compra em recorrência.",
-    gatilho: "Primeira compra finalizada",
-    icon: UserPlus,
-    color: "text-blue-500",
-    bg: "bg-blue-500/10",
-    kpi: "Taxa 2ª Compra",
-    kpiValue: "18.4%",
-    status: true,
-    fluxo: ["WA Confirmação (D0)", "Email Rastreio (D3)", "WA Satisfação (D7)", "Email Cross-sell (D14)"]
-  },
-  {
-    id: "j2",
-    titulo: "Carrinho Abandonado",
-    desc: "Recupere vendas perdidas automaticamente.",
-    gatilho: "Carrinho sem compra em 1h",
-    icon: ShoppingCart,
-    color: "text-emerald-500",
-    bg: "bg-emerald-500/10",
-    kpi: "Recuperação",
-    kpiValue: "14.2%",
-    status: true,
-    fluxo: ["WA (1h)", "Email (4h)", "SMS + Cupom (24h)"]
-  },
-  {
-    id: "j3",
-    titulo: "Boleto/PIX Vencido",
-    desc: "Lembrete suave para pagamentos pendentes.",
-    gatilho: "Pedido aguardando pagamento",
-    icon: CreditCard,
-    color: "text-amber-500",
-    bg: "bg-amber-500/10",
-    kpi: "Pagos",
-    kpiValue: "42.1%",
-    status: true,
-    fluxo: ["WA (2h)", "Email (24h)", "WA Final (48h)"]
-  },
-  {
-    id: "j4",
-    titulo: "Reativação Automática",
-    desc: "Recupere clientes que não compram há 60 dias.",
-    gatilho: "Sem compra em nenhum canal",
-    icon: RefreshCcw,
-    color: "text-purple-500",
-    bg: "bg-purple-500/10",
-    kpi: "Reativados",
-    kpiValue: "8.7%",
-    status: false,
-    fluxo: ["Email Saudade (D60)", "WA Oferta (D65)", "SMS Cupom Final (D70)"]
-  },
-  {
-    id: "j5",
-    titulo: "Pós-compra e Cross-sell",
-    desc: "Sugira produtos complementares após o envio.",
-    gatilho: "Pedido entregue",
-    icon: Sparkles,
-    color: "text-pink-500",
-    bg: "bg-pink-500/10",
-    kpi: "Ticket Médio",
-    kpiValue: "+R$ 42",
-    status: true,
-    fluxo: ["WA Obrigado (D1)", "Email Uso (D5)", "WA Sugestão (D15)"]
-  },
-  {
-    id: "j6",
-    titulo: "Fidelidade — Pontos",
-    desc: "Notifique sobre pontos e recompensas.",
-    gatilho: "Mudança de saldo de pontos",
-    icon: Gift,
-    color: "text-indigo-500",
-    bg: "bg-indigo-500/10",
-    kpi: "Uso Pontos",
-    kpiValue: "22%",
-    status: true,
-    fluxo: ["WA Saldo (D0)", "WA Recompensa (D-3 expira)"]
-  },
-  {
-    id: "j7",
-    titulo: "Aniversário",
-    desc: "Presenteie seus clientes no dia especial.",
-    gatilho: "3 dias antes do aniversário",
-    icon: Heart,
-    color: "text-red-500",
-    bg: "bg-red-500/10",
-    kpi: "Conversão",
-    kpiValue: "31.5%",
-    status: true,
-    fluxo: ["WA Oferta (D-3)", "Email Parabéns (D0)"]
-  }
-];
+import { toast } from "sonner";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
+import { TrialGate } from "@/components/dashboard/TrialGate";
+import { JORNADAS_META } from "@/lib/automations-meta";
 
 export default function Automacoes() {
-  const [jornadas, setJornadas] = useState(JORNADAS);
+  const { user, isTrialActive } = useAuth();
+  const queryClient = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
 
-  const toggleJornada = (id: string) => {
-    setJornadas(prev => prev.map(j => j.id === id ? { ...j, status: !j.status } : j));
-  };
+  const { data: automations = [], isLoading } = useQuery({
+    queryKey: ["automations", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("automations")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  // Seed: se usuário não tem automações, criar as 7 defaults
+  const seedMutation = useMutation({
+    mutationFn: async () => {
+      const rows = JORNADAS_META.map(j => ({
+        user_id: user!.id,
+        name: j.titulo,
+        trigger: j.trigger,
+        message_template: j.message_template,
+        delay_minutes: j.delay_minutes,
+        is_active: j.defaultActive,
+      }));
+      const { error } = await supabase.from("automations").insert(rows);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["automations"] }),
+  });
+
+  useEffect(() => {
+    if (!isLoading && automations.length === 0 && user) {
+      seedMutation.mutate();
+    }
+  }, [isLoading, automations.length, user]);
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await supabase
+        .from("automations")
+        .update({ is_active })
+        .eq("id", id)
+        .eq("user_id", user!.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { is_active }) => {
+      toast.success(is_active ? "Automação ativada" : "Automação pausada");
+      queryClient.invalidateQueries({ queryKey: ["automations"] });
+    },
+    onError: () => toast.error("Erro ao atualizar automação"),
+  });
+
+  // Mescla dados do DB com metadata de UI (ícones, fluxo, kpi)
+  const jornadas = JORNADAS_META.map(meta => {
+    const dbRow = automations.find(a => a.name === meta.titulo);
+    return { ...meta, id: dbRow?.id, is_active: dbRow?.is_active ?? meta.defaultActive, sent_count: dbRow?.sent_count ?? 0 };
+  });
+
+  const activeCount = jornadas.filter(j => j.is_active).length;
+
+  if (isLoading || seedMutation.isPending) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        {seedMutation.isPending && (
+          <p className="text-sm text-muted-foreground font-medium animate-pulse">
+            Configurando suas jornadas automáticas...
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-10">
+      {showModal && <AutomacaoModal onClose={() => setShowModal(false)} />}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Jornadas Permanentes</h1>
-          <p className="text-muted-foreground text-sm mt-1">Automações inteligentes que trabalham 24/7 pela sua conversão.</p>
+          <h1 className="text-3xl font-black font-syne tracking-tighter uppercase italic">Jornadas <span className="text-primary">Permanentes</span></h1>
+          <p className="text-muted-foreground text-sm mt-1">Automações que trabalham 24/7 — <span className="text-foreground font-bold">{activeCount} ativas</span> agora.</p>
         </div>
-        <Button className="font-bold gap-2 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+        <Button
+          className="font-bold gap-2 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+          onClick={() => setShowModal(true)}
+        >
           <Plus className="w-4 h-4" /> Criar Jornada Customizada
         </Button>
       </div>
 
+      {activeCount === 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between gap-3 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <Zap className="w-5 h-5 text-amber-500 shrink-0" />
+            <p className="text-sm font-bold text-amber-600">
+              Nenhuma automação ativa — ative ao menos Carrinho Abandonado para começar a recuperar vendas imediatamente.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {jornadas.map((j) => (
-          <div key={j.id} className={cn(
+          <div key={j.slug} className={cn(
             "bg-card border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col",
-            j.status ? "border-primary/20 shadow-sm" : "border-border/50 opacity-70 grayscale"
+            j.is_active ? "border-primary/20 shadow-sm" : "border-border/50 opacity-70 grayscale"
           )}>
             <div className="p-6 space-y-4 flex-1">
-              <div className="flex items-start justify-between">
-                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center", j.bg)}>
-                  <j.icon className={cn("w-6 h-6", j.color)} />
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", j.bg)}>
+                    <j.icon className={cn("w-5 h-5", j.color)} />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm leading-tight">{j.titulo}</h3>
+                    <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{j.gatilho}</p>
+                  </div>
                 </div>
-                <Switch checked={j.status} onCheckedChange={() => toggleJornada(j.id)} />
+                <TrialGate action="ativar automações">
+                  <Switch
+                    checked={j.is_active}
+                    disabled={!j.id || toggleMutation.isPending}
+                    onCheckedChange={(checked) => j.id && toggleMutation.mutate({ id: j.id, is_active: checked })}
+                  />
+                </TrialGate>
               </div>
 
-              <div>
-                <h3 className="font-bold text-lg leading-tight">{j.titulo}</h3>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{j.desc}</p>
-              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">{j.desc}</p>
 
-              <div className="bg-muted/30 rounded-xl p-3 border border-border/50">
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase text-muted-foreground mb-2">
-                  <Zap className="w-3 h-3 text-primary fill-primary" /> Gatilho
+              {(j as any).templateVars && (
+                <div className="bg-muted/40 rounded-xl px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Variáveis disponíveis</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{(j as any).templateVars}</p>
                 </div>
-                <p className="text-xs font-bold leading-none">{j.gatilho}</p>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <span className="text-[10px] font-black uppercase text-muted-foreground block">Fluxo da Jornada</span>
-                <div className="flex flex-wrap gap-1">
-                  {j.fluxo.map((f, i) => (
-                    <div key={i} className="flex items-center gap-1">
-                      <Badge variant="outline" className="text-[9px] py-0 h-5 font-medium border-border/60">{f}</Badge>
-                      {i < j.fluxo.length - 1 && <ChevronRight className="w-2 h-2 text-muted-foreground" />}
-                    </div>
-                  ))}
-                </div>
+              <div className="space-y-1.5">
+                {j.fluxo.map((step, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                    <div className="w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[8px] font-black shrink-0">{i + 1}</div>
+                    {step}
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="bg-muted/20 border-t border-border/50 p-4 flex items-center justify-between">
-              <div className="space-y-0.5">
-                <span className="text-[9px] font-black uppercase text-muted-foreground">{j.kpi}</span>
-                <div className="text-sm font-black font-syne text-emerald-500">{j.kpiValue}</div>
+            <div className="px-6 pb-6 pt-2 border-t border-border/30 flex items-center justify-between">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">{j.kpi}</p>
+                <p className={cn("text-lg font-black font-mono", j.color)}>{j.kpiValue}</p>
               </div>
-              <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase tracking-tighter gap-1 hover:bg-primary/10 hover:text-primary">
-                Configurar <Settings2 className="w-3 h-3" />
-              </Button>
+              <div className="text-right">
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">Enviados</p>
+                <p className="text-lg font-black font-mono text-muted-foreground">{j.sent_count.toLocaleString("pt-BR")}</p>
+              </div>
             </div>
           </div>
         ))}
-
-        {/* Builder Placeholder Card */}
-        <div className="border-2 border-dashed border-border/60 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-4 hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group">
-          <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-            <Plus className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-          </div>
-          <div>
-            <h4 className="font-bold text-sm">Nova Automação</h4>
-            <p className="text-xs text-muted-foreground">Arraste e solte blocos para criar fluxos customizados.</p>
-          </div>
-        </div>
       </div>
     </div>
   );

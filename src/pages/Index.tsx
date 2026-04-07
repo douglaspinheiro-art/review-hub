@@ -9,7 +9,6 @@ import CTASection from "@/components/landing/CTASection";
 import Integrations from "@/components/landing/Integrations";
 import Cases from "@/components/landing/Cases";
 import Testimonials from "@/components/landing/Testimonials";
-import Pricing from "@/components/landing/Pricing";
 import FAQ from "@/components/landing/FAQ";
 import FooterCTA from "@/components/landing/FooterCTA";
 import Footer from "@/components/landing/Footer";
@@ -29,7 +28,6 @@ const Index = () => {
         <Integrations />
         <Cases />
         <Testimonials />
-        <Pricing />
         <FAQ />
         <FooterCTA />
       </main>

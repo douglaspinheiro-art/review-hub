@@ -1,181 +1,101 @@
-// supabase/functions/whatsapp-webhook/index.ts
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/**
+ * LTV Boost v4 — WhatsApp Webhook Handler (Evolution API)
+ */
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const STATUS_MAP: Record<string, string> = {
-  PENDING: "sent",
-  SERVER_ACK: "sent",
-  DELIVERY_ACK: "delivered",
-  READ: "read",
-  PLAYED: "read",
-  ERROR: "failed",
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function normalizePhone(phone: string): string {
-  if (!phone) return "";
-  const digits = phone.replace(/\D/g, "").replace(/^@.*/, "");
-  return digits.startsWith("55") ? digits : `55${digits}`;
-}
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-async function handleInboundMessage(
-  supabase: ReturnType<typeof createClient>,
-  event: Record<string, unknown>,
-): Promise<void> {
-  const data = event.data as Record<string, unknown>;
-  if (!data) return;
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
 
-  const key = data.key as Record<string, unknown> | null;
-  const fromMe = key?.fromMe as boolean;
-  if (fromMe) return;
+  try {
+    const body = await req.json();
+    const { event, data, instance } = body;
 
-  const rawPhone = (key?.remoteJid as string ?? "").split("@")[0];
-  const phone = normalizePhone(rawPhone);
-  if (!phone) return;
-
-  const messageContent = (data.message as Record<string, unknown>)?.conversation as string
-    ?? (data.message as Record<string, unknown>)?.extendedTextMessage?.text as string
-    ?? null;
-
-  if (!messageContent) return;
-
-  const externalId = key?.id as string | null;
-  const instanceName = event.instance as string | null;
-
-  if (!instanceName) return;
-  const { data: conn } = await supabase
-    .from("whatsapp_connections")
-    .select("*")
-    .eq("instance_name", instanceName)
-    .maybeSingle();
-
-  if (!conn) return;
-
-  // Find contact
-  const { data: contact } = await supabase
-    .from("contacts")
-    .select("id")
-    .eq("user_id", conn.user_id)
-    .eq("phone", phone)
-    .maybeSingle();
-
-  let contactId = contact?.id;
-  if (!contactId) {
-    const { data: newContact } = await supabase
-      .from("contacts")
-      .insert({ user_id: conn.user_id, name: phone, phone, status: "active" })
-      .select("id")
+    // 1. Identify store by instance name
+    const { data: connection } = await supabase
+      .from("whatsapp_connections")
+      .select("store_id, user_id")
+      .eq("instance_name", instance)
       .single();
-    contactId = newContact?.id;
-  }
-  if (!contactId) return;
 
-  // Conversation
-  let conversationId: string;
-  const { data: existingConv } = await supabase
-    .from("conversations")
-    .select("id, unread_count")
-    .eq("contact_id", contactId)
-    .eq("status", "open")
-    .maybeSingle();
+    if (!connection) return new Response("Instance not found", { status: 404, headers: corsHeaders });
 
-  if (existingConv) {
-    conversationId = existingConv.id;
-    await supabase
-      .from("conversations")
-      .update({
-        last_message: messageContent,
-        last_message_at: new Date().toISOString(),
-        unread_count: (existingConv.unread_count ?? 0) + 1,
-      })
-      .eq("id", conversationId);
-  } else {
-    const { data: newConv } = await supabase
-      .from("conversations")
-      .insert({ contact_id: contactId, status: "open", last_message: messageContent, last_message_at: new Date().toISOString(), unread_count: 1 })
-      .select("id")
-      .single();
-    conversationId = newConv!.id;
-  }
+    const { store_id, user_id } = connection;
 
-  // Save message
-  await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    content: messageContent,
-    direction: "inbound",
-    status: "read",
-    type: "text",
-    external_id: externalId,
-  });
+    // 2. Handle Message Received (Inbound)
+    if (event === "messages.upsert") {
+      const msg = data.message;
+      if (!msg) return new Response("No message data", { status: 200, headers: corsHeaders });
 
-  // --- IA AGENT LOGIC ---
-  const { data: loja } = await supabase
-    .from("lojas")
-    .select("id")
-    .eq("user_id", conn.user_id)
-    .maybeSingle();
+      const remoteJid = data.key.remoteJid;
+      const phone = remoteJid.replace(/\D/g, "");
+      const isMe = data.key.fromMe;
 
-  if (loja) {
-    const { data: aiConfig } = await supabase
-      .from("agente_ia_config")
-      .select("*")
-      .eq("loja_id", loja.id)
-      .maybeSingle();
+      if (isMe) return new Response("Self message ignored", { status: 200, headers: corsHeaders });
 
-    if (aiConfig?.ativo && aiConfig.modo === 'piloto_automatico') {
-      // Call ai-agent function
-      const aiResponse = await fetch(`${SUPABASE_URL}/functions/v1/ai-agent`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: messageContent,
-          contact_phone: phone,
-          loja_id: loja.id
-        }),
-      });
+      // Upsert Customer (v3)
+      const { data: customer } = await supabase.from("customers_v3").upsert({
+        user_id,
+        store_id,
+        phone,
+        name: data.pushName || "Cliente WhatsApp",
+      }, { onConflict: "store_id, phone" }).select("id").single();
 
-      const aiResult = await aiResponse.json();
-      if (aiResult.success && aiResult.response) {
-        // Send reply via Evolution
-        await fetch(`${conn.evolution_api_url}/message/sendText/${instanceName}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": conn.evolution_api_key },
-          body: JSON.stringify({
-            number: phone,
-            text: aiResult.response,
-            delay: 1500
-          }),
-        });
+      if (customer) {
+        // Find or create conversation
+        let { data: conversation } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("store_id", store_id)
+          .eq("contact_id", customer.id)
+          .maybeSingle();
 
-        // Save outbound message
-        await supabase.from("messages").insert({
-          conversation_id: conversationId,
-          content: aiResult.response,
-          direction: "outbound",
-          status: "sent",
-          type: "text",
-        });
+        if (!conversation) {
+          const { data: newConv } = await supabase.from("conversations").insert({
+            user_id,
+            store_id,
+            contact_id: customer.id,
+            status: "open",
+            last_message: data.message?.conversation || "Mensagem de mídia",
+            last_message_at: new Date().toISOString(),
+          }).select("id").single();
+          conversation = newConv;
+        }
+
+        if (conversation) {
+          // Insert Message
+          await supabase.from("messages").insert({
+            user_id,
+            conversation_id: conversation.id,
+            content: data.message?.conversation || "",
+            direction: "inbound",
+            status: "delivered",
+            type: "text",
+            external_id: data.key.id
+          });
+
+          // Update conversation unread count
+          await supabase.rpc('increment_unread_count', { conv_id: conversation.id });
+        }
       }
     }
-  }
-}
 
-serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type" } });
-  try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const body = await req.json();
-    const event = body.event;
-    if (event === "messages.upsert" || event === "MESSAGES_UPSERT") {
-      await handleInboundMessage(supabase, body);
-    }
-    return new Response(JSON.stringify({ received: true }), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
+  } catch (err: any) {
+    console.error("Webhook error:", err);
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });

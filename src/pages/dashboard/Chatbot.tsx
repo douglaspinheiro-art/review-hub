@@ -271,10 +271,10 @@ export default function Chatbot() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground text-emerald-500">API Gemini (Prioridade)</Label>
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground text-orange-500">API Claude 3.5 (Prioridade)</Label>
                   <Input 
-                    placeholder="AIza..." 
-                    className="h-11 bg-emerald-500/5 border-emerald-500/20 border text-emerald-500 rounded-xl font-mono text-xs"
+                    placeholder="sk-ant-..." 
+                    className="h-11 bg-orange-500/5 border-orange-500/20 border text-orange-500 rounded-xl font-mono text-xs"
                     type="password"
                     value="••••••••••••••••••••"
                     disabled

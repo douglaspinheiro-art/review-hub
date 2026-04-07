@@ -56,6 +56,8 @@ export interface Database {
       conversations: {
         Row: {
           id: string;
+          user_id: string | null;
+          store_id: string | null;
           contact_id: string;
           status: "open" | "closed" | "pending";
           assigned_to: string | null;
@@ -71,11 +73,13 @@ export interface Database {
       messages: {
         Row: {
           id: string;
+          user_id: string | null;
           conversation_id: string;
           content: string;
           direction: "inbound" | "outbound";
           status: "sent" | "delivered" | "read" | "failed";
           type: "text" | "image" | "audio" | "document" | "template";
+          external_id: string | null;
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["messages"]["Row"], "id" | "created_at">;
@@ -140,6 +144,8 @@ export interface Database {
       analytics_daily: {
         Row: {
           id: string;
+          user_id: string | null;
+          store_id: string | null;
           date: string;
           messages_sent: number;
           messages_delivered: number;
@@ -151,6 +157,110 @@ export interface Database {
         };
         Insert: Omit<Database["public"]["Tables"]["analytics_daily"]["Row"], "id" | "created_at">;
         Update: Partial<Database["public"]["Tables"]["analytics_daily"]["Insert"]>;
+      };
+      stores: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          segment: string | null;
+          conversion_health_score: number;
+          chs_history: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["stores"]["Row"], "id" | "created_at" | "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["stores"]["Insert"]>;
+      };
+      customers_v3: {
+        Row: {
+          id: string;
+          user_id: string;
+          store_id: string | null;
+          email: string | null;
+          phone: string | null;
+          name: string | null;
+          birth_date: string | null;
+          rfm_recency: number | null;
+          rfm_frequency: number | null;
+          rfm_monetary: number | null;
+          rfm_segment: string | null;
+          behavioral_profile: string | null;
+          preferred_channel: string | null;
+          last_purchase_at: string | null;
+          churn_score: number;
+          customer_health_score: number;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["customers_v3"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["customers_v3"]["Insert"]>;
+      };
+      opportunities: {
+        Row: {
+          id: string;
+          user_id: string;
+          store_id: string | null;
+          type: string;
+          title: string;
+          description: string | null;
+          root_cause: string | null;
+          severity: "critico" | "alto" | "medio" | "oportunidade" | null;
+          estimated_impact: number | null;
+          status: "novo" | "snoozed" | "em_tratamento" | "resolvido" | "ignorado";
+          detected_at: string;
+          resolved_at: string | null;
+          dados_json: Json | null;
+        };
+        Insert: Omit<Database["public"]["Tables"]["opportunities"]["Row"], "id" | "detected_at">;
+        Update: Partial<Database["public"]["Tables"]["opportunities"]["Insert"]>;
+      };
+      prescriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          store_id: string | null;
+          opportunity_id: string | null;
+          title: string;
+          description: string | null;
+          execution_channel: "whatsapp" | "email" | "sms" | "multicanal" | null;
+          segment_target: string | null;
+          behavioral_profile_target: string | null;
+          num_clients_target: number | null;
+          template_json: Json | null;
+          discount_value: number | null;
+          discount_type: "percentual" | "frete_gratis" | "fixo" | null;
+          estimated_potential: number | null;
+          estimated_roi: number | null;
+          status: "aguardando_aprovacao" | "aprovada" | "em_execucao" | "concluida" | "rejeitada";
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["prescriptions"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["prescriptions"]["Insert"]>;
+      };
+      system_config: {
+        Row: {
+          id: string;
+          maintenance_active: boolean;
+          maintenance_message: string | null;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["system_config"]["Row"], "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["system_config"]["Insert"]>;
+      };
+      integrations: {
+        Row: {
+          id: string;
+          store_id: string | null;
+          user_id: string;
+          platform: "shopify" | "nuvemshop" | "woocommerce" | "vtex" | "tray" | "ga4" | "custom";
+          status: "active" | "inactive" | "error" | "pending";
+          config_json: Json;
+          last_sync_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["integrations"]["Row"], "id" | "created_at" | "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["integrations"]["Insert"]>;
       };
       lojas: {
         Row: {

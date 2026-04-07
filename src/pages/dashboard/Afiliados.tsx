@@ -221,9 +221,9 @@ export default function Afiliados() {
         <h2 className="font-semibold text-sm">Comissões por plano indicado</h2>
         <div className="grid sm:grid-cols-3 gap-3">
           {[
-            { plan: "Crescimento", price: "R$ 197/mês", commission: "R$ 39,40/mês" },
-            { plan: "Escala",      price: "R$ 497/mês", commission: "R$ 99,40/mês" },
-            { plan: "Enterprise",  price: "Sob consulta", commission: "Negociado" },
+            { plan: "Starter",     price: "R$ 447/mês", commission: "R$ 89,40/mês" },
+            { plan: "Growth",      price: "R$ 897/mês", commission: "R$ 179,40/mês" },
+            { plan: "Scale",       price: "R$ 1.997/mês", commission: "R$ 399,40/mês" },
           ].map(({ plan, price, commission }) => (
             <div key={plan} className="border rounded-lg p-4 space-y-2">
               <p className="font-semibold text-sm">{plan}</p>

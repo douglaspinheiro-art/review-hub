@@ -1,17 +1,18 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { 
-  ShoppingBag, Package, Star, TrendingUp, AlertCircle, 
+import {
+  ShoppingBag, Package, Star, TrendingUp, AlertCircle,
   ArrowUpRight, ArrowDownRight, Search, Filter, ChevronDown,
-  MoreHorizontal, Eye, ShoppingCart, Zap, Loader2
+  MoreHorizontal, Eye, ShoppingCart, Zap, Loader2, Megaphone
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { MetricCard } from "@/components/dashboard/MetricCard";
-import { useProdutosV3 } from "@/hooks/useLTVBoost";
+import { useProductsV3 as useProdutosV3 } from "@/hooks/useLTVBoost";
 import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
+import CampaignModal, { ProdutoParaCampanha } from "@/components/dashboard/CampaignModal";
 
 // --- Skeleton Component ---
 const ProductSkeleton = () => (
@@ -31,7 +32,7 @@ const ProductSkeleton = () => (
 );
 
 // Helper component for virtualized items
-const ProductCard = ({ p }: { p: any }) => {
+const ProductCard = ({ p, onCriarCampanha }: { p: any; onCriarCampanha: (p: ProdutoParaCampanha) => void }) => {
   const [isVisible, setIsVisible] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -87,9 +88,19 @@ const ProductCard = ({ p }: { p: any }) => {
               </div>
             </div>
           </div>
-          <Button variant="outline" className="w-full h-10 rounded-xl font-bold text-xs gap-2 border-primary/20 hover:bg-primary/5">
-            <Zap className="w-3.5 h-3.5 text-primary fill-primary" /> Gerar Prescrição de SKU
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 h-10 rounded-xl font-bold text-xs gap-2 border-primary/20 hover:bg-primary/5">
+              <Zap className="w-3.5 h-3.5 text-primary fill-primary" /> Prescrição de SKU
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 rounded-xl font-bold text-xs gap-1.5 border-pink-500/20 text-pink-600 hover:bg-pink-500/5"
+              onClick={() => onCriarCampanha(p)}
+            >
+              <Megaphone className="w-3.5 h-3.5" /> Campanha
+            </Button>
+          </div>
         </div>
       ) : (
         <ProductSkeleton />
@@ -102,9 +113,25 @@ export default function Produtos() {
   const { profile } = useAuth();
   const [filter, setFilter] = useState("todos");
   const { data: produtos, isLoading } = useProdutosV3(profile?.id, filter);
+  const [campaignModal, setCampaignModal] = useState<{
+    open: boolean;
+    products?: ProdutoParaCampanha[];
+  }>({ open: false });
+
+  function abrirCampanhaProduto(p: ProdutoParaCampanha) {
+    setCampaignModal({ open: true, products: [p] });
+  }
 
   return (
     <div className="space-y-8 pb-10">
+      {campaignModal.open && (
+        <CampaignModal
+          onClose={() => setCampaignModal({ open: false })}
+          initialProducts={campaignModal.products}
+          initialObjective="lancamento"
+        />
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Inteligência de Produtos</h1>
@@ -113,6 +140,14 @@ export default function Produtos() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="h-10 font-bold gap-2 rounded-xl">
             <Filter className="w-4 h-4" /> Filtrar Categoria
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10 font-bold gap-2 rounded-xl border-pink-500/20 text-pink-600 hover:bg-pink-500/5"
+            onClick={() => setCampaignModal({ open: true, products: [] })}
+          >
+            <Megaphone className="w-4 h-4" /> Criar Campanha de Coleção
           </Button>
           <Button className="h-10 font-bold gap-2 rounded-xl bg-primary text-primary-foreground">
             <Zap className="w-4 h-4" /> Gerar Prescrições de Produto
@@ -172,7 +207,7 @@ export default function Produtos() {
             <div className="p-10 text-center text-muted-foreground text-sm font-bold italic">Nenhum produto encontrado com este filtro.</div>
           ) : (
             produtos?.map((p: any) => (
-              <ProductCard key={p.id} p={p} />
+              <ProductCard key={p.id} p={p} onCriarCampanha={abrirCampanhaProduto} />
             ))
           )}
         </div>
@@ -242,9 +277,19 @@ export default function Produtos() {
                       <div className="text-[9px] text-muted-foreground font-bold uppercase">{p.num_vendas || 0} vendas</div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
-                        <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-lg text-[9px] font-black uppercase gap-1 border-pink-500/20 text-pink-600 hover:bg-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => abrirCampanhaProduto(p)}
+                        >
+                          <Megaphone className="w-3 h-3" /> Campanha
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
+                          <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))

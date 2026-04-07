@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Link2, Check, Plus, Trash2, RefreshCw, Loader2,
-  ShoppingCart, BarChart3, Mail, MessageSquare, Star,
+  ShoppingCart, BarChart3, Mail, MessageSquare, Star, Sparkles, ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { JORNADAS_META } from "@/lib/automations-meta";
 
 type Integration = {
   id: string;
@@ -54,12 +55,42 @@ const CATALOG = [
     ],
   },
   {
+    category: "Marketplaces (Beta)",
+    icon: ShoppingCart,
+    items: [
+      { type: "mercado_livre", name: "Mercado Livre", logo: "🟡", isComingSoon: true, fields: [] },
+      { type: "shopee",        name: "Shopee",        logo: "🟠", isComingSoon: true, fields: [] },
+      { type: "amazon",        name: "Amazon Brasil", logo: "⚪", isComingSoon: true, fields: [] },
+    ],
+  },
+  {
     category: "SMS",
     icon: MessageSquare,
     items: [
       { type: "zenvia",   name: "Zenvia",   logo: "📱", fields: [{ key: "token", label: "Token", placeholder: "..." }, { key: "sender_id", label: "Sender ID", placeholder: "LTV Boost" }] },
       { type: "twilio",   name: "Twilio",   logo: "🔴", fields: [{ key: "account_sid", label: "Account SID", placeholder: "AC..." }, { key: "auth_token", label: "Auth Token", placeholder: "..." }, { key: "from_number", label: "Número de envio", placeholder: "+1..." }] },
     ],
+  },
+];
+
+const PARCEIROS_OFICIAIS = [
+  {
+    nome: "Nuvemshop",
+    logo: "☁️",
+    descricao: "Integração oficial certificada. Sincronização nativa de pedidos, clientes e carrinhos em tempo real.",
+    beneficio: "Desconto exclusivo de 15% no plano Crescimento para lojistas Nuvemshop",
+    href: "https://www.nuvemshop.com.br/parceiros",
+    cor: "from-blue-500/10 to-blue-600/5 border-blue-500/20",
+    badge_cor: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  },
+  {
+    nome: "Shopify Brasil",
+    logo: "🛍️",
+    descricao: "App oficial na Shopify App Store. Instale com 1 clique, sem configuração técnica.",
+    beneficio: "30 dias grátis (vs. 14 dias padrão) para lojistas que instalam via Shopify App Store",
+    href: "https://apps.shopify.com/ltv-boost",
+    cor: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20",
+    badge_cor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   },
 ];
 
@@ -94,12 +125,31 @@ export default function Integracoes() {
         is_active: true,
       });
       if (error) throw error;
+
+      // ETAPA 8: Auto-seed standard automations on store connection
+      const { count } = await supabase
+        .from("automations")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user!.id);
+
+      if (count === 0) {
+        const rows = JORNADAS_META.map(j => ({
+          user_id: user!.id,
+          name: j.titulo,
+          trigger: j.trigger,
+          message_template: j.message_template,
+          delay_minutes: j.delay_minutes,
+          is_active: j.defaultActive,
+        }));
+        await supabase.from("automations").insert(rows);
+      }
     },
     onSuccess: (_, { name }) => {
-      toast({ title: `${name} conectado com sucesso!` });
+      toast({ title: `${name} conectado com sucesso!`, description: "Jornadas padrão ativadas automaticamente." });
       setConnecting(null);
       setFormData({});
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["automations"] });
     },
     onError: () => toast({ title: "Erro ao conectar", variant: "destructive" }),
   });
@@ -127,6 +177,39 @@ export default function Integracoes() {
         <p className="text-muted-foreground text-sm mt-1">
           Conecte o LTV Boost com seu e-commerce, CRM e ferramentas de marketing
         </p>
+      </div>
+
+      {/* Parceiros Oficiais */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Parceiros Oficiais</span>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {PARCEIROS_OFICIAIS.map((p) => (
+            <div key={p.nome} className={`bg-gradient-to-br ${p.cor} border rounded-2xl p-5 space-y-3`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{p.logo}</span>
+                  <span className="font-bold text-sm">{p.nome}</span>
+                </div>
+                <Badge variant="outline" className={`text-[8px] font-black ${p.badge_cor}`}>PARCEIRO OFICIAL</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">{p.descricao}</p>
+              <div className="bg-white/5 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-emerald-400">🎁 {p.beneficio}</p>
+              </div>
+              <a
+                href={p.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+              >
+                Saiba mais <ArrowRight className="w-3 h-3" />
+              </a>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Stats */}
@@ -190,6 +273,15 @@ export default function Integracoes() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
+                    ) : (item as any).isComingSoon ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 shrink-0 opacity-60"
+                        onClick={() => toast({ title: "Interesse registrado!", description: "Avisaremos você assim que esta integração estiver disponível." })}
+                      >
+                        Me avise
+                      </Button>
                     ) : (
                       <Button
                         size="sm"

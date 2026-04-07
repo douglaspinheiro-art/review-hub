@@ -28,6 +28,26 @@ export interface SendTextPayload {
   delay?: number; // ms delay between messages (anti-spam)
 }
 
+export interface SendMessageResponse {
+  key: {
+    id: string;
+    remoteJid: string;
+    fromMe: boolean;
+  };
+  messageId?: string; // some versions return this instead
+  status: string;
+  message?: Record<string, unknown>;
+}
+
+export interface CreateInstanceResponse {
+  instance: {
+    instanceName: string;
+    status: string;
+  };
+  hash?: { apikey: string };
+  qrcode?: { code: string; base64: string };
+}
+
 function buildHeaders(apiKey: string) {
   return {
     "Content-Type": "application/json",
@@ -36,7 +56,7 @@ function buildHeaders(apiKey: string) {
 }
 
 /** Create a new instance in Evolution API */
-export async function createInstance(cfg: EvolutionConfig, instanceName: string) {
+export async function createInstance(cfg: EvolutionConfig, instanceName: string): Promise<CreateInstanceResponse> {
   const res = await fetch(`${cfg.baseUrl}/instance/create`, {
     method: "POST",
     headers: buildHeaders(cfg.apiKey),
@@ -69,7 +89,7 @@ export async function getConnectionState(cfg: EvolutionConfig, instanceName: str
 }
 
 /** Send a text message */
-export async function sendText(cfg: EvolutionConfig, instanceName: string, payload: SendTextPayload) {
+export async function sendText(cfg: EvolutionConfig, instanceName: string, payload: SendTextPayload): Promise<SendMessageResponse> {
   const res = await fetch(`${cfg.baseUrl}/message/sendText/${instanceName}`, {
     method: "POST",
     headers: buildHeaders(cfg.apiKey),
@@ -77,6 +97,80 @@ export async function sendText(cfg: EvolutionConfig, instanceName: string, paylo
       number: payload.number,
       text: payload.text,
       delay: payload.delay ?? 1200,
+    }),
+  });
+  if (!res.ok) throw new Error(`Evolution API error: ${res.status}`);
+  return res.json();
+}
+
+/** Send a template message with buttons (URL, Call, Reply) */
+export async function sendTemplate(cfg: EvolutionConfig, instanceName: string, payload: {
+  number: string;
+  text: string;
+  footer?: string;
+  buttons: Array<{
+    type: "url" | "call" | "reply";
+    displayText: string;
+    content: string; // URL, Phone number or Reply ID
+  }>;
+}) {
+  const res = await fetch(`${cfg.baseUrl}/message/sendTemplate/${instanceName}`, {
+    method: "POST",
+    headers: buildHeaders(cfg.apiKey),
+    body: JSON.stringify({
+      number: payload.number,
+      templateMessage: {
+        text: payload.text,
+        footer: payload.footer || "LTV Boost",
+        buttons: payload.buttons.map(btn => ({
+          index: 1,
+          urlButton: btn.type === "url" ? { displayText: btn.displayText, url: btn.content } : undefined,
+          callButton: btn.type === "call" ? { displayText: btn.displayText, phoneNumber: btn.content } : undefined,
+          quickReplyButton: btn.type === "reply" ? { displayText: btn.displayText, id: btn.content } : undefined,
+        })),
+      },
+      delay: 1200,
+    }),
+  });
+  if (!res.ok) throw new Error(`Evolution API error: ${res.status}`);
+  return res.json() as Promise<SendMessageResponse>;
+}
+
+/** Send a WhatsApp Flow (interactiveMessage) */
+export async function sendFlow(cfg: EvolutionConfig, instanceName: string, payload: {
+  number: string;
+  text: string;
+  footer?: string;
+  buttonText: string;
+  flowId: string;
+  screenId: string;
+  data?: Record<string, unknown>;
+}) {
+  const res = await fetch(`${cfg.baseUrl}/message/sendTemplate/${instanceName}`, {
+    method: "POST",
+    headers: buildHeaders(cfg.apiKey),
+    body: JSON.stringify({
+      number: payload.number,
+      interactiveMessage: {
+        header: { title: "" },
+        body: { text: payload.text },
+        footer: { text: payload.footer || "LTV Boost" },
+        action: {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_token: `token_${Date.now()}`,
+            flow_id: payload.flowId,
+            flow_cta: payload.buttonText,
+            flow_action: "navigate",
+            flow_action_payload: {
+              screen: payload.screenId,
+              data: payload.data || {}
+            }
+          }
+        }
+      },
+      delay: 1200,
     }),
   });
   if (!res.ok) throw new Error(`Evolution API error: ${res.status}`);

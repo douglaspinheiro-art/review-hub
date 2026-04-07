@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Palette, Globe, Mail, MessageSquare, Eye, Loader2, Lock } from "lucide-react";
+import { Palette, Globe, Mail, MessageSquare, Eye, Loader2, Lock, Users, TrendingUp, Copy, ExternalLink, Check, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -249,6 +249,114 @@ export default function WhiteLabel() {
         {saveMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
         Salvar white-label
       </Button>
+
+      <AgencyPanel domain={customDomain} brandName={brandName} />
+    </div>
+  );
+}
+
+// ─── Agency Panel ─────────────────────────────────────────────────────────────
+function AgencyPanel({ domain, brandName }: { domain: string; brandName: string }) {
+  const [copied, setCopied] = useState(false);
+  const inviteUrl = domain
+    ? `https://${domain}/signup`
+    : `https://app.ltvboost.com/signup?agency=${encodeURIComponent(brandName || "minha-agencia")}`;
+
+  const copy = () => {
+    navigator.clipboard.writeText(inviteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Mock client list — virá de Supabase via agency_clients table
+  const clientes = [
+    { nome: "Studio Moda SP", plano: "Crescimento", mrr: 297, status: "ativo", desde: "Jan 2026" },
+    { nome: "NutriShop Online", plano: "Escala", mrr: 697, status: "ativo", desde: "Fev 2026" },
+    { nome: "Casa & Arte", plano: "Crescimento", mrr: 297, status: "trial", desde: "Mar 2026" },
+    { nome: "Beleza Pura", plano: "Crescimento", mrr: 297, status: "ativo", desde: "Mar 2026" },
+  ];
+
+  const mrrTotal = clientes.filter(c => c.status === "ativo").reduce((s, c) => s + c.mrr, 0);
+  const ativos = clientes.filter(c => c.status === "ativo").length;
+
+  return (
+    <div className="space-y-6 pt-6 border-t border-border/50">
+      <div>
+        <h2 className="text-lg font-bold">Painel de Agência</h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Gerencie as lojas clientes que acessam via sua marca.
+        </p>
+      </div>
+
+      {/* Agency KPIs */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Clientes ativos", value: ativos, icon: Users, color: "text-primary" },
+          { label: "MRR gerenciado", value: `R$ ${mrrTotal.toLocaleString('pt-BR')}`, icon: DollarSign, color: "text-emerald-600" },
+          { label: "Churn este mês", value: "0", icon: TrendingUp, color: "text-blue-500" },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="bg-card border rounded-xl p-4 space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <Icon className={`w-4 h-4 ${color}`} />
+            </div>
+            <p className={`text-2xl font-bold ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Invite link */}
+      <div className="bg-card border rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm">Link de cadastro dos seus clientes</h3>
+          <a href={inviteUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
+            Abrir <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1 h-10 rounded-md border border-input bg-muted px-3 flex items-center text-xs font-mono text-muted-foreground overflow-hidden">
+            <span className="truncate">{inviteUrl}</span>
+          </div>
+          <Button variant="outline" size="sm" className="shrink-0 gap-2 h-10" onClick={copy}>
+            {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+            {copied ? "Copiado!" : "Copiar"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Quando um cliente se cadastra via este link, a conta já vem com sua marca aplicada.
+        </p>
+      </div>
+
+      {/* Client list */}
+      <div className="bg-card border rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between">
+          <h3 className="font-semibold">Lojas Clientes</h3>
+          <Button size="sm" variant="outline" className="h-8 text-xs font-bold rounded-lg gap-1.5">
+            <Users className="w-3.5 h-3.5" /> Convidar cliente
+          </Button>
+        </div>
+        <div className="divide-y">
+          {clientes.map((c) => (
+            <div key={c.nome} className="px-5 py-3.5 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold shrink-0">
+                {c.nome[0]}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate">{c.nome}</p>
+                <p className="text-xs text-muted-foreground">{c.plano} · desde {c.desde}</p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-sm font-bold text-emerald-600">R$ {c.mrr}/mês</span>
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                  c.status === "ativo" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                }`}>
+                  {c.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

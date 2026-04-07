@@ -152,7 +152,7 @@ export default function ConvertIQPlano() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Link to="/dashboard/convertiq/diagnostico" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-3">
+        <Link to="/dashboard/funil/diagnostico" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-3">
           <ArrowLeft className="w-4 h-4" /> Voltar ao diagnóstico
         </Link>
         <h1 className="text-2xl font-bold">Plano de Ação</h1>
@@ -173,7 +173,7 @@ export default function ConvertIQPlano() {
       {recs.length === 0 ? (
         <div className="bg-card border rounded-2xl p-10 text-center">
           <p className="text-muted-foreground">Nenhuma recomendação disponível. Gere um diagnóstico primeiro.</p>
-          <Button asChild className="mt-4"><Link to="/dashboard/convertiq">Gerar diagnóstico</Link></Button>
+          <Button asChild className="mt-4"><Link to="/dashboard/funil">Gerar diagnóstico</Link></Button>
         </div>
       ) : (
         <>

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { 
-  Settings, Key, Link2, User, Wifi, Loader2, 
-  Check, Copy, Eye, EyeOff, ShieldCheck, 
-  BellRing, Smartphone, Mail, Clock, Calendar, ShoppingBag
+import {
+  Settings, Key, Link2, User, Wifi, Loader2,
+  Check, Copy, Eye, EyeOff, ShieldCheck, AlertCircle,
+  BellRing, Smartphone, Mail, Clock, Calendar, ShoppingBag,
+  Zap, MessageSquare, TrendingUp, CreditCard
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ export default function Configuracoes() {
   const queryClient = useQueryClient();
 
   // --- States ---
+  const [isDirty, setIsDirty] = useState(false);
   const [fullName, setFullName] = useState("");
   const [companyName, setCompanyName] = useState("");
   
@@ -34,30 +36,90 @@ export default function Configuracoes() {
   const [cooldown, setCooldown] = useState([7]);
   const [autoMigrate, setAutoMigrate] = useState(true);
 
+  // Conversão
+  const [iaNegotiation, setIaNegotiation] = useState(true);
+  const [iaMaxDiscount, setIaMaxDiscount] = useState([10]);
+  const [socialProof, setSocialProof] = useState(true);
+  const [pixKey, setPixKey] = useState("");
+
   // Pulse Semanal
   const [pulseAtivo, setPulseAtivo] = useState(true);
   const [pulseNum, setPulseNum] = useState("");
   const [pulseDia, setPulseDia] = useState("1");
   const [pulseHora, setPulseHora] = useState("08:00");
 
+  // Carregar configuracoes_v3 (proteção da base + pulse)
+  const { data: configV3 } = useQuery({
+    queryKey: ["configuracoes_v3", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("configuracoes_v3")
+        .select("*")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user,
+  });
+
   useEffect(() => {
     if (profile) {
       setFullName(profile.full_name ?? "");
       setCompanyName(profile.company_name ?? "");
+      setIaNegotiation(profile.ia_negotiation_enabled ?? true);
+      setIaMaxDiscount([profile.ia_max_discount_pct ?? 10]);
+      setSocialProof(profile.social_proof_enabled ?? true);
+      setPixKey(profile.pix_key ?? "");
     }
   }, [profile]);
 
+  useEffect(() => {
+    if (configV3) {
+      setWaCap([configV3.cap_msgs_whatsapp_semana ?? 2]);
+      setEmailCap([configV3.cap_msgs_email_semana ?? 3]);
+      setCooldown([configV3.cooldown_pos_compra_dias ?? 7]);
+      setPulseAtivo(configV3.pulse_ativo ?? true);
+      setPulseNum(configV3.pulse_numero_whatsapp ?? "");
+      setPulseDia(String(configV3.pulse_dia_semana ?? 1));
+      setPulseHora(configV3.pulse_horario ?? "08:00");
+    }
+  }, [configV3]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ full_name: fullName, company_name: companyName })
-        .eq("id", user!.id);
-      if (error) throw error;
+      const [profileRes, configRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .update({
+            full_name: fullName,
+            company_name: companyName,
+            ia_negotiation_enabled: iaNegotiation,
+            ia_max_discount_pct: iaMaxDiscount[0],
+            social_proof_enabled: socialProof,
+            pix_key: pixKey,
+          })
+          .eq("id", user!.id),
+        supabase
+          .from("configuracoes_v3")
+          .upsert({
+            user_id: user!.id,
+            cap_msgs_whatsapp_semana: waCap[0],
+            cap_msgs_email_semana: emailCap[0],
+            cooldown_pos_compra_dias: cooldown[0],
+            pulse_ativo: pulseAtivo,
+            pulse_dia_semana: Number(pulseDia),
+            pulse_horario: pulseHora,
+            pulse_numero_whatsapp: pulseNum || null,
+          }, { onConflict: "user_id" }),
+      ]);
+      if (profileRes.error) throw profileRes.error;
+      if (configRes.error) throw configRes.error;
     },
     onSuccess: () => {
+      setIsDirty(false);
       toast.success("Configurações atualizadas com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["configuracoes_v3"] });
     },
     onError: (e: any) => toast.error(`Erro ao salvar: ${e.message}`),
   });
@@ -70,8 +132,9 @@ export default function Configuracoes() {
       </div>
 
       <Tabs defaultValue="perfil" className="w-full">
-        <TabsList className="bg-muted/50 p-1 rounded-xl mb-8 overflow-x-auto flex-wrap h-auto">
+        <TabsList className="bg-muted/50 p-1 rounded-xl mb-8 overflow-x-auto flex-nowrap h-auto justify-start">
           <TabsTrigger value="perfil" className="rounded-lg px-6 font-bold text-xs">Perfil</TabsTrigger>
+          <TabsTrigger value="conversao" className="rounded-lg px-6 font-bold text-xs bg-primary/10 text-primary">Conversão (Beta)</TabsTrigger>
           <TabsTrigger value="protecao" className="rounded-lg px-6 font-bold text-xs">Proteção da Base</TabsTrigger>
           <TabsTrigger value="pulse" className="rounded-lg px-6 font-bold text-xs">Pulse Semanal</TabsTrigger>
           <TabsTrigger value="integracoes" className="rounded-lg px-6 font-bold text-xs">Integrações</TabsTrigger>
@@ -83,11 +146,11 @@ export default function Configuracoes() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nome Completo</Label>
-                <Input value={fullName} onChange={e => setFullName(e.target.value)} className="h-11 rounded-xl bg-background/50" />
+                <Input value={fullName} onChange={e => { setFullName(e.target.value); setIsDirty(true); }} className="h-11 rounded-xl bg-background/50" />
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nome da Loja</Label>
-                <Input value={companyName} onChange={e => setCompanyName(e.target.value)} className="h-11 rounded-xl bg-background/50" />
+                <Input value={companyName} onChange={e => { setCompanyName(e.target.value); setIsDirty(true); }} className="h-11 rounded-xl bg-background/50" />
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">E-mail de Acesso</Label>
@@ -103,6 +166,102 @@ export default function Configuracoes() {
             <Button onClick={() => saveMutation.mutate()} className="font-bold h-11 rounded-xl px-8" disabled={saveMutation.isPending}>
               {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Salvar Alterações
+            </Button>
+          </div>
+        </TabsContent>
+
+        {/* --- TAB: CONVERSÃO --- */}
+        <TabsContent value="conversao" className="space-y-6 max-w-4xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-card border border-border/50 rounded-2xl p-6 space-y-8 shadow-sm">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-amber-500" /> IA Negociadora
+                </h3>
+                <p className="text-xs text-muted-foreground">A IA responde objeções de preço e frete automaticamente.</p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-muted/20 rounded-xl border border-border/40">
+                  <Label className="text-sm font-bold">Ativar Negociação</Label>
+                  <Switch checked={iaNegotiation} onCheckedChange={(v) => { setIaNegotiation(v); setIsDirty(true); }} />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-end">
+                    <Label className="text-xs font-bold uppercase text-muted-foreground">Limite de Desconto Automático</Label>
+                    <span className="text-xl font-black text-amber-500">{iaMaxDiscount[0]}%</span>
+                  </div>
+                  <Slider value={iaMaxDiscount} onValueChange={(v) => { setIaMaxDiscount(v); setIsDirty(true); }} max={30} min={5} step={5} className="py-2" />
+                  <p className="text-[10px] text-muted-foreground italic">A IA nunca oferecerá mais do que este limite para fechar uma venda.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border/50 rounded-2xl p-6 space-y-8 shadow-sm">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-emerald-500" /> Prova Social Dinâmica
+                </h3>
+                <p className="text-xs text-muted-foreground">Injeta urgência real baseada nas vendas recentes da sua loja.</p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-muted/20 rounded-xl border border-border/40">
+                  <Label className="text-sm font-bold">Ativar Prova Social</Label>
+                  <Switch checked={socialProof} onCheckedChange={(v) => { setSocialProof(v); setIsDirty(true); }} />
+                </div>
+                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+                  <p className="text-[11px] text-emerald-700 italic">"Olá Maria! 14 pessoas compraram este item hoje. Garanta o seu antes que acabe!"</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border/50 rounded-2xl p-6 space-y-8 shadow-sm">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-blue-500" /> PIX Copia e Cola
+                </h3>
+                <p className="text-xs text-muted-foreground">Gera o código de pagamento instantaneamente no chat.</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground">Sua Chave PIX (CNPJ, E-mail ou Celular)</Label>
+                  <Input 
+                    value={pixKey}
+                    onChange={e => { setPixKey(e.target.value); setIsDirty(true); }}
+                    placeholder="00.000.000/0001-00" 
+                    className={cn("h-11 rounded-xl bg-background/50 font-mono", iaNegotiation && !pixKey && "border-amber-500")} 
+                  />
+                  {iaNegotiation && !pixKey && (
+                    <p className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> Chave obrigatória para a IA Negociadora funcionar.
+                    </p>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Usado para formatar a mensagem de pagamento rápido.</p>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border/50 rounded-2xl p-6 space-y-8 shadow-sm opacity-60">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-purple-500" /> WhatsApp Flows
+                  </h3>
+                  <Badge className="bg-purple-500 text-white border-none text-[8px] h-4">EM BREVE</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">Checkout nativo e captura de dados sem sair do WhatsApp.</p>
+              </div>
+              <Button disabled variant="outline" className="w-full rounded-xl text-xs font-bold h-11 border-dashed">Configurar Flows no Meta</Button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-4">
+            <Button onClick={() => saveMutation.mutate()} className="font-bold h-12 rounded-xl px-12 shadow-lg shadow-primary/20" disabled={saveMutation.isPending}>
+              {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Salvar Todas as Configurações de Conversão
             </Button>
           </div>
         </TabsContent>
@@ -324,6 +483,23 @@ export default function Configuracoes() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Sticky dirty bar */}
+      {isDirty && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-lg border-t border-border z-50 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-full duration-300">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="text-sm font-bold">Você tem alterações não salvas</span>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setIsDirty(false)}>Descartar</Button>
+            <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="gap-1.5">
+              {saveMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Salvar alterações
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

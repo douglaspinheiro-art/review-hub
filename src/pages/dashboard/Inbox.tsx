@@ -14,6 +14,7 @@ import { ContactInfoSidebar } from "@/components/dashboard/ContactInfoSidebar";
 import { formatDistanceToNow, isSameDay, format, isYesterday, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { TrialGate } from "@/components/dashboard/TrialGate";
 
 const STATUS_FILTERS = [
   { label: "Todas", value: "all" },
@@ -298,7 +299,35 @@ export default function Inbox() {
               ))}
             </div>
           )}
-          {!isLoading && filtered.length === 0 && (
+          {!isLoading && conversations.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-10 px-5 gap-5 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-primary/5 border border-primary/10 flex items-center justify-center">
+                <MessageCircle className="w-7 h-7 text-primary/30" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-black text-sm">Nenhuma conversa ainda</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  As conversas aparecem aqui quando clientes respondem suas campanhas ou mandam mensagem direta no WhatsApp.
+                </p>
+              </div>
+              <div className="w-full space-y-2 text-left">
+                {[
+                  { step: "1", label: "Conecte o WhatsApp", href: "/dashboard/whatsapp" },
+                  { step: "2", label: "Dispare uma campanha", href: "/dashboard/campanhas" },
+                  { step: "3", label: "Aguarde as respostas aqui", href: null },
+                ].map((s) => (
+                  <div key={s.step} className="flex items-center gap-3 p-3 rounded-xl bg-muted/20 text-xs">
+                    <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-black text-[10px] shrink-0">{s.step}</span>
+                    {s.href
+                      ? <Link to={s.href} className="font-bold text-primary hover:underline">{s.label} →</Link>
+                      : <span className="font-medium text-muted-foreground">{s.label}</span>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {!isLoading && conversations.length > 0 && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
               <MessageCircle className="w-8 h-8 opacity-30" />
               <span className="text-sm">Nenhuma conversa encontrada</span>
@@ -637,17 +666,19 @@ export default function Inbox() {
                         </button>
                       </div>
 
-                      <button
-                        onClick={handleSend}
-                        disabled={!draft.trim() || sendMutation.isPending}
-                        className="h-9 px-4 bg-primary text-primary-foreground rounded-xl text-[13px] font-bold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
-                      >
-                        {sendMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>Enviar <Send className="w-3.5 h-3.5" /></>
-                        )}
-                      </button>
+                      <TrialGate action="enviar mensagens">
+                        <button
+                          onClick={handleSend}
+                          disabled={!draft.trim() || sendMutation.isPending}
+                          className="h-9 px-4 bg-primary text-primary-foreground rounded-xl text-[13px] font-bold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
+                        >
+                          {sendMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>Enviar <Send className="w-3.5 h-3.5" /></>
+                          )}
+                        </button>
+                      </TrialGate>
                     </div>
                   </div>
                 </div>

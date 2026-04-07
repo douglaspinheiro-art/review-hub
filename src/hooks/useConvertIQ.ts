@@ -36,6 +36,11 @@ export interface MetricasFunil {
   compras: number;
   receita: number;
   fonte?: string;
+  // Enriched fields for recovery dash
+  receita_travada_frete?: number;
+  receita_travada_pagamento?: number;
+  total_abandonos_frete?: number;
+  total_abandonos_pagamento?: number;
 }
 
 // ─── Mock fallback ────────────────────────────────────────────────────────────
@@ -48,6 +53,10 @@ export const MOCK_METRICAS: MetricasFunil = {
   compras:               174,
   receita:               43500,
   fonte: "mockado",
+  receita_travada_frete: 12500,
+  receita_travada_pagamento: 8400,
+  total_abandonos_frete: 42,
+  total_abandonos_pagamento: 28,
 };
 
 export const MOCK_CONFIG = {
@@ -91,7 +100,7 @@ export function calcFunil(m: MetricasFunil, meta: number, ticket: number) {
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
-/** Returns user's first loja (or null). */
+/** Returns user's first store (or null). */
 export function useLoja() {
   return useQuery({
     queryKey: ["convertiq-loja"],
@@ -99,7 +108,7 @@ export function useLoja() {
       const uid = await getUid();
       if (!uid) return null;
       const { data } = await supabase
-        .from("lojas")
+        .from("stores")
         .select("*")
         .eq("user_id", uid)
         .order("created_at", { ascending: true })
@@ -185,7 +194,7 @@ export function useDiagnosticos(lojaId: string | null) {
   });
 }
 
-/** Save a loja + config row during setup. */
+/** Save a store + config row during setup. */
 export function useSaveLoja() {
   const qc = useQueryClient();
   return useMutation({
@@ -197,29 +206,31 @@ export function useSaveLoja() {
       meta_conversao?: number;
       ga4_property_id?: string;
       ga4_access_token?: string;
+      pix_key?: string;
     }) => {
       const uid = await getUid();
       if (!uid) throw new Error("Não autenticado");
 
-      // Upsert loja
-      const { data: loja, error: lojaErr } = await supabase
-        .from("lojas")
+      // Upsert store
+      const { data: store, error: storeErr } = await supabase
+        .from("stores")
         .upsert(
           {
             user_id: uid,
-            nome: payload.nome,
+            name: payload.nome,
             plataforma: payload.plataforma.toLowerCase(),
             url: payload.url ?? null,
             ticket_medio: payload.ticket_medio ?? 250,
             ga4_property_id: payload.ga4_property_id ?? null,
             ga4_access_token: payload.ga4_access_token ?? null,
+            pix_key: payload.pix_key ?? null,
           },
           { onConflict: "user_id" }
         )
         .select()
         .single();
 
-      if (lojaErr) throw lojaErr;
+      if (storeErr) throw storeErr;
 
       // Upsert config
       const { error: cfgErr } = await supabase
@@ -234,7 +245,7 @@ export function useSaveLoja() {
         );
 
       if (cfgErr) throw cfgErr;
-      return loja;
+      return store;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["convertiq-loja"] });
@@ -328,4 +339,64 @@ export async function testarGA4(ga4_property_id: string, access_token: string) {
   const body = res.data as { success: boolean; metricas?: MetricasFunil; error?: string };
   if (!body.success) throw new Error(body.error ?? "Erro desconhecido");
   return body.metricas!;
+}
+
+/** 
+ * Returns enriched metrics from abandoned_carts table 
+ * (revenue stuck due to high shipping or payment failure).
+ */
+export function useMetricasEnriquecidas(lojaId: string | null, periodo: "7d" | "30d" | "90d" = "30d") {
+  return useQuery({
+    queryKey: ["convertiq-enriched", lojaId, periodo],
+    enabled: !!lojaId,
+    queryFn: async () => {
+      const diasMap = { "7d": 7, "30d": 30, "90d": 90 };
+      const since = new Date(Date.now() - diasMap[periodo] * 86400_000).toISOString();
+
+      // Get store ID from lojas table
+      const { data: store } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("id", lojaId!) // Assuming lojaId passed is the store uuid
+        .maybeSingle();
+      
+      const targetStoreId = store?.id || lojaId;
+
+      const { data, error } = await supabase
+        .from("abandoned_carts")
+        .select("value, shipping_value, payment_failure_reason, cart_items")
+        .eq("store_id", targetStoreId!)
+        .gte("created_at", since);
+
+      if (error) throw error;
+
+      let receitaFrete = 0;
+      let totalFrete = 0;
+      let receitaPagamento = 0;
+      let totalPagamento = 0;
+
+      data?.forEach(cart => {
+        const val = Number(cart.value || 0);
+        const ship = Number(cart.shipping_value || 0);
+        
+        // Logic: if shipping > 20% of cart value, consider it a shipping drop
+        if (val > 0 && ship / val > 0.20) {
+          receitaFrete += val;
+          totalFrete++;
+        }
+
+        if (cart.payment_failure_reason) {
+          receitaPagamento += val;
+          totalPagamento++;
+        }
+      });
+
+      return {
+        receita_travada_frete: receitaFrete,
+        total_abandonos_frete: totalFrete,
+        receita_travada_pagamento: receitaPagamento,
+        total_abandonos_pagamento: totalPagamento
+      };
+    },
+  });
 }

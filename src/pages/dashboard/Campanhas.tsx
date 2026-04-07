@@ -12,7 +12,8 @@ import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation, useNavigate } from "react-router-dom";
-import CampaignModal from "@/components/dashboard/CampaignModal";
+import CampaignModal, { CampaignPrefill } from "@/components/dashboard/CampaignModal";
+import { TrialGate } from "@/components/dashboard/TrialGate";
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   draft:     { label: "Rascunho",     className: "bg-muted text-muted-foreground" },
@@ -39,14 +40,19 @@ const CHANNEL_CONFIG = {
 
 export default function Campanhas() {
   const [showModal, setShowModal] = useState(false);
+  const [modalPrefill, setModalPrefill] = useState<CampaignPrefill | undefined>(undefined);
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("new") === "true") {
+      const raw = sessionStorage.getItem("campaign_prefill");
+      if (raw) {
+        try { setModalPrefill(JSON.parse(raw)); } catch { /* ignore */ }
+        sessionStorage.removeItem("campaign_prefill");
+      }
       setShowModal(true);
-      // Limpar o parâmetro da URL sem recarregar a página
       navigate("/dashboard/campanhas", { replace: true });
     }
   }, [location.search, navigate]);
@@ -121,6 +127,8 @@ export default function Campanhas() {
         user_id: user!.id,
         name: `${campaign.name} (cópia)`,
         message: campaign.message,
+        channel: campaign.channel,
+        tags: campaign.tags ?? [],
         status: "draft",
         total_contacts: 0,
         sent_count: 0,
@@ -141,7 +149,12 @@ export default function Campanhas() {
 
   return (
     <div className="space-y-6">
-      {showModal && <CampaignModal onClose={() => setShowModal(false)} />}
+      {showModal && (
+        <CampaignModal
+          prefill={modalPrefill}
+          onClose={() => { setShowModal(false); setModalPrefill(undefined); }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -251,12 +264,42 @@ export default function Campanhas() {
 
       {/* Empty state */}
       {!isLoading && !error && campaigns.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 gap-4 text-muted-foreground">
-          <Megaphone className="w-12 h-12 opacity-20" />
-          <p className="text-sm">Nenhuma campanha criada ainda</p>
-          <Button onClick={() => setShowModal(true)} className="gap-2">
-            <Plus className="w-4 h-4" /> Criar primeira campanha
-          </Button>
+        <div className="flex flex-col items-center justify-center py-16 gap-8 text-center max-w-lg mx-auto">
+          <div className="w-20 h-20 rounded-3xl bg-primary/5 border border-primary/10 flex items-center justify-center">
+            <Megaphone className="w-10 h-10 text-primary/30" />
+          </div>
+          <div className="space-y-2">
+            <p className="font-black text-xl font-syne tracking-tighter uppercase">Nenhuma campanha ainda</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Crie sua primeira campanha e comece a recuperar clientes em minutos. A taxa média de leitura no WhatsApp é de <strong className="text-foreground">94%</strong> — 10x maior que e-mail.
+            </p>
+          </div>
+
+          {/* Step-by-step guide */}
+          <div className="w-full space-y-3 text-left">
+            {[
+              { step: "1", title: "Escolha o canal", desc: "WhatsApp, E-mail ou SMS" },
+              { step: "2", title: "Defina o público", desc: "Por tag, comportamento ou segmento RFM" },
+              { step: "3", title: "Escreva a mensagem", desc: "Ou use os templates da IA" },
+            ].map((s) => (
+              <div key={s.step} className="flex items-start gap-3 p-4 bg-muted/30 rounded-2xl">
+                <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[11px] font-black shrink-0 mt-0.5">{s.step}</div>
+                <div>
+                  <p className="text-sm font-black">{s.title}</p>
+                  <p className="text-xs text-muted-foreground">{s.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 w-full">
+            <Button onClick={() => setShowModal(true)} className="gap-2 font-black rounded-xl flex-1">
+              <Plus className="w-4 h-4" /> Criar primeira campanha
+            </Button>
+            <Button variant="outline" className="gap-2 font-bold rounded-xl" onClick={() => navigate("/dashboard/automacoes")}>
+              Ver automações prontas
+            </Button>
+          </div>
         </div>
       )}
 
@@ -377,17 +420,19 @@ export default function Campanhas() {
 
                     {/* Disparar */}
                     {(c.status === "draft" || c.status === "scheduled") && (
-                      <Button
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={dispatchingId === c.id}
-                        onClick={() => dispatchMutation.mutate(c.id)}
-                      >
-                        {dispatchingId === c.id
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <Play className="w-3.5 h-3.5" />}
-                        {dispatchingId === c.id ? "Disparando..." : "Disparar"}
-                      </Button>
+                      <TrialGate action="disparar campanhas">
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={dispatchingId === c.id}
+                          onClick={() => dispatchMutation.mutate(c.id)}
+                        >
+                          {dispatchingId === c.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Play className="w-3.5 h-3.5" />}
+                          {dispatchingId === c.id ? "Disparando..." : "Disparar"}
+                        </Button>
+                      </TrialGate>
                     )}
                   </div>
                 </div>

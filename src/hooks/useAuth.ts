@@ -37,11 +37,14 @@ export function useAuth() {
   }, []);
 
   async function fetchProfile(userId: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", userId)
       .single();
+    if (error && error.code !== "PGRST116") {
+      console.error("fetchProfile error:", error.message);
+    }
     setProfile(data as Profile | null);
     setLoading(false);
   }
@@ -51,7 +54,7 @@ export function useAuth() {
     return { data, error };
   }
 
-  async function signUp(email: string, password: string, meta: { full_name: string; company_name: string }) {
+  async function signUp(email: string, password: string, meta: { full_name: string; plataforma?: string; company_name?: string }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

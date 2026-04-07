@@ -408,7 +408,7 @@ drop policy if exists "orders_own" on orders;
 create policy "orders_own" on orders for all using (auth.uid() = user_id);
 
 alter table profiles add column if not exists knowledge_base text;
-alter table profiles add column if not exists ai_model text default 'gpt-4o-mini';
+alter table profiles add column if not exists ai_model text default 'claude-3-5-sonnet-20241022';
 alter table profiles add column if not exists loyalty_program_name text default 'Clube VIP';
 alter table profiles add column if not exists points_per_real int default 1;
 

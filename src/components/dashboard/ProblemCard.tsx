@@ -34,79 +34,80 @@ export const ProblemCard: React.FC<ProblemProps> = ({
 
   const getSeverityStyles = () => {
     switch (severidade) {
-      case "critico": return "border-red-500/50 bg-red-500/5 shadow-[0_0_15px_rgba(239,68,68,0.1)] animate-pulse-subtle";
-      case "alto": return "border-orange-500/50 bg-orange-500/5";
-      case "medio": return "border-amber-500/50 bg-amber-500/5";
-      case "oportunidade": return "border-emerald-500/50 bg-emerald-500/5";
-      default: return "border-border";
+      case "critico": return "border-red-500/30 bg-red-500/[0.02] shadow-[0_0_20px_rgba(239,68,68,0.05)] animate-pulse-subtle";
+      case "alto": return "border-orange-500/30 bg-orange-500/[0.02]";
+      case "medio": return "border-amber-500/30 bg-amber-500/[0.02]";
+      case "oportunidade": return "border-emerald-500/30 bg-emerald-500/[0.02]";
+      default: return "border-border/50";
     }
   };
 
   const getSeverityLabel = () => {
     switch (severidade) {
-      case "critico": return "CRÍTICO";
-      case "alto": return "ALTO";
-      case "medio": return "MÉDIO";
+      case "critico": return "ALERTA CRÍTICO";
+      case "alto": return "ALTA PRIORIDADE";
+      case "medio": return "RISCO MÉDIO";
       case "oportunidade": return "OPORTUNIDADE";
     }
   };
 
   return (
-    <div className={cn("border rounded-2xl overflow-hidden transition-all duration-300", getSeverityStyles())}>
-      <div className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className={cn("text-[10px] font-bold tracking-widest", 
-              severidade === "critico" ? "text-red-500 border-red-500/50" : 
-              severidade === "oportunidade" ? "text-emerald-500 border-emerald-500/50" : ""
+    <div className={cn("backdrop-blur-sm border rounded-2xl overflow-hidden transition-all duration-500 group hover:border-primary/30", getSeverityStyles())}>
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className={cn("text-[9px] font-black tracking-[0.2em] px-2 py-0.5 border-0 bg-background/50", 
+              severidade === "critico" ? "text-red-500" : 
+              severidade === "oportunidade" ? "text-emerald-500" : "text-muted-foreground"
             )}>
-              ● {getSeverityLabel()}
+              {getSeverityLabel()}
             </Badge>
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <span className="text-[10px] font-mono text-muted-foreground/50 flex items-center gap-1.5">
               <Clock className="w-3 h-3" /> {detectado_em}
             </span>
-            {status === "novo" && <Badge className="bg-primary text-primary-foreground text-[10px] font-bold">NOVO</Badge>}
+            {status === "novo" && <Badge className="bg-primary text-primary-foreground text-[9px] font-black tracking-tighter px-2 py-0">NOVO</Badge>}
           </div>
           <div className="text-right">
-            <span className="text-xs text-muted-foreground block uppercase font-bold tracking-tight">Impacto estimado</span>
-            <span className={cn("text-lg font-bold font-syne", severidade === "oportunidade" ? "text-emerald-500" : "text-red-500")}>
+            <span className="text-[9px] text-muted-foreground/60 block uppercase font-black tracking-widest mb-1">Impacto Estimado</span>
+            <span className={cn("text-xl font-black font-mono tracking-tighter", severidade === "oportunidade" ? "text-emerald-500" : "text-red-500/80 group-hover:text-red-500 transition-colors")}>
               {impacto_estimado < 0 ? "-" : ""}R$ {Math.abs(impacto_estimado).toLocaleString('pt-BR')}
             </span>
           </div>
         </div>
 
-        <div className="flex gap-4">
-          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", 
-            severidade === "critico" ? "bg-red-500/10 text-red-500" : "bg-muted text-muted-foreground"
+        <div className="flex gap-5">
+          <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 duration-500", 
+            severidade === "critico" ? "bg-red-500/10 text-red-500" : "bg-muted/50 text-muted-foreground/70"
           )}>
             {getIcon()}
           </div>
           <div className="flex-1">
-            <h3 className="text-base font-bold mb-1 leading-tight">{titulo}</h3>
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{descricao}</p>
+            <h3 className="text-base font-bold mb-1.5 leading-tight tracking-tight group-hover:text-primary transition-colors">{titulo}</h3>
+            <p className="text-sm text-muted-foreground/80 line-clamp-2 mb-4 leading-relaxed">{descricao}</p>
             {causa_raiz && (
-              <div className="text-xs bg-muted/50 p-2 rounded-lg border border-border/50 mb-4">
-                <span className="font-bold text-foreground">Causa:</span> {causa_raiz}
+              <div className="text-[11px] bg-background/40 backdrop-blur-md p-3 rounded-xl border border-border/30 mb-5">
+                <span className="font-black text-foreground/70 uppercase tracking-tighter mr-2">Causa raiz:</span>
+                <span className="text-muted-foreground">{causa_raiz}</span>
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center justify-between pt-2 border-t border-border/10 mt-2">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onVer} className="h-8 text-xs font-bold gap-1">
-              Ver detalhe <ChevronDown className="w-3 h-3" />
+            <Button variant="ghost" size="sm" onClick={onVer} className="h-8 text-[10px] font-black tracking-widest uppercase gap-2 hover:bg-primary/5">
+              Ver detalhes <ChevronDown className="w-3 h-3" />
             </Button>
           </div>
           <div className="flex items-center gap-2">
             {onSnooze && (
-              <Button variant="ghost" size="sm" onClick={onSnooze} className="h-8 text-xs font-bold gap-1 text-muted-foreground">
+              <Button variant="ghost" size="sm" onClick={onSnooze} className="h-8 text-[10px] font-black tracking-widest uppercase gap-2 text-muted-foreground/50 hover:text-muted-foreground">
                 <Pause className="w-3 h-3" /> Snooze
               </Button>
             )}
             {onAprovar && (
-              <Button size="sm" onClick={onAprovar} className="h-8 text-xs font-bold gap-1 bg-emerald-500 hover:bg-emerald-600 text-white border-0">
-                <CheckCircle2 className="w-3 h-3" /> Aprovar
+              <Button size="sm" onClick={onAprovar} className="h-9 px-5 text-[10px] font-black tracking-widest uppercase gap-2 bg-emerald-600 hover:bg-emerald-500 text-white border-0 shadow-lg shadow-emerald-900/20">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
               </Button>
             )}
           </div>

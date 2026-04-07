@@ -1,20 +1,26 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, MessageSquare, TrendingDown, Sparkles } from "lucide-react";
+import { Loader2, MessageSquare, Sparkles, CheckCircle2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
+const PLATAFORMAS = [
+  "Shopify", "Nuvemshop", "VTEX", "WooCommerce",
+  "Yampi", "Tray", "Loja Integrada", "Mercado Livre", "Outra",
+];
+
 const schema = z.object({
   full_name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
-  company_name: z.string().min(2, "Nome da empresa obrigatório"),
   email: z.string().email("E-mail inválido"),
   password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
+  plataforma: z.string().min(1, "Selecione sua plataforma"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -34,7 +40,7 @@ export default function Signup() {
     }
   }, [user, authLoading, navigate]);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
@@ -42,7 +48,7 @@ export default function Signup() {
     setLoading(true);
     const { error } = await signUp(data.email, data.password, {
       full_name: data.full_name,
-      company_name: data.company_name,
+      plataforma: data.plataforma,
     });
     setLoading(false);
     if (error) {
@@ -53,7 +59,8 @@ export default function Signup() {
       });
       return;
     }
-    navigate(`/onboarding${perda ? `?perda=${perda}` : ""}`, { replace: true });
+    sessionStorage.setItem("ltv_show_community", "1");
+    navigate(`/analisando${perda ? `?perda=${perda}` : ""}`, { replace: true });
   }
 
   return (
@@ -101,7 +108,7 @@ export default function Signup() {
             </div>
           )}
 
-          <div className="space-y-4 pt-8">
+          <div className="space-y-4 pt-4">
             <div className="flex items-center gap-3 text-sm font-bold text-muted-foreground">
               <CheckCircle2 className="w-5 h-5 text-emerald-500" /> 14 dias de teste grátis
             </div>
@@ -109,7 +116,36 @@ export default function Signup() {
               <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Sem cartão de crédito
             </div>
             <div className="flex items-center gap-3 text-sm font-bold text-muted-foreground">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Conecta com Nuvemshop, ML e mais
+              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Cancele quando quiser, sem multa
+            </div>
+          </div>
+
+          {/* Social proof */}
+          <div className="pt-4 border-t border-border/40">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50 mb-4">O que dizem nossos clientes</p>
+            <div className="space-y-3">
+              <div className="bg-white dark:bg-card/60 border border-border/40 rounded-xl p-4">
+                <div className="flex gap-0.5 mb-2">
+                  {Array(5).fill(0).map((_, i) => (
+                    <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground italic leading-relaxed">
+                  "Recuperamos R$ 38k na primeira semana. Melhor investimento de marketing que já fizemos."
+                </p>
+                <p className="text-[10px] font-bold text-muted-foreground/60 mt-2">— Lucas M., ModaFit</p>
+              </div>
+              <div className="bg-white dark:bg-card/60 border border-border/40 rounded-xl p-4">
+                <div className="flex gap-0.5 mb-2">
+                  {Array(5).fill(0).map((_, i) => (
+                    <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground italic leading-relaxed">
+                  "19% de recuperação de carrinho via WhatsApp. E-mail nunca passou de 3%."
+                </p>
+                <p className="text-[10px] font-bold text-muted-foreground/60 mt-2">— Ana P., Glowskin</p>
+              </div>
             </div>
           </div>
         </div>
@@ -118,8 +154,12 @@ export default function Signup() {
       {/* Right Side: Form */}
       <div className="flex-1 flex items-center justify-center p-6 bg-card md:bg-background">
         <div className="w-full max-w-sm space-y-8">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-black font-syne tracking-tighter">Criar sua conta</h1>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3">
+              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[9px] font-black">1</span>
+              Passo 1 de 3 — Criar conta
+            </div>
+            <h1 className="text-3xl font-black font-syne tracking-tighter">Comece em 30 segundos</h1>
             <p className="text-muted-foreground text-sm font-medium">
               Já tem conta?{" "}
               <Link to="/login" className="text-primary hover:underline font-bold">
@@ -139,19 +179,6 @@ export default function Signup() {
               />
               {errors.full_name && (
                 <p className="text-xs text-destructive font-bold">{errors.full_name.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="company_name" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Nome da sua loja</Label>
-              <Input
-                id="company_name"
-                placeholder="Minha Loja Online"
-                className="h-12 rounded-xl bg-muted/30 border-border/50"
-                {...register("company_name")}
-              />
-              {errors.company_name && (
-                <p className="text-xs text-destructive font-bold">{errors.company_name.message}</p>
               )}
             </div>
 
@@ -183,8 +210,31 @@ export default function Signup() {
               )}
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Sua plataforma</Label>
+              <Controller
+                name="plataforma"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-12 rounded-xl bg-muted/30 border-border/50 font-medium">
+                      <SelectValue placeholder="Shopify, Nuvemshop, VTEX..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PLATAFORMAS.map(p => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.plataforma && (
+                <p className="text-xs text-destructive font-bold">{errors.plataforma.message}</p>
+              )}
+            </div>
+
             <Button type="submit" className="w-full h-14 text-lg font-black bg-primary text-primary-foreground rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all" disabled={loading}>
-              {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : "Começar Recuperação Grátis"}
+              {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : "Criar conta e ir para o diagnóstico →"}
             </Button>
           </form>
 

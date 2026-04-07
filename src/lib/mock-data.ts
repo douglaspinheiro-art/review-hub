@@ -93,7 +93,7 @@ export const mockPrescricoes = [
 ];
 
 export const mockEventosSazonais = [
-  { name: "Dia das Mães", dias_restantes: 18, tipo: "nacional",
+  { nome: "Dia das Mães", dias_restantes: 18, tipo: "nacional",
     relevante_segmento: true, historico_crescimento: 67,
     prescricao_sugerida: "Campanha VIP pré-Dia das Mães" },
 ];
@@ -120,4 +120,34 @@ export const mockClienteDestaque = {
   ultima_msg_whatsapp: "12 dias atrás", 
   msgs_sem_abertura: 0,
 };
+
+export const mockPresetsSazonais = [
+  {
+    id: "dia-das-maes",
+    titulo: "🌹 Especial Dia das Mães",
+    copy: "Oi {{nome}}, que tal surpreender quem você ama? Preparamos uma coleção exclusiva com 15% OFF. Use o cupom MAE15 e garanta o presente com frete grátis! 🎁",
+    segmento: "clientes_ativos",
+    cupom: "MAE15",
+    desconto: 15,
+    canal: "whatsapp"
+  },
+  {
+    id: "namorados",
+    titulo: "💘 Dia dos Namorados",
+    copy: "O amor está no ar! ❤️ Garanta o presente do seu mozão com 20% de desconto e entrega expressa. Clique no botão abaixo para ver as sugestões!",
+    segmento: "vip",
+    cupom: "AMOR20",
+    desconto: 20,
+    canal: "whatsapp"
+  },
+  {
+    id: "black-friday",
+    titulo: "🔥 Black Friday Antecipada",
+    copy: "A maior promoção do ano começou! 🚀 Selecionamos produtos com até 50% OFF para você que já é nosso cliente. Não espere acabar o estoque!",
+    segmento: "todos",
+    cupom: "BLACK50",
+    desconto: 50,
+    canal: "whatsapp"
+  }
+];
 

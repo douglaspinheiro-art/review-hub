@@ -1,13 +1,7 @@
 /**
- * LTV Boost — Webhook de Carrinho Abandonado
+ * LTV Boost v4 — Abandoned Cart Webhook
  *
- * Endpoint: POST /functions/v1/webhook-cart
- *
- * Recebe eventos de e-commerce (Shopify, Nuvemshop, Tray, VTEX, WooCommerce)
- * e salva na tabela abandoned_carts para processamento.
- *
- * Autenticação: header X-Webhook-Secret deve bater com a variável de ambiente
- * WEBHOOK_SECRET configurada no projeto Supabase.
+ * Endpoint: POST /functions/v1/webhook-cart?store_id=UUID
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -18,40 +12,20 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const url = new URL(req.url);
+  const storeId = url.searchParams.get("store_id");
+
+  if (!storeId) {
+    return new Response(JSON.stringify({ error: "store_id is required in query params" }), { status: 400, headers: corsHeaders });
   }
 
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
-  }
-
-  // Validate webhook secret (optional but recommended)
-  const webhookSecret = Deno.env.get("WEBHOOK_SECRET");
-  if (webhookSecret) {
-    const incomingSecret = req.headers.get("x-webhook-secret");
-    if (incomingSecret !== webhookSecret) {
-      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-    }
-  }
-
-  let payload: Record<string, unknown>;
+  let payload: any;
   try {
     payload = await req.json();
   } catch {
     return new Response("Invalid JSON", { status: 400, headers: corsHeaders });
-  }
-
-  // Normalize payload across platforms
-  const source = detectSource(req, payload);
-  const normalized = normalizePayload(source, payload);
-
-  if (!normalized.customer_phone) {
-    return new Response(
-      JSON.stringify({ error: "customer_phone is required" }),
-      { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
   }
 
   const supabase = createClient(
@@ -59,115 +33,140 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
-  // Upsert to avoid duplicates (same source + external_id)
-  const { data, error } = await supabase
-    .from("abandoned_carts")
-    .upsert(
-      {
-        ...normalized,
-        source,
-        raw_payload: payload,
-        status: "pending",
-      },
-      { onConflict: "source,external_id", ignoreDuplicates: false }
-    )
-    .select("id")
-    .single();
+  // 1. Detect and Normalize
+  const source = detectSource(req, payload);
+  const normalized = normalizePayload(source, payload);
 
-  if (error) {
-    console.error("DB error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  if (!normalized.customer_phone) {
+    return new Response(JSON.stringify({ error: "customer_phone not found" }), { status: 422, headers: corsHeaders });
   }
 
-  return new Response(
-    JSON.stringify({ ok: true, id: data?.id }),
-    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
+  // 2. Identify User/Store
+  const { data: store } = await supabase.from("stores").select("user_id").eq("id", storeId).single();
+  if (!store) return new Response(JSON.stringify({ error: "Store not found" }), { status: 404, headers: corsHeaders });
+
+  // 3. Upsert Customer (v3 model)
+  const { data: customer } = await supabase.from("customers_v3").upsert({
+    user_id: store.user_id,
+    store_id: storeId,
+    phone: normalized.customer_phone,
+    email: normalized.customer_email,
+    name: normalized.customer_name,
+  }, { onConflict: "store_id, phone" }).select("id").single();
+
+  // 4. Save Abandoned Cart
+  const { error: cartError } = await supabase.from("abandoned_carts").upsert({
+    user_id: store.user_id,
+    store_id: storeId,
+    customer_id: customer?.id,
+    external_id: normalized.external_id,
+    source,
+    value: normalized.cart_value,
+    items: normalized.cart_items,
+    recovery_url: normalized.recovery_url,
+    status: "pending",
+    raw_payload: payload,
+    // New enriched fields
+    utm_source: normalized.utm_source,
+    utm_medium: normalized.utm_medium,
+    utm_campaign: normalized.utm_campaign,
+    shipping_value: normalized.shipping_value,
+    shipping_zip_code: normalized.shipping_zip_code,
+    payment_failure_reason: normalized.payment_failure_reason,
+    inventory_status: normalized.inventory_status
+  }, { onConflict: "store_id, external_id" });
+
+  if (cartError) {
+    console.error("Cart error:", cartError);
+    return new Response(JSON.stringify({ error: cartError.message }), { status: 500, headers: corsHeaders });
+  }
+
+  // 5. Trigger Flow Engine (Async)
+  fetch(`${url.origin}/functions/v1/flow-engine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': req.headers.get('Authorization') || '' },
+    body: JSON.stringify({ event: 'cart_abandoned', store_id: storeId, customer_id: customer?.id })
+  }).catch(console.error);
+
+  return new Response(JSON.stringify({ ok: true, store_id: storeId }), { status: 200, headers: corsHeaders });
 });
 
-type Source = "shopify" | "nuvemshop" | "tray" | "vtex" | "woocommerce" | "custom";
-
-function detectSource(req: Request, payload: Record<string, unknown>): Source {
+function detectSource(req: Request, payload: any): string {
   const ua = req.headers.get("user-agent") ?? "";
   if (ua.toLowerCase().includes("shopify")) return "shopify";
-  if (payload["store_id"] && payload["checkout"]) return "nuvemshop";
-  if (payload["idPedido"] || payload["idLoja"]) return "tray";
-  if (payload["orderId"] && payload["accountId"]) return "vtex";
-  if (payload["woocommerce_cart_hash"]) return "woocommerce";
+  if (payload.checkout && payload.store_id) return "nuvemshop";
   return "custom";
 }
 
-type NormalizedCart = {
-  external_id?: string;
-  customer_name?: string;
-  customer_phone: string;
-  customer_email?: string;
-  cart_value: number;
-  cart_items: unknown[];
-  recovery_url?: string;
-};
+function normalizePayload(source: string, p: any) {
+  if (source === "shopify") {
+    const ch = p.checkout ?? p;
+    const items = (ch.line_items || []).map((item: any) => ({
+      id: item.product_id,
+      variant_id: item.variant_id,
+      name: item.title,
+      quantity: item.quantity,
+      price: parseFloat(item.price || 0),
+      sku: item.sku,
+      // Shopify inventory and tags (if available in webhook payload)
+      inventory_quantity: item.variant_inventory_management ? item.variant_inventory_policy : null, 
+      category: item.product_type || null,
+      tags: item.properties || []
+    }));
 
-function normalizePayload(source: Source, p: Record<string, unknown>): NormalizedCart {
-  switch (source) {
-    case "shopify": {
-      const checkout = (p["checkout"] ?? p) as Record<string, unknown>;
-      const customer = (checkout["customer"] ?? {}) as Record<string, unknown>;
-      const phone =
-        (checkout["phone"] as string) ??
-        (customer["phone"] as string) ??
-        "";
-      return {
-        external_id: String(checkout["id"] ?? ""),
-        customer_name: [customer["first_name"], customer["last_name"]].filter(Boolean).join(" "),
-        customer_phone: normalizePhone(phone),
-        customer_email: (checkout["email"] ?? customer["email"]) as string | undefined,
-        cart_value: parseFloat(String(checkout["total_price"] ?? checkout["subtotal_price"] ?? 0)),
-        cart_items: (checkout["line_items"] as unknown[]) ?? [],
-        recovery_url: checkout["abandoned_checkout_url"] as string | undefined,
-      };
-    }
-
-    case "nuvemshop": {
-      const ch = (p["checkout"] ?? p) as Record<string, unknown>;
-      const contact = (ch["contact"] ?? {}) as Record<string, unknown>;
-      return {
-        external_id: String(ch["id"] ?? ""),
-        customer_name: contact["name"] as string | undefined,
-        customer_phone: normalizePhone(String(contact["phone"] ?? "")),
-        customer_email: contact["email"] as string | undefined,
-        cart_value: parseFloat(String(ch["total"] ?? 0)),
-        cart_items: (ch["products"] as unknown[]) ?? [],
-        recovery_url: ch["checkout_url"] as string | undefined,
-      };
-    }
-
-    default: {
-      // Generic / custom format
-      const phone =
-        (p["customer_phone"] as string) ??
-        (p["phone"] as string) ??
-        ((p["customer"] as Record<string, unknown>)?.["phone"] as string) ??
-        "";
-      return {
-        external_id: (p["id"] ?? p["external_id"]) as string | undefined,
-        customer_name: (p["customer_name"] ?? p["name"]) as string | undefined,
-        customer_phone: normalizePhone(phone),
-        customer_email: (p["customer_email"] ?? p["email"]) as string | undefined,
-        cart_value: parseFloat(String(p["cart_value"] ?? p["total"] ?? p["value"] ?? 0)),
-        cart_items: (p["cart_items"] ?? p["items"] ?? p["products"] ?? []) as unknown[],
-        recovery_url: (p["recovery_url"] ?? p["checkout_url"]) as string | undefined,
-      };
-    }
+    return {
+      external_id: String(ch.id),
+      customer_name: `${ch.customer?.first_name || ""} ${ch.customer?.last_name || ""}`.trim(),
+      customer_phone: normalizePhone(ch.phone || ch.customer?.phone || ""),
+      customer_email: ch.email || ch.customer?.email,
+      cart_value: parseFloat(ch.total_price || 0),
+      cart_items: items,
+      recovery_url: ch.abandoned_checkout_url,
+      // Enriched fields
+      utm_source: ch.utm_source || null,
+      utm_medium: ch.utm_medium || null,
+      utm_campaign: ch.utm_campaign || null,
+      shipping_value: parseFloat(ch.total_shipping_price_set?.shop_money?.amount || 0),
+      shipping_zip_code: ch.shipping_address?.zip || null,
+      payment_failure_reason: ch.last_payment_error_message || null,
+      // Inventory Status JSON
+      inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity }))
+    };
   }
+  
+  // Nuvemshop or Custom
+  const ch = p.checkout ?? p;
+  const items = (ch.items || ch.products || []).map((item: any) => ({
+    id: item.id || item.product_id,
+    name: item.name || item.title,
+    quantity: item.quantity,
+    price: parseFloat(item.price || 0),
+    sku: item.sku,
+    inventory_quantity: item.stock || null,
+    category: item.category || null
+  }));
+
+  return {
+    external_id: String(ch.id || ""),
+    customer_name: ch.customer_name || ch.contact?.name || "",
+    customer_phone: normalizePhone(ch.customer_phone || ch.contact?.phone || ""),
+    customer_email: ch.customer_email || ch.contact?.email,
+    cart_value: parseFloat(ch.cart_value || ch.total || 0),
+    cart_items: items,
+    recovery_url: ch.recovery_url || ch.checkout_url,
+    utm_source: ch.utm_source || null,
+    utm_medium: ch.utm_medium || null,
+    utm_campaign: ch.utm_campaign || null,
+    shipping_value: parseFloat(ch.shipping_cost || 0),
+    shipping_zip_code: ch.shipping_zip_code || ch.shipping_address?.zip_code || null,
+    payment_failure_reason: ch.payment_error_message || null,
+    inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity }))
+  };
 }
 
-/** Normalizes phone to international format (55XXXXXXXXXX) */
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.startsWith("55") && digits.length >= 12) return digits;
-  if (digits.length === 11 || digits.length === 10) return `55${digits}`;
+  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
   return digits;
 }

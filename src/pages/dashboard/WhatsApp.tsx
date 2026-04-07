@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Wifi, WifiOff, QrCode, Plus, Trash2, RefreshCw,
-  Loader2, CheckCircle, AlertCircle, Settings,
+  Loader2, CheckCircle, AlertCircle, Settings, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -33,10 +34,16 @@ const STATUS_CONFIG = {
 
 export default function WhatsApp() {
   const [showForm, setShowForm] = useState(false);
+  const [showApiConfig, setShowApiConfig] = useState(false);
   const [instanceName, setInstanceName] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  
   // qrMap: connId → base64 QR string
   const [qrMap, setQrMap] = useState<Record<string, string>>({});
   const [qrLoading, setQrLoading] = useState<Record<string, boolean>>({});
+  // countdownMap: connId → seconds remaining (60→0)
+  const [countdownMap, setCountdownMap] = useState<Record<string, number>>({});
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -50,6 +57,13 @@ export default function WhatsApp() {
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
+      
+      // Auto-set API URL/Key from first connection if available
+      if (data && data.length > 0 && !apiUrl && !apiKey) {
+        if (data[0].evolution_api_url) setApiUrl(data[0].evolution_api_url);
+        if (data[0].evolution_api_key) setApiKey(data[0].evolution_api_key);
+      }
+      
       return data as Connection[];
     },
     enabled: !!user,
@@ -61,6 +75,8 @@ export default function WhatsApp() {
         user_id: user!.id,
         instance_name: name.trim(),
         status: "disconnected",
+        evolution_api_url: apiUrl || null,
+        evolution_api_key: apiKey || null,
       });
       if (error) throw error;
     },
@@ -71,6 +87,25 @@ export default function WhatsApp() {
       toast({ title: "Instância criada", description: "Clique em 'Mostrar QR Code' para conectar." });
     },
     onError: () => toast({ title: "Erro ao criar instância", variant: "destructive" }),
+  });
+
+  const updateApiMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("whatsapp_connections")
+        .update({ 
+          evolution_api_url: apiUrl.trim(), 
+          evolution_api_key: apiKey.trim() 
+        })
+        .eq("user_id", user!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
+      setShowApiConfig(false);
+      toast({ title: "Configurações de API atualizadas" });
+    },
+    onError: () => toast({ title: "Erro ao atualizar API", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -102,6 +137,7 @@ export default function WhatsApp() {
       // Evolution API returns base64 as "data:image/png;base64,..." or plain base64
       const src = data.base64.startsWith("data:") ? data.base64 : `data:image/png;base64,${data.base64}`;
       setQrMap((m) => ({ ...m, [conn.id]: src }));
+      setCountdownMap((m) => ({ ...m, [conn.id]: 60 }));
       // Update status to "connecting" in DB
       await supabase.from("whatsapp_connections").update({ status: "connecting" }).eq("id", conn.id);
       queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
@@ -151,6 +187,22 @@ export default function WhatsApp() {
     return () => clearInterval(interval);
   }, [qrMap, connections, checkConnectionState]);
 
+  // Countdown tick — decrement every second for active QRs
+  useEffect(() => {
+    const ids = Object.keys(qrMap);
+    if (ids.length === 0) return;
+    const t = setInterval(() => {
+      setCountdownMap((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => {
+          if ((next[id] ?? 0) > 0) next[id] = (next[id] ?? 0) - 1;
+        });
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [qrMap]);
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center justify-between">
@@ -158,11 +210,61 @@ export default function WhatsApp() {
           <h1 className="text-2xl font-bold">WhatsApp</h1>
           <p className="text-muted-foreground text-sm mt-1">Gerencie suas conexões do WhatsApp Business</p>
         </div>
-        <Button onClick={() => setShowForm(true)} className="gap-2">
-          <Plus className="w-4 h-4" />
-          Nova instância
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowApiConfig(!showApiConfig)} className="gap-2 border-primary/20 hover:bg-primary/5">
+            <Settings className="w-4 h-4" />
+            Configurar API
+          </Button>
+          <Button onClick={() => setShowForm(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Nova instância
+          </Button>
+        </div>
       </div>
+
+      {showApiConfig && (
+        <Card className="p-6 space-y-4 border-primary/20 bg-primary/5 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="w-4 h-4 text-primary" />
+            <h2 className="font-bold">Configuração Evolution API</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="api-url">URL da API</Label>
+              <Input
+                id="api-url"
+                placeholder="https://sua-api.com"
+                value={apiUrl}
+                onChange={(e) => setApiUrl(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="api-key">Chave da API (ApiKey)</Label>
+              <Input
+                id="api-key"
+                type="password"
+                placeholder="sua_chave_secreta"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button 
+              onClick={() => updateApiMutation.mutate()} 
+              disabled={updateApiMutation.isPending || !apiUrl || !apiKey}
+              className="gap-2"
+            >
+              {updateApiMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              Salvar Configurações
+            </Button>
+            <Button variant="ghost" onClick={() => setShowApiConfig(false)}>Cancelar</Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground italic">
+            * Estas configurações serão aplicadas a todas as instâncias desta conta.
+          </p>
+        </Card>
+      )}
 
       {showForm && (
         <div className="bg-card border rounded-xl p-5 space-y-4 animate-in fade-in slide-in-from-top-2">
@@ -218,6 +320,8 @@ export default function WhatsApp() {
             const qr = qrMap[conn.id];
             const loadingQR = qrLoading[conn.id];
             const hasApiConfig = !!(conn.evolution_api_url && conn.evolution_api_key);
+            const countdown = countdownMap[conn.id] ?? 0;
+            const qrExpired = qr && countdown <= 0;
 
             return (
               <div key={conn.id} className="bg-card border rounded-xl p-5 space-y-4">
@@ -263,15 +367,36 @@ export default function WhatsApp() {
                     {qr ? (
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                          <p className="text-sm font-medium text-yellow-700">Aguardando leitura do QR Code…</p>
+                          {qrExpired ? (
+                            <>
+                              <div className="w-2 h-2 rounded-full bg-red-400" />
+                              <p className="text-sm font-medium text-red-600">QR Code expirado</p>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                              <p className="text-sm font-medium text-yellow-700">
+                                Aguardando leitura — <span className="font-black">{countdown}s</span>
+                              </p>
+                            </>
+                          )}
                         </div>
                         <div className="flex gap-6 items-start">
-                          <img
-                            src={qr}
-                            alt="QR Code WhatsApp"
-                            className="w-44 h-44 border-4 border-white rounded-xl shadow-md"
-                          />
+                          {qrExpired ? (
+                            <div className="w-44 h-44 border-4 border-red-100 rounded-xl bg-red-50 flex flex-col items-center justify-center gap-3">
+                              <p className="text-xs font-bold text-red-500 text-center">QR expirado</p>
+                              <Button size="sm" variant="outline" className="gap-2" onClick={() => fetchQR(conn)} disabled={loadingQR}>
+                                {loadingQR ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                Gerar novo
+                              </Button>
+                            </div>
+                          ) : (
+                            <img
+                              src={qr}
+                              alt="QR Code WhatsApp"
+                              className="w-44 h-44 border-4 border-white rounded-xl shadow-md"
+                            />
+                          )}
                           <div className="space-y-3 text-sm text-muted-foreground">
                             <p className="font-medium text-foreground">Como conectar:</p>
                             <ol className="list-decimal list-inside space-y-1.5">
@@ -280,20 +405,21 @@ export default function WhatsApp() {
                               <li>Toque em <strong>Vincular um dispositivo</strong></li>
                               <li>Aponte a câmera para o QR Code</li>
                             </ol>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-2 mt-2"
-                              onClick={() => fetchQR(conn)}
-                              disabled={loadingQR}
-                            >
-                              {loadingQR
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <RefreshCw className="w-3.5 h-3.5" />
-                              }
-                              Atualizar QR
-                            </Button>
-                            <p className="text-xs">O QR Code expira em 60 segundos.</p>
+                            {!qrExpired && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-2 mt-2"
+                                onClick={() => fetchQR(conn)}
+                                disabled={loadingQR}
+                              >
+                                {loadingQR
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <RefreshCw className="w-3.5 h-3.5" />
+                                }
+                                Atualizar QR
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
