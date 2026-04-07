@@ -457,10 +457,10 @@ export default function Dashboard() {
             </div>
             <div onClick={() => navigate("/dashboard/funil")} className="cursor-pointer group">
               <CHSGauge
-                score={mockLoja.conversion_health_score}
-                label={mockLoja.chs_label}
-                breakdown={mockLoja.chs_breakdown}
-                historico={mockLoja.chs_historico}
+                score={statsData?.chs ?? 0}
+                label={statsData?.chsLabel ?? "Sem dados"}
+                breakdown={statsData?.chsBreakdown}
+                historico={statsData?.chsHistory}
                 className="h-full border-none shadow-2xl shadow-primary/5 bg-card/50 backdrop-blur-xl group-hover:scale-[1.02] transition-transform duration-500"
               />
             </div>
@@ -664,16 +664,16 @@ export default function Dashboard() {
                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Radar de Recompra</span>
                   </div>
                   <h3 className="text-2xl font-black font-syne tracking-tighter uppercase italic">
-                    <span className="text-primary">{idealPurchaseCount} clientes</span> no momento ideal de compra
+                    <span className="text-primary">{statsData?.idealPurchaseCount ?? 0} clientes</span> no momento ideal de compra
                   </h3>
                   <div className="grid grid-cols-3 gap-6 pt-2">
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Potencial de Receita</p>
-                      <p className="text-xl font-black font-syne">R$ {estimatedRevenue.toLocaleString("pt-BR")}</p>
+                      <p className="text-xl font-black font-syne">R$ {(statsData?.estimatedRevenue ?? 0).toLocaleString("pt-BR")}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Risco de Churn</p>
-                      <p className="text-xl font-black font-syne text-red-500">{atRiskCount} lojas</p>
+                      <p className="text-xl font-black font-syne text-red-500">{statsData?.atRiskCount ?? 0} clientes</p>
                     </div>
                     <div className="flex items-end pb-1">
                       <Button size="sm" className="h-9 font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/20" onClick={() => navigate("/dashboard/campanhas")}>
