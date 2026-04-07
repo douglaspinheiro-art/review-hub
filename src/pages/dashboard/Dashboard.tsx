@@ -23,7 +23,6 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useProblems, useDashboardStats } from "@/hooks/useDashboard";
 import { predictNextOrder } from "@/lib/ltv-predictor";
-import { useQuery } from "@tanstack/react-query";
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
