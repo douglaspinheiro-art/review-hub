@@ -20,7 +20,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Partial<Database["public"]["Tables"]["profiles"]["Row"]> & { id: string };
+        Insert: Record<string, any>;
         Update: Partial<Database["public"]["Tables"]["profiles"]["Row"]>;
       };
       stores: {
@@ -41,7 +41,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["stores"]["Row"], "id" | "created_at" | "updated_at" | "conversion_health_score" | "chs_history"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["stores"]["Insert"]>;
+        Update: Record<string, any>;
       };
       contacts: {
         Row: {
@@ -60,7 +60,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["contacts"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["contacts"]["Insert"]>;
+        Update: Record<string, any>;
       };
       customers_v3: {
         Row: {
@@ -100,7 +100,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["conversations"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["conversations"]["Insert"]>;
+        Update: Record<string, any>;
       };
       messages: {
         Row: {
@@ -115,7 +115,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["messages"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["messages"]["Insert"]>;
+        Update: Record<string, any>;
       };
       campaigns: {
         Row: {
@@ -138,7 +138,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["campaigns"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["campaigns"]["Insert"]>;
+        Update: Record<string, any>;
       };
       campaign_segments: {
         Row: {
@@ -150,7 +150,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["campaign_segments"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["campaign_segments"]["Insert"]>;
+        Update: Record<string, any>;
       };
       abandoned_carts: {
         Row: {
@@ -178,7 +178,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["abandoned_carts"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["abandoned_carts"]["Insert"]>;
+        Update: Record<string, any>;
       };
       analytics_daily: {
         Row: {
@@ -195,7 +195,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["analytics_daily"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["analytics_daily"]["Insert"]>;
+        Update: Record<string, any>;
       };
       opportunities: {
         Row: {
@@ -215,7 +215,7 @@ export interface Database {
           dados_json: Json | null;
         };
         Insert: Omit<Database["public"]["Tables"]["opportunities"]["Row"], "id" | "detected_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["opportunities"]["Insert"]>;
+        Update: Record<string, any>;
       };
       prescriptions: {
         Row: {
@@ -238,7 +238,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["prescriptions"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["prescriptions"]["Insert"]>;
+        Update: Record<string, any>;
       };
       diagnostics_v3: {
         Row: {
@@ -268,7 +268,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["whatsapp_connections"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["whatsapp_connections"]["Insert"]>;
+        Update: Record<string, any>;
       };
       system_config: {
         Row: {
@@ -277,8 +277,8 @@ export interface Database {
           maintenance_message: string | null;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["system_config"]["Row"], "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["system_config"]["Insert"]>;
+        Insert: Record<string, any>;
+        Update: Record<string, any>;
       };
       integrations: {
         Row: {
@@ -293,7 +293,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["integrations"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["integrations"]["Insert"]>;
+        Update: Record<string, any>;
       };
       lojas: {
         Row: {
@@ -311,7 +311,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["lojas"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["lojas"]["Insert"]>;
+        Update: Record<string, any>;
       };
       metricas_funil: {
         Row: {
@@ -328,7 +328,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["metricas_funil"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["metricas_funil"]["Insert"]>;
+        Update: Record<string, any>;
       };
       diagnosticos: {
         Row: {
@@ -346,7 +346,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["diagnosticos"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["diagnosticos"]["Insert"]>;
+        Update: Record<string, any>;
       };
       configuracoes_convertiq: {
         Row: {
@@ -359,7 +359,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["configuracoes_convertiq"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["configuracoes_convertiq"]["Insert"]>;
+        Update: Record<string, any>;
       };
       automations: {
         Row: {
@@ -375,7 +375,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["automations"]["Row"], "id" | "created_at" | "updated_at" | "sent_count"> & { id?: string; sent_count?: number };
-        Update: Partial<Database["public"]["Tables"]["automations"]["Insert"]>;
+        Update: Record<string, any>;
       };
       notifications: {
         Row: {
@@ -389,7 +389,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["notifications"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["notifications"]["Insert"]>;
+        Update: Record<string, any>;
       };
       nps_responses: {
         Row: {
@@ -401,7 +401,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["nps_responses"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["nps_responses"]["Insert"]>;
+        Update: Record<string, any>;
       };
       cs_alerts: {
         Row: {
@@ -413,7 +413,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["cs_alerts"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["cs_alerts"]["Insert"]>;
+        Update: Record<string, any>;
       };
       api_keys: {
         Row: {
@@ -431,7 +431,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["api_keys"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["api_keys"]["Insert"]>;
+        Update: Record<string, any>;
       };
       agente_ia_config: {
         Row: {
@@ -446,8 +446,8 @@ export interface Database {
           tom_de_voz: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["agente_ia_config"]["Row"], "id"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["agente_ia_config"]["Insert"]>;
+        Insert: Record<string, any>;
+        Update: Record<string, any>;
       };
       attribution_events: {
         Row: {
@@ -464,7 +464,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["attribution_events"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["attribution_events"]["Insert"]>;
+        Update: Record<string, any>;
       };
       webhook_logs: {
         Row: {
@@ -477,7 +477,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["webhook_logs"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["webhook_logs"]["Insert"]>;
+        Update: Record<string, any>;
       };
       products_v3: {
         Row: {
