@@ -374,7 +374,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Record<string, any>; sent_count?: number };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       notifications: {
