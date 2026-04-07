@@ -75,13 +75,14 @@ export default function Configuracoes() {
 
   useEffect(() => {
     if (configV3) {
-      setWaCap([configV3.cap_msgs_whatsapp_semana ?? 2]);
-      setEmailCap([configV3.cap_msgs_email_semana ?? 3]);
-      setCooldown([configV3.cooldown_pos_compra_dias ?? 7]);
-      setPulseAtivo(configV3.pulse_active ?? true);
-      setPulseNum(configV3.pulse_whatsapp_number ?? "");
-      setPulseDia(String(configV3.pulse_day_of_week ?? 1));
-      setPulseHora(configV3.pulse_time ?? "08:00");
+      const cv3 = configV3 as any;
+      setWaCap([cv3.cap_msgs_whatsapp_semana ?? 2]);
+      setEmailCap([cv3.cap_msgs_email_semana ?? 3]);
+      setCooldown([cv3.cooldown_pos_compra_dias ?? 7]);
+      setPulseAtivo(cv3.pulse_active ?? true);
+      setPulseNum(cv3.pulse_whatsapp_number ?? "");
+      setPulseDia(String(cv3.pulse_day_of_week ?? 1));
+      setPulseHora(cv3.pulse_time ?? "08:00");
     }
   }, [configV3]);
 
