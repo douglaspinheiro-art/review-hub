@@ -16,8 +16,7 @@ const config = {
     extend: {
       fontFamily: {
         sans: ["Inter", "sans-serif"],
-        mono: ["JetBrains Mono", "Geist Mono", "ui-monospace", "monospace"],
-        syne: ["Syne", "sans-serif"],
+        display: ["Plus Jakarta Sans", "Inter", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
