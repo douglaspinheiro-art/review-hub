@@ -126,7 +126,7 @@ export default function RFM() {
   const { data: contacts = [], isLoading } = useContacts();
 
   const { segments, maxFreq, maxMonetary } = useMemo(() => {
-    const typedContacts = contacts as Contact[];
+    const typedContacts = contacts as unknown as Contact[];
 
     // Recência: usar last_purchase_at quando disponível, fallback para created_at
     const maxDaysInactive = Math.max(
@@ -328,7 +328,7 @@ export default function RFM() {
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs text-muted-foreground">Frequência →</div>
           <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground" style={{ writingMode: "vertical-rl", transform: "translateY(-50%) rotate(180deg)" }}>← Valor</div>
           {/* Dots */}
-          {(contacts as Contact[]).map((c) => {
+          {(contacts as unknown as Contact[]).map((c) => {
             const freq = c.rfm_frequency ?? 1;
             const monetary = c.rfm_monetary ?? 1;
             const x = maxFreq > 1 ? ((freq - 1) / (maxFreq - 1)) * 85 + 8 : 8;

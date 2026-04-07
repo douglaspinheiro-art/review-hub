@@ -75,15 +75,17 @@ export default function Newsletter() {
       return data;
     },
     enabled: !!campaignId && !!user,
-    onSuccess: (data) => {
-      if (!data || initialized.current) return;
-      initialized.current = true;
-      setName(data.name ?? "Newsletter");
-      setSubject(data.subject ?? "");
-      const loaded = (data as any).blocks as Block[] | null;
-      setBlocks(loaded && loaded.length > 0 ? loaded : createDefaultBlocks());
-    },
   });
+
+  useEffect(() => {
+    if (existingCampaign && !initialized.current) {
+      initialized.current = true;
+      setName(existingCampaign.name ?? "Newsletter");
+      setSubject(existingCampaign.subject ?? "");
+      const loaded = (existingCampaign as any).blocks as Block[] | null;
+      setBlocks(loaded && loaded.length > 0 ? loaded : createDefaultBlocks());
+    }
+  }, [existingCampaign]);
 
   // Init seed blocks if new newsletter
   useEffect(() => {
@@ -114,13 +116,13 @@ export default function Newsletter() {
       if (campaignId) {
         const { error } = await supabase
           .from("campaigns")
-          .update(payload)
+          .update(payload as any)
           .eq("id", campaignId)
           .eq("user_id", user!.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase
-          .from("campaigns")
+        const { data, error } = await (supabase
+          .from("campaigns") as any)
           .insert(payload)
           .select("id")
           .single();

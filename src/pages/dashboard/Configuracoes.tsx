@@ -52,8 +52,8 @@ export default function Configuracoes() {
   const { data: configV3 } = useQuery({
     queryKey: ["configuracoes_v3", user?.id],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("settings_v3" as any)
+      const { data } = await (supabase as any)
+        .from("settings_v3")
         .select("*")
         .eq("user_id", user!.id)
         .maybeSingle();
@@ -100,8 +100,8 @@ export default function Configuracoes() {
             pix_key: pixKey,
           })
           .eq("id", user!.id),
-        supabase
-          .from("settings_v3" as any)
+        (supabase as any)
+          .from("settings_v3")
           .upsert({
             user_id: user!.id,
             cap_msgs_whatsapp_semana: waCap[0],

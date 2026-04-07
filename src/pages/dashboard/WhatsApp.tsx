@@ -64,7 +64,7 @@ export default function WhatsApp() {
         if (data[0].evolution_api_key) setApiKey(data[0].evolution_api_key);
       }
       
-      return data as Connection[];
+      return data as unknown as Connection[];
     },
     enabled: !!user,
   });
@@ -162,7 +162,7 @@ export default function WhatsApp() {
       if (mapped === "connected") {
         // Clear QR, update DB
         setQrMap((m) => { const n = { ...m }; delete n[conn.id]; return n; });
-        await supabase.from("whatsapp_connections").update({
+        await (supabase.from("whatsapp_connections") as any).update({
           status: "connected",
           connected_at: new Date().toISOString(),
         }).eq("id", conn.id);
