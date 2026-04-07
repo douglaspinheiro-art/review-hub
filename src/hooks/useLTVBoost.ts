@@ -7,9 +7,10 @@ export interface StoreV3 {
   id: string;
   name: string;
   conversion_health_score: number;
-  chs_label: string;
-  chs_history: any[];
+  chs_history: any;
   segment: string;
+  pix_key: string;
+  user_id: string;
 }
 
 export interface FunnelMetricsV3 {
@@ -37,7 +38,7 @@ export function useStoreV3(storeId?: string) {
         .eq("id", storeId)
         .single();
       if (error) throw error;
-      return data as StoreV3;
+      return data as unknown as StoreV3;
     },
     enabled: !!storeId,
   });
