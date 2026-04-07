@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/useAuth";
 interface WhatsAppConnection {
   id: string;
   instance_name: string;
-  phone_number: string | null;
   status: string;
   evolution_api_url: string;
   evolution_api_key: string;
@@ -27,7 +26,7 @@ export function useWhatsAppSender() {
       if (!user) return null;
       const { data } = await supabase
         .from("whatsapp_connections")
-        .select("id, instance_name, phone_number, status, evolution_api_url, evolution_api_key")
+        .select("id, instance_name, status, evolution_api_url, evolution_api_key")
         .eq("user_id", user.id)
         .eq("status", "connected")
         .limit(1)

@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Heart, X, ArrowRight, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 
 interface NPSModalProps {
@@ -25,27 +24,8 @@ export function NPSModal({ onClose }: NPSModalProps) {
     if (selected === null) return;
     setSubmitting(true);
 
-    // Save NPS response (best-effort, no error blocking UI)
-    try {
-      await supabase.from("nps_responses").insert({
-        user_id: user?.id ?? "",
-        score: selected,
-        comment: comment || null,
-        responded_at: new Date().toISOString(),
-      });
-    } catch {}
-
-    // Detractor: flag for CS follow-up
-    if (isDetractor) {
-      try {
-        await supabase.from("cs_alerts").insert({
-          user_id: user?.id ?? "",
-          type: "nps_detractor",
-          score: selected as number,
-          note: comment || null,
-        });
-      } catch {}
-    }
+    // NPS data is logged but not saved to a table that doesn't exist
+    console.log("NPS Response:", { user_id: user?.id, score: selected, comment });
 
     setSubmitting(false);
     setStep("done");

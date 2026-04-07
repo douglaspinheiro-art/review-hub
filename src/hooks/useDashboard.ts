@@ -309,8 +309,7 @@ export function useROIAttribution(days = 30) {
           .select("order_value,attributed_campaign_id,attributed_automation_id")
           .eq("user_id", userId)
           .gte("order_date", sinceIso)
-          .then((r: any) => r)
-          .catch(() => ({ data: null, error: { message: "table missing" } })),
+          .then((r: any) => r, () => ({ data: null, error: { message: "table missing" } })),
       ]);
 
       const analytics = analyticsRes.data ?? [];

@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { buildMagicLink, EcommercePlatform } from "@/lib/checkout-builder";
 import { mockProdutos } from "@/lib/mock-data";
 import { useLoja } from "@/hooks/useConvertIQ";
+type LojaExtended = any;
 import { useProductsV3 as useProdutosV3 } from "@/hooks/useLTVBoost";
 
 export type ProdutoParaCampanha = {
@@ -164,7 +165,7 @@ export default function CampaignModal({
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const { error } = await supabase.from("campaigns").insert({
+      const { error } = await (supabase.from("campaigns") as any).insert({
         user_id: user!.id,
         name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
         message: data.message,
@@ -212,7 +213,7 @@ export default function CampaignModal({
   }
 
   function handleInsertMagicLink() {
-    if (!loja.data?.url) {
+    if (!(loja.data as any)?.url) {
       toast({ title: "Configure a URL da loja", description: "Acesse Funil → Configurar loja e informe a URL da sua loja.", variant: "destructive" });
       return;
     }
@@ -220,10 +221,10 @@ export default function CampaignModal({
       toast({ title: "Informe o SKU/ID do produto", variant: "destructive" });
       return;
     }
-    const platform = (loja.data.plataforma === "outro" ? "custom" : loja.data.plataforma) as EcommercePlatform;
+    const platform = ((loja.data as any)?.plataforma === "outro" ? "custom" : (loja.data as any)?.plataforma) as EcommercePlatform;
     const url = buildMagicLink({
       platform,
-      storeUrl: loja.data.url,
+      storeUrl: (loja.data as any)?.url,
       cartItems: [{ id: magicSku.trim(), quantity: Number(magicQty) || 1 }],
       couponCode: magicCoupon.trim() || undefined,
     });
@@ -249,7 +250,7 @@ export default function CampaignModal({
       // Auto-generate message and advance
       const msg = gerarMensagemProdutos(
         campaignMode, selectedProducts, collectionName, prodCoupon,
-        loja.data?.url ?? "", loja.data?.plataforma ?? "custom"
+        (loja.data as any)?.url ?? "", (loja.data as any)?.plataforma ?? "custom"
       );
       if (msg) setValue("message", msg);
       setStep(s => s + 1);
@@ -558,7 +559,7 @@ export default function CampaignModal({
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sugestões do Claude</h3>
                     {aiVariations.length === 0 && !aiLoading && (
                       <div className="h-full min-h-[250px] border-2 border-dashed border-border/50 rounded-[2rem] flex flex-col items-center justify-center p-8 text-center space-y-4">
-                        <Bot className="w-12 h-12 text-muted-foreground opacity-20" />
+                        <Sparkles className="w-12 h-12 text-muted-foreground opacity-20" />
                         <p className="text-xs text-muted-foreground font-medium">Clique no botão acima para que o Claude analise seu público e sugira a melhor mensagem.</p>
                       </div>
                     )}
@@ -595,7 +596,7 @@ export default function CampaignModal({
                             <div className="flex items-center gap-3">
                               <input type="radio" value={seg} {...register("segment")} className="sr-only" />
                               <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", watch("segment") === seg ? "bg-primary text-white" : "bg-muted")}>
-                                {seg === 'vip' ? <Trophy className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+                                {seg === 'vip' ? <Trophy className="w-5 h-5" /> : <Target className="w-5 h-5" />}
                               </div>
                               <span className="text-xs font-black uppercase tracking-widest">{seg.replace('_', ' ')}</span>
                             </div>

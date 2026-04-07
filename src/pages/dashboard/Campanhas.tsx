@@ -123,12 +123,12 @@ export default function Campanhas() {
 
   const duplicateMutation = useMutation({
     mutationFn: async (campaign: typeof campaigns[number]) => {
-      const { error } = await supabase.from("campaigns").insert({
+      const { error } = await (supabase.from("campaigns") as any).insert({
         user_id: user!.id,
         name: `${campaign.name} (cópia)`,
         message: campaign.message,
         channel: campaign.channel,
-        tags: campaign.tags ?? [],
+        tags: (campaign as any).tags ?? [],
         status: "draft",
         total_contacts: 0,
         sent_count: 0,

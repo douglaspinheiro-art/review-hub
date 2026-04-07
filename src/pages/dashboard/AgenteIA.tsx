@@ -102,7 +102,7 @@ export default function AgenteIA() {
   }, [selectedLoja]);
 
   async function fetchLojas() {
-    const { data } = await supabase.from("lojas").select("id, nome");
+    const { data } = await supabase.from("stores").select("id, name");
     if (data && data.length > 0) {
       setLojas(data);
       setSelectedLoja(data[0].id);
@@ -112,9 +112,9 @@ export default function AgenteIA() {
   async function fetchConfig() {
     setLoading(true);
     const { data: aiData } = await supabase
-      .from("agente_ia_config")
+      .from("ai_agent_config" as any)
       .select("*")
-      .eq("loja_id", selectedLoja)
+      .eq("store_id" as any, selectedLoja)
       .maybeSingle();
 
     if (aiData) setConfig(aiData);
@@ -136,18 +136,18 @@ export default function AgenteIA() {
       prompt_sistema: preset.prompt
     });
     setIsDirty(true);
-    toast.info(`Personalidade '${preset.nome}' aplicada!`);
+    toast.info(`Personalidade '${preset.name}' aplicada!`);
   };
 
   async function handleSave() {
     setSaving(true);
     try {
-      await supabase.from("agente_ia_config").upsert({
+      await supabase.from("ai_agent_config" as any).upsert({
         ...config,
         user_id: user!.id,
-        loja_id: selectedLoja,
+        store_id: selectedLoja,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'loja_id' });
+      }, { onConflict: 'store_id' });
 
       await supabase.from("profiles").update({
         ia_negotiation_enabled: iaNegotiation,
@@ -182,7 +182,7 @@ export default function AgenteIA() {
               </SelectTrigger>
               <SelectContent>
                 {lojas.map(l => (
-                  <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
+                  <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -322,7 +322,7 @@ export default function AgenteIA() {
                           <p.icon className="w-6 h-6" />
                         </div>
                         <div className="flex-1 text-left">
-                          <h4 className="font-bold text-sm">{p.nome}</h4>
+                          <h4 className="font-bold text-sm">{p.name}</h4>
                           <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{p.desc}</p>
                         </div>
                       </div>

@@ -54,7 +54,7 @@ export default function CarrinhoAbandonado() {
       if (filter !== "all") q = q.eq("status", filter);
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []) as Cart[];
+      return (data ?? []) as unknown as Cart[];
     },
     enabled: !!user,
   });

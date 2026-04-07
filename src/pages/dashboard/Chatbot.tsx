@@ -79,7 +79,7 @@ export default function Chatbot() {
   }, [selectedLoja]);
 
   async function fetchLojas() {
-    const { data } = await supabase.from("lojas").select("id, nome");
+    const { data } = await supabase.from("stores").select("id, name");
     if (data && data.length > 0) {
       setLojas(data);
       setSelectedLoja(data[0].id);
@@ -89,9 +89,9 @@ export default function Chatbot() {
   async function fetchConfig() {
     setLoading(true);
     const { data, error } = await supabase
-      .from("agente_ia_config")
+      .from("ai_agent_config" as any)
       .select("*")
-      .eq("loja_id", selectedLoja)
+      .eq("store_id" as any, selectedLoja)
       .maybeSingle();
 
     if (data) {
@@ -100,7 +100,7 @@ export default function Chatbot() {
       // Reset config for new store or use defaults
       const defaultPreset = PERSONALIDADES.find(p => p.id === 'consultivo');
       setConfig({
-        loja_id: selectedLoja,
+        store_id: selectedLoja,
         ativo: false,
         modo: 'sugestao',
         personalidade_preset: 'consultivo',
@@ -118,17 +118,17 @@ export default function Chatbot() {
       personalidade_preset: preset.id,
       prompt_sistema: preset.prompt
     });
-    toast.info(`Personalidade '${preset.nome}' aplicada!`);
+    toast.info(`Personalidade '${preset.name}' aplicada!`);
   };
 
   async function handleSave() {
     setSaving(true);
     const { error } = await supabase
-      .from("agente_ia_config")
+      .from("ai_agent_config" as any)
       .upsert({
         ...config,
         user_id: user!.id,
-        loja_id: selectedLoja,
+        store_id: selectedLoja,
         updated_at: new Date().toISOString()
       }, { onConflict: 'loja_id' });
 
@@ -158,7 +158,7 @@ export default function Chatbot() {
               </SelectTrigger>
               <SelectContent>
                 {lojas.map(l => (
-                  <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
+                  <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -206,7 +206,7 @@ export default function Chatbot() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-bold text-sm">{p.nome}</h4>
+                        <h4 className="font-bold text-sm">{p.name}</h4>
                         {config.personalidade_preset === p.id && <Zap className="w-3 h-3 text-primary fill-primary" />}
                       </div>
                       <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{p.desc}</p>
