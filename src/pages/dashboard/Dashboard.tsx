@@ -251,7 +251,6 @@ export default function Dashboard() {
                 R$ {revenueRecovered.toLocaleString("pt-BR")} já recuperados para você.
               </p>
             )}
-            </p>
 
             {/* CTA principal — sempre visível acima do fold */}
             <div className="flex items-center gap-3 pt-3">
