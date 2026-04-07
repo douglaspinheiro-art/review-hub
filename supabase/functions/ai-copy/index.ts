@@ -1,28 +1,46 @@
-/**
- * LTV Boost v4 — AI Copywriting Engine
- * Generates persuasive messages for WhatsApp/Email using Claude 3.5 Sonnet
- */
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkRL(key: string, max = 15, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const e = rateLimitMap.get(key);
+  if (!e || now > e.resetAt) { rateLimitMap.set(key, { count: 1, resetAt: now + windowMs }); return true; }
+  if (e.count >= max) return false;
+  e.count++;
+  return true;
+}
+
+const BodySchema = z.object({
+  type: z.enum(["whatsapp", "email"]),
+  objective: z.enum(["recuperar_carrinho", "boas_vindas", "reativacao", "upsell"]),
+  customer_name: z.string().max(200).optional(),
+  product_name: z.string().max(500).optional(),
+  discount_value: z.number().min(0).max(100).optional(),
+  tone: z.enum(["persuasivo", "amigavel", "urgente"]).default("persuasivo"),
+  brand_context: z.string().max(2000).default(""),
+});
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { 
-      type, // 'whatsapp' | 'email'
-      objective, // 'recuperar_carrinho' | 'boas_vindas' | 'reativacao' | 'upsell'
-      customer_name,
-      product_name,
-      discount_value,
-      tone = "persuasivo", // 'persuasivo' | 'amigavel' | 'urgente'
-      brand_context = ""
-    } = await req.json();
+    const body = await req.json();
+    const parsed = BodySchema.safeParse(body);
+    if (!parsed.success) {
+      return new Response(JSON.stringify({ error: "Validation failed", details: parsed.error.flatten().fieldErrors }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const { type, objective, customer_name, product_name, discount_value, tone, brand_context } = parsed.data;
+
+    const clientIp = req.headers.get("x-forwarded-for") || "unknown";
+    if (!checkRL(clientIp)) {
+      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: corsHeaders });
+    }
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
@@ -46,29 +64,15 @@ Gere 3 variações curtas e eficazes.`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
+      headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 1000, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
     });
 
     const data = await response.json();
     const copy = data.content[0].text;
 
-    return new Response(JSON.stringify({ copy }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ copy }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
