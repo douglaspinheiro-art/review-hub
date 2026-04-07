@@ -7,19 +7,27 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import ProtectedRoute from "./components/ProtectedRoute.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
-import { useAuth } from "@/hooks/useAuth";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
+import { useIsAdmin } from "@/hooks/useAdminCheck";
 import TelaManutencao from "./components/TelaManutencao";
 import { DemoProvider } from "@/contexts/DemoContext.tsx";
 
-const queryClient = new QueryClient();
+// ── QueryClient with stability config ─────────────────────────────────────────
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 2,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
   const { data: config } = useSistemaConfig();
-  const { profile } = useAuth();
-  
+  const { data: isAdmin } = useIsAdmin();
+
   const isManutencao = config?.maintenance_active ?? false;
-  const isAdmin = profile?.role === "admin";
 
   if (isManutencao && !isAdmin) {
     return <TelaManutencao mensagem={config?.maintenance_message ?? null} />;
@@ -169,7 +177,7 @@ const App = () => (
           <Route path="/pontos/:slug" element={<Pontos />} />
           <Route path="/reset-password" element={<ResetPassword />} />
 
-          {/* Demo dashboard — sem login */}
+          {/* Demo dashboard */}
           <Route path="/demo" element={<DemoRoute><Dashboard /></DemoRoute>} />
           <Route path="/demo/prescricoes" element={<DemoRoute><Prescricoes /></DemoRoute>} />
           <Route path="/demo/funil" element={<DemoRoute><Funil /></DemoRoute>} />
