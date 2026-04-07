@@ -143,12 +143,12 @@ export default function Dashboard() {
   const stats = [
     { label: "LTV Boost ROI",  value: `${roi}x`,  trend: revenueGrowth, icon: Zap, color: "text-emerald-500" },
     { label: "Recuperado",     value: `R$ ${revenueRecovered.toLocaleString("pt-BR")}`, trend: revenueGrowth, icon: DollarSign, color: "text-primary" },
-    { label: "Conversão",      value: `${statsData?.conversionRate?.toFixed(2) ?? "0.00"}%`, trend: 0, icon: TrendingUp },
-    { label: "Novos Clientes", value: (statsData?.newContacts ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
+    { label: "Conversão",      value: `${((statsData as any)?.conversionRate ?? 0).toFixed(2)}%`, trend: 0, icon: TrendingUp },
+    { label: "Novos Clientes", value: ((statsData as any)?.newContacts ?? statsData?.newContactsLast30 ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
   ];
 
   const pendingCount = problems.length;
-  const pendingValue = problems.reduce((acc, p) => acc + Number(p.impacto_estimado || 0), 0);
+  const pendingValue = problems.reduce((acc, p) => acc + Number((p as any).impacto_estimado || p.estimated_impact || 0), 0);
 
   return (
     <>
@@ -309,12 +309,12 @@ export default function Dashboard() {
                   <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Sua primeira semana</span>
                 </div>
                 <h2 className="text-3xl md:text-4xl font-black font-syne tracking-tighter text-emerald-400">
-                  R$ {pd.recovered.toLocaleString("pt-BR")}
+                  R$ {(statsData?.revenueLast30 ?? 0).toLocaleString("pt-BR")}
                 </h2>
                 <p className="text-sm text-muted-foreground font-medium">recuperados pela IA nesta semana. Cada prescrição aprovada aumenta esse número.</p>
                 <div className="flex gap-6 pt-2">
                   <div>
-                    <p className="text-2xl font-black">{pd.roi}x</p>
+                    <p className="text-2xl font-black">{roi}x</p>
                     <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest">ROI sobre assinatura</p>
                   </div>
                   <div className="w-px bg-border/20" />
@@ -465,10 +465,10 @@ export default function Dashboard() {
             </div>
             <div onClick={() => navigate("/dashboard/funil")} className="cursor-pointer group">
               <CHSGauge
-                score={statsData?.chs ?? 0}
-                label={statsData?.chsLabel ?? "Sem dados"}
-                breakdown={statsData?.chsBreakdown}
-                historico={statsData?.chsHistory}
+                score={(statsData as any)?.chs ?? 0}
+                label={(statsData as any)?.chsLabel ?? "Sem dados"}
+                breakdown={(statsData as any)?.chsBreakdown}
+                historico={(statsData as any)?.chsHistory}
                 className="h-full border-none shadow-2xl shadow-primary/5 bg-card/50 backdrop-blur-xl group-hover:scale-[1.02] transition-transform duration-500"
               />
             </div>
@@ -672,16 +672,16 @@ export default function Dashboard() {
                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Radar de Recompra</span>
                   </div>
                   <h3 className="text-2xl font-black font-syne tracking-tighter uppercase italic">
-                    <span className="text-primary">{statsData?.idealPurchaseCount ?? 0} clientes</span> no momento ideal de compra
+                    <span className="text-primary">{(statsData as any)?.idealPurchaseCount ?? 0} clientes</span> no momento ideal de compra
                   </h3>
                   <div className="grid grid-cols-3 gap-6 pt-2">
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Potencial de Receita</p>
-                      <p className="text-xl font-black font-syne">R$ {(statsData?.estimatedRevenue ?? 0).toLocaleString("pt-BR")}</p>
+                      <p className="text-xl font-black font-syne">R$ {((statsData as any)?.estimatedRevenue ?? 0).toLocaleString("pt-BR")}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Risco de Churn</p>
-                      <p className="text-xl font-black font-syne text-red-500">{statsData?.atRiskCount ?? 0} clientes</p>
+                      <p className="text-xl font-black font-syne text-red-500">{(statsData as any)?.atRiskCount ?? 0} clientes</p>
                     </div>
                     <div className="flex items-end pb-1">
                       <Button size="sm" className="h-9 font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/20" onClick={() => navigate("/dashboard/campanhas")}>
@@ -696,13 +696,13 @@ export default function Dashboard() {
                 problems.map((p, i) => (
                   <ProblemCard
                     key={p.id}
-                    tipo={p.tipo as any}
-                    titulo={p.titulo}
-                    descricao={p.descricao || "Impacto imediato no lucro líquido."}
-                    severidade={p.severidade as any}
-                    impacto_estimado={p.impacto_estimado}
-                    causa_raiz={p.causa_raiz}
-                    detectado_em={p.detectado_em}
+                    tipo={(p as any).tipo ?? p.type}
+                    titulo={(p as any).titulo ?? p.title}
+                    descricao={(p as any).descricao ?? p.description ?? "Impacto imediato no lucro líquido."}
+                    severidade={(p as any).severidade ?? p.severity}
+                    impacto_estimado={(p as any).impacto_estimado ?? p.estimated_impact}
+                    causa_raiz={(p as any).causa_raiz ?? p.root_cause}
+                    detectado_em={(p as any).detectado_em ?? p.detected_at}
                     status={p.status as any}
                     onVer={() => navigate("/dashboard/prescricoes")}
                     onAprovar={() => navigate("/dashboard/prescricoes")}

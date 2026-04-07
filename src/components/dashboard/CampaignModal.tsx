@@ -165,7 +165,7 @@ export default function CampaignModal({
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const { error } = await (supabase.from("campaigns") as any).insert({
+      const { error } = await (supabase.from("campaigns") as any).insert([{
         user_id: user!.id,
         name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
         message: data.message,
@@ -178,7 +178,7 @@ export default function CampaignModal({
         delivered_count: 0,
         read_count: 0,
         reply_count: 0,
-      });
+      }]);
       if (error) throw error;
     },
     onSuccess: () => {

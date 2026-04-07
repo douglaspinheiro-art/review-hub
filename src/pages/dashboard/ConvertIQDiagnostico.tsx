@@ -157,7 +157,7 @@ export default function ConvertIQDiagnostico() {
     );
   }
 
-  const diagJson = lastDiag.data.recomendacoes as DiagnosticoJSON | null;
+  const diagJson = lastDiag.data.recomendacoes as unknown as DiagnosticoJSON | null;
   const problemas = diagJson?.problemas ?? [];
   const perda_principal = diagJson?.perda_principal ?? "Não identificado";
   const pct = diagJson?.percentual_explicado ?? 0;
@@ -283,7 +283,7 @@ export default function ConvertIQDiagnostico() {
                   <p className="text-sm font-medium">
                     {new Date(d.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
                   </p>
-                  <p className="text-xs text-muted-foreground">{d.taxa_conversao}% conversão · {(d.recomendacoes as DiagnosticoJSON)?.problemas?.length ?? 0} problemas</p>
+                  <p className="text-xs text-muted-foreground">{d.taxa_conversao}% conversão · {(d.recomendacoes as unknown as DiagnosticoJSON)?.problemas?.length ?? 0} problemas</p>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">Score {d.score}</span>
               </div>

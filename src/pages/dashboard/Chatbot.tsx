@@ -88,10 +88,10 @@ export default function Chatbot() {
 
   async function fetchConfig() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("ai_agent_config" as any)
+    const { data, error } = await (supabase as any)
+      .from("ai_agent_config")
       .select("*")
-      .eq("store_id" as any, selectedLoja)
+      .eq("store_id", selectedLoja)
       .maybeSingle();
 
     if (data) {
@@ -123,8 +123,8 @@ export default function Chatbot() {
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase
-      .from("ai_agent_config" as any)
+    const { error } = await (supabase as any)
+      .from("ai_agent_config")
       .upsert({
         ...config,
         user_id: user!.id,
@@ -206,7 +206,7 @@ export default function Chatbot() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-bold text-sm">{p.name}</h4>
+                        <h4 className="font-bold text-sm">{p.nome}</h4>
                         {config.personalidade_preset === p.id && <Zap className="w-3 h-3 text-primary fill-primary" />}
                       </div>
                       <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{p.desc}</p>

@@ -104,7 +104,7 @@ export default function Pontos() {
 
       if (rpcError) throw rpcError;
 
-      const payload = result as { error?: string } & LoyaltyData;
+      const payload = result as unknown as { error?: string } & LoyaltyData;
       if (payload.error) {
         setError(payload.error);
       } else {

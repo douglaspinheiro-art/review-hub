@@ -111,10 +111,10 @@ export default function AgenteIA() {
 
   async function fetchConfig() {
     setLoading(true);
-    const { data: aiData } = await supabase
-      .from("ai_agent_config" as any)
+    const { data: aiData } = await (supabase as any)
+      .from("ai_agent_config")
       .select("*")
-      .eq("store_id" as any, selectedLoja)
+      .eq("store_id", selectedLoja)
       .maybeSingle();
 
     if (aiData) setConfig(aiData);
@@ -142,7 +142,7 @@ export default function AgenteIA() {
   async function handleSave() {
     setSaving(true);
     try {
-      await supabase.from("ai_agent_config" as any).upsert({
+      await (supabase as any).from("ai_agent_config").upsert({
         ...config,
         user_id: user!.id,
         store_id: selectedLoja,
@@ -322,7 +322,7 @@ export default function AgenteIA() {
                           <p.icon className="w-6 h-6" />
                         </div>
                         <div className="flex-1 text-left">
-                          <h4 className="font-bold text-sm">{p.name}</h4>
+                          <h4 className="font-bold text-sm">{p.nome}</h4>
                           <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{p.desc}</p>
                         </div>
                       </div>

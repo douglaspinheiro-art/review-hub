@@ -141,10 +141,10 @@ export default function ConvertIQPlano() {
     );
   }
 
-  const diagJson   = lastDiag.data?.recomendacoes as DiagnosticoJSON | null;
+  const diagJson   = lastDiag.data?.recomendacoes as unknown as DiagnosticoJSON | null;
   const recs       = diagJson?.recomendacoes ?? [];
   const totalImpacto = recs.reduce((s, r) => s + r.impacto_pp, 0);
-  const ticket     = Number(loja.data?.ticket_medio ?? 250);
+  const ticket     = Number((loja.data as any)?.ticket_medio ?? 250);
   const visitantes = (lastDiag.data?.dados_funil as Record<string, number> | null)?.visitantes ?? 12400;
   const ganhoPotencial = Math.round((totalImpacto / 100) * visitantes * ticket);
 

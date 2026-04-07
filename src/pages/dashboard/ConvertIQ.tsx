@@ -200,7 +200,7 @@ export default function ConvertIQ() {
     : MOCK_METRICAS;
 
   const meta    = Number(config.data?.meta_conversao  ?? MOCK_CONFIG.meta_conversao);
-  const ticket  = Number(loja.data?.ticket_medio       ?? MOCK_CONFIG.ticket_medio);
+  const ticket  = Number((loja.data as any)?.ticket_medio ?? MOCK_CONFIG.ticket_medio);
   const { taxaConversao, perdaMensal, etapas, maiorGargalo } = calcFunil(raw, meta, ticket);
 
   // Biggest drop index (0-based among steps 1-4)
@@ -259,7 +259,7 @@ export default function ConvertIQ() {
           <div>
             <h1 className="text-xl font-bold">ConvertIQ</h1>
             {loja.data && (
-              <p className="text-xs text-muted-foreground">{loja.data.nome} · {loja.data.plataforma}</p>
+              <p className="text-xs text-muted-foreground">{(loja.data as any)?.nome ?? loja.data?.name} · {(loja.data as any)?.plataforma ?? (loja.data as any)?.segment}</p>
             )}
           </div>
         </div>

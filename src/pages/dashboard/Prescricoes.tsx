@@ -220,7 +220,7 @@ export default function Prescricoes() {
                       <p className="text-[10px] text-muted-foreground mb-4">Disponível no plano Growth</p>
                       <Button 
                         size="sm" 
-                        variant="primary" 
+                        variant="default" 
                         className="h-8 font-bold text-[10px] uppercase tracking-widest px-4 rounded-lg bg-primary text-primary-foreground"
                         onClick={() => navigate('/planos')}
                       >

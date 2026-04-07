@@ -284,7 +284,7 @@ export default function Funil() {
       };
 
   const meta   = Number(config.data?.meta_conversao ?? MOCK_CONFIG.meta_conversao);
-  const ticket = Number(loja.data?.ticket_medio     ?? MOCK_CONFIG.ticket_medio);
+  const ticket = Number((loja.data as any)?.ticket_medio     ?? MOCK_CONFIG.ticket_medio);
   const { taxaConversao, perdaMensal, etapas, maiorGargalo } = calcFunil(raw, meta, ticket);
 
   const maxDropIdx = etapas.reduce((mi, e, i) => i > 0 && e.dropPct > (etapas[mi]?.dropPct ?? 0) ? i : mi, 1);
@@ -372,7 +372,7 @@ export default function Funil() {
             Funil de <span className="text-primary">Conversão</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {loja.data ? `${loja.data.nome} · ${loja.data.plataforma}` : "Análise profunda do comportamento de compra"}
+            {loja.data ? `${(loja.data as any).nome ?? loja.data.name} · ${(loja.data as any).plataforma ?? (loja.data as any).segment}` : "Análise profunda do comportamento de compra"}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

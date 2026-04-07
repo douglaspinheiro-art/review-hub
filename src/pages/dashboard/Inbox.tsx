@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, Search, Clock, Send, Loader2, WifiOff, Settings, AlertCircle, Sparkles, User, Check, MoreVertical, Plus, Smile, Paperclip, Zap as ZapIcon } from "lucide-react";
+import { MessageCircle, Search, Clock, Send, Loader2, WifiOff, Settings, AlertCircle, Sparkles, User, Check, MoreVertical, Plus, Smile, Paperclip, Zap as ZapIcon, Minus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useConversations, useMessages } from "@/hooks/useDashboard";
@@ -487,7 +487,7 @@ export default function Inbox() {
                   <Clock className="w-3.5 h-3.5" /> Pendente
                 </button>
 
-                <Separator orientation="vertical" className="h-6 mx-1 hidden sm:block" />
+                <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
 
                 <button
                   onClick={() => setShowSidebar(!showSidebar)}
@@ -687,7 +687,7 @@ export default function Inbox() {
               {/* Sidebar do contato */}
               {showSidebar && (
                 <ContactInfoSidebar 
-                  contact={selectedContact} 
+                  contact={selectedContact as any} 
                   className="hidden lg:flex border-l border-t-0"
                 />
               )}
