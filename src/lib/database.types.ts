@@ -40,7 +40,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["stores"]["Row"], "id" | "created_at" | "updated_at" | "conversion_health_score" | "chs_history"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       contacts: {
@@ -59,7 +59,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["contacts"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       customers_v3: {
@@ -82,7 +82,7 @@ export interface Database {
           customer_health_score: number;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["customers_v3"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       conversations: {
@@ -99,7 +99,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["conversations"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       messages: {
@@ -114,7 +114,7 @@ export interface Database {
           external_id: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["messages"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       campaigns: {
@@ -137,7 +137,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["campaigns"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       campaign_segments: {
@@ -149,7 +149,7 @@ export interface Database {
           estimated_reach: number;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["campaign_segments"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       abandoned_carts: {
@@ -177,7 +177,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["abandoned_carts"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       analytics_daily: {
@@ -194,7 +194,7 @@ export interface Database {
           revenue_influenced: number;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["analytics_daily"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       opportunities: {
@@ -214,7 +214,7 @@ export interface Database {
           resolved_at: string | null;
           dados_json: Json | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["opportunities"]["Row"], "id" | "detected_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       prescriptions: {
@@ -237,7 +237,7 @@ export interface Database {
           status: "aguardando_aprovacao" | "aprovada" | "em_execucao" | "concluida" | "rejeitada";
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["prescriptions"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       diagnostics_v3: {
@@ -249,7 +249,7 @@ export interface Database {
           chs_label: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["diagnostics_v3"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       whatsapp_connections: {
@@ -267,7 +267,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["whatsapp_connections"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       system_config: {
@@ -292,7 +292,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["integrations"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       lojas: {
@@ -310,7 +310,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["lojas"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       metricas_funil: {
@@ -327,7 +327,7 @@ export interface Database {
           receita: number;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["metricas_funil"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       diagnosticos: {
@@ -345,7 +345,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["diagnosticos"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       configuracoes_convertiq: {
@@ -358,7 +358,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["configuracoes_convertiq"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       automations: {
@@ -374,7 +374,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["automations"]["Row"], "id" | "created_at" | "updated_at" | "sent_count"> & { id?: string; sent_count?: number };
+        Insert: Record<string, any>; sent_count?: number };
         Update: Record<string, any>;
       };
       notifications: {
@@ -388,7 +388,7 @@ export interface Database {
           read_at: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["notifications"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       nps_responses: {
@@ -400,7 +400,7 @@ export interface Database {
           responded_at: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["nps_responses"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       cs_alerts: {
@@ -412,7 +412,7 @@ export interface Database {
           note: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["cs_alerts"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       api_keys: {
@@ -430,7 +430,7 @@ export interface Database {
           is_active: boolean;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["api_keys"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       agente_ia_config: {
@@ -463,7 +463,7 @@ export interface Database {
           attributed_automation_id: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["attribution_events"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       webhook_logs: {
@@ -476,7 +476,7 @@ export interface Database {
           erro_mensagem: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["webhook_logs"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
       products_v3: {
@@ -491,7 +491,7 @@ export interface Database {
           category: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["products_v3"]["Row"], "id" | "created_at"> & { id?: string };
+        Insert: Record<string, any>;
         Update: Record<string, any>;
       };
     };
