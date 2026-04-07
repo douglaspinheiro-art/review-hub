@@ -26,21 +26,25 @@ export function NPSModal({ onClose }: NPSModalProps) {
     setSubmitting(true);
 
     // Save NPS response (best-effort, no error blocking UI)
-    await supabase.from("nps_responses").insert({
-      user_id: user?.id,
-      score: selected,
-      comment: comment || null,
-      responded_at: new Date().toISOString(),
-    }).then(() => {}).catch(() => {});
+    try {
+      await supabase.from("nps_responses").insert({
+        user_id: user?.id ?? "",
+        score: selected,
+        comment: comment || null,
+        responded_at: new Date().toISOString(),
+      });
+    } catch {}
 
     // Detractor: flag for CS follow-up
     if (isDetractor) {
-      await supabase.from("cs_alerts").insert({
-        user_id: user?.id,
-        type: "nps_detractor",
-        score: selected,
-        note: comment || null,
-      }).then(() => {}).catch(() => {});
+      try {
+        await supabase.from("cs_alerts").insert({
+          user_id: user?.id ?? "",
+          type: "nps_detractor",
+          score: selected as number,
+          note: comment || null,
+        });
+      } catch {}
     }
 
     setSubmitting(false);

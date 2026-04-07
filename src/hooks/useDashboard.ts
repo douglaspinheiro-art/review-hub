@@ -14,7 +14,7 @@ async function getCurrentUserAndStore(): Promise<{ userId: string | null; storeI
     .limit(1)
     .maybeSingle();
 
-  return { userId, storeId: store?.id ?? null };
+  return { userId, storeId: (store as any)?.id ?? null };
 }
 
 export function useDashboardStats(days = 30) {
@@ -309,7 +309,7 @@ export function useROIAttribution(days = 30) {
           .select("order_value,attributed_campaign_id,attributed_automation_id")
           .eq("user_id", userId)
           .gte("order_date", sinceIso)
-          .then((r) => r)
+          .then((r: any) => r)
           .catch(() => ({ data: null, error: { message: "table missing" } })),
       ]);
 

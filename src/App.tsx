@@ -18,11 +18,11 @@ function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
   const { data: config } = useSistemaConfig();
   const { profile } = useAuth();
   
-  const isManutencao = config?.maintenance_active;
+  const isManutencao = config?.maintenance_active ?? false;
   const isAdmin = profile?.role === "admin";
 
   if (isManutencao && !isAdmin) {
-    return <TelaManutencao mensagem={config?.maintenance_message} />;
+    return <TelaManutencao mensagem={config?.maintenance_message ?? null} />;
   }
 
   return <>{children}</>;

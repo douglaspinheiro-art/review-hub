@@ -77,7 +77,7 @@ function gerarMensagemProdutos(
 const schema = z.object({
   name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
   channel: z.enum(["whatsapp", "email", "sms"]).default("whatsapp"),
-  objective: z.enum(["recovery", "rebuy", "loyalty"]).default("recovery"),
+  objective: z.enum(["recovery", "rebuy", "loyalty", "lancamento"]).default("recovery"),
   subject: z.string().optional(),
   message: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres"),
   segment: z.enum(["all", "active", "inactive", "vip", "cart_abandoned"]),
