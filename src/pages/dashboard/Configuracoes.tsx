@@ -53,7 +53,7 @@ export default function Configuracoes() {
     queryKey: ["configuracoes_v3", user?.id],
     queryFn: async () => {
       const { data } = await supabase
-        .from("configuracoes_v3")
+        .from("settings_v3" as any)
         .select("*")
         .eq("user_id", user!.id)
         .maybeSingle();
@@ -78,10 +78,10 @@ export default function Configuracoes() {
       setWaCap([configV3.cap_msgs_whatsapp_semana ?? 2]);
       setEmailCap([configV3.cap_msgs_email_semana ?? 3]);
       setCooldown([configV3.cooldown_pos_compra_dias ?? 7]);
-      setPulseAtivo(configV3.pulse_ativo ?? true);
-      setPulseNum(configV3.pulse_numero_whatsapp ?? "");
-      setPulseDia(String(configV3.pulse_dia_semana ?? 1));
-      setPulseHora(configV3.pulse_horario ?? "08:00");
+      setPulseAtivo(configV3.pulse_active ?? true);
+      setPulseNum(configV3.pulse_whatsapp_number ?? "");
+      setPulseDia(String(configV3.pulse_day_of_week ?? 1));
+      setPulseHora(configV3.pulse_time ?? "08:00");
     }
   }, [configV3]);
 
@@ -100,16 +100,16 @@ export default function Configuracoes() {
           })
           .eq("id", user!.id),
         supabase
-          .from("configuracoes_v3")
+          .from("settings_v3" as any)
           .upsert({
             user_id: user!.id,
             cap_msgs_whatsapp_semana: waCap[0],
             cap_msgs_email_semana: emailCap[0],
             cooldown_pos_compra_dias: cooldown[0],
-            pulse_ativo: pulseAtivo,
-            pulse_dia_semana: Number(pulseDia),
-            pulse_horario: pulseHora,
-            pulse_numero_whatsapp: pulseNum || null,
+            pulse_active: pulseAtivo,
+            pulse_day_of_week: Number(pulseDia),
+            pulse_time: pulseHora,
+            pulse_whatsapp_number: pulseNum || null,
           }, { onConflict: "user_id" }),
       ]);
       if (profileRes.error) throw profileRes.error;
