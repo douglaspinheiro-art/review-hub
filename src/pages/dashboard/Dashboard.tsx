@@ -24,7 +24,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProblems, useDashboardStats } from "@/hooks/useDashboard";
 import { predictNextOrder } from "@/lib/ltv-predictor";
 import {
-  mockLoja, mockMetricas,
   mockEventosSazonais,
 } from "@/lib/mock-data";
 
