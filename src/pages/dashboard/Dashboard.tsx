@@ -42,9 +42,10 @@ export default function Dashboard() {
   const { data: problems = [] } = useProblems();
   const { data: statsData } = useDashboardStats(period);
 
-  // Use real data if available, fallback to mock/calculations
-  const revenueRecovered = statsData?.revenueLast30 ?? 14850;
-  const revenueGrowth = statsData?.revGrowth ?? 15;
+  // Use real data only — no mock fallbacks
+  const revenueRecovered = statsData?.revenueLast30 ?? 0;
+  const revenueGrowth = statsData?.revGrowth ?? 0;
+  const hasData = revenueRecovered > 0 || problems.length > 0;
 
   const { data: whatsappConnections = [] } = useQuery({
     queryKey: ["whatsapp_connections_status"],
@@ -137,28 +138,18 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Dados sensíveis ao período selecionado
-  const periodData = {
-    7:  { roi: "18.2", recovered: 3_200,  clients: 192 },
-    30: { roi: "26.6", recovered: 14_850, clients: 847 },
-    90: { roi: "89.4", recovered: 42_100, clients: 2_541 },
-  } as const;
-
-  const pd = periodData[period];
-
+  // Real data from queries — no hardcoded values
+  const roi = revenueRecovered > 0 ? (revenueRecovered / 297).toFixed(1) : "0";
+  
   const stats = [
-    { label: "LTV Boost ROI",  value: `${pd.roi}x`,  trend: period === 7 ? +8  : period === 30 ? +15 : +22, icon: Zap,       color: "text-emerald-500" },
-    { label: "Recuperado",     value: `R$ ${pd.recovered.toLocaleString("pt-BR")}`, trend: +8,  icon: DollarSign, color: "text-primary" },
-    { label: "Conversão",      value: `${(((mockMetricas.pedido || 0) / (mockMetricas.visitantes || 1)) * 100).toFixed(2)}%`, trend: -2, icon: TrendingUp },
-    { label: "Novos Clientes", value: pd.clients.toLocaleString("pt-BR"), trend: +12, icon: Users },
+    { label: "LTV Boost ROI",  value: `${roi}x`,  trend: revenueGrowth, icon: Zap, color: "text-emerald-500" },
+    { label: "Recuperado",     value: `R$ ${revenueRecovered.toLocaleString("pt-BR")}`, trend: revenueGrowth, icon: DollarSign, color: "text-primary" },
+    { label: "Conversão",      value: `${statsData?.conversionRate?.toFixed(2) ?? "0.00"}%`, trend: 0, icon: TrendingUp },
+    { label: "Novos Clientes", value: (statsData?.newContacts ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
   ];
 
   const pendingCount = problems.length;
   const pendingValue = problems.reduce((acc, p) => acc + Number(p.impacto_estimado || 0), 0);
-
-  const idealPurchaseCount = period === 7 ? 38  : period === 30 ? 124 : 387;
-  const estimatedRevenue   = period === 7 ? 4_800 : period === 30 ? 18_600 : 52_400;
-  const atRiskCount        = period === 7 ? 12  : period === 30 ? 47  : 143;
 
   return (
     <>
