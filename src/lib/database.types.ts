@@ -21,7 +21,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: Record<string, any>;
-        Update: Partial<Database["public"]["Tables"]["profiles"]["Row"]>;
+        Update: Record<string, any>;
       };
       stores: {
         Row: {
@@ -83,7 +83,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["customers_v3"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["customers_v3"]["Insert"]>;
+        Update: Record<string, any>;
       };
       conversations: {
         Row: {
@@ -250,7 +250,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["diagnostics_v3"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["diagnostics_v3"]["Insert"]>;
+        Update: Record<string, any>;
       };
       whatsapp_connections: {
         Row: {
@@ -492,7 +492,7 @@ export interface Database {
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["products_v3"]["Row"], "id" | "created_at"> & { id?: string };
-        Update: Partial<Database["public"]["Tables"]["products_v3"]["Insert"]>;
+        Update: Record<string, any>;
       };
     };
   };
