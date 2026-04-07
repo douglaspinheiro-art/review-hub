@@ -23,10 +23,7 @@ export default function Onboarding() {
   const [searchParams] = useSearchParams();
   const perda = searchParams.get("perda");
 
-  // Redirect to diagnostico flow instead of signup loop
-  useEffect(() => {
-    navigate("/diagnostico", { replace: true });
-  }, [navigate]);
+  // Onboarding flow is active — no more blind redirect
 
   const [channels, setChannels] = useState<string[]>([]);
   const [isSyncing, setIsSyncing] = useState<string | null>(null);

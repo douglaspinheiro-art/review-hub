@@ -23,9 +23,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useProblems, useDashboardStats } from "@/hooks/useDashboard";
 import { predictNextOrder } from "@/lib/ltv-predictor";
-import {
-  mockEventosSazonais,
-} from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
@@ -549,27 +547,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Cards sazonais + clientes hibernando */}
+            {/* Cards: clientes hibernando + CTA */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {mockEventosSazonais.map((e) => (
-                <div key={e.nome} className="bg-card/50 border border-border/10 rounded-2xl p-6 relative overflow-hidden group hover:border-amber-500/30 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                      <Calendar className="w-5 h-5 text-amber-500" />
-                    </div>
-                    <Badge variant="outline" className="text-[8px] font-black border-amber-500/20 text-amber-500">{e.dias_restantes} DIAS</Badge>
-                  </div>
-                  <h4 className="font-black text-sm uppercase tracking-tight mb-1">{e.nome} chegando</h4>
-                  <p className="text-xs text-muted-foreground">Histórico de vendas: <span className="text-emerald-500 font-bold">+{e.historico_crescimento}%</span></p>
-                  <Button
-                    variant="ghost"
-                    className="w-full mt-4 h-9 text-[9px] font-black uppercase tracking-widest gap-2 hover:bg-amber-500/10 hover:text-amber-600 rounded-xl"
-                    onClick={() => navigate("/dashboard/campanhas")}
-                  >
-                    Preparar Campanha <ArrowRight className="w-3 h-3" />
-                  </Button>
-                </div>
-              ))}
 
               <div className="bg-card/50 border border-border/10 rounded-2xl p-6 relative overflow-hidden group hover:border-primary/30 transition-all">
                 <div className="flex items-center justify-between mb-4">
