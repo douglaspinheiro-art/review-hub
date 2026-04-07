@@ -236,12 +236,21 @@ export default function Dashboard() {
             <h1 className="text-4xl font-black font-syne tracking-tighter uppercase italic">
               Radar de <span className="text-primary">Lucro</span>
             </h1>
-            <p className="text-muted-foreground text-sm font-medium">
-              Você tem <span className="text-foreground font-bold underline">R$ 58.400</span> parados no funil. Vamos recuperar?
-            </p>
-            <p className="text-xs font-bold flex items-center gap-1.5 text-emerald-500">
-              <TrendingUp className="w-3.5 h-3.5" />
-              R$ 47.320 já recuperados para você desde que assinou.
+            {pendingValue > 0 ? (
+              <p className="text-muted-foreground text-sm font-medium">
+                Você tem <span className="text-foreground font-bold underline">R$ {pendingValue.toLocaleString("pt-BR")}</span> parados no funil. Vamos recuperar?
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-sm font-medium">
+                Conecte sua loja para começar a recuperar receita.
+              </p>
+            )}
+            {revenueRecovered > 0 && (
+              <p className="text-xs font-bold flex items-center gap-1.5 text-emerald-500">
+                <TrendingUp className="w-3.5 h-3.5" />
+                R$ {revenueRecovered.toLocaleString("pt-BR")} já recuperados para você.
+              </p>
+            )}
             </p>
 
             {/* CTA principal — sempre visível acima do fold */}
