@@ -24,6 +24,7 @@ import { PLANS, BUNDLES, CONTACT_PACK, calcPlano } from "@/lib/pricing-constants
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@tanstack/react-query";
+import { ECOMMERCE_PLATFORMAS } from "@/lib/ecommerce-platforms";
 
 const PLATFORM_LABELS: Record<string, string> = {
   shopify: "Shopify", nuvemshop: "Nuvemshop", woocommerce: "WooCommerce",
@@ -36,11 +37,6 @@ const SEGMENTOS = [
   "Esportes", "Pets", "Outros"
 ];
 
-const PLATAFORMAS = [
-  "Shopify", "Nuvemshop", "VTEX", "WooCommerce", 
-  "Yampi", "Tray", "Loja Integrada", "Outra"
-];
-
 const CANAIS = [
   { id: "wa", label: "WhatsApp", icon: MessageCircle },
   { id: "email", label: "E-mail", icon: Globe },
@@ -48,7 +44,7 @@ const CANAIS = [
   { id: "none", label: "Nenhum", icon: BarChart3 },
 ];
 
-export default function Diagnostico() {
+export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: boolean } = {}) {
   const { profile, user } = useAuth();
   const navigate = useNavigate();
   const [savingPlan, setSavingPlan] = useState<string | null>(null);
@@ -283,7 +279,11 @@ export default function Diagnostico() {
               >
                 <SelectTrigger id="plataforma"><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
-                  {PLATAFORMAS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  {ECOMMERCE_PLATFORMAS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -829,10 +829,10 @@ export default function Diagnostico() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      
-      <main className="flex-1 py-12 md:py-20 px-4">
+    <div className={cn("flex flex-col bg-background", embedInDashboard ? "min-h-0" : "min-h-screen")}>
+      {!embedInDashboard && <Header />}
+
+      <main className={cn("flex-1 px-4", embedInDashboard ? "py-6 md:py-8" : "py-12 md:py-20")}>
         <div className="container max-w-6xl mx-auto">
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
@@ -841,7 +841,7 @@ export default function Diagnostico() {
         </div>
       </main>
 
-      <Footer />
+      {!embedInDashboard && <Footer />}
     </div>
   );
 }

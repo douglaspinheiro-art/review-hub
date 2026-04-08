@@ -15,8 +15,24 @@ const BodySchema = z.object({
 });
 
 serve(async (req) => {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    const authHeader = req.headers.get("authorization") ?? "";
+    const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const internalSecret = Deno.env.get("FLOW_ENGINE_SECRET") ?? "";
+    const providedSecret = req.headers.get("x-internal-secret") ?? "";
+    const validInternal =
+      (serviceRole && authHeader === `Bearer ${serviceRole}`) ||
+      (internalSecret && providedSecret === internalSecret);
+    if (!validInternal) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
@@ -45,7 +61,7 @@ serve(async (req) => {
 
       if (val > 0 && ship / val > 0.15) {
         message = `Oi {{nome}}! Vimos que o frete ficou um pouco alto. Liberamos FRETE GRÁTIS para você finalizar agora: {{link}}`;
-      } else if (customer.rfm_segment === 'campeao') {
+      } else if (customer.rfm_segment === "champions" || customer.rfm_segment === "campeao") {
         message = `Oi {{nome}}, nosso cliente VIP! Separamos seu carrinho com carinho. Use o cupom VIP10 para um mimo extra: {{link}}`;
       }
 
@@ -63,8 +79,12 @@ serve(async (req) => {
       if (!schedErr && sched) processed.push(sched.id);
     }
 
-    return new Response(JSON.stringify({ ok: true, scheduled_messages: processed.length }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log(
+      `[${requestId}] flow-engine ok event=${event} store=${store_id} scheduled=${processed.length} elapsed_ms=${Date.now() - startedAt}`,
+    );
+    return new Response(JSON.stringify({ ok: true, scheduled_messages: processed.length, request_id: requestId }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error(`[${requestId}] flow-engine error:`, err?.message ?? err);
+    return new Response(JSON.stringify({ error: err.message, request_id: requestId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

@@ -14,7 +14,23 @@ const corsHeaders = {
 const ANTI_SPAM_DELAY_MS = 1000;
 
 serve(async (req) => {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const authHeader = req.headers.get("authorization") ?? "";
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const internalSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET") ?? "";
+  const providedSecret = req.headers.get("x-internal-secret") ?? "";
+  const validInternal =
+    (serviceRole && authHeader === `Bearer ${serviceRole}`) ||
+    (internalSecret && providedSecret === internalSecret);
+  if (!validInternal) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -27,16 +43,35 @@ serve(async (req) => {
     .from("scheduled_messages")
     .select("*, stores(*), customers_v3(*)")
     .eq("status", "pending")
+    .is("sent_at", null)
     .lte("scheduled_for", now)
     .limit(50); // Process in batches
 
-  if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-  if (!pending || pending.length === 0) return new Response(JSON.stringify({ ok: true, sent: 0 }));
+  if (error) return new Response(JSON.stringify({ error: error.message, request_id: requestId }), { status: 500 });
 
   let sentCount = 0;
+  let dispatchedCampaigns = 0;
 
-  for (const msg of pending) {
+  for (const msg of (pending ?? [])) {
     try {
+      // Atomic claim: only one worker can set sent_at from NULL -> timestamp.
+      const claimStamp = new Date().toISOString();
+      const { data: claimRow, error: claimError } = await supabase
+        .from("scheduled_messages")
+        .update({ sent_at: claimStamp })
+        .eq("id", msg.id)
+        .eq("status", "pending")
+        .is("sent_at", null)
+        .select("id")
+        .maybeSingle();
+      if (claimError) {
+        console.error(`[${requestId}] claim failed for msg ${msg.id}:`, claimError.message);
+        continue;
+      }
+      if (!claimRow) {
+        continue;
+      }
+
       // 2. Find active WhatsApp connection
       const { data: conn } = await supabase
         .from("whatsapp_connections")
@@ -88,23 +123,105 @@ serve(async (req) => {
         });
       }
 
-      // Log for Attribution
+      // Log for Attribution + instrumentation by flow step
+      const step = Number((msg.metadata as any)?.cadence_step ?? 1);
+      const escalation = Boolean((msg.metadata as any)?.escalation_recommended);
       await supabase.from("message_sends").insert({
         user_id: msg.user_id,
         store_id: msg.store_id,
         customer_id: msg.customer_id,
+        automation_id: msg.journey_id ?? null,
         phone,
-        status: "sent"
+        status: escalation && step >= 3 ? "sent_handoff_recommended" : "sent"
       });
 
       sentCount++;
       await new Promise(r => setTimeout(r, ANTI_SPAM_DELAY_MS));
 
-    } catch (e) {
-      console.error(`Failed to send msg ${msg.id}:`, e.message);
-      await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", msg.id);
+    } catch (e: any) {
+      console.error(`[${requestId}] Failed to send msg ${msg.id}:`, e?.message ?? e);
+      await supabase.from("scheduled_messages").update({ status: "failed", sent_at: null }).eq("id", msg.id);
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, sent: sentCount }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  // 5. Dispatch WhatsApp campaigns that were scheduled (scheduled_at <= now)
+  const { data: dueCampaigns } = await supabase
+    .from("campaigns")
+    .select("id")
+    .eq("status", "scheduled")
+    .eq("channel", "whatsapp")
+    .lte("scheduled_at", now)
+    .limit(20);
+
+  for (const campaign of (dueCampaigns ?? [])) {
+    try {
+      const dispatchRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/dispatch-campaign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({ campaign_id: campaign.id }),
+      });
+      if (dispatchRes.ok) {
+        dispatchedCampaigns += 1;
+      } else {
+        console.error(`[${requestId}] failed dispatch scheduled campaign ${campaign.id}: ${await dispatchRes.text()}`);
+      }
+    } catch (e: any) {
+      console.error(`[${requestId}] scheduled campaign dispatch error ${campaign.id}:`, e?.message ?? e);
+    }
+  }
+
+  // 6. Scheduled e-mail newsletters (same cron worker; segment stored on campaigns row)
+  let dispatchedEmailCampaigns = 0;
+  const { data: dueEmailCampaigns } = await supabase
+    .from("campaigns")
+    .select("id")
+    .eq("status", "scheduled")
+    .eq("channel", "email")
+    .lte("scheduled_at", now)
+    .limit(10);
+
+  const scheduleSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET") ?? "";
+  for (const campaign of (dueEmailCampaigns ?? [])) {
+    try {
+      if (!scheduleSecret) {
+        console.warn(`[${requestId}] PROCESS_SCHEDULED_MESSAGES_SECRET not set; skip scheduled email ${campaign.id}`);
+        break;
+      }
+      const dispatchRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/dispatch-newsletter`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "x-internal-secret": scheduleSecret,
+        },
+        body: JSON.stringify({ campaign_id: campaign.id }),
+      });
+      if (dispatchRes.ok) {
+        dispatchedEmailCampaigns += 1;
+      } else {
+        console.error(
+          `[${requestId}] failed dispatch scheduled newsletter ${campaign.id}: ${await dispatchRes.text()}`,
+        );
+      }
+    } catch (e: any) {
+      console.error(`[${requestId}] scheduled newsletter dispatch error ${campaign.id}:`, e?.message ?? e);
+    }
+  }
+
+  console.log(
+    `[${requestId}] process-scheduled-messages sent=${sentCount} scheduled_campaigns=${dispatchedCampaigns} scheduled_email_campaigns=${dispatchedEmailCampaigns} elapsed_ms=${Date.now() - startedAt}`,
+  );
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      sent: sentCount,
+      campaigns_dispatched: dispatchedCampaigns,
+      email_campaigns_dispatched: dispatchedEmailCampaigns,
+      request_id: requestId,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
 });

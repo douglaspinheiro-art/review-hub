@@ -1,14 +1,16 @@
-import { Type, Image, MousePointer2, Minus, AlignLeft, Space } from "lucide-react";
+import { Type, Image, MousePointer2, Minus, AlignLeft, Space, ShoppingBag, Columns2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BlockType } from "@/lib/newsletter-renderer";
 
 const PALETTE: { type: BlockType; label: string; desc: string; icon: React.ElementType }[] = [
-  { type: "header",  label: "Cabeçalho",  desc: "Título e subtítulo",   icon: Type },
-  { type: "text",    label: "Texto",       desc: "Parágrafo de texto",   icon: AlignLeft },
-  { type: "image",   label: "Imagem",      desc: "URL de imagem",        icon: Image },
-  { type: "button",  label: "Botão CTA",   desc: "Chamada para ação",    icon: MousePointer2 },
-  { type: "divider", label: "Divisor",     desc: "Linha separadora",     icon: Minus },
-  { type: "spacer",  label: "Espaço",      desc: "Espaço em branco",     icon: Space },
+  { type: "header",  label: "Cabeçalho",  desc: "Título e subtítulo",         icon: Type },
+  { type: "text",    label: "Texto",       desc: "Parágrafo com rich text",    icon: AlignLeft },
+  { type: "image",   label: "Imagem",      desc: "URL de imagem",             icon: Image },
+  { type: "product", label: "Produto",     desc: "Imagem + preço + CTA",      icon: ShoppingBag },
+  { type: "columns", label: "Colunas",     desc: "Layout 2 colunas",          icon: Columns2 },
+  { type: "button",  label: "Botão CTA",   desc: "Chamada para ação",         icon: MousePointer2 },
+  { type: "divider", label: "Divisor",     desc: "Linha separadora",          icon: Minus },
+  { type: "spacer",  label: "Espaço",      desc: "Espaço em branco",          icon: Space },
 ];
 
 interface BlockPaletteProps {

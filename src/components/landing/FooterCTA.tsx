@@ -19,10 +19,10 @@ export default function FooterCTA() {
           <div className="relative z-10 space-y-6">
             <p className="text-primary font-semibold text-sm uppercase tracking-widest">Pronto para crescer?</p>
             <h2 className="text-3xl md:text-4xl font-display font-bold">
-              Transforme conversas em <span className="text-gradient">receita previsível</span>
+              Saia do modo campanha e entre no <span className="text-gradient">modo dominancia</span>
             </h2>
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Junte-se a 200+ e-commerces que já geram R$47M+ em vendas com marketing conversacional inteligente.
+              Receba um plano para os proximos 90 dias com metas de retencao, distribuicao e expansao de LTV.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button asChild size="lg" className="h-14 px-8 text-base font-bold shadow-xl shadow-primary/25 hover:scale-[1.02] transition-all gap-2">

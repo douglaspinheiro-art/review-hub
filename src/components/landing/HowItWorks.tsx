@@ -7,25 +7,25 @@ const steps = [
     icon: Link2,
     step: "01",
     title: "Conecte",
-    desc: "Integre seu e-commerce e WhatsApp em menos de 5 minutos. Sem código, sem complicação.",
+    desc: "Integre loja e WhatsApp com setup guiado. Em 24h voce entra em producao.",
   },
   {
     icon: BarChart3,
     step: "02",
     title: "Analise",
-    desc: "Nossa IA mapeia seu funil, identifica gargalos e segmenta sua base automaticamente com RFM.",
+    desc: "A IA prioriza onde existe caixa travado e gera plano de acao diario por impacto.",
   },
   {
     icon: Zap,
     step: "03",
     title: "Automatize",
-    desc: "Campanhas de carrinho abandonado, pós-venda, reativação e cross-sell rodam sozinhas.",
+    desc: "Ative playbooks de carrinho, pos-venda, winback e reviews com presets por nicho.",
   },
   {
     icon: Rocket,
     step: "04",
     title: "Escale",
-    desc: "Acompanhe ROI em tempo real, otimize com testes A/B e escale o que funciona.",
+    desc: "Escalone o que funciona com benchmark de coorte e recomendacao de proxima melhor acao.",
   },
 ];
 

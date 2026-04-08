@@ -36,7 +36,8 @@ export default function Afiliados() {
   const queryClient = useQueryClient();
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const referralLink = `https://LTV Boost.com/signup?ref=${user?.id?.slice(0, 8) ?? ""}`;
+  const referralCode = user?.id?.slice(0, 8) ?? "";
+  const referralLink = `https://ltvboost.com.br/signup?ref=${referralCode}`;
 
   const { data: referrals = [] } = useQuery({
     queryKey: ["affiliate_referrals"],
@@ -92,7 +93,7 @@ export default function Afiliados() {
           {[
             { step: "1", title: "Compartilhe seu link", desc: "Envie seu link único para lojistas que podem se beneficiar do LTV Boost" },
             { step: "2", title: "Eles se cadastram",    desc: "A indicação é rastreada automaticamente quando usam seu link" },
-            { step: "3", title: "Você recebe 20%",      desc: "A cada mensalidade paga, você recebe 20% de comissão por 12 meses" },
+            { step: "3", title: "Você recebe 20% + créditos",      desc: "Além da comissão de 12 meses, ganhe créditos para envios premium a cada conta convertida" },
           ].map(({ step, title, desc }) => (
             <div key={step} className="flex gap-3">
               <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
@@ -136,6 +137,10 @@ export default function Afiliados() {
             </a>
           ))}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Seu código: <span className="font-mono font-bold">{referralCode || "—"}</span> ·
+          cada conversão também libera <span className="font-semibold">R$ 100 em créditos de mensagens</span> para sua operação.
+        </p>
       </div>
 
       {/* Stats */}

@@ -4,229 +4,559 @@
  * POST /functions/v1/dispatch-newsletter
  * Body: {
  *   campaign_id: string
- *   recipient_mode: "all" | "tag" | "rfm"
+ *   recipient_mode: "all" | "tag" | "rfm" | "test" | "non_openers"
  *   recipient_tag?: string
  *   recipient_rfm?: string
+ *   test_email?: string
  * }
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z, errorResponse, validateBrowserOrigin } from "../_shared/edge-utils.ts";
+import { emailSchema, rejectIfBodyTooLarge, uuidSchema } from "../_shared/validation.ts";
+import {
+  type Block,
+  renderBlocksToHTML,
+  appendUtmParams,
+} from "../_shared/newsletter-html.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const FROM_EMAIL = "notificacoes@ltvboost.com.br";
-const ANTI_SPAM_DELAY_MS = 300;
+const DEFAULT_FROM_EMAIL = Deno.env.get("RESEND_DEFAULT_FROM") ?? "notificacoes@ltvboost.com.br";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://app.ltvboost.com.br";
+const UNSUBSCRIBE_TOKEN_SECRET = Deno.env.get("UNSUBSCRIBE_TOKEN_SECRET") ?? "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
-// ─── HTML renderer (inline — same logic as src/lib/newsletter-renderer.ts) ───
+const RequestSchema = z.object({
+  campaign_id: uuidSchema,
+  recipient_mode: z.enum(["all", "tag", "rfm", "test", "non_openers"]).optional(),
+  recipient_tag: z.string().trim().min(1).max(80).optional(),
+  recipient_rfm: z.string().trim().min(1).max(40).optional(),
+  test_email: emailSchema.optional(),
+});
 
-type Block = {
+type ContactRow = {
   id: string;
-  type: string;
-  data: Record<string, unknown>;
+  name: string | null;
+  email: string | null;
+  rfm_segment?: string | null;
+  last_purchase_at?: string | null;
+  behavioral_profile?: string | null;
+  preferred_channel?: string | null;
+  tags?: string[] | null;
 };
 
-function escHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function slugCampaignId(id: string): string {
+  return id.replace(/-/g, "").slice(0, 12);
 }
 
-const BUTTON_COLORS: Record<string, { bg: string; text: string }> = {
-  primary: { bg: "#7c3aed", text: "#ffffff" },
-  dark:    { bg: "#111827", text: "#ffffff" },
-  light:   { bg: "#f3f4f6", text: "#111827" },
-};
+function pickAbVariant(contactId: string): "a" | "b" {
+  let h = 0;
+  for (let i = 0; i < contactId.length; i++) h = (h * 31 + contactId.charCodeAt(i)) | 0;
+  return Math.abs(h) % 2 === 0 ? "a" : "b";
+}
 
-function renderBlock(block: Block): string {
-  const d = block.data;
-  switch (block.type) {
-    case "header":
-      return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#7c3aed;padding:40px 32px 32px;text-align:center;border-radius:8px 8px 0 0;"><h1 style="margin:0;font-family:-apple-system,sans-serif;font-size:28px;font-weight:800;color:#fff;">${escHtml(String(d.title ?? ""))}</h1>${d.subtitle ? `<p style="margin:12px 0 0;font-family:-apple-system,sans-serif;font-size:15px;color:rgba(255,255,255,0.85);">${escHtml(String(d.subtitle))}</p>` : ""}</td></tr></table>`;
-
-    case "text": {
-      const html = escHtml(String(d.content ?? "")).replace(/\n/g, "<br>");
-      return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:24px 32px;"><p style="margin:0;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.7;color:#374151;">${html}</p></td></tr></table>`;
+async function hydrateProductBlocks(
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+  blocks: Block[],
+): Promise<Block[]> {
+  const ids: string[] = [];
+  for (const b of blocks) {
+    if (b.type === "product") {
+      const pid = (b.data as { productId?: string }).productId;
+      if (pid) ids.push(pid);
     }
-
-    case "image": {
-      const img = `<img src="${escHtml(String(d.url ?? ""))}" alt="${escHtml(String(d.alt ?? ""))}" width="100%" style="display:block;border-radius:6px;max-width:100%;height:auto;" />`;
-      return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:16px 32px;text-align:center;">${d.href ? `<a href="${escHtml(String(d.href))}" style="display:block;">${img}</a>` : img}</td></tr></table>`;
-    }
-
-    case "button": {
-      const { bg, text } = BUTTON_COLORS[String(d.color ?? "primary")] ?? BUTTON_COLORS.primary;
-      return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:16px 32px;text-align:center;"><a href="${escHtml(String(d.url ?? "#"))}" style="display:inline-block;background:${bg};color:${text};font-family:-apple-system,sans-serif;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:8px;">${escHtml(String(d.label ?? "Clique aqui"))}</a></td></tr></table>`;
-    }
-
-    case "divider":
-      return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:8px 32px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;" /></td></tr></table>`;
-
-    case "spacer":
-      return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:${Number(d.height ?? 24)}px;"></td></tr></table>`;
-
-    default:
-      return "";
   }
+  if (ids.length === 0) return blocks;
+
+  const { data: products, error } = await sb
+    .from("products")
+    .select("id,nome,preco,imagem_url")
+    .eq("user_id", userId)
+    .in("id", [...new Set(ids)]);
+  if (error) throw error;
+  const byId = Object.fromEntries((products ?? []).map((p: { id: string; nome: string; preco: number | null; imagem_url: string | null }) => [p.id, p]));
+
+  return blocks.map((b) => {
+    if (b.type !== "product") return b;
+    const pid = b.data.productId;
+    if (!pid || !byId[pid]) return b;
+    const p = byId[pid] as { nome: string; preco: number | null; imagem_url: string | null };
+    const priceFmt = p.preco != null
+      ? `R$ ${Number(p.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : b.data.price;
+    return {
+      ...b,
+      data: {
+        ...b.data,
+        name: p.nome || b.data.name,
+        price: priceFmt,
+        imageUrl: (b.data.imageUrl && b.data.imageUrl.length > 0) ? b.data.imageUrl : (p.imagem_url ?? ""),
+        buttonUrl: b.data.buttonUrl && b.data.buttonUrl !== "https://" ? b.data.buttonUrl : b.data.buttonUrl,
+      },
+    };
+  });
 }
 
-function renderBlocksToHTML(blocks: Block[], unsubscribeUrl: string): string {
-  const blocksHtml = blocks.map(renderBlock).join("\n");
-  const footer = `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:32px;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 8px 8px;"><p style="margin:0;font-family:-apple-system,sans-serif;font-size:12px;color:#9ca3af;line-height:1.6;">Você está recebendo este e-mail porque é cliente cadastrado.<br /><a href="${unsubscribeUrl}" style="color:#7c3aed;text-decoration:underline;">Cancelar inscrição</a></p></td></tr></table>`;
-
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body style="margin:0;padding:0;background:#f3f4f6;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);"><tr><td>${blocksHtml}${footer}</td></tr></table></td></tr></table></body></html>`;
+function applyUtmsToHtml(html: string, utm: { utm_source: string; utm_medium: string; utm_campaign: string }): string {
+  return html.replace(/href="(https?:\/\/[^"]+)"/gi, (_m, url: string) => {
+    if (/track-email-(open|click)|\/unsubscribe\?/i.test(url)) return `href="${url}"`;
+    const withUtm = appendUtmParams(url, utm);
+    return `href="${withUtm}"`;
+  });
 }
 
-// ─── Contact resolution ────────────────────────────────────────────────────────
+function wrapClickTracking(html: string, supabaseUrl: string, sid: string): string {
+  const base = `${supabaseUrl}/functions/v1/track-email-click?sid=${encodeURIComponent(sid)}&url=`;
+  return html.replace(/href="(https?:\/\/[^"]+)"/gi, (_m, url: string) => {
+    if (/track-email-(open|click)|\/unsubscribe\?/i.test(url)) return `href="${url}"`;
+    return `href="${base}${encodeURIComponent(url)}"`;
+  });
+}
+
+const encoder = new TextEncoder();
+
+async function hmacSha256(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function buildSignedUnsubscribeUrl(appUrl: string, userId: string, contactId: string, sid?: string): Promise<string> {
+  if (!UNSUBSCRIBE_TOKEN_SECRET) {
+    throw new Error("UNSUBSCRIBE_TOKEN_SECRET não configurado");
+  }
+  const ts = String(Date.now());
+  const sig = await hmacSha256(UNSUBSCRIBE_TOKEN_SECRET, `${userId}:${contactId}:${ts}`);
+  const q = new URLSearchParams({ user: userId, contact: contactId, ts, sig });
+  if (sid) q.set("sid", sid);
+  return `${appUrl}/unsubscribe?${q.toString()}`;
+}
 
 async function resolveContacts(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   mode: string,
+  campaignId: string,
   tag?: string,
   rfm?: string,
-): Promise<Array<{ id: string; name: string | null; email: string | null }>> {
+  testEmail?: string,
+): Promise<ContactRow[]> {
+  if (mode === "test" && testEmail) {
+    return [{ id: "test", name: null, email: testEmail }];
+  }
+
   let query = supabase
     .from("customers_v3")
-    .select("id,name,email")
+    .select("id,name,email,rfm_segment,last_purchase_at,behavioral_profile,preferred_channel,tags")
     .eq("user_id", userId)
-    .not("email", "is", null);
+    .not("email", "is", null)
+    .is("unsubscribed_at", null);
+
+  query = query.is("email_hard_bounce_at", null).is("email_complaint_at", null) as typeof query;
 
   if (mode === "tag" && tag) {
-    // tags stored as array in contacts or customers_v3 — try both approaches
     query = query.contains("tags", [tag]);
   } else if (mode === "rfm" && rfm) {
     query = query.eq("rfm_segment", rfm);
+  } else if (mode === "non_openers") {
+    const { data: sentRows } = await supabase
+      .from("newsletter_send_recipients")
+      .select("customer_id")
+      .eq("campaign_id", campaignId);
+    const allRecipientIds = new Set((sentRows ?? []).map((r: { customer_id: string }) => r.customer_id));
+    if (allRecipientIds.size === 0) return [];
+    const { data: openRows } = await supabase
+      .from("email_engagement_events")
+      .select("customer_id")
+      .eq("campaign_id", campaignId)
+      .eq("event_type", "open");
+    const openedIds = new Set((openRows ?? []).map((r: { customer_id: string }) => r.customer_id));
+    const nonOpeners = [...allRecipientIds].filter((id) => !openedIds.has(id));
+    if (nonOpeners.length === 0) return [];
+    query = query.in("id", nonOpeners);
   }
 
-  const { data, error } = await query.limit(2000);
-  if (error) throw error;
-  return (data ?? []).filter((c) => c.email);
+  const PAGE = 1000;
+  const all: ContactRow[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await query.range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...(data as ContactRow[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all.filter((c) => c.email);
 }
 
-// ─── Send via Resend ──────────────────────────────────────────────────────────
+async function getLatestCartContextByCustomer(
+  sb: ReturnType<typeof createClient>,
+  storeId: string | null | undefined,
+  customerIds: string[],
+) {
+  const byCustomer = new Map<string, {
+    cart_value: number | null;
+    recovery_url: string | null;
+    utm_source: string | null;
+    payment_failure_reason: string | null;
+    created_at: string | null;
+  }>();
+  if (!storeId || customerIds.length === 0) return byCustomer;
+  const { data: carts } = await sb
+    .from("abandoned_carts")
+    .select("customer_id,cart_value,recovery_url,utm_source,payment_failure_reason,created_at")
+    .eq("store_id", storeId)
+    .in("customer_id", customerIds)
+    .order("created_at", { ascending: false });
+  for (const row of (carts ?? []) as Array<any>) {
+    if (!byCustomer.has(row.customer_id)) {
+      byCustomer.set(row.customer_id, {
+        cart_value: row.cart_value ?? null,
+        recovery_url: row.recovery_url ?? null,
+        utm_source: row.utm_source ?? null,
+        payment_failure_reason: row.payment_failure_reason ?? null,
+        created_at: row.created_at ?? null,
+      });
+    }
+  }
+  return byCustomer;
+}
 
-async function sendEmail(to: string, subject: string, html: string, fromName: string) {
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  from: string,
+  replyTo: string | null | undefined,
+  userId: string,
+) {
+  const body: Record<string, unknown> = {
+    from,
+    to: [to],
+    subject,
+    html,
+    tags: [{ name: "user_id", value: userId }],
+  };
+  if (replyTo) body.reply_to = replyTo;
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${RESEND_API_KEY}`,
     },
-    body: JSON.stringify({
-      from: `${fromName} <${FROM_EMAIL}>`,
-      to: [to],
-      subject,
-      html,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Resend error ${res.status}: ${body}`);
+    const errBody = await res.text();
+    throw new Error(`Resend error ${res.status}: ${errBody}`);
   }
   return res.json();
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+async function pMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number,
+): Promise<Array<{ status: "fulfilled"; value: R } | { status: "rejected"; reason: unknown }>> {
+  const results: Array<{ status: "fulfilled"; value: R } | { status: "rejected"; reason: unknown }> = [];
+  let idx = 0;
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      try {
+        results[i] = { status: "fulfilled", value: await fn(items[i]) };
+      } catch (e) {
+        results[i] = { status: "rejected", reason: e };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return results;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const originCheck = validateBrowserOrigin(req);
+  if (originCheck) return originCheck;
+  const oversized = rejectIfBodyTooLarge(req, 64 * 1024);
+  if (oversized) return oversized;
 
   try {
+    const rawBody = await req.json();
+    const parsedBody = RequestSchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      return errorResponse("Invalid request payload", 400);
+    }
+    const body = parsedBody.data;
     const {
       campaign_id,
-      recipient_mode = "all",
-      recipient_tag,
-      recipient_rfm,
-    } = await req.json();
+      recipient_mode: bodyRecipientMode,
+      recipient_tag: bodyRecipientTag,
+      recipient_rfm: bodyRecipientRfm,
+      test_email,
+    } = body;
 
     if (!campaign_id) throw new Error("campaign_id obrigatório");
     if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY não configurado");
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Auth: get user from JWT
-    const jwt = req.headers.get("Authorization")?.replace("Bearer ", "");
-    const { data: { user }, error: authErr } = await sb.auth.getUser(jwt ?? "");
-    if (authErr || !user) throw new Error("Não autorizado");
+    const internalSecret =
+      Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET") ?? Deno.env.get("DISPATCH_NEWSLETTER_INTERNAL_SECRET") ?? "";
+    const providedInternal = req.headers.get("x-internal-secret") ?? "";
+    const authHeader = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+    const internalOk =
+      Boolean(internalSecret && providedInternal === internalSecret) &&
+      authHeader === SUPABASE_SERVICE_KEY;
 
-    // Load campaign
+    let userId: string;
+
+    if (internalOk) {
+      const { data: campRow, error: cErr } = await sb
+        .from("campaigns")
+        .select("user_id,channel,status")
+        .eq("id", campaign_id)
+        .single();
+      if (cErr || !campRow) throw new Error("Campanha não encontrada");
+      if ((campRow as { channel?: string }).channel !== "email") {
+        throw new Error("Campanha não é e-mail");
+      }
+      userId = (campRow as { user_id: string }).user_id;
+    } else {
+      const jwt = authHeader;
+      const { data: { user }, error: authErr } = await sb.auth.getUser(jwt);
+      if (authErr || !user) throw new Error("Não autorizado");
+      userId = user.id;
+    }
+
     const { data: campaign, error: campErr } = await sb
       .from("campaigns")
       .select("*")
       .eq("id", campaign_id)
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .single();
     if (campErr || !campaign) throw new Error("Campanha não encontrada");
 
-    const blocks = ((campaign as any).blocks ?? []) as Block[];
-    if (blocks.length === 0) throw new Error("Newsletter sem blocos. Adicione conteúdo antes de enviar.");
+    const camp = campaign as {
+      email_recipient_mode?: string | null;
+      email_recipient_tag?: string | null;
+      email_recipient_rfm?: string | null;
+    };
+    const recipient_mode = bodyRecipientMode ??
+      (camp.email_recipient_mode || "all");
+    const recipient_tag = bodyRecipientTag ?? camp.email_recipient_tag ?? undefined;
+    const recipient_rfm = bodyRecipientRfm ?? camp.email_recipient_rfm ?? undefined;
 
-    const subject = (campaign as any).subject || campaign.name || "Newsletter";
+    const blocksRaw = ((campaign as { blocks?: unknown }).blocks ?? []) as Block[];
+    if (blocksRaw.length === 0) throw new Error("Newsletter sem blocos. Adicione conteúdo antes de enviar.");
 
-    // Load store name
+    const subjectA = (campaign as { subject?: string }).subject || campaign.name || "Newsletter";
+    const subjectB = (campaign as { subject_variant_b?: string }).subject_variant_b || "";
+    const abEnabled = !!(campaign as { ab_subject_enabled?: boolean }).ab_subject_enabled && subjectB.length > 0;
+
+    const preheader = (campaign as { preheader?: string }).preheader ?? "";
+
     const { data: store } = await sb
       .from("stores")
-      .select("name")
-      .eq("user_id", user.id)
+      .select("name,email_from_address,email_reply_to,brand_primary_color")
+      .eq("user_id", userId)
       .limit(1)
-      .single();
+      .maybeSingle();
+
+    const storeName = store?.name ?? "nossa loja";
     const fromName = store?.name ?? "LTV Boost";
+    const fromEmail = (store as { email_from_address?: string } | null)?.email_from_address?.trim() || DEFAULT_FROM_EMAIL;
+    const replyTo = (store as { email_reply_to?: string } | null)?.email_reply_to ?? null;
+    const brandHex = (store as { brand_primary_color?: string } | null)?.brand_primary_color ?? null;
+    const fromHeader = `${fromName} <${fromEmail}>`;
 
-    // Resolve contacts
-    const contacts = await resolveContacts(sb, user.id, recipient_mode, recipient_tag, recipient_rfm);
-
+    const contacts = await resolveContacts(sb, userId, recipient_mode, campaign_id, recipient_tag, recipient_rfm, test_email);
     if (contacts.length === 0) throw new Error("Nenhum contato com e-mail encontrado para o segmento selecionado.");
 
-    // Update campaign status
-    await sb.from("campaigns").update({ status: "running" }).eq("id", campaign_id);
+    const isTest = recipient_mode === "test";
+    const utmCampaign = slugCampaignId(campaign_id);
+    const utmBase = {
+      utm_source: "ltvboost",
+      utm_medium: "email",
+      utm_campaign: utmCampaign,
+    };
 
-    let sent = 0;
-    let failed = 0;
+    const blocksHydrated = await hydrateProductBlocks(sb, userId, blocksRaw);
 
-    for (const contact of contacts) {
-      if (!contact.email) continue;
+    const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeRow?.id, contacts.map((c) => c.id));
+    let sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
+    if (!isTest) {
+      await sb.from("newsletter_send_recipients").delete().eq("campaign_id", campaign_id);
 
-      const unsubscribeUrl = `${APP_URL}/unsubscribe?user=${user.id}&contact=${contact.id}`;
-      const html = renderBlocksToHTML(blocks, unsubscribeUrl);
-
-      try {
-        await sendEmail(contact.email, subject, html, fromName);
-        sent++;
-      } catch (err) {
-        console.error(`Falha ao enviar para ${contact.email}:`, err);
-        failed++;
+      const realContacts = contacts.filter((c) => c.id !== "test");
+      if (realContacts.length > 0) {
+        const { error: insErr } = await sb.from("newsletter_send_recipients").insert(
+          realContacts.map((c) => ({
+            campaign_id,
+            customer_id: c.id,
+            user_id: userId,
+            subject_variant: abEnabled ? pickAbVariant(c.id) : "a",
+          })),
+        );
+        if (insErr) throw insErr;
       }
 
-      await sleep(ANTI_SPAM_DELAY_MS);
+      const { data: recipientRows, error: recvErr } = await sb
+        .from("newsletter_send_recipients")
+        .select("id,customer_id,subject_variant")
+        .eq("campaign_id", campaign_id);
+      if (recvErr) throw recvErr;
+      sidAndVariantByCustomer = new Map(
+        (recipientRows ?? []).map((r: { id: string; customer_id: string; subject_variant?: "a" | "b" | null }) => [
+          r.customer_id,
+          { sid: r.id, subject_variant: r.subject_variant === "b" ? "b" : "a" },
+        ]),
+      );
     }
 
-    // Update campaign metrics
-    await sb.from("campaigns").update({
-      status: "completed",
-      sent_count: sent,
-      total_contacts: contacts.length,
-    }).eq("id", campaign_id);
+    if (!isTest) {
+      await sb.from("campaigns").update({ status: "running" }).eq("id", campaign_id);
+    }
+
+    const results = await pMap(
+      contacts,
+      async (contact) => {
+        if (!contact.email) return;
+        const recipientMeta = contact.id === "test" ? null : sidAndVariantByCustomer.get(contact.id);
+        const sid = recipientMeta?.sid ?? "";
+        if (!isTest && !sid) return;
+
+        const unsubscribeUrl = await buildSignedUnsubscribeUrl(APP_URL, userId, contact.id, sid || undefined);
+        const openPixelUrl = isTest || !sid
+          ? undefined
+          : `${SUPABASE_URL}/functions/v1/track-email-open?sid=${encodeURIComponent(sid)}`;
+
+        const variant = abEnabled && recipientMeta ? recipientMeta.subject_variant : "a";
+        const subject = variant === "b" ? subjectB : subjectA;
+        const cartContext = cartContextByCustomer.get(contact.id);
+        const couponTag = (contact.tags ?? []).find((t) => String(t).toLowerCase().startsWith("coupon:"));
+        const couponCode = couponTag ? couponTag.split(":").slice(1).join(":") : "";
+        const ultimaCompra = contact.last_purchase_at
+          ? new Date(contact.last_purchase_at).toLocaleDateString("pt-BR")
+          : "";
+
+        let html = renderBlocksToHTML(blocksHydrated, {
+          unsubscribeUrl,
+          preheader,
+          openPixelUrl,
+          mergeVars: {
+            nome: contact.name ?? "Cliente",
+            loja: storeName,
+            email: contact.email,
+            segmento_rfm: contact.rfm_segment ?? "",
+            ultima_compra_em: ultimaCompra,
+            perfil_comportamental: contact.behavioral_profile ?? "",
+            canal_preferido: contact.preferred_channel ?? "",
+            valor_carrinho: cartContext?.cart_value != null
+              ? Number(cartContext.cart_value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+              : "",
+            link_checkout: cartContext?.recovery_url ?? "",
+            origem_trafego: cartContext?.utm_source ?? "",
+            motivo_falha_pagamento: cartContext?.payment_failure_reason ?? "",
+            cupom: couponCode,
+          },
+          brandPrimaryHex: brandHex ?? undefined,
+        });
+
+        if (!isTest && sid) {
+          html = applyUtmsToHtml(html, utmBase);
+          html = wrapClickTracking(html, SUPABASE_URL, sid);
+        }
+
+        await sendEmail(contact.email, subject, html, fromHeader, replyTo, userId);
+      },
+      10,
+    );
+
+    const sent = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+
+    if (failed > 0) console.error(`${failed} envios falharam`);
+
+    if (!isTest) {
+      await sb.from("campaigns").update({
+        status: "completed",
+        sent_count: sent,
+        total_contacts: contacts.length,
+      }).eq("id", campaign_id);
+
+      if (abEnabled) {
+        const { data: recipients } = await sb
+          .from("newsletter_send_recipients")
+          .select("id,subject_variant")
+          .eq("campaign_id", campaign_id);
+        const recipientIds = (recipients ?? []).map((r: any) => r.id);
+        if (recipientIds.length > 0) {
+          const { data: events } = await sb
+            .from("email_engagement_events")
+            .select("send_recipient_id,event_type")
+            .eq("campaign_id", campaign_id)
+            .in("send_recipient_id", recipientIds);
+
+          const byRecipientVariant = new Map((recipients ?? []).map((r: any) => [r.id, r.subject_variant === "b" ? "b" : "a"]));
+          const totals = { a: { sent: 0, opens: 0, clicks: 0 }, b: { sent: 0, opens: 0, clicks: 0 } };
+          for (const r of (recipients ?? []) as any[]) totals[r.subject_variant === "b" ? "b" : "a"].sent += 1;
+          const uniqueOpen = new Set<string>();
+          const uniqueClick = new Set<string>();
+          for (const ev of (events ?? []) as any[]) {
+            const key = `${ev.send_recipient_id}:${ev.event_type}`;
+            if (ev.event_type === "open") uniqueOpen.add(key);
+            if (ev.event_type === "click") uniqueClick.add(key);
+          }
+          for (const k of uniqueOpen) {
+            const rid = k.split(":")[0];
+            const v = byRecipientVariant.get(rid);
+            if (v) totals[v].opens += 1;
+          }
+          for (const k of uniqueClick) {
+            const rid = k.split(":")[0];
+            const v = byRecipientVariant.get(rid);
+            if (v) totals[v].clicks += 1;
+          }
+          const minSample = 25;
+          if (totals.a.sent >= minSample && totals.b.sent >= minSample) {
+            const score = (s: { sent: number; opens: number; clicks: number }) =>
+              ((s.clicks / Math.max(1, s.sent)) * 0.7) + ((s.opens / Math.max(1, s.sent)) * 0.3);
+            const winner = score(totals.a) >= score(totals.b) ? "a" : "b";
+            await sb.from("campaigns").update({ winner_variant: winner } as never).eq("id", campaign_id).then(() => undefined).catch(() => undefined);
+          }
+        }
+      }
+    }
 
     return new Response(JSON.stringify({ sent, failed, total: contacts.length }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
+  } catch (err: unknown) {
+    const requestId = crypto.randomUUID();
+    console.error(`[${requestId}] dispatch-newsletter error:`, err);
+    return new Response(JSON.stringify({ error: "Internal server error", request_id: requestId }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

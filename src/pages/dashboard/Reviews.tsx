@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { trackMoatEvent } from "@/lib/moat-telemetry";
 
 type Review = {
   id: string;
@@ -75,7 +76,7 @@ export default function Reviews() {
   }
 
   const { data: reviews = [], isLoading } = useQuery({
-    queryKey: ["reviews", filter],
+    queryKey: ["reviews", user?.id, filter],
     queryFn: async () => {
       let q = supabase
         .from("reviews")
@@ -101,7 +102,7 @@ export default function Reviews() {
     },
     onSuccess: () => {
       toast({ title: "Resposta marcada!", description: "Avaliação marcada como respondida." });
-      queryClient.invalidateQueries({ queryKey: ["reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["reviews", user?.id] });
     },
     onError: () => toast({ title: "Erro ao salvar resposta", variant: "destructive" }),
   });
@@ -118,10 +119,16 @@ export default function Reviews() {
         },
       });
       if (error) throw error;
-      const reply = (data as { reply: string }).reply;
+      const reply = (data as { suggestion?: string; reply?: string })?.suggestion
+        ?? (data as { suggestion?: string; reply?: string })?.reply;
+      if (!reply) throw new Error("AI reply missing");
+      void trackMoatEvent("review_ai_generated", {
+        review_id: review.id,
+        rating: review.rating ?? 0,
+      });
       await supabase.from("reviews").update({ ai_reply: reply }).eq("id", review.id);
-      queryClient.setQueryData(["reviews", filter], (old: Review[]) =>
-        old.map((r) => r.id === review.id ? { ...r, ai_reply: reply } : r)
+      queryClient.setQueryData(["reviews", user?.id, filter], (old: Review[] = []) =>
+        old.map((r) => (r.id === review.id ? { ...r, ai_reply: reply } : r))
       );
     } catch {
       toast({ title: "Erro ao gerar resposta com IA", variant: "destructive" });

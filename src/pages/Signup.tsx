@@ -10,11 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-
-const PLATAFORMAS = [
-  "Shopify", "Nuvemshop", "VTEX", "WooCommerce",
-  "Yampi", "Tray", "Loja Integrada", "Mercado Livre", "Outra",
-];
+import { ECOMMERCE_PLATFORMAS } from "@/lib/ecommerce-platforms";
 
 const schema = z.object({
   full_name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -221,7 +217,7 @@ export default function Signup() {
                       <SelectValue placeholder="Shopify, Nuvemshop, VTEX..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {PLATAFORMAS.map(p => (
+                      {ECOMMERCE_PLATFORMAS.map((p) => (
                         <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>

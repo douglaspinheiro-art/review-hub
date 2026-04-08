@@ -1,6 +1,7 @@
 import { Component, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { reportClientError } from "@/lib/error-monitoring";
 
 interface Props {
   children: ReactNode;
@@ -23,6 +24,13 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
     console.error("[ErrorBoundary]", error, info.componentStack);
+    void reportClientError({
+      message: error?.message ?? "Unknown client error",
+      stack: error?.stack,
+      componentStack: info.componentStack,
+      route: typeof window !== "undefined" ? window.location.pathname : undefined,
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+    });
   }
 
   handleReset = () => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   X, ChevronRight, ChevronLeft, Loader2, Check, Sparkles,
   MessageCircle, Mail, Smartphone, Zap, Trophy, Clock,
@@ -23,6 +23,7 @@ import { mockProdutos } from "@/lib/mock-data";
 import { useLoja } from "@/hooks/useConvertIQ";
 type LojaExtended = any;
 import { useProductsV3 as useProdutosV3 } from "@/hooks/useLTVBoost";
+import { contactMatchesEnglishRfmSegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
 
 export type ProdutoParaCampanha = {
   id: string;
@@ -81,7 +82,10 @@ const schema = z.object({
   objective: z.enum(["recovery", "rebuy", "loyalty", "lancamento"]).default("recovery"),
   subject: z.string().optional(),
   message: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres"),
-  segment: z.enum(["all", "active", "inactive", "vip", "cart_abandoned"]),
+  segment: z.enum([
+    "all", "active", "inactive", "vip", "cart_abandoned",
+    "rfm_champions", "rfm_loyal", "rfm_at_risk", "rfm_lost", "rfm_new",
+  ]),
   scheduled_at: z.string().optional(),
   send_now: z.boolean().default(true),
   ai_context: z.string().optional(),
@@ -99,17 +103,56 @@ const OBJECTIVES = [
   { value: "lancamento",label: "Lançar Produto",    desc: "Divulgue produtos e novas coleções.",        icon: Package,  color: "text-pink-500" },
 ] as const;
 
+const QUICK_TEMPLATES: Record<"recovery" | "rebuy" | "loyalty" | "lancamento", string[]> = {
+  recovery: [
+    "Oi {{nome}}! Seu carrinho ainda está reservado. Quer que eu te envie um atalho para finalizar agora? {{link}}",
+    "Percebi que você quase concluiu seu pedido. Posso te ajudar com frete, prazo ou pagamento? {{link}}",
+  ],
+  rebuy: [
+    "{{nome}}, seu último pedido fez sucesso? Tenho uma sugestão para reposição com entrega rápida.",
+    "Hora de repor seus favoritos? Separei uma seleção com melhor custo-benefício para você.",
+  ],
+  loyalty: [
+    "{{nome}}, você está no grupo VIP da loja e liberamos uma condição exclusiva por 24h.",
+    "Oferta VIP para você: atendimento prioritário e benefício especial no próximo pedido.",
+  ],
+  lancamento: [
+    "Chegou novidade por aqui! {{nome}}, veja a nova coleção antes de todo mundo.",
+    "Lançamento liberado com estoque limitado. Quer o link de compra rápida?",
+  ],
+};
+
 export type CampaignPrefill = {
   name?: string;
   message?: string;
   objective?: "recovery" | "rebuy" | "loyalty" | "lancamento";
   channel?: "whatsapp" | "email" | "sms";
   segment?: "all" | "active" | "inactive" | "vip" | "cart_abandoned";
+  /** Segmento RFM em inglês (champions, loyal, …) — preenche o formulário com o radio RFM correspondente */
+  rfmSegment?: RfmEnglishSegment;
   /** Se true, pula o passo 0 (objetivo) e vai direto para mensagem */
   skipObjective?: boolean;
   /** Badge exibido no topo do modal */
   source?: string;
 };
+
+const EMPTY_SEGMENT_COUNTS = {
+  all: 0, active: 0, inactive: 0, vip: 0, cart_abandoned: 0,
+  rfm_champions: 0, rfm_loyal: 0, rfm_at_risk: 0, rfm_lost: 0, rfm_new: 0,
+};
+
+const LAUNCH_SEGMENT_META: { value: FormData["segment"]; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "active", label: "Ativos" },
+  { value: "inactive", label: "Inativos" },
+  { value: "vip", label: "VIP (campeões + fiéis)" },
+  { value: "cart_abandoned", label: "Carrinho abandonado" },
+  { value: "rfm_champions", label: "RFM — Campeões" },
+  { value: "rfm_loyal", label: "RFM — Fiéis" },
+  { value: "rfm_at_risk", label: "RFM — Em risco" },
+  { value: "rfm_lost", label: "RFM — Perdidos" },
+  { value: "rfm_new", label: "RFM — Novos" },
+];
 
 export default function CampaignModal({
   onClose,
@@ -125,11 +168,15 @@ export default function CampaignModal({
   const [step, setStep] = useState(prefill?.skipObjective ? 1 : 0);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiVariations, setAiVariations] = useState<any[]>([]);
-  const [segmentCounts, setSegmentCounts] = useState<any>({ all: 1240, active: 450, vip: 120, cart_abandoned: 87 });
   const [showMagicLink, setShowMagicLink] = useState(false);
   const [magicSku, setMagicSku] = useState("");
   const [magicQty, setMagicQty] = useState("1");
   const [magicCoupon, setMagicCoupon] = useState("");
+  const [waContentType, setWaContentType] = useState<"text" | "image" | "video" | "audio" | "document" | "template">("text");
+  const [waMediaUrl, setWaMediaUrl] = useState("");
+  const [waButtonLabel, setWaButtonLabel] = useState("");
+  const [waButtonUrl, setWaButtonUrl] = useState("");
+  const [templateName, setTemplateName] = useState("");
 
   // Product campaign state
   const [campaignMode, setCampaignMode] = useState<"single" | "collection">(
@@ -149,7 +196,9 @@ export default function CampaignModal({
     resolver: zodResolver(schema),
     defaultValues: {
       channel: prefill?.channel ?? "whatsapp",
-      segment: prefill?.segment ?? "all",
+      segment: prefill?.rfmSegment
+        ? (`rfm_${prefill.rfmSegment}` as FormData["segment"])
+        : (prefill?.segment ?? "all"),
       objective: prefill?.objective ?? initialObjective ?? "recovery",
       message: prefill?.message ?? "",
       name: prefill?.name ?? "",
@@ -158,28 +207,174 @@ export default function CampaignModal({
     },
   });
 
+  const { data: segmentCounts = EMPTY_SEGMENT_COUNTS } = useQuery({
+    queryKey: ["campaign_modal_segment_counts", loja.data?.id],
+    queryFn: async () => {
+      const storeId = loja.data?.id;
+      if (!storeId) return EMPTY_SEGMENT_COUNTS;
+      const [{ data: rows, error }, { count: cartCount, error: cartErr }] = await Promise.all([
+        supabase.from("customers_v3").select("rfm_segment").eq("store_id", storeId),
+        supabase.from("abandoned_carts").select("id", { count: "exact", head: true }).eq("store_id", storeId).in("status", ["pending", "open"]),
+      ]);
+      if (error) throw error;
+      if (cartErr) throw cartErr;
+      const list = rows ?? [];
+      const c = { ...EMPTY_SEGMENT_COUNTS };
+      c.all = list.length;
+      c.cart_abandoned = cartCount ?? 0;
+      for (const r of list) {
+        const raw = (r as { rfm_segment: string | null }).rfm_segment;
+        if (contactMatchesEnglishRfmSegment(raw, "champions")) c.rfm_champions++;
+        if (contactMatchesEnglishRfmSegment(raw, "loyal")) c.rfm_loyal++;
+        if (contactMatchesEnglishRfmSegment(raw, "at_risk")) c.rfm_at_risk++;
+        if (contactMatchesEnglishRfmSegment(raw, "lost")) c.rfm_lost++;
+        if (contactMatchesEnglishRfmSegment(raw, "new")) c.rfm_new++;
+      }
+      c.active = list.filter((r) => {
+        const raw = (r as { rfm_segment: string | null }).rfm_segment;
+        return (["champions", "loyal", "new"] as RfmEnglishSegment[]).some((k) => contactMatchesEnglishRfmSegment(raw, k));
+      }).length;
+      c.inactive = list.filter((r) => {
+        const raw = (r as { rfm_segment: string | null }).rfm_segment;
+        return (["at_risk", "lost"] as RfmEnglishSegment[]).some((k) => contactMatchesEnglishRfmSegment(raw, k));
+      }).length;
+      c.vip = list.filter((r) => {
+        const raw = (r as { rfm_segment: string | null }).rfm_segment;
+        return contactMatchesEnglishRfmSegment(raw, "champions") || contactMatchesEnglishRfmSegment(raw, "loyal");
+      }).length;
+      return c;
+    },
+    enabled: !!loja.data?.id,
+    staleTime: 30_000,
+  });
+
   const channel = watch("channel");
   const message = watch("message") ?? "";
   const objective = watch("objective");
   const watchedName = watch("name");
 
+  const { data: savedTemplates = [] } = useQuery({
+    queryKey: ["campaign_message_templates", user?.id, channel, objective],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await (supabase as any)
+        .from("campaign_message_templates")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("channel", channel)
+        .eq("objective", objective)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user && !!channel && !!objective,
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Não autenticado");
+      if (!templateName.trim()) throw new Error("Informe um nome para o template");
+      if (!message.trim()) throw new Error("Escreva uma mensagem antes de salvar");
+      const { error } = await (supabase as any).from("campaign_message_templates").insert({
+        user_id: user.id,
+        store_id: (loja.data as any)?.id ?? null,
+        name: templateName.trim(),
+        objective,
+        channel,
+        message,
+        whatsapp_config: channel === "whatsapp"
+          ? {
+            content_type: waContentType,
+            media_url: waMediaUrl || null,
+            buttons: waContentType === "template" && waButtonLabel && waButtonUrl
+              ? [{ type: "url", label: waButtonLabel, value: waButtonUrl }]
+              : [],
+          }
+          : null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Template salvo!" });
+      setTemplateName("");
+      queryClient.invalidateQueries({ queryKey: ["campaign_message_templates"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao salvar template", description: err.message, variant: "destructive" });
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const { error } = await (supabase.from("campaigns") as any).insert([{
+      const { data: inserted, error } = await (supabase.from("campaigns") as any).insert([{
         user_id: user!.id,
         name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
         message: data.message,
         channel: data.channel,
         subject: data.subject ?? null,
-        tags: data.segment !== "all" ? [data.segment] : [],
+        tags: (() => {
+          if (data.segment === "all") return [];
+          if (data.segment.startsWith("rfm_")) {
+            const key = data.segment.replace("rfm_", "");
+            return ["rfm", key];
+          }
+          return [data.segment];
+        })(),
         status: "draft",
         total_contacts: 0,
         sent_count: 0,
         delivered_count: 0,
         read_count: 0,
         reply_count: 0,
-      }]);
+        blocks: data.channel === "whatsapp" ? {
+          whatsapp: {
+            content_type: waContentType,
+            media_url: waMediaUrl || null,
+            buttons: waContentType === "template" && waButtonLabel && waButtonUrl
+              ? [{ type: "url", label: waButtonLabel, value: waButtonUrl }]
+              : [],
+          },
+        } : null,
+      }]).select("id").single();
       if (error) throw error;
+
+      const campaignId = inserted?.id as string | undefined;
+      if (!campaignId) return;
+
+      const segmentPayload = (() => {
+        switch (data.segment) {
+          case "rfm_champions":
+            return { type: "rfm", filters: { rfm_segment: "champions", holdout_pct: 10 } };
+          case "rfm_loyal":
+            return { type: "rfm", filters: { rfm_segment: "loyal", holdout_pct: 10 } };
+          case "rfm_at_risk":
+            return { type: "rfm", filters: { rfm_segment: "at_risk", holdout_pct: 10 } };
+          case "rfm_lost":
+            return { type: "rfm", filters: { rfm_segment: "lost", holdout_pct: 10 } };
+          case "rfm_new":
+            return { type: "rfm", filters: { rfm_segment: "new", holdout_pct: 10 } };
+          case "vip":
+            return { type: "rfm", filters: { segment_key: "vip", rfm_segment: "champions", holdout_pct: 10 } };
+          case "active":
+            return { type: "custom", filters: { segment_key: "active", cooldown_hours: 48, min_expected_value: 15 } };
+          case "inactive":
+            return { type: "custom", filters: { segment_key: "inactive", cooldown_hours: 24, min_expected_value: 0 } };
+          case "cart_abandoned":
+            return { type: "custom", filters: { segment_key: "cart_abandoned", require_abandoned_cart: true, holdout_pct: 15 } };
+          default:
+            return { type: "custom", filters: { segment_key: "all" } };
+        }
+      })();
+
+      await (supabase as any).from("campaign_segments").delete().eq("campaign_id", campaignId);
+      const { error: segErr } = await (supabase as any).from("campaign_segments").insert({
+        campaign_id: campaignId,
+        user_id: user!.id,
+        type: segmentPayload.type,
+        filters: segmentPayload.filters,
+      });
+      if (segErr) throw segErr;
     },
     onSuccess: () => {
       toast({ title: "Campanha criada!", description: "Salva como rascunho. Dispare quando quiser." });
@@ -210,6 +405,18 @@ export default function CampaignModal({
       ]);
       setAiLoading(false);
     }, 1500);
+  }
+
+  function generateAbVariant(base: string): string {
+    if (!base.trim()) return "";
+    return base
+      .replace("Oi ", "Tudo bem, ")
+      .replace("Quer", "Topa")
+      .replace("agora", "hoje")
+      .replace("exclusiva", "especial")
+      .replace("novidade", "lancamento")
+      .replace(/\s{2,}/g, " ")
+      .trim();
   }
 
   function handleInsertMagicLink() {
@@ -507,6 +714,62 @@ export default function CampaignModal({
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-4">
+                    <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Biblioteca de templates</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(QUICK_TEMPLATES[objective] ?? []).map((tpl, idx) => (
+                          <button
+                            key={`quick-${idx}`}
+                            type="button"
+                            onClick={() => setValue("message", tpl)}
+                            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-primary/5 border border-primary/20 hover:border-primary/40"
+                          >
+                            Template rapido {idx + 1}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {(savedTemplates as any[]).slice(0, 6).map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => {
+                              setValue("message", tpl.message ?? "");
+                              const waCfg = tpl.whatsapp_config ?? {};
+                              setWaContentType((waCfg.content_type ?? "text") as any);
+                              setWaMediaUrl(waCfg.media_url ?? "");
+                              const b = Array.isArray(waCfg.buttons) && waCfg.buttons.length > 0 ? waCfg.buttons[0] : null;
+                              setWaButtonLabel(b?.label ?? "");
+                              setWaButtonUrl(b?.value ?? "");
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-background border hover:border-primary/40"
+                          >
+                            {tpl.name}
+                          </button>
+                        ))}
+                        {savedTemplates.length === 0 && (
+                          <span className="text-[11px] text-muted-foreground">Nenhum template salvo ainda.</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          value={templateName}
+                          onChange={(e) => setTemplateName(e.target.value)}
+                          placeholder="Nome do template"
+                          className="h-9 text-xs"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-9 text-[10px] font-black uppercase"
+                          onClick={() => saveTemplateMutation.mutate()}
+                          disabled={saveTemplateMutation.isPending}
+                        >
+                          {saveTemplateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Salvar"}
+                        </Button>
+                      </div>
+                    </div>
+
                     <div className="relative group">
                       <Textarea 
                         {...register("message")}
@@ -523,10 +786,79 @@ export default function CampaignModal({
                       <Button variant="outline" size="sm" className="rounded-xl h-10 text-[9px] font-black uppercase tracking-widest gap-2 border-2" onClick={() => setValue("message", message + (message ? " " : "") + "{{nome}}")}>
                         <Plus className="w-3.5 h-3.5" /> Variável {"{{nome}}"}
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl h-10 text-[9px] font-black uppercase tracking-widest gap-2 border-2"
+                        onClick={() => {
+                          const variant = generateAbVariant(message);
+                          if (!variant) return;
+                          setAiVariations((prev) => [{ label: "A/B (variação)", text: variant }, ...prev].slice(0, 6));
+                          toast({ title: "Variação A/B gerada", description: "A variação foi adicionada nas sugestões para teste." });
+                        }}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Gerar variação A/B
+                      </Button>
                       <Button variant="outline" size="sm" className="rounded-xl h-10 text-[9px] font-black uppercase tracking-widest gap-2 border-2 text-primary border-primary/20 bg-primary/5" onClick={() => setShowMagicLink(v => !v)}>
                         <ShoppingCart className="w-3.5 h-3.5" /> Inserir Link Mágico
                       </Button>
                     </div>
+
+                    {channel === "whatsapp" && (
+                      <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Formato WhatsApp</p>
+                        <div className="flex bg-muted/40 p-1 rounded-xl flex-wrap gap-1">
+                          {(["text", "image", "video", "audio", "document", "template"] as const).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setWaContentType(t)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                                waContentType === t ? "bg-primary text-white" : "text-muted-foreground hover:bg-background/60"
+                              )}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+
+                        {waContentType !== "text" && waContentType !== "template" && (
+                          <div>
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">URL da mídia</Label>
+                            <Input
+                              placeholder="https://..."
+                              value={waMediaUrl}
+                              onChange={(e) => setWaMediaUrl(e.target.value)}
+                              className="mt-2 h-10 rounded-xl"
+                            />
+                          </div>
+                        )}
+
+                        {waContentType === "template" && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Texto do botão</Label>
+                              <Input
+                                placeholder="Ver oferta"
+                                value={waButtonLabel}
+                                onChange={(e) => setWaButtonLabel(e.target.value)}
+                                className="mt-2 h-10 rounded-xl"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">URL do botão</Label>
+                              <Input
+                                placeholder="https://..."
+                                value={waButtonUrl}
+                                onChange={(e) => setWaButtonUrl(e.target.value)}
+                                className="mt-2 h-10 rounded-xl"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {showMagicLink && (
                       <div className="bg-muted/40 border-2 border-primary/20 rounded-2xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -587,20 +919,20 @@ export default function CampaignModal({
                   <div className="space-y-6">
                     <div className="space-y-3">
                       <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Segmentação Alvo</Label>
-                      <div className="grid grid-cols-1 gap-3">
-                        {["all", "active", "vip", "cart_abandoned"].map((seg) => (
+                      <div className="grid grid-cols-1 gap-3 max-h-[320px] overflow-y-auto pr-1">
+                        {LAUNCH_SEGMENT_META.map(({ value: seg, label }) => (
                           <label key={seg} className={cn(
                             "flex items-center justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all",
                             watch("segment") === seg ? "border-primary bg-primary/5" : "border-border/50 hover:bg-muted/30"
                           )}>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
                               <input type="radio" value={seg} {...register("segment")} className="sr-only" />
-                              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", watch("segment") === seg ? "bg-primary text-white" : "bg-muted")}>
-                                {seg === 'vip' ? <Trophy className="w-5 h-5" /> : <Target className="w-5 h-5" />}
+                              <div className={cn("w-10 h-10 shrink-0 rounded-xl flex items-center justify-center", watch("segment") === seg ? "bg-primary text-white" : "bg-muted")}>
+                                {seg === "vip" || seg.startsWith("rfm_") ? <Trophy className="w-5 h-5" /> : <Target className="w-5 h-5" />}
                               </div>
-                              <span className="text-xs font-black uppercase tracking-widest">{seg.replace('_', ' ')}</span>
+                              <span className="text-xs font-black uppercase tracking-widest leading-tight">{label}</span>
                             </div>
-                            <span className="text-xs font-bold font-mono opacity-60">{segmentCounts[seg]} contatos</span>
+                            <span className="text-xs font-bold font-mono opacity-60 shrink-0">{segmentCounts[seg] ?? 0} contatos</span>
                           </label>
                         ))}
                       </div>

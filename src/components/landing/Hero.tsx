@@ -19,20 +19,32 @@ export default function Hero() {
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold leading-[1.05] tracking-tight">
-              Transforme cada conversa em{" "}
-              <span className="text-gradient">receita previsível</span>
+              O sistema operacional de{" "}
+              <span className="text-gradient">retenção para e-commerce</span>
             </h1>
 
             <p className="text-lg text-muted-foreground max-w-lg leading-relaxed">
-              A plataforma de marketing conversacional que já gerou{" "}
-              <span className="text-foreground font-semibold">R$47M em vendas</span>{" "}
-              para mais de 200 e-commerces brasileiros.
+              Para lojas de <span className="text-foreground font-semibold">R$30k a R$3M/mes</span> que precisam previsibilidade
+              de caixa. O foco e <span className="text-foreground font-semibold">lucro incremental comprovado</span>, nao volume
+              de disparos.
             </p>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                "Moda: +22% recompra em 60 dias",
+                "Beleza: payback medio em 9 dias",
+                "Suplementos: +31% em reativacao",
+              ].map((proof) => (
+                <span key={proof} className="px-3 py-1 rounded-full text-xs font-semibold bg-secondary border border-border/50">
+                  {proof}
+                </span>
+              ))}
+            </div>
 
             <div className="flex flex-wrap gap-4 items-center">
               <Button asChild size="lg" className="h-14 px-8 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] transition-all">
                 <a href="/signup">
-                  Agendar Demo Gratuita <ArrowRight className="ml-2 w-5 h-5" />
+                  Ver Diagnostico da Minha Operacao <ArrowRight className="ml-2 w-5 h-5" />
                 </a>
               </Button>
               <Button asChild variant="outline" size="lg" className="h-14 px-8 text-base rounded-xl border-border/50 hover:bg-secondary">

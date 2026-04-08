@@ -17,6 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { OBJECTIVES, VERTICALS, saveStrategyProfile, type EcommerceVertical, type PrimaryObjective } from "@/lib/strategy-profile";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -28,6 +29,8 @@ export default function Onboarding() {
   const [channels, setChannels] = useState<string[]>([]);
   const [isSyncing, setIsSyncing] = useState<string | null>(null);
   const [step, setStep] = useState(1); // 1: Channels, 2: WhatsApp, 3: Primeira Prescrição
+  const [objective, setObjective] = useState<PrimaryObjective | null>(null);
+  const [vertical, setVertical] = useState<EcommerceVertical | null>(null);
   const [pulseNum, setPulseNum] = useState("");
   const [isLaunching, setIsLaunching] = useState(false);
   const showCommunity = sessionStorage.getItem("ltv_show_community") === "1";
@@ -52,6 +55,7 @@ export default function Onboarding() {
     if (channels.includes(id)) {
       setChannels(channels.filter(c => c !== id));
     } else {
+    setChannels((prev) => [...prev, id]);
       toast.info(`Integração com ${id.toUpperCase()} em breve. Configure via Configurações > Integrações.`);
     }
   };
@@ -61,12 +65,19 @@ export default function Onboarding() {
   };
 
   const handleNextStep = () => {
+    if (step === 1 && (!objective || !vertical)) {
+      toast.error("Selecione objetivo e vertical antes de continuar.");
+      return;
+    }
     if (step === 1) setStep(2);
     else if (step === 2) setStep(3);
   };
 
   const handleLaunch = () => {
     setIsLaunching(true);
+    if (objective && vertical) {
+      saveStrategyProfile({ objective, vertical });
+    }
     if (pulseNum) {
       toast.success(`Pulse semanal ativado para ${pulseNum}!`);
     }
@@ -123,6 +134,52 @@ export default function Onboarding() {
                 )}
                 <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">Conectar canais de venda</h1>
                 <p className="text-muted-foreground max-w-lg mx-auto font-medium">Conecte sua loja para que a IA identifique seus clientes reais em todos os canais.</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-4 space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Objetivo principal</p>
+                  <div className="grid gap-2">
+                    {OBJECTIVES.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setObjective(item.id)}
+                        className={cn(
+                          "text-left rounded-xl border p-3 transition-all",
+                          objective === item.id
+                            ? "border-primary bg-primary/10"
+                            : "border-[#2A2A38] hover:border-primary/40"
+                        )}
+                      >
+                        <p className="text-sm font-bold">{item.label}</p>
+                        <p className="text-[11px] text-muted-foreground">{item.hint}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-4 space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Vertical da loja</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {VERTICALS.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setVertical(item.id)}
+                        className={cn(
+                          "text-left rounded-xl border p-3 transition-all",
+                          vertical === item.id
+                            ? "border-primary bg-primary/10"
+                            : "border-[#2A2A38] hover:border-primary/40"
+                        )}
+                      >
+                        <p className="text-sm font-bold">{item.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{item.benchmarkHint}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">

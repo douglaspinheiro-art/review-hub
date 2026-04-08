@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLocation, useNavigate } from "react-router-dom";
 import CampaignModal, { CampaignPrefill } from "@/components/dashboard/CampaignModal";
 import { TrialGate } from "@/components/dashboard/TrialGate";
+import { isValidRfmQuerySegment } from "@/lib/rfm-segments";
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   draft:     { label: "Rascunho",     className: "bg-muted text-muted-foreground" },
@@ -46,6 +47,18 @@ export default function Campanhas() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
+    const segmento = params.get("segmento");
+    if (segmento && isValidRfmQuerySegment(segmento)) {
+      setModalPrefill({
+        rfmSegment: segmento,
+        source: "Matriz RFM",
+        skipObjective: true,
+        objective: "rebuy",
+      });
+      setShowModal(true);
+      navigate("/dashboard/campanhas", { replace: true });
+      return;
+    }
     if (params.get("new") === "true") {
       const raw = sessionStorage.getItem("campaign_prefill");
       if (raw) {
@@ -123,9 +136,10 @@ export default function Campanhas() {
 
   const duplicateMutation = useMutation({
     mutationFn: async (campaign: typeof campaigns[number]) => {
-      const { error } = await (supabase.from("campaigns") as any).insert([{
+      const isEmail = campaign.channel === "email";
+      const payload: Record<string, unknown> = {
         user_id: user!.id,
-        name: `${campaign.name} (cópia)`,
+        name: `(cópia) ${campaign.name}`,
         message: campaign.message,
         channel: campaign.channel,
         status: "draft",
@@ -134,12 +148,23 @@ export default function Campanhas() {
         delivered_count: 0,
         read_count: 0,
         reply_count: 0,
-      }]);
+      };
+      if (isEmail) {
+        payload.subject = (campaign as any).subject ?? "";
+        payload.preheader = (campaign as any).preheader ?? "";
+        payload.blocks = (campaign as any).blocks ?? [];
+      }
+      const { data, error } = await (supabase.from("campaigns") as any)
+        .insert([payload])
+        .select("id")
+        .single();
       if (error) throw error;
+      return { id: data.id as string, isEmail };
     },
-    onSuccess: () => {
+    onSuccess: ({ id, isEmail }) => {
       toast({ title: "Campanha duplicada!", description: "Salva como rascunho." });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      if (isEmail) navigate(`/dashboard/newsletter/${id}`);
     },
     onError: () => {
       toast({ title: "Erro ao duplicar campanha", variant: "destructive" });
@@ -317,9 +342,12 @@ export default function Campanhas() {
       {!isLoading && filtered.length > 0 && (
         <div className="space-y-3">
           {filtered.map((c) => {
+            const isEmail = c.channel === "email";
+            const clickCount = (c as any).click_count ?? 0;
             const readRate = c.sent_count > 0 ? Math.round((c.read_count / c.sent_count) * 100) : 0;
             const deliveryRate = c.sent_count > 0 ? Math.round((c.delivered_count / c.sent_count) * 100) : 0;
             const replyRate = c.sent_count > 0 ? Math.round((c.reply_count / c.sent_count) * 100) : 0;
+            const clickRate = c.sent_count > 0 ? Math.round((clickCount / c.sent_count) * 100) : 0;
             const progress = c.total_contacts > 0 ? Math.round((c.sent_count / c.total_contacts) * 100) : 0;
             const st = STATUS_LABEL[c.status] ?? STATUS_LABEL.draft;
 
@@ -448,12 +476,17 @@ export default function Campanhas() {
 
                 {/* Métricas */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                  {[
+                  {(isEmail ? [
+                    { label: "Enviados",  value: c.sent_count.toLocaleString("pt-BR") },
+                    { label: "Abertos",   value: c.sent_count > 0 ? `${readRate}%` : "—" },
+                    { label: "Cliques",   value: c.sent_count > 0 ? `${clickRate}%` : "—" },
+                    { label: "Entregues", value: c.sent_count > 0 ? `${deliveryRate}%` : "—" },
+                  ] : [
                     { label: "Enviados",  value: c.sent_count.toLocaleString("pt-BR") },
                     { label: "Entregues", value: c.sent_count > 0 ? `${deliveryRate}%` : "—" },
                     { label: "Lidos",     value: c.sent_count > 0 ? `${readRate}%` : "—" },
                     { label: "Respostas", value: c.sent_count > 0 ? `${replyRate}%` : "—" },
-                  ].map(({ label, value }) => (
+                  ]).map(({ label, value }) => (
                     <div key={label} className="bg-muted/40 rounded-lg py-2">
                       <p className="text-lg font-bold">{value}</p>
                       <p className="text-xs text-muted-foreground">{label}</p>

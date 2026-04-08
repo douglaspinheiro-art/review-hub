@@ -136,13 +136,20 @@ create or replace trigger orders_updated_at before update on orders
 -- Influences revenue_influenced in analytics_daily when an order is paid
 create or replace function sync_order_to_analytics()
 returns trigger language plpgsql as $$
+declare
+  v_store_id uuid;
 begin
   if (TG_OP = 'INSERT' and new.status in ('paid', 'shipped', 'delivered')) or
      (TG_OP = 'UPDATE' and new.status in ('paid', 'shipped', 'delivered') and old.status not in ('paid', 'shipped', 'delivered')) then
-    
-    insert into analytics_daily (date, revenue_influenced)
-    values (current_date, new.total_amount)
-    on conflict (date) do update
+    -- Keep legacy migration executable by aligning with analytics unique key (store_id, date).
+    select c.store_id
+      into v_store_id
+    from contacts c
+    where c.id = new.contact_id;
+
+    insert into analytics_daily (user_id, store_id, date, revenue_influenced)
+    values (new.user_id, v_store_id, current_date, new.total_amount)
+    on conflict (store_id, date) do update
     set revenue_influenced = analytics_daily.revenue_influenced + excluded.revenue_influenced;
     
   end if;

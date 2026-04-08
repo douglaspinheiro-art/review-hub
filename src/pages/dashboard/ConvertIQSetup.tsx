@@ -9,8 +9,7 @@ import { cn } from "@/lib/utils";
 import { useSaveLoja, testarGA4, MOCK_METRICAS } from "@/hooks/useConvertIQ";
 import { useSaveMetricas } from "@/hooks/useConvertIQ";
 import { toast } from "sonner";
-
-const PLATAFORMAS = ["Shopify", "VTEX", "WooCommerce", "Nuvemshop", "Tray", "Outro"];
+import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
 
 const steps = ["Setup", "Dados", "Diagnóstico"];
 
@@ -183,7 +182,11 @@ export default function ConvertIQSetup() {
                   <SelectValue placeholder="Selecione a plataforma" />
                 </SelectTrigger>
                 <SelectContent>
-                  {PLATAFORMAS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  {ECOMMERCE_PLATFORMAS_FUNIL.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

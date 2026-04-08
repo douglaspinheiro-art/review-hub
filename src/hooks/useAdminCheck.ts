@@ -2,8 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
 /**
- * Secure admin check via user_roles table + has_role() SECURITY DEFINER function.
- * Does NOT rely on profiles.role (client-side, easily spoofable).
+ * Platform staff: `user_roles` + `has_role()` SECURITY DEFINER (authoritative on the server).
+ * Used for maintenance bypass, `/dashboard/operacoes`, and RLS policies tied to `has_role(..., 'admin')`.
+ *
+ * For account/tenant administrators (billing owner / loja), use `useAuth().isTenantAdmin` (`profiles.role`).
  */
 export function useIsAdmin() {
   return useQuery({

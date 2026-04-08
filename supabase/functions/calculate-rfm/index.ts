@@ -37,18 +37,28 @@ serve(async (req) => {
 
       const rScore = daysSinceLastOrder < 30 ? 5 : daysSinceLastOrder < 90 ? 4 : daysSinceLastOrder < 180 ? 3 : daysSinceLastOrder < 365 ? 2 : 1;
       const fScore = totalOrders >= 10 ? 5 : totalOrders >= 5 ? 4 : totalOrders >= 3 ? 3 : totalOrders >= 2 ? 2 : 1;
+      const avgTicket = totalSpent / Math.max(totalOrders, 1);
+      const mScore =
+        avgTicket >= 400 ? 5 :
+        avgTicket >= 200 ? 4 :
+        avgTicket >= 100 ? 3 :
+        avgTicket >= 50 ? 2 : 1;
 
-      let segment = "novo";
-      if (rScore >= 4 && fScore >= 4) segment = "campeao";
-      else if (fScore >= 4) segment = "fiel";
-      else if (rScore >= 4 && fScore === 1) segment = "novo";
-      else if (rScore <= 2) segment = "em_risco";
-      else if (rScore === 1) segment = "perdido";
-      else segment = "promissor";
+      // English keys — aligned with newsletter, dispatch-campaign, dashboard RFM
+      let segment = "loyal";
+      if (rScore >= 4 && fScore >= 4) segment = "champions";
+      else if (fScore >= 4) segment = "loyal";
+      else if (rScore >= 4 && fScore === 1) segment = "new";
+      else if (rScore === 1) segment = "lost";
+      else if (rScore <= 2) segment = "at_risk";
+      else segment = "loyal";
 
       await supabase.from("customers_v3").update({
-        rfm_recency: rScore, rfm_frequency: fScore, rfm_monetary: totalSpent,
-        rfm_segment: segment, last_purchase_at: lastOrderDate.toISOString()
+        rfm_recency: rScore,
+        rfm_frequency: fScore,
+        rfm_monetary: mScore,
+        rfm_segment: segment,
+        last_purchase_at: lastOrderDate.toISOString(),
       }).eq("id", customer.id);
 
       updatedCount++;

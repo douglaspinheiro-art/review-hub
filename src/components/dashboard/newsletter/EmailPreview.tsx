@@ -1,21 +1,29 @@
 import { useMemo, useState } from "react";
-import { Maximize2, Minimize2, Mail } from "lucide-react";
-import { renderBlocksToHTML } from "@/lib/newsletter-renderer";
+import { Maximize2, Minimize2, Mail, Monitor, Smartphone } from "lucide-react";
+import { renderBlocksToHTML, PREVIEW_MERGE_VARS } from "@/lib/newsletter-renderer";
 import type { Block } from "@/lib/newsletter-renderer";
 import { cn } from "@/lib/utils";
 
 interface EmailPreviewProps {
   blocks: Block[];
   subject: string;
+  preheader?: string;
+  previewFromEmail?: string;
+  brandPrimaryHex?: string | null;
 }
 
-export function EmailPreview({ blocks, subject }: EmailPreviewProps) {
+export function EmailPreview({ blocks, subject, preheader, previewFromEmail, brandPrimaryHex }: EmailPreviewProps) {
   const [fullscreen, setFullscreen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const html = useMemo(
-    () => renderBlocksToHTML(blocks),
+    () => renderBlocksToHTML(blocks, {
+      preheader,
+      mergeVars: PREVIEW_MERGE_VARS,
+      brandPrimaryHex: brandPrimaryHex ?? undefined,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(blocks)]
+    [JSON.stringify(blocks), preheader, brandPrimaryHex]
   );
 
   return (
@@ -29,16 +37,42 @@ export function EmailPreview({ blocks, subject }: EmailPreviewProps) {
           <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
           <div className="min-w-0">
             <p className="text-xs font-semibold truncate">{subject || "(sem assunto)"}</p>
-            <p className="text-[10px] text-muted-foreground">notificacoes@ltvboost.com.br</p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {previewFromEmail?.trim() || "notificacoes@ltvboost.com.br"}
+            </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setFullscreen((v) => !v)}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground transition-colors shrink-0"
-        >
-          {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            title="Desktop (600px)"
+            onClick={() => setIsMobile(false)}
+            className={cn(
+              "w-7 h-7 flex items-center justify-center rounded-lg transition-colors",
+              !isMobile ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            <Monitor className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Mobile (375px)"
+            onClick={() => setIsMobile(true)}
+            className={cn(
+              "w-7 h-7 flex items-center justify-center rounded-lg transition-colors",
+              isMobile ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setFullscreen((v) => !v)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+          >
+            {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
 
       {/* Preview area */}
@@ -49,13 +83,15 @@ export function EmailPreview({ blocks, subject }: EmailPreviewProps) {
             <p className="text-sm">Adicione blocos para ver o preview</p>
           </div>
         ) : (
-          <iframe
-            srcDoc={html}
-            title="Preview do e-mail"
-            className="w-full rounded-lg border bg-white"
-            style={{ minHeight: 400, height: "100%" }}
-            sandbox="allow-same-origin"
-          />
+          <div className={cn("mx-auto transition-all duration-300", isMobile ? "max-w-[375px]" : "max-w-full")}>
+            <iframe
+              srcDoc={html}
+              title="Preview do e-mail"
+              className="w-full rounded-lg border bg-white"
+              style={{ minHeight: 400, height: "100%" }}
+              sandbox="allow-same-origin"
+            />
+          </div>
         )}
       </div>
     </div>

@@ -263,18 +263,25 @@ export default function CarrinhoAbandonado() {
                 </div>
 
                 {cart.status === "pending" && (
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => sendMutation.mutate(cart)}
-                    disabled={sendMutation.isPending}
-                  >
-                    {sendMutation.isPending
-                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : <Send className="w-3.5 h-3.5" />
-                    }
-                    Enviar mensagem de recuperação
-                  </Button>
+                  <div className="space-y-2">
+                    {cart.cart_value >= 800 && (
+                      <p className="text-[11px] text-amber-700 bg-amber-500/10 border border-amber-500/20 rounded-md px-2 py-1">
+                        Carrinho de alto ticket: recomendamos handoff para atendimento humano se nao converter na 3a tentativa.
+                      </p>
+                    )}
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => sendMutation.mutate(cart)}
+                      disabled={sendMutation.isPending}
+                    >
+                      {sendMutation.isPending
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Send className="w-3.5 h-3.5" />
+                      }
+                      Enviar mensagem de recuperação
+                    </Button>
+                  </div>
                 )}
               </div>
             );
@@ -286,7 +293,8 @@ export default function CarrinhoAbandonado() {
       <div className="bg-muted/50 border rounded-xl p-4 text-sm text-muted-foreground space-y-1">
         <p className="font-medium text-foreground">Como funciona a automação</p>
         <p>Quando um carrinho é abandonado no seu e-commerce, o webhook envia os dados para o LTV Boost.</p>
-        <p>Uma mensagem personalizada é enviada automaticamente após <strong>15–60 minutos</strong> com um link para retomar a compra.</p>
+        <p>A cadência padrão agenda 3 contatos automáticos: <strong>1h, 12h e 48h</strong> com personalização por valor e comportamento.</p>
+        <p>Para carrinhos de alto ticket, a 3a etapa recomenda handoff para atendimento humano.</p>
         <p className="text-xs mt-2">Configure o webhook em <strong>Configurações → Webhooks de E-commerce</strong>.</p>
       </div>
     </div>

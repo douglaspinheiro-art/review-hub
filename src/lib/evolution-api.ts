@@ -187,6 +187,34 @@ export async function deleteInstance(cfg: EvolutionConfig, instanceName: string)
   return res.json();
 }
 
+/** Configure webhook URL for an instance (best effort by API flavor). */
+export async function setWebhook(cfg: EvolutionConfig, instanceName: string, webhookUrl: string) {
+  const candidates = [
+    {
+      url: `${cfg.baseUrl}/webhook/set/${instanceName}`,
+      body: { webhook: { enabled: true, url: webhookUrl } },
+    },
+    {
+      url: `${cfg.baseUrl}/webhook/setWebhook/${instanceName}`,
+      body: { webhook: webhookUrl, enabled: true },
+    },
+    {
+      url: `${cfg.baseUrl}/instance/webhook/${instanceName}`,
+      body: { url: webhookUrl, enabled: true },
+    },
+  ];
+
+  for (const c of candidates) {
+    const res = await fetch(c.url, {
+      method: "POST",
+      headers: buildHeaders(cfg.apiKey),
+      body: JSON.stringify(c.body),
+    });
+    if (res.ok) return res.json();
+  }
+  throw new Error("Não foi possível configurar webhook automaticamente na Evolution API.");
+}
+
 /**
  * Map Evolution API state → our DB status
  */

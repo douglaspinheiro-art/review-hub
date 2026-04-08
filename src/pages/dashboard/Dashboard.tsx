@@ -1,19 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   TrendingUp, RefreshCw, ChevronRight, Sparkles,
   Calendar, Users, Zap, ArrowRight, DollarSign,
-  Target, MousePointer2, Wifi, WifiOff,
-  CheckCircle2, Trophy, Share2, Smartphone, Flame,
+  Target,   MousePointer2, Wifi, WifiOff,
+  CheckCircle2, Trophy, Share2, Smartphone, Flame, ChevronDown,
 } from "lucide-react";
 import { NPSModal } from "@/components/dashboard/NPSModal";
 import { ActivationChecklist } from "@/components/dashboard/ActivationChecklist";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CHSGauge } from "@/components/dashboard/CHSGauge";
+import { QuickStartPlaybooks } from "@/components/dashboard/QuickStartPlaybooks";
 import { ProblemCard } from "@/components/dashboard/ProblemCard";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
@@ -21,8 +23,13 @@ import { ROIAttribution } from "@/components/dashboard/ROIAttribution";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { useProblems, useDashboardStats } from "@/hooks/useDashboard";
+import { useProblems, useDashboardStats, useConversionBaseline } from "@/hooks/useDashboard";
 import { predictNextOrder } from "@/lib/ltv-predictor";
+import { buildChurnRiskSnapshot, buildRevenueActions, summarizeBenchmark } from "@/lib/revenue-orchestrator";
+import { getMoatSignals, trackMoatEvent } from "@/lib/moat-telemetry";
+import { buildRetentionGraph } from "@/lib/retention-graph";
+import { getPropensityOutput } from "@/lib/propensity-score";
+import { ECOMMERCE_PLATFORM_CHIPS } from "@/lib/ecommerce-platforms";
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
@@ -37,6 +44,7 @@ export default function Dashboard() {
 
   const { data: problems = [] } = useProblems();
   const { data: statsData } = useDashboardStats(period);
+  const { data: baseline } = useConversionBaseline(period);
 
   // Use real data only — no mock fallbacks
   const revenueRecovered = statsData?.revenueLast30 ?? 0;
@@ -72,6 +80,8 @@ export default function Dashboard() {
   const [showNPS, setShowNPS] = useState(false);
   const [milestone, setMilestone] = useState<string | null>(null);
   const [streakMilestone, setStreakMilestone] = useState<string | null>(null);
+  const [funnelSectionOpen, setFunnelSectionOpen] = useState(true);
+  const [activitySectionOpen, setActivitySectionOpen] = useState(false);
 
   // Streak: conta dias consecutivos de acesso + celebra marcos de 7 e 30 dias
   useEffect(() => {
@@ -146,6 +156,71 @@ export default function Dashboard() {
 
   const pendingCount = problems.length;
   const pendingValue = problems.reduce((acc, p) => acc + Number((p as any).impacto_estimado || p.estimated_impact || 0), 0);
+  const conversionRate = Number((statsData as any)?.conversionRate ?? 0);
+  const conversionTarget = 2.5;
+  const conversionGap = Math.max(0, conversionTarget - conversionRate);
+  const conversionProgress = Math.min(100, Math.round((conversionRate / conversionTarget) * 100));
+  const estimatedIncrementalRevenue = pendingValue;
+  const projectedBaseRevenue = Number(statsData?.revenueLast30 ?? 0);
+  const projectedWithBoostRevenue = projectedBaseRevenue + estimatedIncrementalRevenue;
+  const dormantCustomers = Number((statsData as any)?.atRiskCount ?? 0);
+  const orchestratorContext = {
+    pendingCount,
+    pendingValue,
+    openConversations: statsData?.openConversations ?? 0,
+    totalUnread: statsData?.totalUnread ?? 0,
+    activeOpportunities: statsData?.activeOpportunities ?? 0,
+    revenueLast30: statsData?.revenueLast30 ?? 0,
+    revGrowth: statsData?.revGrowth ?? 0,
+    avgReadRate: statsData?.avgReadRate ?? 0,
+  };
+  const dailyActions = buildRevenueActions(orchestratorContext);
+  const benchmark = summarizeBenchmark(orchestratorContext);
+  const churnRisk = buildChurnRiskSnapshot(orchestratorContext);
+  const moatSignals = getMoatSignals();
+  const retentionGraph = buildRetentionGraph({
+    recoveredRevenue: orchestratorContext.revenueLast30,
+    activeOpportunities: orchestratorContext.activeOpportunities,
+    unreadConversations: orchestratorContext.totalUnread,
+    chs: (statsData as any)?.chs ?? 0,
+  });
+  const propensity = getPropensityOutput(retentionGraph);
+
+  const periodPhrase =
+    period === 7 ? "últimos 7 dias" : period === 30 ? "últimos 30 dias" : "últimos 90 dias";
+
+  const dashboardStory = useMemo(() => {
+    if (!isWhatsAppConnected) {
+      return {
+        title: "Conecte o WhatsApp para recuperar vendas",
+        body: "Campanhas, automações e prescrições precisam de um número conectado. É no WhatsApp que o cliente responde e o pedido volta.",
+        ctaLabel: "Ir para WhatsApp",
+        ctaPath: "/dashboard/whatsapp" as const,
+      };
+    }
+    if (pendingCount > 0 && pendingValue > 0) {
+      return {
+        title: `${pendingCount} ${pendingCount === 1 ? "recomendação aguardando você" : "recomendações aguardando você"}`,
+        body: `Estimamos cerca de R$ ${pendingValue.toLocaleString("pt-BR")} em impacto ainda não capturado. Nos ${periodPhrase}, você já registrou R$ ${revenueRecovered.toLocaleString("pt-BR")} em receita influenciada — a próxima aprovação pode aumentar esse número.`,
+        ctaLabel: "Revisar prescrições",
+        ctaPath: "/dashboard/prescricoes" as const,
+      };
+    }
+    if (revenueRecovered > 0) {
+      return {
+        title: "Sua operação está gerando resultado",
+        body: `Nos ${periodPhrase}, a receita influenciada soma R$ ${revenueRecovered.toLocaleString("pt-BR")}. As seções abaixo mostram onde apertar o funil e qual ação priorizar hoje.`,
+        ctaLabel: "Ver prescrições",
+        ctaPath: "/dashboard/prescricoes" as const,
+      };
+    }
+    return {
+      title: "Comece a encher este painel com ação",
+      body: `Todos os números desta página usam os ${periodPhrase}. Integre a loja, conecte o WhatsApp e aprove as primeiras prescrições para ver receita e oportunidades aqui.`,
+      ctaLabel: "Abrir prescrições",
+      ctaPath: "/dashboard/prescricoes" as const,
+    };
+  }, [isWhatsAppConnected, pendingCount, pendingValue, revenueRecovered, periodPhrase]);
 
   return (
     <>
@@ -205,66 +280,17 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border/10 pb-8">
+        {/* Título + período (toda a página respeita este intervalo) */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-border/10 pb-6">
           <div className="space-y-1">
-            <div className="flex items-center flex-wrap gap-2">
-              <Badge className="bg-emerald-500/10 text-emerald-500 border-none text-[9px] font-black uppercase tracking-widest px-2 py-0.5">
-                Loja Saudável
-              </Badge>
-              <div className={cn(
-                "flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-widest",
-                isWhatsAppConnected
-                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                  : "bg-amber-500/10 text-amber-500 border-amber-500/20"
-              )}>
-                {isWhatsAppConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                {isWhatsAppConnected ? "WhatsApp Ativo" : "WhatsApp Off"}
-              </div>
-              {streak > 1 && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[9px] font-black text-amber-500">
-                  <Flame className="w-3 h-3" />
-                  {streak} dias seguidos
-                </div>
-              )}
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter italic">Sync: há 4 min</span>
-            </div>
-
-            <h1 className="text-4xl font-black font-syne tracking-tighter uppercase italic">
+            <h1 className="text-3xl md:text-4xl font-black font-syne tracking-tighter uppercase italic">
               Radar de <span className="text-primary">Lucro</span>
             </h1>
-            {pendingValue > 0 ? (
-              <p className="text-muted-foreground text-sm font-medium">
-                Você tem <span className="text-foreground font-bold underline">R$ {pendingValue.toLocaleString("pt-BR")}</span> parados no funil. Vamos recuperar?
-              </p>
-            ) : (
-              <p className="text-muted-foreground text-sm font-medium">
-                Conecte sua loja para começar a recuperar receita.
-              </p>
-            )}
-            {revenueRecovered > 0 && (
-              <p className="text-xs font-bold flex items-center gap-1.5 text-emerald-500">
-                <TrendingUp className="w-3.5 h-3.5" />
-                R$ {revenueRecovered.toLocaleString("pt-BR")} já recuperados para você.
-              </p>
-            )}
-
-            {/* CTA principal — sempre visível acima do fold */}
-            <div className="flex items-center gap-3 pt-3">
-              <Button
-                onClick={() => navigate("/dashboard/prescricoes")}
-                className="h-11 px-6 bg-primary hover:bg-primary/90 font-black text-[11px] gap-2 rounded-2xl shadow-lg shadow-primary/20 uppercase tracking-wide"
-              >
-                <Zap className="w-4 h-4 fill-primary-foreground" />
-                {pendingCount} {pendingCount === 1 ? "Prescrição pendente" : "Prescrições pendentes"}
-              </Button>
-              <span className="text-xs text-muted-foreground hidden sm:block">
-                Potencial: <span className="text-foreground font-bold">R$ {pendingValue.toLocaleString("pt-BR")}</span>
-              </span>
-            </div>
+            <p className="text-sm text-muted-foreground max-w-xl">
+              Resumo da sua operação de e-commerce. Os blocos abaixo usam sempre os <span className="font-semibold text-foreground">{periodPhrase}</span>.
+            </p>
           </div>
-
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <div className="bg-muted/50 p-1.5 rounded-2xl flex border border-border/20">
               {([7, 30, 90] as const).map((p) => (
                 <Button
@@ -284,7 +310,7 @@ export default function Dashboard() {
             <Button
               variant="outline"
               size="sm"
-              className="h-11 font-black text-[10px] uppercase tracking-widest gap-2 rounded-2xl border-2 px-6 hover:bg-primary hover:text-white transition-all"
+              className="h-9 font-black text-[10px] uppercase tracking-widest gap-2 rounded-xl border-2 px-4 hover:bg-primary hover:text-primary-foreground transition-all"
               onClick={handleSync}
               disabled={isSyncing}
             >
@@ -293,97 +319,54 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Checklist de ativação — só aparece para usuários não-ativados */}
-        <ActivationChecklist />
-
-        {/* Banner: primeira semana */}
-        {isFirstWeek && (
-          <Card className="p-8 border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent shadow-2xl shadow-emerald-500/10 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-700">
-            <div className="flex flex-col md:flex-row gap-8 items-center">
-              <div className="flex-1 space-y-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Sua primeira semana</span>
-                </div>
-                <h2 className="text-3xl md:text-4xl font-black font-syne tracking-tighter text-emerald-400">
-                  R$ {(statsData?.revenueLast30 ?? 0).toLocaleString("pt-BR")}
-                </h2>
-                <p className="text-sm text-muted-foreground font-medium">recuperados pela IA nesta semana. Cada prescrição aprovada aumenta esse número.</p>
-                <div className="flex gap-6 pt-2">
-                  <div>
-                    <p className="text-2xl font-black">{roi}x</p>
-                    <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest">ROI sobre assinatura</p>
-                  </div>
-                  <div className="w-px bg-border/20" />
-                  <div>
-                    <p className="text-2xl font-black">{pendingCount}</p>
-                    <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest">Prescrições pendentes</p>
-                  </div>
-                </div>
-              </div>
-              <Button
-                onClick={() => navigate("/dashboard/prescricoes")}
-                className="h-14 px-10 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-2xl shadow-xl shadow-emerald-500/20 gap-2 shrink-0"
-              >
-                <Zap className="w-5 h-5 fill-black" /> Aprovar Prescrições
-              </Button>
+        {/* Narrativa: situação → próximo passo */}
+        <Card className="p-6 md:p-8 rounded-2xl border-primary/20 bg-gradient-to-br from-primary/[0.06] via-card to-card shadow-sm">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <div className={cn(
+              "flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-widest",
+              isWhatsAppConnected
+                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/25"
+                : "bg-amber-500/10 text-amber-600 border-amber-500/25"
+            )}>
+              {isWhatsAppConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              {isWhatsAppConnected ? "WhatsApp conectado" : "WhatsApp pendente"}
             </div>
-          </Card>
-        )}
-
-        {/* Banner: Receita em risco — visível quando há prescrições pendentes e usuário não é novo */}
-        {!isFirstWeek && !isNewSetup && pendingCount > 0 && (
-          <Card className="p-6 border-red-500/20 bg-red-500/5 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5 animate-pulse">
-                  <Target className="w-5 h-5 text-red-500" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-red-500">Receita em risco agora</p>
-                  <p className="font-black text-base">
-                    R$ {pendingValue.toLocaleString("pt-BR")} identificados mas não capturados
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {pendingCount} {pendingCount === 1 ? "oportunidade detectada" : "oportunidades detectadas"} pela IA. Cada hora sem ação reduz a taxa de recuperação.
-                  </p>
-                </div>
+            <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest border-border/60">
+              Janela: {periodPhrase}
+            </Badge>
+            {streak > 1 && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[9px] font-black text-amber-600">
+                <Flame className="w-3 h-3" />
+                {streak} dias seguidos
               </div>
-              <Button
-                onClick={() => navigate("/dashboard/prescricoes")}
-                className="h-12 px-8 bg-red-500 hover:bg-red-400 text-white font-black rounded-2xl shadow-lg shadow-red-500/20 gap-2 shrink-0"
-              >
-                <Zap className="w-4 h-4 fill-white" /> Recuperar agora
-              </Button>
-            </div>
-          </Card>
-        )}
+            )}
+          </div>
+          <h2 className="text-xl md:text-2xl font-black tracking-tight text-foreground leading-snug max-w-3xl">
+            {dashboardStory.title}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-3 leading-relaxed max-w-3xl">
+            {dashboardStory.body}
+          </p>
+          <div className="flex flex-wrap items-center gap-3 mt-6">
+            <Button
+              onClick={() => navigate(dashboardStory.ctaPath)}
+              className="h-11 px-6 bg-primary hover:bg-primary/90 font-black text-[11px] gap-2 rounded-2xl shadow-lg shadow-primary/20 uppercase tracking-wide"
+            >
+              <Zap className="w-4 h-4 fill-primary-foreground" />
+              {dashboardStory.ctaLabel}
+            </Button>
+            {pendingCount > 0 && dashboardStory.ctaPath === "/dashboard/prescricoes" && (
+              <span className="text-xs text-muted-foreground">
+                <span className="font-bold text-foreground">{pendingCount}</span> na fila
+                {pendingValue > 0 && (
+                  <> · potencial <span className="font-bold text-foreground">R$ {pendingValue.toLocaleString("pt-BR")}</span></>
+                )}
+              </span>
+            )}
+          </div>
+        </Card>
 
-        {/* Banner: WhatsApp desconectado — sempre visível até conectar */}
-        {!isWhatsAppConnected && !isNewSetup && !isFirstWeek && (
-          <Card className="p-6 border-amber-500/30 bg-amber-500/5 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <Smartphone className="w-5 h-5 text-amber-500" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">Ação necessária</p>
-                  <p className="font-black text-base">Conecte seu WhatsApp para ativar o produto</p>
-                  <p className="text-sm text-muted-foreground">Sem isso, nenhuma automação ou campanha será enviada.</p>
-                </div>
-              </div>
-              <Button
-                onClick={() => navigate("/dashboard/whatsapp")}
-                className="h-12 px-8 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-2xl shadow-lg shadow-amber-500/20 gap-2 shrink-0"
-              >
-                <Smartphone className="w-4 h-4" /> Conectar agora →
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {/* Banner: setup recém-concluído */}
+        {/* Alertas contextuais (urgência antes do onboarding genérico) */}
         {isNewSetup && !isFirstWeek && (
           <Card className="p-8 border-primary/20 bg-primary/5 shadow-2xl shadow-primary/5 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-700">
             <div className="flex flex-col md:flex-row gap-8 items-center">
@@ -454,6 +437,294 @@ export default function Dashboard() {
           </Card>
         )}
 
+        {!isWhatsAppConnected && !isNewSetup && !isFirstWeek && (
+          <Card className="p-6 border-amber-500/30 bg-amber-500/5 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <Smartphone className="w-5 h-5 text-amber-500" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">Ação necessária</p>
+                  <p className="font-black text-base">Conecte seu WhatsApp para ativar o produto</p>
+                  <p className="text-sm text-muted-foreground">Sem isso, nenhuma automação ou campanha será enviada.</p>
+                </div>
+              </div>
+              <Button
+                onClick={() => navigate("/dashboard/whatsapp")}
+                className="h-12 px-8 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-2xl shadow-lg shadow-amber-500/20 gap-2 shrink-0"
+              >
+                <Smartphone className="w-4 h-4" /> Conectar agora →
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {isFirstWeek && (
+          <Card className="p-8 border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent shadow-2xl shadow-emerald-500/10 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-700">
+            <div className="flex flex-col md:flex-row gap-8 items-center">
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Sua primeira semana</span>
+                </div>
+                <h2 className="text-3xl md:text-4xl font-black font-syne tracking-tighter text-emerald-400">
+                  R$ {(statsData?.revenueLast30 ?? 0).toLocaleString("pt-BR")}
+                </h2>
+                <p className="text-sm text-muted-foreground font-medium">recuperados pela IA nesta semana. Cada prescrição aprovada aumenta esse número.</p>
+                <div className="flex gap-6 pt-2">
+                  <div>
+                    <p className="text-2xl font-black">{roi}x</p>
+                    <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest">ROI sobre assinatura</p>
+                  </div>
+                  <div className="w-px bg-border/20" />
+                  <div>
+                    <p className="text-2xl font-black">{pendingCount}</p>
+                    <p className="text-[9px] text-muted-foreground uppercase font-black tracking-widest">Prescrições pendentes</p>
+                  </div>
+                </div>
+              </div>
+              <Button
+                onClick={() => navigate("/dashboard/prescricoes")}
+                className="h-14 px-10 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-2xl shadow-xl shadow-emerald-500/20 gap-2 shrink-0"
+              >
+                <Zap className="w-5 h-5 fill-black" /> Aprovar Prescrições
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {!isFirstWeek && !isNewSetup && pendingCount > 0 && (
+          <Card className="p-6 border-red-500/20 bg-red-500/5 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5 animate-pulse">
+                  <Target className="w-5 h-5 text-red-500" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-red-500">Receita em risco agora</p>
+                  <p className="font-black text-base">
+                    R$ {pendingValue.toLocaleString("pt-BR")} identificados mas não capturados
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {pendingCount} {pendingCount === 1 ? "oportunidade detectada" : "oportunidades detectadas"} pela IA. Cada hora sem ação reduz a taxa de recuperação.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => navigate("/dashboard/prescricoes")}
+                className="h-12 px-8 bg-red-500 hover:bg-red-400 text-white font-black rounded-2xl shadow-lg shadow-red-500/20 gap-2 shrink-0"
+              >
+                <Zap className="w-4 h-4 fill-white" /> Recuperar agora
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {/* Checklist de ativação — só aparece para usuários não-ativados */}
+        <ActivationChecklist />
+        <QuickStartPlaybooks />
+
+        <Collapsible
+          open={funnelSectionOpen}
+          onOpenChange={setFunnelSectionOpen}
+          className="space-y-4"
+        >
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-4 rounded-2xl border border-border/50 bg-card/50 px-4 py-3 text-left transition-colors hover:bg-card/80"
+            >
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Análise</p>
+                <p className="font-black text-sm tracking-tight">Funil, baseline e Revenue OS</p>
+                <p className="text-xs text-muted-foreground">CHS, ROI, métricas e oportunidades na base</p>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200",
+                  funnelSectionOpen && "rotate-180"
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-10 pt-2">
+        {baseline && (
+          <Card className="p-5 rounded-2xl border border-border/60 bg-card/60">
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Baseline de Conversao</p>
+                <p className="text-xs text-muted-foreground">Leitura, resposta, conversao, SLA e receita por mensagem</p>
+              </div>
+              <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase tracking-widest">
+                {period} dias
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="rounded-xl border bg-background p-3">
+                <p className="text-lg font-black">{baseline.replyRate.toFixed(1)}%</p>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground">Taxa de resposta</p>
+              </div>
+              <div className="rounded-xl border bg-background p-3">
+                <p className="text-lg font-black">{baseline.conversionRate.toFixed(1)}%</p>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground">Conversao por envio</p>
+              </div>
+              <div className="rounded-xl border bg-background p-3">
+                <p className="text-lg font-black">
+                  {baseline.revenuePerMessage.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground">Receita por mensagem</p>
+              </div>
+              <div className="rounded-xl border bg-background p-3">
+                <p className="text-lg font-black">{baseline.sla.compliance.toFixed(1)}%</p>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground">SLA cumprido</p>
+              </div>
+              <div className="rounded-xl border bg-background p-3">
+                <p className={cn("text-lg font-black", baseline.replyRateDelta >= 0 ? "text-emerald-500" : "text-red-500")}>
+                  {baseline.replyRateDelta >= 0 ? "+" : ""}
+                  {baseline.replyRateDelta.toFixed(1)}%
+                </p>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground">Delta resposta</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Revenue OS diário */}
+        <Card className="p-6 rounded-3xl border-primary/20 bg-card/60">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Revenue OS diario</p>
+              <h2 className="text-xl font-black">Acoes de receita hoje</h2>
+              <p className="text-xs text-muted-foreground">
+                Priorizacao automatica por impacto esperado, urgencia operacional e potencial de retencao.
+              </p>
+            </div>
+            <Badge className="bg-primary/10 text-primary border-primary/20">
+              Potencial total: R$ {dailyActions.reduce((s, a) => s + a.expectedImpact, 0).toLocaleString("pt-BR")}
+            </Badge>
+          </div>
+          <div className="grid lg:grid-cols-5 gap-4">
+            <div className="lg:col-span-3 space-y-3">
+              {dailyActions.map((action) => (
+                <button
+                  key={action.id}
+                  onClick={() => {
+                    void trackMoatEvent("recommendation_clicked", { recommendation_id: action.id, route: action.ownerRoute });
+                    navigate(action.ownerRoute);
+                  }}
+                  className="w-full text-left rounded-2xl border bg-background/70 p-4 hover:border-primary/40 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-bold text-sm">{action.title}</p>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-primary">
+                      {action.priority}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{action.description}</p>
+                  <div className="mt-3 flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">{action.reason}</span>
+                    <span className="font-bold">R$ {action.expectedImpact.toLocaleString("pt-BR")}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="lg:col-span-2 space-y-3">
+              <div className="rounded-2xl border bg-background/70 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Benchmark da coorte</p>
+                <p className="text-3xl font-black mt-1">{benchmark.score}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Execucao: <strong>{benchmark.execution}</strong> · Crescimento: <strong>{benchmark.growthBand}</strong>
+                </p>
+              </div>
+              <div className="rounded-2xl border bg-background/70 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Risco de churn (conta)</p>
+                <div className="flex items-end justify-between mt-1">
+                  <p className="text-3xl font-black">{churnRisk.score}</p>
+                  <Badge
+                    className={cn(
+                      "border",
+                      churnRisk.level === "alto" && "bg-red-500/10 text-red-500 border-red-500/30",
+                      churnRisk.level === "medio" && "bg-amber-500/10 text-amber-500 border-amber-500/30",
+                      churnRisk.level === "baixo" && "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                    )}
+                  >
+                    {churnRisk.level}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Driver: <strong>{churnRisk.mainDriver}</strong>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {churnRisk.estimatedAccountsAtRisk} contas em risco · R$ {churnRisk.estimatedRevenueAtRisk.toLocaleString("pt-BR")} de receita sensivel
+                </p>
+              </div>
+              <div className="rounded-2xl border bg-background/70 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sinais proprietarios (30d)</p>
+                <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                  <div className="rounded-lg bg-muted/40 p-2">
+                    <p className="text-muted-foreground">Playbooks</p>
+                    <p className="font-bold">{moatSignals.playbooks}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 p-2">
+                    <p className="text-muted-foreground">Recomendacoes</p>
+                    <p className="font-bold">{moatSignals.recommendations}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 p-2">
+                    <p className="text-muted-foreground">Envios newsletter</p>
+                    <p className="font-bold">{moatSignals.newsletterSends}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 p-2">
+                    <p className="text-muted-foreground">Uso de IA</p>
+                    <p className="font-bold">{moatSignals.aiUsage}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-2xl border bg-background/70 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Retention graph e propensao</p>
+                <div className="space-y-2 mt-2">
+                  {retentionGraph.map((node) => (
+                    <div key={node.id} className="rounded-lg bg-muted/30 px-3 py-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold">{node.label}</span>
+                        <span className="font-black">{node.score}/100</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{node.reason}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs mt-3">
+                  Melhor proxima acao: <span className="font-bold">{propensity.bestNode.label}</span>{" "}
+                  <span className="text-muted-foreground">(confianca {propensity.confidence}% · {propensity.band})</span>
+                </p>
+              </div>
+              <div className="rounded-2xl border bg-background/70 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Relatorio semanal embutido</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Envie automaticamente desempenho, ganhos e prioridades para equipe, socios ou agencia.
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => navigate("/dashboard/relatorios")}
+                  >
+                    <Calendar className="w-3.5 h-3.5" /> Ver relatorios
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={() => navigate("/dashboard/afiliados")}
+                  >
+                    Programa de parceiros
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* Seção principal: CHS + Métricas */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 space-y-6">
@@ -477,16 +748,18 @@ export default function Dashboard() {
               <h3 className="text-white/70 text-[10px] font-black uppercase tracking-widest mb-4">Meta de Conversão</h3>
               <div className="space-y-4 relative z-10">
                 <div className="flex justify-between items-end">
-                  <span className="text-3xl font-black text-white font-syne italic">1.4% <span className="text-xs font-medium text-white/50">/ 2.5%</span></span>
+                  <span className="text-3xl font-black text-white font-syne italic">
+                    {conversionRate.toFixed(1)}% <span className="text-xs font-medium text-white/50">/ {conversionTarget.toFixed(1)}%</span>
+                  </span>
                   <Badge className="bg-white/20 text-white border-none font-black text-[10px]">EM PROGRESSO</Badge>
                 </div>
                 <div className="h-2.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                  <div className="h-full bg-white w-[56%] relative">
+                  <div className="h-full bg-white relative" style={{ width: `${conversionProgress}%` }}>
                     <div className="absolute top-0 right-0 h-full w-8 bg-white/20 animate-pulse" />
                   </div>
                 </div>
                 <p className="text-[10px] text-white/80 font-bold leading-relaxed">
-                  Você está a <span className="underline decoration-2">1.1%</span> de atingir sua meta e gerar mais <span className="font-black">R$ 24.500</span> em vendas.
+                  Você está a <span className="underline decoration-2">{conversionGap.toFixed(1)}%</span> da meta, com potencial de recuperar mais <span className="font-black">R$ {estimatedIncrementalRevenue.toLocaleString("pt-BR")}</span>.
                 </p>
               </div>
             </Card>
@@ -528,10 +801,10 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <h3 className="text-2xl font-black text-white font-syne tracking-tight leading-tight italic uppercase">
-                    Identificamos <span className="text-primary underline">R$ 4.200</span> em boletos que expiram em 24h.
+                    Identificamos <span className="text-primary underline">R$ {estimatedIncrementalRevenue.toLocaleString("pt-BR")}</span> em oportunidades ativas.
                   </h3>
                   <p className="text-white/60 text-sm leading-relaxed">
-                    Clientes VIP abandonaram o checkout. O Agente IA pode oferecer frete grátis agora para fechar essas vendas.
+                    Priorização feita com base em sinais reais de abandono e receita estimada por impacto.
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 w-full md:w-auto">
@@ -557,7 +830,7 @@ export default function Dashboard() {
                   <Badge variant="outline" className="text-[8px] font-black border-primary/20 text-primary">RETENÇÃO</Badge>
                 </div>
                 <h4 className="font-black text-sm uppercase tracking-tight mb-1">Clientes Hibernando</h4>
-                <p className="text-xs text-muted-foreground">847 clientes não compram há +60 dias.</p>
+                <p className="text-xs text-muted-foreground">{dormantCustomers.toLocaleString("pt-BR")} clientes em risco de churn no período.</p>
                 <Button
                   variant="ghost"
                   className="w-full mt-4 h-9 text-[9px] font-black uppercase tracking-widest gap-2 hover:bg-primary/10 hover:text-primary rounded-xl"
@@ -569,7 +842,33 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+          </CollapsibleContent>
+        </Collapsible>
 
+        <Collapsible
+          open={activitySectionOpen}
+          onOpenChange={setActivitySectionOpen}
+          className="space-y-4"
+        >
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-4 rounded-2xl border border-border/50 bg-card/50 px-4 py-3 text-left transition-colors hover:bg-card/80"
+            >
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Tempo real</p>
+                <p className="font-black text-sm tracking-tight">Atividade, projeção e radar</p>
+                <p className="text-xs text-muted-foreground">Capturas ao vivo e lista de oportunidades</p>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200",
+                  activitySectionOpen && "rotate-180"
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-10 pt-2">
         {/* Feed de atividade em tempo real */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-4">
@@ -595,23 +894,23 @@ export default function Dashboard() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Base Atual</span>
-                    <span className="text-sm font-black text-white font-mono tracking-tighter">R$ 41.000</span>
+                    <span className="text-sm font-black text-white font-mono tracking-tighter">R$ {projectedBaseRevenue.toLocaleString("pt-BR")}</span>
                   </div>
                   <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                    <div className="h-full bg-white/20 w-[65%]" />
+                    <div className="h-full bg-white/20" style={{ width: projectedBaseRevenue > 0 ? "65%" : "10%" }} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-emerald-400">
                     <span className="text-[10px] font-black uppercase tracking-widest">Com LTV Boost</span>
-                    <span className="text-lg font-black font-syne tracking-tighter">R$ 57.400</span>
+                    <span className="text-lg font-black font-syne tracking-tighter">R$ {projectedWithBoostRevenue.toLocaleString("pt-BR")}</span>
                   </div>
                   <div className="h-2 bg-emerald-500/10 rounded-full overflow-hidden border border-emerald-500/20">
-                    <div className="h-full bg-emerald-500 w-[90%] relative shadow-[0_0_15px_rgba(16,185,129,0.5)]">
+                    <div className="h-full bg-emerald-500 relative shadow-[0_0_15px_rgba(16,185,129,0.5)]" style={{ width: projectedWithBoostRevenue > 0 ? "90%" : "15%" }}>
                       <div className="absolute top-0 right-0 h-full w-12 bg-white/30 skew-x-[-20deg] animate-[shimmer_2s_infinite]" />
                     </div>
                   </div>
-                  <p className="text-[10px] text-emerald-400 font-bold text-right italic">+R$ 16.400 potencial mensal</p>
+                  <p className="text-[10px] text-emerald-400 font-bold text-right italic">+R$ {estimatedIncrementalRevenue.toLocaleString("pt-BR")} potencial mensal</p>
                 </div>
               </div>
               <Button
@@ -702,7 +1001,7 @@ export default function Dashboard() {
               <div className="bg-card/30 border border-border/20 rounded-2xl p-4 space-y-3">
                 <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">Integra com</p>
                 <div className="flex flex-wrap gap-2">
-                  {["Shopify", "Nuvemshop", "WooCommerce", "VTEX", "Yampi", "Tray"].map((p) => (
+                  {ECOMMERCE_PLATFORM_CHIPS.map((p) => (
                     <span key={p} className="px-2.5 py-1 rounded-lg bg-muted/40 text-[10px] font-black text-muted-foreground border border-border/30">
                       {p}
                     </span>
@@ -712,6 +1011,8 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
 
       {/* CTA fixo mobile — sempre acessível sem scroll */}

@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { getQRCode, getConnectionState, mapEvolutionState } from "@/lib/evolution-api";
+import { getQRCode, getConnectionState, mapEvolutionState, setWebhook } from "@/lib/evolution-api";
 import { cn } from "@/lib/utils";
 
 type Connection = {
@@ -166,6 +166,19 @@ export default function WhatsApp() {
           status: "connected",
           connected_at: new Date().toISOString(),
         }).eq("id", conn.id);
+        // Best effort: auto-configure webhook after connection.
+        try {
+          const appUrl = (import.meta as any).env?.VITE_SUPABASE_URL || "";
+          if (appUrl) {
+            await setWebhook(
+              cfg,
+              conn.instance_name,
+              `${appUrl}/functions/v1/whatsapp-webhook`,
+            );
+          }
+        } catch {
+          // silently ignore webhook auto-config failures
+        }
         queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
         toast({ title: "WhatsApp conectado!", description: `Instância ${conn.instance_name} está ativa.` });
       }

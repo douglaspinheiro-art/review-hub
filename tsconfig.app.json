@@ -19,6 +19,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@newsletter-html": [
+        "./supabase/functions/_shared/newsletter-html.ts"
       ]
     },
     "skipLibCheck": true,

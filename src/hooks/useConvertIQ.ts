@@ -9,6 +9,10 @@ export interface Problema {
   descricao: string;
   severidade: "critico" | "alto" | "medio";
   impacto_reais: number;
+  etapa?: "produto" | "carrinho" | "checkout" | "pagamento";
+  evidencia?: string;
+  confianca?: number;
+  causa_raiz?: string;
 }
 
 export interface Recomendacao {
@@ -18,6 +22,22 @@ export interface Recomendacao {
   impacto_pp: number;
   prazo_semanas: number;
   tipo: "quick_win" | "ab_test" | "medio_prazo";
+  owner?: "trafego" | "cro" | "crm" | "produto" | "dados";
+}
+
+export interface ExecutionPlaybookItem {
+  id: string;
+  action_key: string;
+  action_title: string;
+  owner: string | null;
+  status: "pending" | "in_progress" | "done";
+  planned_week: number | null;
+  expected_lift_pp: number | null;
+  expected_impact_reais: number | null;
+  observed_result: string | null;
+  observed_lift_pp: number | null;
+  observed_impact_reais: number | null;
+  updated_at: string;
 }
 
 export interface DiagnosticoJSON {
@@ -26,6 +46,35 @@ export interface DiagnosticoJSON {
   percentual_explicado: number;
   problemas: Problema[];
   recomendacoes: Recomendacao[];
+}
+
+export interface DataHealthAlert {
+  id: string;
+  tipo: "missing_event" | "duplicate_event" | "tracking_drop" | "source_discrepancy";
+  severidade: "critico" | "alto" | "medio";
+  titulo: string;
+  detalhe: string;
+}
+
+export interface DataHealthReport {
+  score: number;
+  status: "saudavel" | "atencao" | "critico";
+  coberturaEventos: number;
+  estabilidadeTracking: number;
+  consistenciaFontes: number;
+  deduplicacao: number;
+  etapas: Array<{ etapa: "produto" | "carrinho" | "checkout" | "pagamento"; score: number }>;
+  canais: Array<{
+    canal: string;
+    score: number;
+    sent: number;
+    delivered: number;
+    read: number;
+  }>;
+  scoreMinimoRecomendacao: number;
+  recomendacoesConfiaveis: boolean;
+  metricContract: Array<{ metrica: string; definicao: string; tolerancia: string }>;
+  alertas: DataHealthAlert[];
 }
 
 export interface MetricasFunil {
@@ -186,7 +235,7 @@ export function useDiagnosticos(lojaId: string | null) {
         .eq("user_id", (await getUid())!)
         .eq("status", "done")
         .order("created_at", { ascending: false })
-        .limit(3);
+        .limit(12);
       return data ?? [];
     },
   });
@@ -321,6 +370,77 @@ export function useGerarDiagnostico() {
   });
 }
 
+export function useExecutionPlaybooks(lojaId: string | null) {
+  return useQuery({
+    queryKey: ["convertiq-execution-playbooks", lojaId],
+    enabled: !!lojaId,
+    queryFn: async (): Promise<ExecutionPlaybookItem[]> => {
+      const uid = await getUid();
+      if (!uid) return [];
+      const { data, error } = await supabase
+        .from("convertiq_execution_playbooks")
+        .select("id,action_key,action_title,owner,status,planned_week,expected_lift_pp,expected_impact_reais,observed_result,observed_lift_pp,observed_impact_reais,updated_at")
+        .eq("user_id", uid)
+        .eq("store_id", lojaId!)
+        .order("updated_at", { ascending: false });
+
+      if (error) throw error;
+      return (data ?? []) as ExecutionPlaybookItem[];
+    },
+    staleTime: 30_000,
+  });
+}
+
+export function useUpsertExecutionPlaybook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      lojaId: string;
+      diagnosticoId?: string | null;
+      actionKey: string;
+      actionTitle: string;
+      owner?: string;
+      status?: "pending" | "in_progress" | "done";
+      plannedWeek?: number;
+      expectedLiftPp?: number;
+      expectedImpactReais?: number;
+      observedResult?: string | null;
+      observedLiftPp?: number | null;
+      observedImpactReais?: number | null;
+    }) => {
+      const uid = await getUid();
+      if (!uid) throw new Error("Não autenticado");
+
+      const { error } = await supabase
+        .from("convertiq_execution_playbooks")
+        .upsert(
+          {
+            user_id: uid,
+            store_id: payload.lojaId,
+            diagnostico_id: payload.diagnosticoId ?? null,
+            action_key: payload.actionKey,
+            action_title: payload.actionTitle,
+            owner: payload.owner ?? null,
+            status: payload.status ?? "pending",
+            planned_week: payload.plannedWeek ?? null,
+            expected_lift_pp: payload.expectedLiftPp ?? null,
+            expected_impact_reais: payload.expectedImpactReais ?? null,
+            observed_result: payload.observedResult ?? null,
+            observed_lift_pp: payload.observedLiftPp ?? null,
+            observed_impact_reais: payload.observedImpactReais ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "store_id,action_key" }
+        );
+
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["convertiq-execution-playbooks", vars.lojaId] });
+    },
+  });
+}
+
 /** Test GA4 connection via edge function buscar-ga4. */
 export async function testarGA4(ga4_property_id: string, access_token: string) {
   const res = await supabase.functions.invoke("buscar-ga4", {
@@ -374,5 +494,182 @@ export function useMetricasEnriquecidas(lojaId: string | null, periodo: "7d" | "
         total_abandonos_pagamento: totalPagamento
       };
     },
+  });
+}
+
+export function useDataHealth(lojaId: string | null, periodo: "7d" | "30d" | "90d" = "30d") {
+  return useQuery({
+    queryKey: ["convertiq-data-health", lojaId, periodo],
+    enabled: !!lojaId,
+    queryFn: async (): Promise<DataHealthReport> => {
+      const diasMap = { "7d": 7, "30d": 30, "90d": 90 };
+      const sinceDate = new Date(Date.now() - diasMap[periodo] * 86400_000);
+      const since = sinceDate.toISOString().split("T")[0];
+
+      const [analyticsRes, metricsRes, campaignsRes] = await Promise.all([
+        supabase
+          .from("analytics_daily")
+          .select("date,messages_sent,messages_delivered,messages_read,new_contacts,revenue_influenced")
+          .eq("store_id", lojaId!)
+          .gte("date", since)
+          .order("date", { ascending: true }),
+        supabase
+          .from("funnel_metrics")
+          .select("data,visitantes,visualizacoes_produto,adicionou_carrinho,iniciou_checkout,compras,receita")
+          .eq("store_id", lojaId!)
+          .gte("data", since)
+          .order("data", { ascending: true }),
+        supabase
+          .from("campaigns")
+          .select("channel,sent_count,delivered_count,read_count")
+          .eq("store_id", lojaId!)
+          .order("created_at", { ascending: false })
+          .limit(100),
+      ]);
+
+      const analytics = analyticsRes.data ?? [];
+      const metrics = metricsRes.data ?? [];
+      const campaigns = campaignsRes.data ?? [];
+      const alertas: DataHealthAlert[] = [];
+
+      const sent = analytics.reduce((s, d) => s + Number(d.messages_sent ?? 0), 0);
+      const delivered = analytics.reduce((s, d) => s + Number(d.messages_delivered ?? 0), 0);
+      const read = analytics.reduce((s, d) => s + Number(d.messages_read ?? 0), 0);
+      const revenueAnalytics = analytics.reduce((s, d) => s + Number(d.revenue_influenced ?? 0), 0);
+      const revenueFunnel = metrics.reduce((s, d) => s + Number(d.receita ?? 0), 0);
+      const compras = metrics.reduce((s, d) => s + Number(d.compras ?? 0), 0);
+      const visualizacoes = metrics.reduce((s, d) => s + Number(d.visualizacoes_produto ?? 0), 0);
+      const addCart = metrics.reduce((s, d) => s + Number(d.adicionou_carrinho ?? 0), 0);
+      const checkout = metrics.reduce((s, d) => s + Number(d.iniciou_checkout ?? 0), 0);
+
+      const coberturaEventos = sent > 0 ? Math.max(0, Math.min(100, Math.round((delivered / sent) * 100))) : 50;
+      const deduplicacao = delivered > 0 ? Math.max(0, Math.min(100, 100 - Math.max(0, Math.round(((read - delivered) / delivered) * 100)))) : 80;
+
+      const diasComAnalytics = analytics.length;
+      const diasEsperados = Math.max(1, diasMap[periodo]);
+      const estabilidadeTracking = Math.max(0, Math.min(100, Math.round((diasComAnalytics / diasEsperados) * 100)));
+
+      const discrepanciaFontes =
+        revenueAnalytics > 0 || revenueFunnel > 0
+          ? Math.abs(revenueAnalytics - revenueFunnel) / Math.max(revenueAnalytics, revenueFunnel, 1)
+          : 0.2;
+      const consistenciaFontes = Math.max(0, Math.min(100, Math.round((1 - discrepanciaFontes) * 100)));
+
+      if (coberturaEventos < 80) {
+        alertas.push({
+          id: "missing-events",
+          tipo: "missing_event",
+          severidade: coberturaEventos < 60 ? "critico" : "alto",
+          titulo: "Eventos ausentes no tracking",
+          detalhe: `Apenas ${coberturaEventos}% das mensagens enviadas chegaram como entregues.`,
+        });
+      }
+
+      if (deduplicacao < 92) {
+        alertas.push({
+          id: "duplicate-events",
+          tipo: "duplicate_event",
+          severidade: deduplicacao < 85 ? "alto" : "medio",
+          titulo: "Possível duplicidade de eventos",
+          detalhe: "Leituras acima do esperado sugerem duplicidade em parte dos eventos.",
+        });
+      }
+
+      if (estabilidadeTracking < 85) {
+        alertas.push({
+          id: "tracking-drop",
+          tipo: "tracking_drop",
+          severidade: estabilidadeTracking < 60 ? "critico" : "alto",
+          titulo: "Queda de tracking",
+          detalhe: `Somente ${diasComAnalytics} dias com dados no período de ${diasMap[periodo]} dias.`,
+        });
+      }
+
+      if (consistenciaFontes < 85) {
+        alertas.push({
+          id: "source-discrepancy",
+          tipo: "source_discrepancy",
+          severidade: consistenciaFontes < 70 ? "critico" : "alto",
+          titulo: "Discrepância entre fontes",
+          detalhe: `Receita em analytics (${Math.round(revenueAnalytics)}) diverge da receita do funil (${Math.round(revenueFunnel)}).`,
+        });
+      }
+
+      if (compras > 0 && revenueFunnel === 0) {
+        alertas.push({
+          id: "missing-revenue",
+          tipo: "missing_event",
+          severidade: "critico",
+          titulo: "Compras sem receita registrada",
+          detalhe: "Existem compras no funil, mas sem receita associada no período.",
+        });
+      }
+
+      const score = Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            coberturaEventos * 0.35 +
+            estabilidadeTracking * 0.25 +
+            consistenciaFontes * 0.25 +
+            deduplicacao * 0.15
+          )
+        )
+      );
+
+      const ratio = (num: number, den: number) => (den > 0 ? Math.max(0, Math.min(1, num / den)) : 0);
+      const etapas = [
+        { etapa: "produto" as const, score: Math.round(ratio(visualizacoes, Math.max(visualizacoes, addCart, 1)) * 100) },
+        { etapa: "carrinho" as const, score: Math.round(ratio(addCart, Math.max(visualizacoes, 1)) * 100) },
+        { etapa: "checkout" as const, score: Math.round(ratio(checkout, Math.max(addCart, 1)) * 100) },
+        { etapa: "pagamento" as const, score: Math.round(ratio(compras, Math.max(checkout, 1)) * 100) },
+      ];
+
+      const scoreMinimoRecomendacao = 70;
+      const recomendacoesConfiaveis = score >= scoreMinimoRecomendacao;
+      const metricContract = [
+        { metrica: "CVR", definicao: "compras / visitantes", tolerancia: "±3pp entre fontes" },
+        { metrica: "AOV", definicao: "receita / compras", tolerancia: "±5%" },
+        { metrica: "LTV", definicao: "ticket_medio * ciclos médios", tolerancia: "±10%" },
+        { metrica: "CAC", definicao: "investimento mídia / novos clientes", tolerancia: "±8%" },
+        { metrica: "Payback", definicao: "CAC / margem de contribuição", tolerancia: "±10%" },
+        { metrica: "Retenção D30", definicao: "clientes ativos em 30 dias / coorte inicial", tolerancia: "±5pp" },
+      ];
+
+      const byChannel = campaigns.reduce((acc, c) => {
+        const ch = (c.channel ?? "whatsapp").toLowerCase();
+        if (!acc[ch]) acc[ch] = { canal: ch, sent: 0, delivered: 0, read: 0 };
+        acc[ch].sent += Number(c.sent_count ?? 0);
+        acc[ch].delivered += Number(c.delivered_count ?? 0);
+        acc[ch].read += Number(c.read_count ?? 0);
+        return acc;
+      }, {} as Record<string, { canal: string; sent: number; delivered: number; read: number }>);
+
+      const canais = Object.values(byChannel)
+        .map((ch) => {
+          const delivery = ch.sent > 0 ? ch.delivered / ch.sent : 0;
+          const readRate = ch.delivered > 0 ? ch.read / ch.delivered : 0;
+          const channelScore = Math.round(Math.max(0, Math.min(100, delivery * 70 + readRate * 30)));
+          return { ...ch, score: channelScore };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      return {
+        score,
+        status: score >= 85 ? "saudavel" : score >= 65 ? "atencao" : "critico",
+        coberturaEventos,
+        estabilidadeTracking,
+        consistenciaFontes,
+        deduplicacao,
+        etapas,
+        canais,
+        scoreMinimoRecomendacao,
+        recomendacoesConfiaveis,
+        metricContract,
+        alertas,
+      };
+    },
+    staleTime: 60_000,
   });
 }

@@ -27,6 +27,16 @@ function SevBadge({ sev }: { sev: keyof typeof sevConfig }) {
 
 // ─── Problem card ─────────────────────────────────────────────────────────────
 function ProblemaCard({ p, i, onCriarCampanha }: { p: Problema; i: number; onCriarCampanha: () => void }) {
+  const alternativas = [
+    p.causa_raiz ?? "Falha de UX no passo atual",
+    "Segmentação de tráfego desalinhada",
+    "Atrito técnico não monitorado",
+  ].slice(0, 2);
+  const nextStep = p.severidade === "critico"
+    ? "Executar correção em até 48h e medir lift diário."
+    : p.severidade === "alto"
+      ? "Rodar teste controlado por 7 dias."
+      : "Monitorar e priorizar no próximo sprint.";
   return (
     <div className={cn(
       "bg-card border rounded-2xl p-5 space-y-3",
@@ -38,6 +48,12 @@ function ProblemaCard({ p, i, onCriarCampanha }: { p: Problema; i: number; onCri
       </div>
       <h3 className="font-semibold text-sm leading-snug">{p.titulo}</h3>
       <p className="text-sm text-muted-foreground leading-relaxed">{p.descricao}</p>
+      <div className="rounded-xl border bg-muted/30 p-3">
+        <p className="text-[11px] font-semibold text-muted-foreground">Hipóteses alternativas</p>
+        <p className="text-xs mt-1">- {alternativas[0]}</p>
+        <p className="text-xs">- {alternativas[1]}</p>
+        <p className="text-xs text-primary mt-1"><strong>Próximo melhor passo:</strong> {nextStep}</p>
+      </div>
       <div className="pt-1 border-t flex items-end justify-between gap-2">
         <div>
           <p className="text-xs text-muted-foreground">Impacto estimado</p>
@@ -159,6 +175,8 @@ export default function ConvertIQDiagnostico() {
 
   const diagJson = lastDiag.data.recomendacoes as unknown as DiagnosticoJSON | null;
   const problemas = diagJson?.problemas ?? [];
+  const problemasOrdenados = [...problemas].sort((a, b) => b.impacto_reais - a.impacto_reais);
+  const gargaloPrincipal = problemasOrdenados[0] ?? null;
   const perda_principal = diagJson?.perda_principal ?? "Não identificado";
   const pct = diagJson?.percentual_explicado ?? 0;
   const resumo = diagJson?.resumo ?? lastDiag.data.resumo ?? "";
@@ -228,12 +246,56 @@ export default function ConvertIQDiagnostico() {
           </span>
           <span className="text-xs text-muted-foreground">Taxa de conversão: <strong>{lastDiag.data.taxa_conversao}%</strong></span>
         </div>
+
+        {problemas.length > 0 && (
+          <div className="rounded-xl border bg-muted/30 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Por que a IA recomendou isso</p>
+            <ul className="space-y-1">
+              {problemas.slice(0, 3).map((p, idx) => (
+                <li key={idx} className="text-sm">
+                  - <strong>{p.titulo}</strong>: {p.evidencia ?? p.descricao}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Problems */}
       {problemas.length > 0 && (
         <div className="space-y-3">
           <h2 className="font-semibold">Problemas Identificados</h2>
+          {gargaloPrincipal && (
+            <div className="bg-card border border-primary/30 rounded-2xl p-5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-2">Gargalo principal priorizado</p>
+              <h3 className="font-semibold">{gargaloPrincipal.titulo}</h3>
+              <p className="text-sm text-muted-foreground mt-1">{gargaloPrincipal.descricao}</p>
+              <div className="grid md:grid-cols-3 gap-3 mt-4">
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">Impacto mensal estimado</p>
+                  <p className="font-mono font-bold text-red-500 mt-1">
+                    R$ {gargaloPrincipal.impacto_reais.toLocaleString("pt-BR")}
+                  </p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">Causa raiz provável</p>
+                  <p className="text-sm font-medium mt-1">{gargaloPrincipal.causa_raiz ?? perda_principal}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">Confiança da hipótese</p>
+                  <p className="text-sm font-semibold mt-1">
+                    {Math.max(35, Math.min(95, gargaloPrincipal.confianca ?? (pct || 70)))}%
+                  </p>
+                </div>
+              </div>
+              {gargaloPrincipal.evidencia && (
+                <div className="mt-3 rounded-xl border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground">Evidência</p>
+                  <p className="text-sm mt-1">{gargaloPrincipal.evidencia}</p>
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid md:grid-cols-3 gap-4">
             {problemas.map((p, i) => (
               <ProblemaCard
@@ -257,6 +319,23 @@ export default function ConvertIQDiagnostico() {
           Ver plano de ação <ChevronRight className="w-4 h-4" />
         </Link>
       </Button>
+
+      {diagJson?.recomendacoes?.length ? (
+        <div className="bg-card border rounded-2xl p-5">
+          <h2 className="font-semibold mb-3">Plano semanal sugerido (copiloto)</h2>
+          <div className="grid md:grid-cols-2 gap-3">
+            {diagJson.recomendacoes.slice(0, 4).map((r, i) => (
+              <div key={i} className="rounded-xl border p-3">
+                <p className="text-xs text-muted-foreground">Semana {i + 1}</p>
+                <p className="text-sm font-medium mt-1">{r.titulo}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Meta: +{r.impacto_pp}pp · prazo {r.prazo_semanas} sem
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* History */}
       <div className="bg-card border rounded-2xl p-5">

@@ -1,28 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import {
+  checkDistributedRateLimit,
+  errorResponse,
+  getClientIp,
+  rateLimitedResponseWithRetry,
+} from "../_shared/edge-utils.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
+import { validateRequest } from "../_shared/validation.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// --- Rate Limiting (in-memory, per-instance) ---
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minuto
-const RATE_LIMIT_MAX = 60; // 60 requests por minuto por loja
-
-function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count++;
-  return true;
-}
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 60;
 
 // --- Zod Schemas ---
 const QueryParamsSchema = z.object({
@@ -281,7 +275,26 @@ function normalizeYampi(raw: z.infer<typeof YampiOrderSchema>): NormalizedOrder 
 
 // --- Main Handler ---
 serve(async (req) => {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const parsedReq = await validateRequest(req, { method: "POST", maxBytes: 256 * 1024 });
+  if (!parsedReq.ok) return parsedReq.response;
+
+  const expectedSecret = Deno.env.get("INTEGRATION_GATEWAY_SECRET") ?? "";
+  if (!expectedSecret) {
+    return new Response(
+      JSON.stringify({ error: "INTEGRATION_GATEWAY_SECRET missing" }),
+      { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+    );
+  }
+  const providedSecret = req.headers.get("x-webhook-secret") ?? "";
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    return new Response(
+      JSON.stringify({ error: "Unauthorized webhook" }),
+      { status: 401, headers: { ...cors, "Content-Type": "application/json" } },
+    );
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -303,16 +316,32 @@ serve(async (req) => {
 
   const { platform, loja_id: lojaId } = paramsResult.data;
 
-  // Rate limit check
-  if (!checkRateLimit(lojaId)) {
-    return new Response(
-      JSON.stringify({ error: "Rate limit excedido. Tente novamente em 1 minuto." }),
-      { status: 429, headers: { ...cors, "Content-Type": "application/json", "Retry-After": "60" } }
-    );
+  const ip = getClientIp(req);
+  const rateKey = `integration-gateway:${lojaId}:${ip}`;
+  const limit = await checkDistributedRateLimit(
+    supabase,
+    rateKey,
+    RATE_LIMIT_MAX,
+    RATE_LIMIT_WINDOW_MS,
+  );
+  if (!limit.allowed) {
+    await writeAuditLog(supabase, {
+      action: "rate_limit_block",
+      resource: "integration-gateway",
+      result: "failure",
+      ip,
+      tenant_id: lojaId,
+      metadata: { request_id: requestId, platform },
+    });
+    return rateLimitedResponseWithRetry(limit.retryAfterSeconds);
   }
 
   let rawBody: any = {};
   try { rawBody = await req.json(); } catch { /* empty body */ }
+  if (rawBody && typeof rawBody === "object") {
+    if (Object.keys(rawBody).length > 200) return errorResponse("Payload has too many keys", 400);
+    if (JSON.stringify(rawBody).length > 200 * 1024) return errorResponse("Payload too large", 413);
+  }
 
   try {
     let normalizedOrder: NormalizedOrder | null = null;
@@ -371,7 +400,8 @@ serve(async (req) => {
       case "custom":
         // Custom platform — log only, no normalization
         await supabase.from("webhook_logs").update({ status_processamento: "custom_recebido" }).eq("id", logEntry?.id);
-        return new Response(JSON.stringify({ success: true, message: "Custom webhook logged" }), { headers: { ...cors, "Content-Type": "application/json" } });
+        console.log(`[${requestId}] integration-gateway custom platform=${platform} loja=${lojaId} elapsed_ms=${Date.now() - startedAt}`);
+        return new Response(JSON.stringify({ success: true, message: "Custom webhook logged", request_id: requestId }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     if (normalizedOrder) {
@@ -439,9 +469,26 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true }), { headers: { ...cors, "Content-Type": "application/json" } });
-  } catch (e) {
-    console.error("Webhook Error:", e.message);
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
+    console.log(`[${requestId}] integration-gateway ok platform=${platform} loja=${lojaId} elapsed_ms=${Date.now() - startedAt}`);
+    await writeAuditLog(supabase, {
+      action: "webhook_ingest",
+      resource: "integration-gateway",
+      result: "success",
+      ip,
+      tenant_id: lojaId,
+      metadata: { request_id: requestId, platform },
+    });
+    return new Response(JSON.stringify({ success: true, request_id: requestId }), { headers: { ...cors, "Content-Type": "application/json" } });
+  } catch (e: any) {
+    console.error(`[${requestId}] Webhook Error:`, e?.message ?? e);
+    await writeAuditLog(supabase, {
+      action: "webhook_ingest",
+      resource: "integration-gateway",
+      result: "failure",
+      ip,
+      tenant_id: lojaId,
+      metadata: { request_id: requestId, reason: e?.message ?? "unknown" },
+    });
+    return new Response(JSON.stringify({ error: "Internal server error", request_id: requestId }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
   }
 });

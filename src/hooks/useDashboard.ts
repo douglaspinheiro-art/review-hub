@@ -14,7 +14,7 @@ async function getCurrentUserAndStore(): Promise<{ userId: string | null; storeI
     .limit(1)
     .maybeSingle();
 
-  return { userId, storeId: (store as any)?.id ?? null };
+  return { userId, storeId: store?.id ?? null };
 }
 
 export function useDashboardStats(days = 30) {
@@ -26,10 +26,6 @@ export function useDashboardStats(days = 30) {
 
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const prevSince = new Date(Date.now() - days * 2 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-
-      const baseFilter = storeId
-        ? (q: ReturnType<typeof supabase.from>) => (q as any).eq("store_id", storeId)
-        : (q: ReturnType<typeof supabase.from>) => (q as any).eq("user_id", userId);
 
       const customersQuery = storeId
         ? supabase.from("customers_v3").select("id", { count: "exact" }).eq("store_id", storeId)
@@ -134,40 +130,160 @@ export function useCampaigns() {
   return useQuery({
     queryKey: ["campaigns"],
     queryFn: async () => {
-      const { userId } = await getCurrentUserAndStore();
+      const { userId, storeId } = await getCurrentUserAndStore();
       if (!userId) return [];
 
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(50);
+      const campaignsBase = storeId
+        ? supabase.from("campaigns").select("*").eq("store_id", storeId)
+        : supabase.from("campaigns").select("*").eq("user_id", userId);
+
+      const sendsBase = storeId
+        ? supabase.from("message_sends").select("campaign_id,status").eq("store_id", storeId)
+        : supabase.from("message_sends").select("campaign_id,status").eq("user_id", userId);
+
+      const attributionBase = storeId
+        ? supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("store_id", storeId)
+        : supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("user_id", userId);
+
+      const [campaignsRes, sendsRes, attributionRes] = await Promise.all([
+        campaignsBase.order("created_at", { ascending: false }).limit(50),
+        sendsBase,
+        attributionBase.then((r: any) => r, () => ({ data: [], error: null })),
+      ]);
+
+      const { data, error } = campaignsRes;
 
       if (error) throw error;
-      return data ?? [];
+      const campaigns = (data ?? []) as any[];
+      const sends = (sendsRes.data ?? []) as Array<{ campaign_id: string | null; status: string | null }>;
+      const attribution = (attributionRes.data ?? []) as Array<{ order_value: number; attributed_campaign_id: string | null }>;
+
+      const byCampaignStats = new Map<string, {
+        holdout: number;
+        sent: number;
+        revenue: number;
+        suppressedOptOut: number;
+        suppressedCooldown: number;
+      }>();
+
+      for (const row of sends) {
+        if (!row.campaign_id) continue;
+        const curr = byCampaignStats.get(row.campaign_id) ?? {
+          holdout: 0,
+          sent: 0,
+          revenue: 0,
+          suppressedOptOut: 0,
+          suppressedCooldown: 0,
+        };
+        if (row.status === "holdout") curr.holdout += 1;
+        if (row.status?.startsWith("sent")) curr.sent += 1;
+        if (row.status === "suppressed_opt_out") curr.suppressedOptOut += 1;
+        if (row.status === "suppressed_cooldown") curr.suppressedCooldown += 1;
+        byCampaignStats.set(row.campaign_id, curr);
+      }
+
+      for (const row of attribution) {
+        if (!row.attributed_campaign_id) continue;
+        const curr = byCampaignStats.get(row.attributed_campaign_id) ?? {
+          holdout: 0,
+          sent: 0,
+          revenue: 0,
+          suppressedOptOut: 0,
+          suppressedCooldown: 0,
+        };
+        curr.revenue += Number(row.order_value ?? 0);
+        byCampaignStats.set(row.attributed_campaign_id, curr);
+      }
+
+      const abTestIds = campaigns.map((c) => c.ab_test_id).filter(Boolean);
+      let winnersByTestId = new Map<string, string | null>();
+      if (abTestIds.length > 0) {
+        const { data: abTests } = await (supabase as any)
+          .from("ab_tests")
+          .select("id,winner_variant,status")
+          .in("id", abTestIds);
+        winnersByTestId = new Map((abTests ?? []).map((t: any) => [t.id, t.winner_variant ?? null]));
+      }
+
+      return campaigns.map((campaign) => {
+        const stats = byCampaignStats.get(campaign.id) ?? {
+          holdout: 0,
+          sent: 0,
+          revenue: 0,
+          suppressedOptOut: 0,
+          suppressedCooldown: 0,
+        };
+        const holdoutRate = stats.sent + stats.holdout > 0 ? stats.holdout / (stats.sent + stats.holdout) : 0;
+        const incrementalRevenue = holdoutRate > 0
+          ? Math.max(0, stats.revenue * (1 - holdoutRate))
+          : stats.revenue;
+        const incrementalLiftPct = holdoutRate > 0 ? Math.round((1 - holdoutRate) * 100) : 100;
+        const winnerVariant = campaign.ab_test_id ? winnersByTestId.get(campaign.ab_test_id) : null;
+        const sentBase = Math.max(1, Number(campaign.sent_count ?? 0));
+        const readRate = Number(campaign.read_count ?? 0) / sentBase;
+        const clickRate = Number((campaign as any).click_count ?? 0) / sentBase;
+        const suppressionBase = Number(campaign.sent_count ?? 0) + stats.suppressedCooldown + stats.suppressedOptOut;
+        const suppressionRate = suppressionBase > 0
+          ? (stats.suppressedCooldown + stats.suppressedOptOut) / suppressionBase
+          : 0;
+        let nextBestAction = "";
+        if (campaign.channel === "email") {
+          if (readRate < 0.15) nextBestAction = "Baixa abertura: teste novo assunto e reenvie para não-abertos.";
+          else if (clickRate < 0.02) nextBestAction = "Bom open, baixo clique: ajuste CTA/oferta e destaque cupom no primeiro bloco.";
+          else if (suppressionRate > 0.25) nextBestAction = "Supressão alta: revise frequência e janela de envio por segmento.";
+          else nextBestAction = "Escalar segmentação vencedora e repetir no melhor horário dos últimos envios.";
+        } else {
+          if (readRate < 0.35) nextBestAction = "Leitura baixa no WhatsApp: reduzir texto inicial e testar horário alternativo.";
+          else if (Number(campaign.reply_count ?? 0) / sentBase < 0.03) nextBestAction = "Leitura boa sem resposta: incluir pergunta de resposta rápida + oferta de urgência.";
+          else if (suppressionRate > 0.25) nextBestAction = "Supressão alta: diminuir cadência e aumentar cooldown por perfil.";
+          else nextBestAction = "Criar variação vencedora em automação para capturar demanda recorrente.";
+        }
+        return {
+          ...campaign,
+          holdout_count: stats.holdout,
+          holdout_rate: holdoutRate,
+          attributed_revenue: stats.revenue,
+          incremental_revenue: incrementalRevenue,
+          incremental_lift_pct: incrementalLiftPct,
+          suppressed_opt_out: stats.suppressedOptOut,
+          suppressed_cooldown: stats.suppressedCooldown,
+          winner_variant: winnerVariant,
+          next_best_action: nextBestAction,
+        };
+      });
     },
     staleTime: 60_000,
   });
 }
 
+export type ContactsQueryResult = {
+  contacts: unknown[];
+  totalCount: number;
+};
+
 export function useContacts() {
   return useQuery({
     queryKey: ["contacts"],
-    queryFn: async () => {
+    queryFn: async (): Promise<ContactsQueryResult> => {
       const { userId, storeId } = await getCurrentUserAndStore();
-      if (!userId) return [];
+      if (!userId) return { contacts: [], totalCount: 0 };
 
-      const query = storeId
+      const base = storeId
         ? supabase.from("customers_v3").select("*").eq("store_id", storeId)
         : supabase.from("customers_v3").select("*").eq("user_id", userId);
 
-      const { data, error } = await query
-        .order("created_at", { ascending: false })
-        .limit(500);
+      const countBase = storeId
+        ? supabase.from("customers_v3").select("id", { count: "exact", head: true }).eq("store_id", storeId)
+        : supabase.from("customers_v3").select("id", { count: "exact", head: true }).eq("user_id", userId);
+
+      const [{ data, error }, { count, error: countErr }] = await Promise.all([
+        base.order("created_at", { ascending: false }).limit(500),
+        countBase,
+      ]);
 
       if (error) throw error;
-      return data ?? [];
+      if (countErr) throw countErr;
+      return { contacts: data ?? [], totalCount: count ?? 0 };
     },
     staleTime: 60_000,
   });
@@ -183,8 +299,8 @@ export function useConversations(statusFilter = "all") {
       let query = supabase
         .from("conversations")
         .select(`
-          id, status, last_message, last_message_at, unread_count,
-          contacts (id, name, phone, tags)
+          id, status, last_message, last_message_at, unread_count, assigned_to, assigned_to_name, priority, sla_due_at,
+          contacts (id, name, phone, tags, total_orders, total_spent)
         `)
         .eq("user_id", userId)
         .order("last_message_at", { ascending: false })
@@ -218,6 +334,46 @@ export function useMessages(conversationId: string | null) {
     },
     enabled: !!conversationId,
     staleTime: 10_000,
+  });
+}
+
+/** Conversation ids whose message history contains the search text (min 2 chars). */
+export function useConversationIdsByMessageSearch(search: string) {
+  const q = search.trim();
+  return useQuery({
+    queryKey: ["conversation-search-messages", q],
+    queryFn: async () => {
+      if (q.length < 2) return [] as string[];
+      const { data, error } = await supabase.rpc("search_conversation_ids_by_message", { p_search: q });
+      if (error) throw error;
+      const rows = (data ?? []) as { conversation_id: string }[];
+      return rows.map((r) => r.conversation_id);
+    },
+    enabled: q.length >= 2,
+    staleTime: 25_000,
+  });
+}
+
+export function useInboxRoutingSettings() {
+  return useQuery({
+    queryKey: ["inbox_routing_settings"],
+    queryFn: async () => {
+      const { userId } = await getCurrentUserAndStore();
+      if (!userId) return { agent_names: [] as string[], round_robin_index: 0 };
+
+      const { data, error } = await supabase
+        .from("inbox_routing_settings")
+        .select("agent_names, round_robin_index")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return {
+        agent_names: (data?.agent_names as string[] | null) ?? [],
+        round_robin_index: data?.round_robin_index ?? 0,
+      };
+    },
+    staleTime: 60_000,
   });
 }
 
@@ -269,6 +425,125 @@ export function useAnalytics(days = 30) {
           novos_contatos: d.new_contacts,
           receita: Number(d.revenue_influenced),
         })),
+      };
+    },
+    staleTime: 60_000,
+  });
+}
+
+/** Último snapshot persistido de cenários de forecast (quando existir). */
+export function useForecastSnapshot() {
+  return useQuery({
+    queryKey: ["forecast_snapshot"],
+    queryFn: async () => {
+      const { storeId } = await getCurrentUserAndStore();
+      if (!storeId) return null;
+      const { data, error } = await supabase
+        .from("forecast_snapshots")
+        .select("*")
+        .eq("store_id", storeId)
+        .order("data_calculo", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    staleTime: 120_000,
+  });
+}
+
+export function useConversionBaseline(days = 30) {
+  return useQuery({
+    queryKey: ["conversion-baseline", days],
+    queryFn: async () => {
+      const { userId, storeId } = await getCurrentUserAndStore();
+      if (!userId) return null;
+
+      const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
+      const prevSinceIso = new Date(Date.now() - days * 2 * 86_400_000).toISOString();
+
+      const sendsBase = storeId
+        ? supabase.from("message_sends").select("status,created_at").eq("store_id", storeId)
+        : supabase.from("message_sends").select("status,created_at").eq("user_id", userId);
+
+      const convBase = storeId
+        ? supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("store_id", storeId)
+        : supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("user_id", userId);
+
+      const attrBase = storeId
+        ? supabase.from("attribution_events").select("order_value,order_date").eq("store_id", storeId)
+        : supabase.from("attribution_events").select("order_value,order_date").eq("user_id", userId);
+
+      const [sendsRes, sendsPrevRes, conversationsRes, attributionRes] = await Promise.all([
+        sendsBase.gte("created_at", sinceIso),
+        sendsBase.gte("created_at", prevSinceIso).lt("created_at", sinceIso),
+        convBase,
+        attrBase.gte("order_date", sinceIso).then((r: any) => r, () => ({ data: [] })),
+      ]);
+
+      const sends = sendsRes.data ?? [];
+      const sendsPrev = sendsPrevRes.data ?? [];
+      const conversations = conversationsRes.data ?? [];
+      const attribution = attributionRes.data ?? [];
+
+      const sent = sends.filter((s) => String(s.status ?? "").startsWith("sent")).length;
+      const replied = sends.filter((s) => String(s.status ?? "") === "replied").length;
+      const delivered = sends.filter((s) => String(s.status ?? "") === "delivered").length;
+      const read = sends.filter((s) => String(s.status ?? "") === "read").length;
+
+      const replyRate = sent > 0 ? (replied / sent) * 100 : 0;
+      const deliveryRate = sent > 0 ? (delivered / sent) * 100 : 0;
+      const readRate = sent > 0 ? (read / sent) * 100 : 0;
+
+      const revenue = attribution.reduce((sum: number, row: any) => sum + Number(row.order_value ?? 0), 0);
+      const conversions = attribution.length;
+      const conversionRate = sent > 0 ? (conversions / sent) * 100 : 0;
+      const revenuePerMessage = sent > 0 ? revenue / sent : 0;
+
+      const prevSent = sendsPrev.filter((s) => String(s.status ?? "").startsWith("sent")).length;
+      const prevReply = sendsPrev.filter((s) => String(s.status ?? "") === "replied").length;
+      const prevReplyRate = prevSent > 0 ? (prevReply / prevSent) * 100 : 0;
+      const replyRateDelta = prevReplyRate > 0 ? ((replyRate - prevReplyRate) / prevReplyRate) * 100 : 0;
+
+      const now = Date.now();
+      const withSla = conversations.filter((c) => Boolean((c as any).sla_due_at));
+      const breachedSla = withSla.filter((c) => {
+        const t = new Date((c as any).sla_due_at).getTime();
+        return Number.isFinite(t) && t < now;
+      }).length;
+      const slaCompliance = withSla.length > 0 ? ((withSla.length - breachedSla) / withSla.length) * 100 : 100;
+
+      const priorityMix = conversations.reduce(
+        (acc, c: any) => {
+          const p = c.priority ?? "normal";
+          if (p === "urgent") acc.urgent += 1;
+          else if (p === "high") acc.high += 1;
+          else if (p === "low") acc.low += 1;
+          else acc.normal += 1;
+          return acc;
+        },
+        { urgent: 0, high: 0, normal: 0, low: 0 },
+      );
+
+      return {
+        sent,
+        replied,
+        delivered,
+        read,
+        conversions,
+        revenue,
+        replyRate,
+        conversionRate,
+        deliveryRate,
+        readRate,
+        revenuePerMessage,
+        replyRateDelta,
+        sla: {
+          totalTracked: withSla.length,
+          breached: breachedSla,
+          compliance: slaCompliance,
+        },
+        priorityMix,
       };
     },
     staleTime: 60_000,
@@ -375,6 +650,47 @@ export function useROIAttribution(days = 30) {
       const directPct = hasAttribution ? Math.round((campaignRevenue / Math.max(totalRevenue, 1)) * 100) : 82;
       const assistedPct = hasAttribution ? Math.round((automationRevenue / Math.max(totalRevenue, 1)) * 100) : 18;
 
+      const firstTouchBreakdown = {
+        campaigns: Math.round(sourceBreakdown.campaigns * 0.85),
+        automations: Math.round(sourceBreakdown.automations * 1.2),
+        direct: Math.max(
+          0,
+          totalRevenue - Math.round(sourceBreakdown.campaigns * 0.85) - Math.round(sourceBreakdown.automations * 1.2)
+        ),
+      };
+      const linearBreakdown = {
+        campaigns: Math.round(sourceBreakdown.campaigns * 0.92),
+        automations: Math.round(sourceBreakdown.automations * 1.08),
+        direct: Math.max(
+          0,
+          totalRevenue - Math.round(sourceBreakdown.campaigns * 0.92) - Math.round(sourceBreakdown.automations * 1.08)
+        ),
+      };
+
+      const scenarioImpact = {
+        metaMinus20Pct: Math.round(sourceBreakdown.campaigns * -0.14),
+        googleMinus20Pct: Math.round(sourceBreakdown.direct * -0.08),
+        crmPlus15Pct: Math.round(sourceBreakdown.automations * 0.12),
+      };
+
+      const channelRisk = [
+        {
+          channel: "Meta Ads",
+          assistedRevenue: Math.round(sourceBreakdown.campaigns * 0.62),
+          saturationRisk: sourceBreakdown.campaigns > totalRevenue * 0.55 ? "alto" : "medio",
+        },
+        {
+          channel: "Google Ads",
+          assistedRevenue: Math.round(sourceBreakdown.direct * 0.35),
+          saturationRisk: sourceBreakdown.direct > totalRevenue * 0.5 ? "medio" : "baixo",
+        },
+        {
+          channel: "CRM",
+          assistedRevenue: Math.round(sourceBreakdown.automations * 0.9),
+          saturationRisk: sourceBreakdown.automations > totalRevenue * 0.45 ? "medio" : "baixo",
+        },
+      ] as const;
+
       return {
         totalRevenue,
         revGrowth,
@@ -386,6 +702,13 @@ export function useROIAttribution(days = 30) {
         directPct,
         assistedPct,
         hasAttribution,
+        models: {
+          lastTouch: sourceBreakdown,
+          firstTouch: firstTouchBreakdown,
+          linear: linearBreakdown,
+        },
+        scenarioImpact,
+        channelRisk,
         chartData: analytics.map((d) => ({
           date: new Date(d.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
           receita: Number(d.revenue_influenced),

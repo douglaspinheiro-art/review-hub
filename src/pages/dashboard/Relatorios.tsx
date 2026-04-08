@@ -14,6 +14,8 @@ import {
 } from "recharts";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { mockLoja, mockMetricas } from "@/lib/mock-data";
+import { buildRetentionGraph } from "@/lib/retention-graph";
+import { getPropensityOutput } from "@/lib/propensity-score";
 
 const rfmData = [
   { x: 1, y: 1, z: 432, name: "Perdidos" },
@@ -60,13 +62,28 @@ function gerarTextoWhatsApp(r: typeof RELATORIO_MENSAL) {
 
 export default function Relatorios() {
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const textoWA = gerarTextoWhatsApp(RELATORIO_MENSAL);
+  const shareableUrl = `https://ltvboost.com.br/relatorio-anual?from=dashboard&month=${encodeURIComponent(RELATORIO_MENSAL.mes)}`;
+  const retentionNodes = buildRetentionGraph({
+    recoveredRevenue: RELATORIO_MENSAL.recuperado,
+    activeOpportunities: 18,
+    unreadConversations: 46,
+    chs: RELATORIO_MENSAL.chs_fim,
+  });
+  const propensity = getPropensityOutput(retentionNodes);
 
   const copyTexto = () => {
     navigator.clipboard.writeText(textoWA);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(shareableUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   return (
@@ -113,7 +130,12 @@ export default function Relatorios() {
               {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
               {copied ? "Copiado!" : "Copiar texto"}
             </Button>
+            <Button variant="outline" size="sm" className="h-10 gap-2 text-xs font-bold rounded-xl" onClick={copyLink}>
+              {copiedLink ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+              {copiedLink ? "Link copiado!" : "Copiar link público"}
+            </Button>
           </div>
+          <p className="text-xs text-muted-foreground font-mono break-all">{shareableUrl}</p>
           <p className="text-[10px] text-muted-foreground italic">
             Compartilhe com seu sócio, equipe ou mentor. Gerado automaticamente com dados reais do período.
           </p>
@@ -125,6 +147,25 @@ export default function Relatorios() {
         <MetricCard label="CAC" value="R$ 42,50" trend={-12} icon={Users} />
         <MetricCard label="ROAS Médio" value="12.4x" trend={+15} icon={ShoppingBag} />
         <MetricCard label="Churn Rate" value="4.2%" trend={-2} icon={PieChart} />
+      </div>
+
+      <div className="bg-card border rounded-2xl p-6 space-y-4">
+        <h3 className="font-bold text-base flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" /> Retention Graph Proprietário
+        </h3>
+        <div className="grid md:grid-cols-3 gap-3">
+          {retentionNodes.map((node) => (
+            <div key={node.id} className="rounded-xl border p-4 bg-muted/20">
+              <p className="text-xs text-muted-foreground">{node.label}</p>
+              <p className="text-2xl font-black">{node.score}/100</p>
+              <p className="text-xs text-muted-foreground">{node.reason}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-sm">
+          Propensão dominante do período: <span className="font-bold">{propensity.bestNode.label}</span>{" "}
+          <span className="text-muted-foreground">(confiança {propensity.confidence}% · {propensity.band})</span>
+        </p>
       </div>
 
       {/* Próximas Ações — CTAs contextuais baseados nos dados */}

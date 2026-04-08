@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { sendText, getConnectionState, mapEvolutionState } from "@/lib/evolution-api";
+import { sendText, sendTemplate, sendFlow, getConnectionState, mapEvolutionState } from "@/lib/evolution-api";
 import { useAuth } from "@/hooks/useAuth";
 
 interface WhatsAppConnection {
@@ -15,6 +15,18 @@ interface SendResult {
   success: boolean;
   external_id?: string;
   error?: string;
+}
+
+interface ButtonPayload {
+  label: string;
+  url: string;
+}
+
+interface FlowPayload {
+  text: string;
+  buttonText: string;
+  flowId: string;
+  screenId: string;
 }
 
 export function useWhatsAppSender() {
@@ -69,6 +81,53 @@ export function useWhatsAppSender() {
     }
   }
 
+  async function sendTemplateButton(phone: string, text: string, button: ButtonPayload): Promise<SendResult> {
+    if (!connection) {
+      return { success: false, error: "Nenhuma conexão WhatsApp ativa. Configure em Configurações." };
+    }
+    const normalized = phone.replace(/\D/g, "");
+    const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
+    try {
+      const cfg = {
+        baseUrl: connection.evolution_api_url,
+        apiKey: connection.evolution_api_key,
+      };
+      const response = await sendTemplate(cfg, connection.instance_name, {
+        number: e164,
+        text,
+        buttons: [{ type: "url", displayText: button.label, content: button.url }],
+      });
+      const external_id = response?.key?.id ?? response?.messageId ?? undefined;
+      return { success: true, external_id };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro ao enviar template";
+      return { success: false, error: message };
+    }
+  }
+
+  async function sendFlowMessage(phone: string, payload: FlowPayload): Promise<SendResult> {
+    if (!connection) {
+      return { success: false, error: "Nenhuma conexão WhatsApp ativa. Configure em Configurações." };
+    }
+    const normalized = phone.replace(/\D/g, "");
+    const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
+    try {
+      const cfg = { baseUrl: connection.evolution_api_url, apiKey: connection.evolution_api_key };
+      const response = await sendFlow(cfg, connection.instance_name, {
+        number: e164,
+        text: payload.text,
+        buttonText: payload.buttonText,
+        flowId: payload.flowId,
+        screenId: payload.screenId,
+      });
+      const external_id = response?.key?.id ?? response?.messageId ?? undefined;
+      return { success: true, external_id };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro ao enviar fluxo";
+      return { success: false, error: message };
+    }
+  }
+
   async function refreshConnectionStatus(): Promise<void> {
     if (!connection) return;
     try {
@@ -92,6 +151,8 @@ export function useWhatsAppSender() {
     isReady,
     isLoading,
     sendMessage,
+    sendTemplateButton,
+    sendFlowMessage,
     refreshConnectionStatus,
   };
 }

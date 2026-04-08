@@ -28,7 +28,7 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: 
 
 // Demo notifications for first-time users
 const DEMO: Notification[] = [
-  { id: "d1", type: "cart_recovered",  title: "Carrinho recuperado!",        body: "Maria Silva completou a compra após receber seu WhatsApp. +R$ 247,00", action_url: "/dashboard/carrinhos", read_at: null, created_at: new Date(Date.now() - 5 * 60000).toISOString() },
+  { id: "d1", type: "cart_recovered",  title: "Carrinho recuperado!",        body: "Maria Silva completou a compra após receber seu WhatsApp. +R$ 247,00", action_url: "/dashboard/carrinho-abandonado", read_at: null, created_at: new Date(Date.now() - 5 * 60000).toISOString() },
   { id: "d2", type: "new_review",      title: "Nova avaliação 5★ no Google", body: "João Pereira deixou uma avaliação positiva sobre sua loja.",            action_url: "/dashboard/reviews",   read_at: null, created_at: new Date(Date.now() - 30 * 60000).toISOString() },
   { id: "d3", type: "campaign_done",   title: "Campanha concluída",           body: "\"Promoção Inverno\" foi enviada para 1.240 contatos. Taxa de leitura: 71%", action_url: "/dashboard/campanhas", read_at: null, created_at: new Date(Date.now() - 2 * 3600000).toISOString() },
   { id: "d4", type: "system",          title: "Bem-vindo ao LTV Boost!",    body: "Configure sua instância WhatsApp para começar a disparar campanhas.",  action_url: "/dashboard/whatsapp",  read_at: new Date().toISOString(), created_at: new Date(Date.now() - 24 * 3600000).toISOString() },
@@ -50,7 +50,7 @@ export default function NotificationBell() {
   const queryClient = useQueryClient();
 
   const { data: notifications = DEMO } = useQuery({
-    queryKey: ["notifications"],
+    queryKey: ["notifications", user?.id],
     queryFn: async () => {
       try {
         const { data, error } = await supabase
@@ -73,7 +73,7 @@ export default function NotificationBell() {
     mutationFn: async (id: string) => {
       await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", id);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications", user?.id] }),
   });
 
   const markAllReadMutation = useMutation({
@@ -84,7 +84,7 @@ export default function NotificationBell() {
         .eq("user_id", user!.id)
         .is("read_at", null);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications", user?.id] }),
   });
 
   const unread = notifications.filter((n) => !n.read_at).length;

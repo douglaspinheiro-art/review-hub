@@ -18,15 +18,14 @@ import {
 import {
   useLoja, useConvertIQConfig, useMetricasFunil, useLatestDiagnostico,
   useDiagnosticos, useSaveLoja, useSaveMetricas, useGerarDiagnostico,
-  useMetricasEnriquecidas,
+  useMetricasEnriquecidas, useDataHealth,
   calcFunil, MOCK_METRICAS, MOCK_CONFIG, MetricasFunil,
 } from "@/hooks/useConvertIQ";
 import { useProductsV3 as useProdutosV3 } from "@/hooks/useLTVBoost";
 import { mockMetricas } from "@/lib/mock-data";
+import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
 
 type Periodo = "7d" | "30d" | "90d";
-
-const PLATAFORMAS = ["Shopify", "VTEX", "WooCommerce", "Nuvemshop", "Tray", "Outro"];
 
 const DIAG_STEPS = [
   { label: "Calculando taxas de conversão",       ms: 2000 },
@@ -174,7 +173,13 @@ function SetupCard({ onDone }: { onDone: () => void }) {
           <Label className="text-xs">Plataforma</Label>
           <Select value={plataforma} onValueChange={setPlataforma}>
             <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Selecionar" /></SelectTrigger>
-            <SelectContent>{PLATAFORMAS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              {ECOMMERCE_PLATFORMAS_FUNIL.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <div>
@@ -252,6 +257,7 @@ export default function Funil() {
   const config    = useConvertIQConfig();
   const metrics   = useMetricasFunil(loja.data?.id ?? null, periodo);
   const enriched  = useMetricasEnriquecidas(loja.data?.id ?? null, periodo);
+  const dataHealth = useDataHealth(loja.data?.id ?? null, periodo);
   const lastDiag  = useLatestDiagnostico(loja.data?.id ?? null);
   const allDiags  = useDiagnosticos(loja.data?.id ?? null);
   const produtos  = useProdutosV3(loja.data?.id);
@@ -470,6 +476,145 @@ export default function Funil() {
           </span>
         </div>
       </div>
+
+      {/* Data Health Score */}
+      {loja.data && (
+        <div className="bg-card border rounded-2xl p-6">
+          <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
+            <div>
+              <h3 className="font-black text-base uppercase tracking-tighter">Data Health Score</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Qualidade de dados para confiar em diagnóstico e atribuição financeira.
+              </p>
+            </div>
+            <div className="text-right">
+              <p className={cn(
+                "text-3xl font-black font-mono",
+                (dataHealth.data?.score ?? 0) >= 85 ? "text-emerald-500" : (dataHealth.data?.score ?? 0) >= 65 ? "text-amber-500" : "text-red-500"
+              )}>
+                {dataHealth.isLoading ? "..." : `${dataHealth.data?.score ?? 0}`}
+              </p>
+              <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
+                {dataHealth.data?.status === "saudavel" ? "Saudável" : dataHealth.data?.status === "atencao" ? "Atenção" : "Crítico"}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-3 mb-4">
+            {[
+              { label: "Cobertura de eventos", value: dataHealth.data?.coberturaEventos ?? 0 },
+              { label: "Estabilidade tracking", value: dataHealth.data?.estabilidadeTracking ?? 0 },
+              { label: "Consistência de fontes", value: dataHealth.data?.consistenciaFontes ?? 0 },
+              { label: "Deduplicação", value: dataHealth.data?.deduplicacao ?? 0 },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border p-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{item.label}</p>
+                <p className="text-lg font-black font-mono">{item.value}%</p>
+                <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      item.value >= 85 ? "bg-emerald-500" : item.value >= 65 ? "bg-amber-500" : "bg-red-500"
+                    )}
+                    style={{ width: `${Math.max(4, item.value)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            {(dataHealth.data?.alertas ?? []).length === 0 ? (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                Sem alertas críticos de dados no período.
+              </p>
+            ) : (
+              (dataHealth.data?.alertas ?? []).map((a) => (
+                <div key={a.id} className={cn(
+                  "rounded-xl border px-3 py-2 text-sm",
+                  a.severidade === "critico"
+                    ? "border-red-500/30 bg-red-500/10"
+                    : a.severidade === "alto"
+                      ? "border-orange-500/30 bg-orange-500/10"
+                      : "border-amber-500/30 bg-amber-500/10"
+                )}>
+                  <p className="font-bold">{a.titulo}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{a.detalhe}</p>
+                </div>
+              ))
+            )}
+          </div>
+
+          {(dataHealth.data?.canais?.length ?? 0) > 0 && (
+            <div className="mt-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Data Health por canal</p>
+              <div className="grid md:grid-cols-3 gap-3">
+                {(dataHealth.data?.canais ?? []).slice(0, 3).map((c) => (
+                  <div key={c.canal} className="rounded-xl border p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase">{c.canal}</p>
+                      <span className={cn(
+                        "text-xs font-mono font-bold",
+                        c.score >= 85 ? "text-emerald-500" : c.score >= 65 ? "text-amber-500" : "text-red-500"
+                      )}>
+                        {c.score}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      env. {c.sent.toLocaleString("pt-BR")} · ent. {c.delivered.toLocaleString("pt-BR")} · lidas {c.read.toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(dataHealth.data?.etapas?.length ?? 0) > 0 && (
+            <div className="mt-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Data Health por etapa</p>
+              <div className="grid md:grid-cols-4 gap-3">
+                {(dataHealth.data?.etapas ?? []).map((e) => (
+                  <div key={e.etapa} className="rounded-xl border p-3">
+                    <p className="text-xs font-bold uppercase">{e.etapa}</p>
+                    <p className={cn(
+                      "text-lg font-mono font-bold mt-1",
+                      e.score >= 85 ? "text-emerald-500" : e.score >= 65 ? "text-amber-500" : "text-red-500"
+                    )}>
+                      {e.score}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className={cn(
+            "mt-4 rounded-xl border p-3 text-xs",
+            dataHealth.data?.recomendacoesConfiaveis ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"
+          )}>
+            <p className="font-bold">
+              {dataHealth.data?.recomendacoesConfiaveis
+                ? "Quality Gate ativo: recomendações críticas liberadas."
+                : `Quality Gate: score abaixo de ${dataHealth.data?.scoreMinimoRecomendacao ?? 70}; recomendações críticas devem ser revisadas manualmente.`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {loja.data && dataHealth.data?.metricContract && (
+        <div className="bg-card border rounded-2xl p-6">
+          <h3 className="font-black text-base uppercase tracking-tighter mb-4">Contrato canônico de métricas</h3>
+          <div className="grid md:grid-cols-3 gap-3">
+            {dataHealth.data.metricContract.map((m) => (
+              <div key={m.metrica} className="rounded-xl border p-3">
+                <p className="text-xs font-bold">{m.metrica}</p>
+                <p className="text-xs text-muted-foreground mt-1">{m.definicao}</p>
+                <p className="text-[11px] mt-2 font-medium">Tolerância: {m.tolerancia}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Potential Recovery Dashboard */}
       <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6">

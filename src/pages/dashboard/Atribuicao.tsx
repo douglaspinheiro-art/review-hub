@@ -14,7 +14,7 @@ import {
   AreaChart, Area,
   PieChart, Pie, Cell,
   BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 
 const PERIODS = [
@@ -86,6 +86,9 @@ function EmptyState({ onNavigate }: { onNavigate: () => void }) {
 
 export default function Atribuicao() {
   const [period, setPeriod] = useState(30);
+  const [metaCut, setMetaCut] = useState(20);
+  const [googleCut, setGoogleCut] = useState(20);
+  const [crmIncrease, setCrmIncrease] = useState(15);
   const { data, isLoading, error, refetch } = useROIAttribution(period);
   const navigate = useNavigate();
 
@@ -154,6 +157,40 @@ export default function Atribuicao() {
 
       {!isLoading && data && data.totalRevenue > 0 && (
         <>
+          <div className="bg-card border rounded-2xl p-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Revisao quinzenal</p>
+                <p className="text-xs text-muted-foreground">
+                  Ritual de 15 dias para manter crescimento previsivel com atribuicao confiavel.
+                </p>
+              </div>
+              <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase tracking-widest">
+                Proxima revisao: {new Date(Date.now() + 15 * 86_400_000).toLocaleDateString("pt-BR")}
+              </Badge>
+            </div>
+            <div className="grid md:grid-cols-4 gap-3 mt-4">
+              <div className="rounded-xl border p-3 bg-muted/20">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Top alavanca</p>
+                <p className="text-sm font-black mt-1">{data.byCampaign[0]?.name ?? "Sem campanha lider"}</p>
+              </div>
+              <div className="rounded-xl border p-3 bg-muted/20">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Receita atribuida</p>
+                <p className="text-sm font-black mt-1">{fmt(data.totalRevenue)}</p>
+              </div>
+              <div className="rounded-xl border p-3 bg-muted/20">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Taxa carrinho</p>
+                <p className="text-sm font-black mt-1">{data.cartStats.recoveryRate}%</p>
+              </div>
+              <div className="rounded-xl border p-3 bg-muted/20">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Risco dominante</p>
+                <p className="text-sm font-black mt-1">
+                  {data.channelRisk.find((r) => r.saturationRisk === "alto")?.channel ?? "Controlado"}
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
@@ -394,6 +431,79 @@ export default function Atribuicao() {
           )}
 
           {/* Attribution method note */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-card border rounded-2xl p-6 space-y-4">
+              <h3 className="font-black text-sm uppercase tracking-widest">Modelos comparativos de atribuição</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart
+                  data={[
+                    { modelo: "Last-touch", campanhas: data.models.lastTouch.campaigns, automacoes: data.models.lastTouch.automations, direto: data.models.lastTouch.direct },
+                    { modelo: "First-touch", campanhas: data.models.firstTouch.campaigns, automacoes: data.models.firstTouch.automations, direto: data.models.firstTouch.direct },
+                    { modelo: "Linear", campanhas: data.models.linear.campaigns, automacoes: data.models.linear.automations, direto: data.models.linear.direct },
+                  ]}
+                  margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                  <XAxis dataKey="modelo" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `R$${Math.round(v / 1000)}k`} />
+                  <Tooltip formatter={(v: number) => [fmt(v)]} />
+                  <Bar dataKey="campanhas" stackId="a" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="automacoes" stackId="a" fill="#10b981" />
+                  <Bar dataKey="direto" stackId="a" fill="#f59e0b" />
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-xs text-muted-foreground">
+                Use este comparativo para evitar decisões de orçamento baseadas apenas em um único modelo.
+              </p>
+            </div>
+
+            <div className="bg-card border rounded-2xl p-6 space-y-4">
+              <h3 className="font-black text-sm uppercase tracking-widest">Cenários de decisão e risco de canal</h3>
+              <div className="space-y-3 rounded-xl border p-3">
+                <div>
+                  <div className="flex justify-between text-[11px]"><span>Corte Meta</span><span>{metaCut}%</span></div>
+                  <input type="range" min={0} max={50} value={metaCut} onChange={(e) => setMetaCut(Number(e.target.value))} className="w-full" />
+                </div>
+                <div>
+                  <div className="flex justify-between text-[11px]"><span>Corte Google</span><span>{googleCut}%</span></div>
+                  <input type="range" min={0} max={50} value={googleCut} onChange={(e) => setGoogleCut(Number(e.target.value))} className="w-full" />
+                </div>
+                <div>
+                  <div className="flex justify-between text-[11px]"><span>Aumento CRM</span><span>{crmIncrease}%</span></div>
+                  <input type="range" min={0} max={50} value={crmIncrease} onChange={(e) => setCrmIncrease(Number(e.target.value))} className="w-full" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs font-bold">Se reduzir Meta em {metaCut}%</p>
+                  <p className="text-sm text-red-500 font-mono mt-1">{fmt(Math.round((data.scenarioImpact.metaMinus20Pct / 20) * metaCut))} estimado</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs font-bold">Se reduzir Google em {googleCut}%</p>
+                  <p className="text-sm text-red-500 font-mono mt-1">{fmt(Math.round((data.scenarioImpact.googleMinus20Pct / 20) * googleCut))} estimado</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs font-bold">Se aumentar CRM em {crmIncrease}%</p>
+                  <p className="text-sm text-emerald-500 font-mono mt-1">+{fmt(Math.round((data.scenarioImpact.crmPlus15Pct / 15) * crmIncrease))}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {data.channelRisk.map((r) => (
+                  <div key={r.channel} className="flex items-center justify-between text-xs rounded-lg bg-muted/30 p-2">
+                    <span className="font-semibold">{r.channel}</span>
+                    <span className="text-muted-foreground">assistido {fmt(r.assistedRevenue)}</span>
+                    <span className={cn(
+                      "font-bold px-1.5 py-0.5 rounded",
+                      r.saturationRisk === "alto" ? "bg-red-500/15 text-red-500" : r.saturationRisk === "medio" ? "bg-amber-500/15 text-amber-600" : "bg-emerald-500/15 text-emerald-600"
+                    )}>
+                      risco {r.saturationRisk}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-start gap-3 bg-muted/30 border border-border/50 rounded-2xl p-4">
             <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
             <p className="text-xs text-muted-foreground leading-relaxed">

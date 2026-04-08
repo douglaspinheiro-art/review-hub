@@ -5,6 +5,15 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkDistributedRateLimit,
+  errorResponse,
+  getClientIp,
+  rateLimitedResponseWithRetry,
+  z,
+} from "../_shared/edge-utils.ts";
+import { writeAuditLog } from "../_shared/audit.ts";
+import { uuidSchema, validateRequest } from "../_shared/validation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,26 +21,61 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const url = new URL(req.url);
-  const storeId = url.searchParams.get("store_id");
+  const parsedReq = await validateRequest(req, { method: "POST", maxBytes: 256 * 1024 });
+  if (!parsedReq.ok) return parsedReq.response;
 
-  if (!storeId) {
-    return new Response(JSON.stringify({ error: "store_id is required in query params" }), { status: 400, headers: corsHeaders });
+  const expectedSecret = Deno.env.get("WEBHOOK_CART_SECRET") ?? "";
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const providedSecret = req.headers.get("x-webhook-secret") ?? "";
+  const authHeader = req.headers.get("authorization") ?? "";
+  const providedBearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const isServiceCall = serviceRole && providedBearer === serviceRole;
+
+  if (expectedSecret) {
+    if (providedSecret !== expectedSecret && !isServiceCall) {
+      return new Response(JSON.stringify({ error: "Unauthorized webhook" }), { status: 401, headers: corsHeaders });
+    }
+  } else if (!isServiceCall) {
+    // Fail-closed when secret is not configured.
+    return new Response(JSON.stringify({ error: "Webhook secret is not configured" }), { status: 401, headers: corsHeaders });
   }
+
+  const url = new URL(req.url);
+  const querySchema = z.object({ store_id: uuidSchema });
+  const queryParsed = querySchema.safeParse({ store_id: url.searchParams.get("store_id") });
+  if (!queryParsed.success) return errorResponse("store_id is required in query params", 400);
+  const storeId = queryParsed.data.store_id;
 
   let payload: any;
   try {
     payload = await req.json();
   } catch {
-    return new Response("Invalid JSON", { status: 400, headers: corsHeaders });
+    return errorResponse("Invalid JSON", 400);
   }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
+
+  const ip = getClientIp(req);
+  const rateKey = `webhook-cart:${storeId}:${ip}`;
+  const limit = await checkDistributedRateLimit(supabase, rateKey, 120, 60_000);
+  if (!limit.allowed) {
+    await writeAuditLog(supabase, {
+      action: "rate_limit_block",
+      resource: "webhook-cart",
+      result: "failure",
+      ip,
+      tenant_id: storeId,
+      metadata: { request_id: requestId },
+    });
+    return rateLimitedResponseWithRetry(limit.retryAfterSeconds);
+  }
 
   // 1. Detect and Normalize
   const source = detectSource(req, payload);
@@ -61,8 +105,8 @@ Deno.serve(async (req) => {
     customer_id: customer?.id,
     external_id: normalized.external_id,
     source,
-    value: normalized.cart_value,
-    items: normalized.cart_items,
+    cart_value: normalized.cart_value,
+    cart_items: normalized.cart_items,
     recovery_url: normalized.recovery_url,
     status: "pending",
     raw_payload: payload,
@@ -77,18 +121,33 @@ Deno.serve(async (req) => {
   }, { onConflict: "store_id, external_id" });
 
   if (cartError) {
-    console.error("Cart error:", cartError);
-    return new Response(JSON.stringify({ error: cartError.message }), { status: 500, headers: corsHeaders });
+    console.error(`[${requestId}] Cart error:`, cartError);
+    return errorResponse("Internal server error", 500);
   }
 
   // 5. Trigger Flow Engine (Async)
   fetch(`${url.origin}/functions/v1/flow-engine`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': req.headers.get('Authorization') || '' },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+      "x-internal-secret": Deno.env.get("FLOW_ENGINE_SECRET") ?? "",
+    },
     body: JSON.stringify({ event: 'cart_abandoned', store_id: storeId, customer_id: customer?.id })
   }).catch(console.error);
 
-  return new Response(JSON.stringify({ ok: true, store_id: storeId }), { status: 200, headers: corsHeaders });
+  console.log(
+    `[${requestId}] webhook-cart ok source=${source} store=${storeId} elapsed_ms=${Date.now() - startedAt}`,
+  );
+  await writeAuditLog(supabase, {
+    action: "webhook_ingest",
+    resource: "webhook-cart",
+    result: "success",
+    ip,
+    tenant_id: storeId,
+    metadata: { request_id: requestId, source },
+  });
+  return new Response(JSON.stringify({ ok: true, store_id: storeId, request_id: requestId }), { status: 200, headers: corsHeaders });
 });
 
 function detectSource(req: Request, payload: any): string {

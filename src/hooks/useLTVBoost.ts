@@ -111,7 +111,7 @@ export function useWebhookLogs(userId?: string, isAdmin?: boolean) {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!userId,
+    enabled: isAdmin || !!userId,
   });
 }
 
@@ -123,11 +123,38 @@ export function useMetricsV3(storeId?: string) {
         .from("funnel_metrics_v3")
         .select("*")
         .eq("store_id", storeId)
-        .order("reference_date", { ascending: false })
+        .order("data_referencia", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data as unknown as FunnelMetricsV3;
+      if (!data) return null;
+      const row = data as unknown as {
+        visitantes?: number | null;
+        produto_visto?: number | null;
+        carrinho?: number | null;
+        checkout?: number | null;
+        pedido?: number | null;
+        visitantes_mobile?: number | null;
+        pedidos_mobile?: number | null;
+        visitantes_desktop?: number | null;
+        pedidos_desktop?: number | null;
+      };
+      const mobileVisitors = Number(row.visitantes_mobile ?? 0);
+      const mobileOrders = Number(row.pedidos_mobile ?? 0);
+      const desktopVisitors = Number(row.visitantes_desktop ?? 0);
+      const desktopOrders = Number(row.pedidos_desktop ?? 0);
+
+      return {
+        visitors: Number(row.visitantes ?? 0),
+        product_viewed: Number(row.produto_visto ?? 0),
+        cart: Number(row.carrinho ?? 0),
+        checkout: Number(row.checkout ?? 0),
+        order: Number(row.pedido ?? 0),
+        mobile_visitors: mobileVisitors,
+        mobile_orders: mobileOrders,
+        mobile_cvr: mobileVisitors > 0 ? (mobileOrders / mobileVisitors) * 100 : 0,
+        desktop_cvr: desktopVisitors > 0 ? (desktopOrders / desktopVisitors) * 100 : 0,
+      } satisfies FunnelMetricsV3;
     },
     enabled: !!storeId,
   });

@@ -1,0 +1,171 @@
+{
+  "generated_at": "2026-04-08T14:32:20.732Z",
+  "commit": null,
+  "functions": [
+    {
+      "function": "ai-agent",
+      "file": "supabase/functions/ai-agent/index.ts",
+      "sha256": "a54c153583de1b11426c73e510df3c568ea160b05a8ef646b68f0b8e64395da1"
+    },
+    {
+      "function": "ai-copy",
+      "file": "supabase/functions/ai-copy/index.ts",
+      "sha256": "4a71638dfed5cc2639a628ebfff93e99f19c83463d4daf11dd90f70281167cfd"
+    },
+    {
+      "function": "ai-reply-suggest",
+      "file": "supabase/functions/ai-reply-suggest/index.ts",
+      "sha256": "0c4df7c36f15c516b98c8ed90304ceb4678ec490476f056c1c25f6282073e9dc"
+    },
+    {
+      "function": "benchmark-setor",
+      "file": "supabase/functions/benchmark-setor/index.ts",
+      "sha256": "0898f45a879850952626e0271b55af3cf56011305acdcfc1a4ad567526c38f0b"
+    },
+    {
+      "function": "buscar-ga4",
+      "file": "supabase/functions/buscar-ga4/index.ts",
+      "sha256": "d9749394f879fbc86730b21e119455f66e08c2510092fa8ade88ebb5fffe7aef"
+    },
+    {
+      "function": "calculate-rfm",
+      "file": "supabase/functions/calculate-rfm/index.ts",
+      "sha256": "2b0960da469c9d08cecd28003ecf4d0b7355df07b470336bfe0af198a73dd62f"
+    },
+    {
+      "function": "conversion-attribution",
+      "file": "supabase/functions/conversion-attribution/index.ts",
+      "sha256": "3942266ef81a25aff9a9c880ca0b0fa6fb68e43a3b375549069c3d6e4531330a"
+    },
+    {
+      "function": "dispatch-campaign",
+      "file": "supabase/functions/dispatch-campaign/index.ts",
+      "sha256": "4956c78b11c7e2e238660f61229bd8d31eaa7435a898533f8894db2533f85576"
+    },
+    {
+      "function": "dispatch-newsletter",
+      "file": "supabase/functions/dispatch-newsletter/index.ts",
+      "sha256": "f82118059c38a770406d80316f8a993fdb5f58cc00256c36c0772958f3915801"
+    },
+    {
+      "function": "email-onboarding",
+      "file": "supabase/functions/email-onboarding/index.ts",
+      "sha256": "abfde8437a284b1834aede37ecfeabe43b4a806900f52aafc256aebf48774d15"
+    },
+    {
+      "function": "enviar-pulse-semanal",
+      "file": "supabase/functions/enviar-pulse-semanal/index.ts",
+      "sha256": "e60c62fb6f19192905e8418819be7c626bfb9730283e1bdf1debba86f863de13"
+    },
+    {
+      "function": "evolution-proxy",
+      "file": "supabase/functions/evolution-proxy/index.ts",
+      "sha256": "d6b98e7f96c8b29902c9bba45776bee497d7ad776fb80f1ae7dc8931de6a60c6"
+    },
+    {
+      "function": "fetch-store-metrics",
+      "file": "supabase/functions/fetch-store-metrics/index.ts",
+      "sha256": "f938a027d3d88612e3a0b808bcf63c574f4c16128de5cee0a0da1a4e911720c6"
+    },
+    {
+      "function": "flow-engine",
+      "file": "supabase/functions/flow-engine/index.ts",
+      "sha256": "50d61b46b8da4729f55642c0b46f50d312c55fef2c2dec8ec2b5becbd87afcbe"
+    },
+    {
+      "function": "gerar-diagnostico",
+      "file": "supabase/functions/gerar-diagnostico/index.ts",
+      "sha256": "0a1ee3453600895f9539bca21ded5aeeb4ea02f1cc174d925a059f86ba2a0009"
+    },
+    {
+      "function": "integration-gateway",
+      "file": "supabase/functions/integration-gateway/index.ts",
+      "sha256": "4091620b797411d4fcc6f1571c59c90ff237d202ac6e81fc771158160f64b7ea"
+    },
+    {
+      "function": "process-scheduled-messages",
+      "file": "supabase/functions/process-scheduled-messages/index.ts",
+      "sha256": "8191bc8ce91a353ea04279ea53a072856ac48b7dcf39b3d69d24d164f1fca468"
+    },
+    {
+      "function": "relatorio-semanal",
+      "file": "supabase/functions/relatorio-semanal/index.ts",
+      "sha256": "b5b3418bd5e2d5f931c6f32af41dc8deba81f5d77731a47f957a0a42fcc12191"
+    },
+    {
+      "function": "resend-webhook",
+      "file": "supabase/functions/resend-webhook/index.ts",
+      "sha256": "3558ed645a64bd8e5a1aedd76c5de40df498fa8a3deeec0878f8497ef0800591"
+    },
+    {
+      "function": "send-email",
+      "file": "supabase/functions/send-email/index.ts",
+      "sha256": "445c6782564ca4e715d0c022013ee51318aecbee1e09d07a5307374289f440a4"
+    },
+    {
+      "function": "send-sms",
+      "file": "supabase/functions/send-sms/index.ts",
+      "sha256": "57f6799b3035e9bddb6f70d1279ac0d6df12b66d793f49f7590ac41b2cab5126"
+    },
+    {
+      "function": "sincronizar-canal",
+      "file": "supabase/functions/sincronizar-canal/index.ts",
+      "sha256": "3e470d4198315814dd5c67f1fd8ee026ff7051534c995be7f89e7aa9c85cafe2"
+    },
+    {
+      "function": "stepup-verify",
+      "file": "supabase/functions/stepup-verify/index.ts",
+      "sha256": "e7494972cb0b90bcefe43ac49a01e409698a321ed1ce78801b1a39e30099dcfb"
+    },
+    {
+      "function": "track-email-click",
+      "file": "supabase/functions/track-email-click/index.ts",
+      "sha256": "45e1a0a8e07a38f4f2bcd5d050f4c3a4c708d6774ef727745ebe1eaf05d55bd0"
+    },
+    {
+      "function": "track-email-open",
+      "file": "supabase/functions/track-email-open/index.ts",
+      "sha256": "6e6944eef3a912e37d92656ee1abd3004d8de2bc74fa473112b9862a873c9343"
+    },
+    {
+      "function": "track-whatsapp-click",
+      "file": "supabase/functions/track-whatsapp-click/index.ts",
+      "sha256": "d618ddbcf196d9648bdfe21e7ca379d991a0d4dba3d8c86675d0134ba4a697a6"
+    },
+    {
+      "function": "trigger-automations",
+      "file": "supabase/functions/trigger-automations/index.ts",
+      "sha256": "302bfc748311431d5e10d6e5ae48e4fbb0a1cbdce7c2ec102ec29f159659fbad"
+    },
+    {
+      "function": "unsubscribe-contact",
+      "file": "supabase/functions/unsubscribe-contact/index.ts",
+      "sha256": "7f9dc010ac7234a60bde231ff9a659e3cd0e7067fb057fa226319cef22bfec06"
+    },
+    {
+      "function": "verificar-frequencia",
+      "file": "supabase/functions/verificar-frequencia/index.ts",
+      "sha256": "c6c8ec0f598812bb9e93244eba93c759c67ae4a08e948d9001579a23be042843"
+    },
+    {
+      "function": "webhook-cart",
+      "file": "supabase/functions/webhook-cart/index.ts",
+      "sha256": "593136872c9efc3d818216c7415bb31f514ae6e9cbc76ff9e94d5dc831ce231d"
+    },
+    {
+      "function": "weekly-benchmark",
+      "file": "supabase/functions/weekly-benchmark/index.ts",
+      "sha256": "3e960b2985d1b33d070d563b428195e98f6e26140acd9ac4ceab9b0ce05ff991"
+    },
+    {
+      "function": "whatsapp-health-check",
+      "file": "supabase/functions/whatsapp-health-check/index.ts",
+      "sha256": "e7d1b36fd3f62cb5e98ad3142000599db802d6022a645905e74c1d4ad69e148e"
+    },
+    {
+      "function": "whatsapp-webhook",
+      "file": "supabase/functions/whatsapp-webhook/index.ts",
+      "sha256": "5724d67d53b64b59bb08911e2927b3d7ad1103ec6c89482a88c5214c99358162"
+    }
+  ]
+}

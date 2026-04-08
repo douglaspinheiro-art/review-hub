@@ -5,6 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
+import { BetaLimitedPageGuard } from "./components/BetaLimitedPageGuard.tsx";
 import ProtectedRoute from "./components/ProtectedRoute.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
@@ -101,6 +102,7 @@ const Benchmark = lazy(() => import("./pages/Benchmark.tsx"));
 const PlanosPage = lazy(() => import("./pages/Planos.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Lazily loaded dashboard pages
@@ -136,6 +138,7 @@ const ConvertIQDiagnostico = lazy(() => import("./pages/dashboard/ConvertIQDiagn
 const ConvertIQPlano = lazy(() => import("./pages/dashboard/ConvertIQPlano.tsx"));
 const Newsletter = lazy(() => import("./pages/dashboard/Newsletter.tsx"));
 const Atribuicao = lazy(() => import("./pages/dashboard/Atribuicao.tsx"));
+const Operacoes = lazy(() => import("./pages/dashboard/Operacoes.tsx"));
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -165,10 +168,10 @@ const App = () => (
           <Route path="/termos" element={<Termos />} />
           <Route path="/lgpd" element={<LGPD />} />
           <Route path="/api" element={<API />} />
-          <Route path="/planos" element={<PlanosPage />} />
+          <Route path="/planos" element={<DashboardRoute><PlanosPage embedInDashboard /></DashboardRoute>} />
           <Route path="/upgrade" element={<Upgrade />} />
-          <Route path="/planos/simulador" element={<PlanosPage defaultTab="simulador" />} />
-          <Route path="/diagnostico" element={<Diagnostico />} />
+          <Route path="/planos/simulador" element={<DashboardRoute><PlanosPage embedInDashboard defaultTab="simulador" /></DashboardRoute>} />
+          <Route path="/diagnostico" element={<DashboardRoute><Diagnostico embedInDashboard /></DashboardRoute>} />
           <Route path="/calculadora-abandono-carrinho" element={<Calculadora />} />
           <Route path="/benchmark" element={<Benchmark />} />
           <Route path="/afiliados" element={<AfiliadosPublico />} />
@@ -176,6 +179,7 @@ const App = () => (
           <Route path="/relatorio-anual" element={<RelatorioAnual />} />
           <Route path="/pontos/:slug" element={<Pontos />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/unsubscribe" element={<Unsubscribe />} />
 
           {/* Demo dashboard */}
           <Route path="/demo" element={<DemoRoute><Dashboard /></DemoRoute>} />
@@ -201,15 +205,17 @@ const App = () => (
           <Route path="/dashboard/canais" element={<DashboardRoute><Canais /></DashboardRoute>} />
           <Route path="/dashboard/forecast" element={<DashboardRoute requiredPlan="growth"><Forecast /></DashboardRoute>} />
           <Route path="/dashboard/em-execucao" element={<DashboardRoute><EmExecucao /></DashboardRoute>} />
-          <Route path="/dashboard/inbox" element={<DashboardRoute><Inbox /></DashboardRoute>} />
-          <Route path="/dashboard/campanhas" element={<DashboardRoute><Campanhas /></DashboardRoute>} />
+          <Route path="/dashboard/inbox" element={<DashboardRoute><BetaLimitedPageGuard><Inbox /></BetaLimitedPageGuard></DashboardRoute>} />
+          <Route path="/dashboard/campanhas" element={<DashboardRoute><BetaLimitedPageGuard><Campanhas /></BetaLimitedPageGuard></DashboardRoute>} />
           <Route path="/dashboard/contatos" element={<DashboardRoute><Contatos /></DashboardRoute>} />
           <Route path="/dashboard/rfm" element={<DashboardRoute><RFM /></DashboardRoute>} />
-          <Route path="/dashboard/automacoes" element={<DashboardRoute><Automacoes /></DashboardRoute>} />
+          <Route path="/dashboard/automacoes" element={<DashboardRoute><BetaLimitedPageGuard><Automacoes /></BetaLimitedPageGuard></DashboardRoute>} />
+          <Route path="/dashboard/carrinho-abandonado" element={<DashboardRoute><BetaLimitedPageGuard><CarrinhoAbandonado /></BetaLimitedPageGuard></DashboardRoute>} />
+          <Route path="/dashboard/carrinhos" element={<Navigate to="/dashboard/carrinho-abandonado" replace />} />
           <Route path="/dashboard/agente-ia" element={<DashboardRoute><AgenteIA /></DashboardRoute>} />
           <Route path="/dashboard/reviews" element={<DashboardRoute><Reviews /></DashboardRoute>} />
           <Route path="/dashboard/analytics" element={<DashboardRoute><Analytics /></DashboardRoute>} />
-          <Route path="/dashboard/whatsapp" element={<DashboardRoute><WhatsApp /></DashboardRoute>} />
+          <Route path="/dashboard/whatsapp" element={<DashboardRoute><BetaLimitedPageGuard><WhatsApp /></BetaLimitedPageGuard></DashboardRoute>} />
           <Route path="/dashboard/configuracoes" element={<DashboardRoute><Configuracoes /></DashboardRoute>} />
           <Route path="/dashboard/billing" element={<DashboardRoute><Billing /></DashboardRoute>} />
           <Route path="/dashboard/api-keys" element={<DashboardRoute><ApiKeys /></DashboardRoute>} />
@@ -221,9 +227,10 @@ const App = () => (
           <Route path="/dashboard/relatorios" element={<DashboardRoute><Relatorios /></DashboardRoute>} />
           <Route path="/dashboard/benchmark" element={<DashboardRoute><BenchmarkScore /></DashboardRoute>} />
           <Route path="/dashboard/chatbot" element={<DashboardRoute><Chatbot /></DashboardRoute>} />
-          <Route path="/dashboard/newsletter" element={<DashboardRoute><Newsletter /></DashboardRoute>} />
-          <Route path="/dashboard/newsletter/:id" element={<DashboardRoute><Newsletter /></DashboardRoute>} />
+          <Route path="/dashboard/newsletter" element={<DashboardRoute><BetaLimitedPageGuard><Newsletter /></BetaLimitedPageGuard></DashboardRoute>} />
+          <Route path="/dashboard/newsletter/:id" element={<DashboardRoute><BetaLimitedPageGuard><Newsletter /></BetaLimitedPageGuard></DashboardRoute>} />
           <Route path="/dashboard/atribuicao" element={<DashboardRoute><Atribuicao /></DashboardRoute>} />
+          <Route path="/dashboard/operacoes" element={<DashboardRoute><Operacoes /></DashboardRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

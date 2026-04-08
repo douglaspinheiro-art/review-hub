@@ -1,11 +1,14 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { MessageCircle, Search, Clock, Send, Loader2, WifiOff, Settings, AlertCircle, Sparkles, User, Check, MoreVertical, Plus, Smile, Paperclip, Zap as ZapIcon, Minus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useConversations, useMessages } from "@/hooks/useDashboard";
+import { useConversations, useMessages, useConversationIdsByMessageSearch, useInboxRoutingSettings } from "@/hooks/useDashboard";
 import { useWhatsAppSender } from "@/hooks/useWhatsAppSender";
+import { useAuth } from "@/hooks/useAuth";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +18,7 @@ import { formatDistanceToNow, isSameDay, format, isYesterday, isToday } from "da
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { TrialGate } from "@/components/dashboard/TrialGate";
+import { trackMoatEvent } from "@/lib/moat-telemetry";
 
 const STATUS_FILTERS = [
   { label: "Todas", value: "all" },
@@ -28,6 +32,16 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
   closed: "bg-muted text-muted-foreground",
 };
+
+function getSlaBucket(slaDueAt: string | null | undefined): "none" | "breach" | "soon" | "ok" {
+  if (!slaDueAt) return "none";
+  const t = new Date(slaDueAt).getTime();
+  if (Number.isNaN(t)) return "none";
+  const now = Date.now();
+  if (t < now) return "breach";
+  if (t - now <= 60 * 60 * 1000) return "soon";
+  return "ok";
+}
 
 const AVATAR_COLORS = [
   "bg-blue-500/10 text-blue-600",
@@ -53,16 +67,85 @@ function formatDateSeparator(date: Date) {
 export default function Inbox() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [composerMode, setComposerMode] = useState<"text" | "template" | "flow">("text");
+  const [ctaLabel, setCtaLabel] = useState("Ver oferta");
+  const [ctaUrl, setCtaUrl] = useState("");
+  const [flowId, setFlowId] = useState("");
+  const [flowScreenId, setFlowScreenId] = useState("");
+  const [assigneeName, setAssigneeName] = useState("");
+  const [slaDueAt, setSlaDueAt] = useState("");
+  const [priority, setPriority] = useState<"low" | "normal" | "high" | "urgent">("normal");
+  const [internalNote, setInternalNote] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [agentsDraft, setAgentsDraft] = useState("");
+  const agentsFieldTouched = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    const h = window.setTimeout(() => setDebouncedSearch(search.trim()), 320);
+    return () => window.clearTimeout(h);
+  }, [search]);
+
   const { data: conversations = [], isLoading } = useConversations(statusFilter);
+  const { data: routingSettings } = useInboxRoutingSettings();
+  const { data: messageSearchIds = [], isFetching: searchingHistory } = useConversationIdsByMessageSearch(debouncedSearch);
+  const messageSearchSet = useMemo(() => new Set(messageSearchIds), [messageSearchIds]);
+
+  useEffect(() => {
+    if (!routingSettings || agentsFieldTouched.current) return;
+    setAgentsDraft((routingSettings.agent_names ?? []).join(", "));
+  }, [routingSettings]);
+
+  const saveRoutingMutation = useMutation({
+    mutationFn: async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) throw new Error("no user");
+      const names = agentsDraft
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const { error } = await (supabase as any).from("inbox_routing_settings").upsert(
+        {
+          user_id: uid,
+          agent_names: names,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      agentsFieldTouched.current = false;
+      toast.success("Fila salva — novas conversas sem responsável recebem o próximo da rotação");
+      queryClient.invalidateQueries({ queryKey: ["inbox_routing_settings"] });
+    },
+    onError: () => toast.error("Não foi possível salvar a fila"),
+  });
   const { data: messages = [], isLoading: loadingMsgs } = useMessages(selectedId);
   const sender = useWhatsAppSender();
+  const { user } = useAuth();
+  const { data: conversationNotes = [] } = useQuery({
+    queryKey: ["conversation_notes", selectedId],
+    queryFn: async () => {
+      if (!selectedId) return [];
+      const { data, error } = await (supabase as any)
+        .from("conversation_notes")
+        .select("*")
+        .eq("conversation_id", selectedId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!selectedId,
+  });
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
 
@@ -85,7 +168,12 @@ export default function Inbox() {
         const { data, error } = await supabase.functions.invoke("ai-reply-suggest", {
           body: { conversation_id: selectedId }
         });
-        if (data?.suggestions?.[0]) setAiSuggestion(data.suggestions[0]);
+        if (error) throw error;
+        const suggestion = data?.suggestion ?? data?.suggestions?.[0] ?? null;
+        setAiSuggestion(suggestion);
+        if (suggestion) {
+          void trackMoatEvent("inbox_ai_used", { conversation_id: selectedId });
+        }
       } catch (e) {
         console.error("AI Error:", e);
       } finally {
@@ -161,14 +249,25 @@ export default function Inbox() {
   }, [selectedId, conversations, queryClient]);
 
   const sendMutation = useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async (payload: { content: string; mode: "text" | "template" | "flow"; ctaLabel?: string; ctaUrl?: string; flowId?: string; flowScreenId?: string }) => {
       if (!selectedId) return;
       setSendError(null);
+      const content = payload.content;
 
       // 1. Send via WhatsApp if connection is ready
       let externalId: string | undefined;
       if (sender.isReady && selectedContact?.phone) {
-        const result = await sender.sendMessage(selectedContact.phone, content);
+        const result =
+          payload.mode === "template" && payload.ctaLabel && payload.ctaUrl
+            ? await sender.sendTemplateButton(selectedContact.phone, content, { label: payload.ctaLabel, url: payload.ctaUrl })
+            : payload.mode === "flow" && payload.flowId && payload.flowScreenId
+              ? await sender.sendFlowMessage(selectedContact.phone, {
+                text: content,
+                buttonText: payload.ctaLabel || "Abrir menu",
+                flowId: payload.flowId,
+                screenId: payload.flowScreenId,
+              })
+              : await sender.sendMessage(selectedContact.phone, content);
         if (!result.success) {
           setSendError(result.error ?? "Falha ao enviar. Mensagem salva localmente.");
         } else {
@@ -182,7 +281,7 @@ export default function Inbox() {
         content,
         direction: "outbound",
         status: externalId ? "sent" : "failed",
-        type: "text",
+        type: payload.mode === "template" || payload.mode === "flow" ? "template" : "text",
         external_id: externalId ?? null,
       });
       if (error) throw error;
@@ -192,7 +291,7 @@ export default function Inbox() {
         .update({ last_message: content, last_message_at: new Date().toISOString() })
         .eq("id", selectedId);
     },
-    onMutate: async (newContent) => {
+    onMutate: async (newPayload) => {
       await queryClient.cancelQueries({ queryKey: ["messages", selectedId] });
       const previousMessages = queryClient.getQueryData(["messages", selectedId]);
 
@@ -201,12 +300,12 @@ export default function Inbox() {
           ...old,
           {
             id: `temp-${Date.now()}`,
-            content: newContent,
+            content: newPayload.content,
             direction: "outbound",
             status: "sending",
             created_at: new Date().toISOString(),
             conversation_id: selectedId,
-            type: "text",
+            type: newPayload.mode === "template" || newPayload.mode === "flow" ? "template" : "text",
           },
         ]);
       }
@@ -225,26 +324,106 @@ export default function Inbox() {
     },
     onSuccess: () => {
       setDraft("");
+      setComposerMode("text");
+      setCtaUrl("");
     },
   });
 
   function handleSend() {
     const text = draft.trim();
     if (!text || sendMutation.isPending) return;
-    sendMutation.mutate(text);
+    if (composerMode === "template" && (!ctaLabel.trim() || !ctaUrl.trim())) {
+      setSendError("Para template, preencha texto e URL do botão.");
+      return;
+    }
+    if (composerMode === "flow" && (!flowId.trim() || !flowScreenId.trim())) {
+      setSendError("Para lista interativa, preencha Flow ID e Screen ID.");
+      return;
+    }
+    sendMutation.mutate({
+      content: text,
+      mode: composerMode,
+      ctaLabel: composerMode === "template" ? ctaLabel.trim() : undefined,
+      ctaUrl: composerMode === "template" ? ctaUrl.trim() : undefined,
+      flowId: composerMode === "flow" ? flowId.trim() : undefined,
+      flowScreenId: composerMode === "flow" ? flowScreenId.trim() : undefined,
+    });
   }
 
-  const filtered = conversations.filter((c) => {
-    const contact = c.contacts as { name: string; phone: string } | null;
-    if (!search) return true;
-    return (
-      contact?.name?.toLowerCase().includes(search.toLowerCase()) ||
-      contact?.phone?.includes(search)
-    );
-  });
+  async function saveOpsMeta() {
+    if (!selectedId) return;
+    const { error } = await (supabase as any)
+      .from("conversations")
+      .update({
+        assigned_to_name: assigneeName || null,
+        priority,
+        sla_due_at: slaDueAt ? new Date(slaDueAt).toISOString() : null,
+      })
+      .eq("id", selectedId);
+    if (!error) {
+      void trackMoatEvent("ops_metadata_saved", {
+        conversation_id: selectedId,
+        priority,
+        has_sla: Boolean(slaDueAt),
+      });
+      toast.success("Atribuição/SLA atualizados");
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    }
+  }
+
+  async function addInternalNote() {
+    if (!selectedId || !internalNote.trim() || !user?.id) return;
+    const { error } = await (supabase as any).from("conversation_notes").insert({
+      conversation_id: selectedId,
+      user_id: user.id,
+      note: internalNote.trim(),
+    });
+    if (!error) {
+      setInternalNote("");
+      queryClient.invalidateQueries({ queryKey: ["conversation_notes", selectedId] });
+      toast.success("Nota interna adicionada");
+    }
+  }
 
   const selectedConv = conversations.find((c) => c.id === selectedId);
   const selectedContact = selectedConv?.contacts as { name: string; phone: string; tags: string[] } | null;
+
+  useEffect(() => {
+    if (!selectedConv) return;
+    setAssigneeName((selectedConv as any).assigned_to_name ?? "");
+    setSlaDueAt((selectedConv as any).sla_due_at ? new Date((selectedConv as any).sla_due_at).toISOString().slice(0, 16) : "");
+    setPriority(((selectedConv as any).priority ?? "normal") as "low" | "normal" | "high" | "urgent");
+  }, [selectedConv?.id]);
+
+  const uniqueTags = Array.from(new Set(
+    conversations.flatMap((c: any) => Array.isArray(c.contacts?.tags) ? c.contacts.tags : [])
+  ));
+
+  const filtered = conversations.filter((c) => {
+    const contact = c.contacts as { name: string; phone: string; tags?: string[] } | null;
+    const matchesTag = tagFilter === "all" || !!contact?.tags?.includes(tagFilter);
+    const term = search.trim().toLowerCase();
+    const matchesSnippet =
+      !term ||
+      contact?.name?.toLowerCase().includes(term) ||
+      contact?.phone?.includes(search.trim()) ||
+      !!c.last_message?.toLowerCase().includes(term);
+    const matchesHistory = term.length >= 2 && messageSearchSet.has(c.id);
+    const matchesSearch = !term ? true : matchesSnippet || matchesHistory;
+    return matchesTag && matchesSearch;
+  });
+  const prioritized = [...filtered].sort((a: any, b: any) => {
+    const score = (row: any) => {
+      const sla = getSlaBucket(row.sla_due_at);
+      const priority = row.priority === "urgent" ? 4 : row.priority === "high" ? 3 : row.priority === "normal" ? 2 : 1;
+      const unread = Number(row.unread_count ?? 0) > 0 ? 1 : 0;
+      const slaScore = sla === "breach" ? 3 : sla === "soon" ? 2 : 0;
+      return (slaScore * 100) + (priority * 10) + unread;
+    };
+    return score(b) - score(a);
+  });
+  const slaBreaches = prioritized.filter((c: any) => getSlaBucket(c.sla_due_at) === "breach").length;
+  const urgentCount = prioritized.filter((c: any) => c.priority === "urgent" || c.priority === "high").length;
 
   return (
     <div className="flex h-full -m-4 md:-m-6 overflow-hidden">
@@ -258,11 +437,36 @@ export default function Inbox() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar contato..."
-              className="pl-9"
+              placeholder="Buscar contato ou histórico (2+ letras)..."
+              className="pl-9 pr-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {searchingHistory && debouncedSearch.length >= 2 && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+            )}
+          </div>
+          <div className="rounded-lg border bg-muted/30 p-2 space-y-1.5">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Fila (round-robin)</p>
+            <Input
+              value={agentsDraft}
+              onChange={(e) => {
+                agentsFieldTouched.current = true;
+                setAgentsDraft(e.target.value);
+              }}
+              placeholder="Maria, João, Pedro…"
+              className="h-8 text-xs"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-7 text-[11px] w-full"
+              disabled={saveRoutingMutation.isPending}
+              onClick={() => saveRoutingMutation.mutate()}
+            >
+              {saveRoutingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Salvar fila de atendentes"}
+            </Button>
           </div>
           <div className="flex gap-1 flex-wrap">
             {STATUS_FILTERS.map((f) => (
@@ -280,6 +484,31 @@ export default function Inbox() {
               </button>
             ))}
           </div>
+          {uniqueTags.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              <button
+                onClick={() => setTagFilter("all")}
+                className={cn(
+                  "px-2 py-1 rounded-full text-[10px] font-semibold transition-colors",
+                  tagFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                )}
+              >
+                Todas tags
+              </button>
+              {uniqueTags.slice(0, 8).map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setTagFilter(tag)}
+                  className={cn(
+                    "px-2 py-1 rounded-full text-[10px] font-semibold transition-colors",
+                    tagFilter === tag ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -295,6 +524,16 @@ export default function Inbox() {
                     </div>
                     <Skeleton className="h-3 w-full" />
                   </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border bg-muted/30 px-2 py-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">SLA estourado</p>
+              <p className="text-sm font-black text-red-500">{slaBreaches}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/30 px-2 py-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Alta prioridade</p>
+              <p className="text-sm font-black text-amber-500">{urgentCount}</p>
+            </div>
+          </div>
                 </div>
               ))}
             </div>
@@ -333,11 +572,12 @@ export default function Inbox() {
               <span className="text-sm">Nenhuma conversa encontrada</span>
             </div>
           )}
-          {filtered.map((conv) => {
+          {prioritized.map((conv) => {
             const contact = conv.contacts as { name: string; phone: string } | null;
             const isSelected = selectedId === conv.id;
             const isOnline = conv.last_message_at && (Date.now() - new Date(conv.last_message_at).getTime() < 1000 * 60 * 5);
             const avatarColor = getAvatarColor(contact?.name || contact?.phone);
+            const sla = getSlaBucket((conv as { sla_due_at?: string | null }).sla_due_at);
 
             return (
               <button
@@ -388,10 +628,22 @@ export default function Inbox() {
                       {conv.last_message ?? "Sem mensagens"}
                     </p>
 
-                    <div className="flex items-center justify-between mt-2">
-                      <Badge variant="outline" className={cn("text-[10px] px-2 py-0 h-4 border-none", STATUS_COLORS[conv.status] ?? "")}>
-                        {conv.status === 'open' ? 'Aberta' : conv.status === 'pending' ? 'Pendente' : 'Fechada'}
-                      </Badge>
+                    <div className="flex items-center justify-between mt-2 gap-1 flex-wrap">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <Badge variant="outline" className={cn("text-[10px] px-2 py-0 h-4 border-none", STATUS_COLORS[conv.status] ?? "")}>
+                          {conv.status === 'open' ? 'Aberta' : conv.status === 'pending' ? 'Pendente' : 'Fechada'}
+                        </Badge>
+                        {sla === "breach" && (
+                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4 font-bold">
+                            SLA
+                          </Badge>
+                        )}
+                        {sla === "soon" && (
+                          <Badge className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500 hover:bg-amber-500 text-white border-0">
+                            1h
+                          </Badge>
+                        )}
+                      </div>
                       {conv.unread_count > 0 && (
                         <span className="bg-primary text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center shadow-sm animate-pulse">
                           {conv.unread_count}
@@ -454,7 +706,15 @@ export default function Inbox() {
                   {selectedContact?.name?.[0]?.toUpperCase() ?? "?"}
                 </div>
                 <div>
-                  <p className="font-medium text-sm leading-none">{selectedContact?.name ?? selectedContact?.phone ?? "—"}</p>
+                  <p className="font-medium text-sm leading-none flex flex-wrap items-center gap-2">
+                    <span>{selectedContact?.name ?? selectedContact?.phone ?? "—"}</span>
+                    {getSlaBucket((selectedConv as { sla_due_at?: string | null })?.sla_due_at) === "breach" && (
+                      <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-5">SLA estourado</Badge>
+                    )}
+                    {getSlaBucket((selectedConv as { sla_due_at?: string | null })?.sla_due_at) === "soon" && (
+                      <Badge className="text-[9px] px-1.5 py-0 h-5 bg-amber-500 hover:bg-amber-500 text-white border-0">SLA em até 1h</Badge>
+                    )}
+                  </p>
                   <p className="text-[10px] text-muted-foreground mt-1">{selectedContact?.phone}</p>
                 </div>
               </div>
@@ -500,6 +760,34 @@ export default function Inbox() {
                   <User className="w-5 h-5" />
                 </button>
               </div>
+            </div>
+
+            <div className="border-b bg-muted/20 px-4 py-2 grid grid-cols-1 md:grid-cols-4 gap-2 shrink-0">
+              <Input
+                value={assigneeName}
+                onChange={(e) => setAssigneeName(e.target.value)}
+                placeholder="Responsável"
+                className="h-8 text-xs"
+              />
+              <Input
+                type="datetime-local"
+                value={slaDueAt}
+                onChange={(e) => setSlaDueAt(e.target.value)}
+                className="h-8 text-xs"
+              />
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as any)}
+                className="h-8 text-xs rounded-md border bg-background px-2"
+              >
+                <option value="low">Prioridade baixa</option>
+                <option value="normal">Prioridade normal</option>
+                <option value="high">Prioridade alta</option>
+                <option value="urgent">Prioridade urgente</option>
+              </select>
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={saveOpsMeta}>
+                Salvar operação
+              </Button>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
@@ -623,6 +911,96 @@ export default function Inbox() {
 
                 {/* Input */}
                 <div className="border-t p-4 bg-card shrink-0 space-y-3">
+                  <div className="bg-muted/20 border rounded-lg p-2 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notas internas</p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={internalNote}
+                        onChange={(e) => setInternalNote(e.target.value)}
+                        placeholder="Adicionar nota para equipe"
+                        className="h-8 text-xs"
+                      />
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={addInternalNote}>
+                        Salvar
+                      </Button>
+                    </div>
+                    {conversationNotes.length > 0 && (
+                      <div className="max-h-20 overflow-y-auto space-y-1">
+                        {(conversationNotes as any[]).slice(0, 4).map((n) => (
+                          <div key={n.id} className="text-[11px] text-muted-foreground bg-background rounded px-2 py-1">
+                            {n.note}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setComposerMode("text")}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                        composerMode === "text" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Texto
+                    </button>
+                    <button
+                      onClick={() => setComposerMode("template")}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                        composerMode === "template" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Botão CTA
+                    </button>
+                    <button
+                      onClick={() => setComposerMode("flow")}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                        composerMode === "flow" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Lista/Flow
+                    </button>
+                  </div>
+                  {composerMode === "template" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <Input
+                        value={ctaLabel}
+                        onChange={(e) => setCtaLabel(e.target.value)}
+                        placeholder="Texto do botão (ex.: Ver oferta)"
+                        className="h-8 text-xs"
+                      />
+                      <Input
+                        value={ctaUrl}
+                        onChange={(e) => setCtaUrl(e.target.value)}
+                        placeholder="URL do botão"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
+                  {composerMode === "flow" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <Input
+                        value={ctaLabel}
+                        onChange={(e) => setCtaLabel(e.target.value)}
+                        placeholder="Texto do botão"
+                        className="h-8 text-xs"
+                      />
+                      <Input
+                        value={flowId}
+                        onChange={(e) => setFlowId(e.target.value)}
+                        placeholder="Flow ID"
+                        className="h-8 text-xs"
+                      />
+                      <Input
+                        value={flowScreenId}
+                        onChange={(e) => setFlowScreenId(e.target.value)}
+                        placeholder="Screen ID"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
                   {aiSuggestion && !draft && (
                     <div className="flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2">
                       <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">

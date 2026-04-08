@@ -1,6 +1,7 @@
 import TickerBar from "@/components/landing/TickerBar";
 import Header from "@/components/landing/Header";
 import Hero from "@/components/landing/Hero";
+import CategoryPositioning from "@/components/landing/CategoryPositioning";
 import ClientLogos from "@/components/landing/ClientLogos";
 import HowItWorks from "@/components/landing/HowItWorks";
 import Solutions from "@/components/landing/Solutions";
@@ -24,6 +25,7 @@ const Index = () => {
       <Header />
       <main>
         <Hero />
+        <CategoryPositioning />
         <ClientLogos />
         <HowItWorks />
         <Solutions />

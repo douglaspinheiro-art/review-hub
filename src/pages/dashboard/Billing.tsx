@@ -10,48 +10,14 @@ import { cn } from "@/lib/utils";
 import { useDashboardStats, useProblems } from "@/hooks/useDashboard";
 import { CancellationModal } from "@/components/dashboard/CancellationModal";
 import { toast } from "sonner";
+import { PLAN_LIMITS, PLANS as PRICING_PLANS } from "@/lib/pricing-constants";
 
-const PLANS = [
-  {
-    key: "starter",
-    name: "Starter",
-    price: "R$ 447",
-    period: "/mês",
-    contacts: 1000,
-    messages: 150,
-  },
-  {
-    key: "growth",
-    name: "Growth",
-    price: "R$ 897",
-    period: "/mês",
-    contacts: 5000,
-    messages: 500,
-  },
-  {
-    key: "scale",
-    name: "Scale",
-    price: "R$ 1.997",
-    period: "/mês",
-    contacts: 10000,
-    messages: 2000,
-  },
-  {
-    key: "enterprise",
-    name: "Enterprise",
-    price: "Sob consulta",
-    period: "",
-    contacts: -1,
-    messages: -1,
-  },
-];
-
-const PLAN_LIMITS: Record<string, { contacts: number; messages: number }> = {
-  starter: { contacts: 1000, messages: 150 },
-  growth: { contacts: 5000, messages: 500 },
-  scale: { contacts: 10000, messages: 2000 },
-  enterprise: { contacts: -1, messages: -1 },
-};
+const BILLING_PLANS = [
+  { key: "starter", name: PRICING_PLANS.starter.name, price: PRICING_PLANS.starter.base, contacts: PRICING_PLANS.starter.maxContacts, messages: PRICING_PLANS.starter.includedWA },
+  { key: "growth", name: PRICING_PLANS.growth.name, price: PRICING_PLANS.growth.base, contacts: PRICING_PLANS.growth.maxContacts, messages: PRICING_PLANS.growth.includedWA },
+  { key: "scale", name: PRICING_PLANS.scale.name, price: PRICING_PLANS.scale.base, contacts: PRICING_PLANS.scale.maxContacts, messages: PRICING_PLANS.scale.includedWA },
+  { key: "enterprise", name: "Enterprise", price: null, contacts: -1, messages: -1 },
+] as const;
 
 export default function Billing() {
   const { profile, user } = useAuth();
@@ -229,7 +195,7 @@ export default function Billing() {
       <div>
         <h2 className="font-semibold mb-3">Planos disponíveis</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {PLANS.map((plan) => {
+          {BILLING_PLANS.map((plan) => {
             const isCurrent = plan.key === currentPlan;
             return (
               <div
@@ -249,8 +215,8 @@ export default function Billing() {
                     )}
                   </div>
                   <p className="text-xl font-bold mt-1.5">
-                    {plan.price}
-                    <span className="text-xs font-normal text-muted-foreground">{plan.period}</span>
+                    {plan.price ? `R$ ${plan.price.toLocaleString("pt-BR")}` : "Sob consulta"}
+                    <span className="text-xs font-normal text-muted-foreground">{plan.price ? "/mês" : ""}</span>
                   </p>
                 </div>
                 <ul className="space-y-1.5 text-xs text-muted-foreground">
@@ -298,7 +264,7 @@ export default function Billing() {
         </p>
         <div className="grid sm:grid-cols-3 gap-3 text-center">
           {[
-            { label: "Base Fixa (Starter)", value: "R$ 447" },
+            { label: "Base Fixa (Starter)", value: `R$ ${PRICING_PLANS.starter.base.toLocaleString("pt-BR")}` },
             { label: "Success Fee", value: "3% a 1%" },
             { label: "Foco total em", value: "ROI Real" },
           ].map(({ label, value }) => (

@@ -77,6 +77,30 @@ export default function Automacoes() {
     onError: () => toast.error("Erro ao atualizar automação"),
   });
 
+  const activateCoreFlowsMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error("Não autenticado");
+      const updates = [
+        { trigger: "cart_abandoned", is_active: true, delay_minutes: 15 },
+        { trigger: "order_delivered", is_active: true, delay_minutes: 3 * 24 * 60 },
+        { trigger: "customer_inactive", is_active: true, delay_minutes: 30 * 24 * 60 },
+      ];
+      for (const row of updates) {
+        const { error } = await (supabase as any)
+          .from("automations")
+          .update({ is_active: row.is_active, delay_minutes: row.delay_minutes, updated_at: new Date().toISOString() })
+          .eq("user_id", user.id)
+          .eq("trigger", row.trigger);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Fluxos core ativados: carrinho, pós-compra e reativação");
+      queryClient.invalidateQueries({ queryKey: ["automations"] });
+    },
+    onError: () => toast.error("Não foi possível ativar os fluxos core"),
+  });
+
   // Mescla dados do DB com metadata de UI (ícones, fluxo, kpi)
   const jornadas = JORNADAS_META.map(meta => {
     const dbRow = automations.find(a => a.name === meta.titulo);
@@ -107,12 +131,23 @@ export default function Automacoes() {
           <h1 className="text-3xl font-black font-syne tracking-tighter uppercase italic">Jornadas <span className="text-primary">Permanentes</span></h1>
           <p className="text-muted-foreground text-sm mt-1">Automações que trabalham 24/7 — <span className="text-foreground font-bold">{activeCount} ativas</span> agora.</p>
         </div>
-        <Button
-          className="font-bold gap-2 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-          onClick={() => setShowModal(true)}
-        >
-          <Plus className="w-4 h-4" /> Criar Jornada Customizada
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="font-bold gap-2 rounded-xl"
+            onClick={() => activateCoreFlowsMutation.mutate()}
+            disabled={activateCoreFlowsMutation.isPending}
+          >
+            {activateCoreFlowsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
+            Ativar fluxos core
+          </Button>
+          <Button
+            className="font-bold gap-2 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+            onClick={() => setShowModal(true)}
+          >
+            <Plus className="w-4 h-4" /> Criar Jornada Customizada
+          </Button>
+        </div>
       </div>
 
       {activeCount === 0 && (

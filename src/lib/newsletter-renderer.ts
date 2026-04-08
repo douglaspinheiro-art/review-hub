@@ -1,163 +1,35 @@
 /**
- * Newsletter Renderer
- * Converts Block[] → email-safe HTML string (table-based, inline CSS).
- * Works in both browser and Deno (no external dependencies).
+ * Newsletter Renderer (dashboard)
+ * Shared HTML lives in supabase/functions/_shared/newsletter-html.ts (Vite alias @newsletter-html).
  */
 
-export type BlockType = "header" | "text" | "image" | "button" | "divider" | "spacer";
+import {
+  type BlockType,
+  type ColumnSlot,
+  type Block,
+  type RenderOpts,
+  interpolateMerge,
+  parseRichText,
+  renderBlocksToHTML as renderBlocksToHTMLCore,
+  appendUtmParams,
+} from "@newsletter-html";
 
-export type Block =
-  | { id: string; type: "header";  data: { title: string; subtitle?: string } }
-  | { id: string; type: "text";    data: { content: string } }
-  | { id: string; type: "image";   data: { url: string; alt?: string; href?: string } }
-  | { id: string; type: "button";  data: { label: string; url: string; color?: string } }
-  | { id: string; type: "divider"; data: Record<string, never> }
-  | { id: string; type: "spacer";  data: { height: number } };
+export type { BlockType, ColumnSlot, Block, RenderOpts };
+export { interpolateMerge, parseRichText, appendUtmParams };
 
-export type ButtonColor = "primary" | "dark" | "light";
-
-const BUTTON_COLORS: Record<string, { bg: string; text: string }> = {
-  primary: { bg: "#7c3aed", text: "#ffffff" },
-  dark:    { bg: "#111827", text: "#ffffff" },
-  light:   { bg: "#f3f4f6", text: "#111827" },
+/** Variables shown in the editor preview (fictitious data). */
+export const PREVIEW_MERGE_VARS: Record<string, string> = {
+  nome: "João Silva",
+  loja: "Minha Loja",
+  email: "joao@exemplo.com",
 };
 
-// ─── Block renderers ──────────────────────────────────────────────────────────
-
-function renderHeader(data: { title: string; subtitle?: string }): string {
-  return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="background:#7c3aed;padding:40px 32px 32px;text-align:center;border-radius:8px 8px 0 0;">
-          <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:28px;font-weight:800;color:#ffffff;line-height:1.2;">${escHtml(data.title)}</h1>
-          ${data.subtitle ? `<p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;color:rgba(255,255,255,0.85);line-height:1.5;">${escHtml(data.subtitle)}</p>` : ""}
-        </td>
-      </tr>
-    </table>`;
+export function renderBlocksToHTML(blocks: Block[], opts: RenderOpts = {}): string {
+  return renderBlocksToHTMLCore(blocks, {
+    ...opts,
+    mergeVars: { ...PREVIEW_MERGE_VARS, ...opts.mergeVars },
+  });
 }
-
-function renderText(data: { content: string }): string {
-  // Preserve line breaks
-  const html = escHtml(data.content).replace(/\n/g, "<br>");
-  return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:24px 32px;">
-          <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.7;color:#374151;">${html}</p>
-        </td>
-      </tr>
-    </table>`;
-}
-
-function renderImage(data: { url: string; alt?: string; href?: string }): string {
-  const img = `<img src="${data.url}" alt="${escHtml(data.alt ?? "")}" width="100%" style="display:block;border-radius:6px;max-width:100%;height:auto;" />`;
-  return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:16px 32px;text-align:center;">
-          ${data.href ? `<a href="${data.href}" style="display:block;">${img}</a>` : img}
-        </td>
-      </tr>
-    </table>`;
-}
-
-function renderButton(data: { label: string; url: string; color?: string }): string {
-  const { bg, text } = BUTTON_COLORS[data.color ?? "primary"] ?? BUTTON_COLORS.primary;
-  return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:16px 32px;text-align:center;">
-          <a href="${data.url}" style="display:inline-block;background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:8px;letter-spacing:0.02em;">${escHtml(data.label)}</a>
-        </td>
-      </tr>
-    </table>`;
-}
-
-function renderDivider(): string {
-  return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:8px 32px;">
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:0;" />
-        </td>
-      </tr>
-    </table>`;
-}
-
-function renderSpacer(data: { height: number }): string {
-  return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:${data.height}px;"></td></tr></table>`;
-}
-
-function renderFooter(unsubscribeUrl: string): string {
-  return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding:32px;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb;border-radius:0 0 8px 8px;">
-          <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:12px;color:#9ca3af;line-height:1.6;">
-            Você está recebendo este e-mail porque é cliente cadastrado.<br />
-            <a href="${unsubscribeUrl}" style="color:#7c3aed;text-decoration:underline;">Cancelar inscrição</a>
-          </p>
-        </td>
-      </tr>
-    </table>`;
-}
-
-// ─── Util ─────────────────────────────────────────────────────────────────────
-
-function escHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-// ─── Main renderer ────────────────────────────────────────────────────────────
-
-export function renderBlocksToHTML(
-  blocks: Block[],
-  opts: { unsubscribeUrl?: string } = {},
-): string {
-  const unsubscribeUrl = opts.unsubscribeUrl ?? "{{unsubscribe_url}}";
-
-  const blocksHtml = blocks.map((block) => {
-    switch (block.type) {
-      case "header":  return renderHeader(block.data);
-      case "text":    return renderText(block.data);
-      case "image":   return renderImage(block.data);
-      case "button":  return renderButton(block.data);
-      case "divider": return renderDivider();
-      case "spacer":  return renderSpacer(block.data);
-      default:        return "";
-    }
-  }).join("\n");
-
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
-</head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;padding:32px 16px;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-          <tr><td>
-            ${blocksHtml}
-            ${renderFooter(unsubscribeUrl)}
-          </td></tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-
-// ─── Default seed blocks ──────────────────────────────────────────────────────
 
 export function createDefaultBlocks(storeName = "Minha Loja"): Block[] {
   return [
@@ -169,7 +41,7 @@ export function createDefaultBlocks(storeName = "Minha Loja"): Block[] {
     {
       id: crypto.randomUUID(),
       type: "text",
-      data: { content: "Olá! Estamos com novidades incríveis esta semana. Escreva aqui o conteúdo da sua newsletter e compartilhe o que há de mais interessante para seus clientes." },
+      data: { content: "Olá, {{nome}}! Estamos com novidades incríveis esta semana. Escreva aqui o conteúdo da sua newsletter." },
     },
     {
       id: crypto.randomUUID(),
@@ -178,3 +50,84 @@ export function createDefaultBlocks(storeName = "Minha Loja"): Block[] {
     },
   ];
 }
+
+export type NewsletterTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  blocks: () => Block[];
+};
+
+export const NEWSLETTER_TEMPLATES: NewsletterTemplate[] = [
+  {
+    id: "blank",
+    name: "Em branco",
+    description: "Comece do zero",
+    emoji: "✏️",
+    blocks: createDefaultBlocks,
+  },
+  {
+    id: "promo",
+    name: "Promoção",
+    description: "Oferta com desconto e CTA",
+    emoji: "🏷️",
+    blocks: () => [
+      { id: crypto.randomUUID(), type: "header", data: { title: "Oferta especial para você, {{nome}}!", subtitle: "Só até domingo • Aproveite", bgColor: "#dc2626" } },
+      { id: crypto.randomUUID(), type: "text", data: { content: "Preparamos uma seleção exclusiva com até **50% de desconto** nos produtos mais amados da {{loja}}.\n\nNão perca essa chance — a oferta é por tempo limitado!" } },
+      { id: crypto.randomUUID(), type: "product", data: { imageUrl: "", name: "Produto em destaque", price: "R$ 79,90", oldPrice: "R$ 159,90", buttonLabel: "Comprar agora", buttonUrl: "https://" } },
+      { id: crypto.randomUUID(), type: "button", data: { label: "Ver todos os produtos", url: "https://", color: "dark" } },
+    ],
+  },
+  {
+    id: "lancamento",
+    name: "Lançamento",
+    description: "Apresentação de novo produto",
+    emoji: "🚀",
+    blocks: () => [
+      { id: crypto.randomUUID(), type: "header", data: { title: "Novidade chegou!", subtitle: "Você é um dos primeiros a saber", bgColor: "#0f766e" } },
+      { id: crypto.randomUUID(), type: "text", data: { content: "Olá, {{nome}}!\n\nTemos o prazer de apresentar nossa mais nova coleção. Desenvolvida com muito cuidado especialmente para você." } },
+      { id: crypto.randomUUID(), type: "image", data: { url: "", alt: "Novo produto", href: "https://" } },
+      { id: crypto.randomUUID(), type: "text", data: { content: "**Por que você vai amar:**\n- Qualidade premium\n- Design exclusivo\n- Entrega rápida" } },
+      { id: crypto.randomUUID(), type: "button", data: { label: "Conhecer o lançamento", url: "https://", color: "primary" } },
+    ],
+  },
+  {
+    id: "reativacao",
+    name: "Reativação",
+    description: "Recuperar clientes inativos",
+    emoji: "💌",
+    blocks: () => [
+      { id: crypto.randomUUID(), type: "header", data: { title: "Sentimos sua falta, {{nome}}!", subtitle: "Preparamos algo especial para você voltar", bgColor: "#b45309" } },
+      { id: crypto.randomUUID(), type: "text", data: { content: "Faz um tempo que não nos vemos por aqui...\n\nPor isso, preparamos um cupom exclusivo para você: use **VOLTEI15** e ganhe 15% de desconto em qualquer produto da {{loja}}." } },
+      { id: crypto.randomUUID(), type: "divider", data: {} as Record<string, never> },
+      { id: crypto.randomUUID(), type: "text", data: { content: "O cupom é válido por **7 dias**. Não deixe passar!" } },
+      { id: crypto.randomUUID(), type: "button", data: { label: "Usar meu cupom agora", url: "https://", color: "primary" } },
+    ],
+  },
+  {
+    id: "semanal",
+    name: "Newsletter Semanal",
+    description: "Conteúdo e novidades semanais",
+    emoji: "📰",
+    blocks: () => [
+      { id: crypto.randomUUID(), type: "header", data: { title: "Novidades da semana", subtitle: "O melhor da {{loja}} em um e-mail" } },
+      { id: crypto.randomUUID(), type: "text", data: { content: "Olá, {{nome}}! Aqui está o resumo da semana:" } },
+      { id: crypto.randomUUID(), type: "columns", data: { left: { title: "Produto da semana", text: "Descrição breve do produto.", buttonLabel: "Ver mais", buttonUrl: "https://" }, right: { title: "Dica da semana", text: "Uma dica útil para seus clientes.", buttonLabel: "Saiba mais", buttonUrl: "https://" } } },
+      { id: crypto.randomUUID(), type: "divider", data: {} as Record<string, never> },
+      { id: crypto.randomUUID(), type: "button", data: { label: "Visitar a loja", url: "https://", color: "dark" } },
+    ],
+  },
+  {
+    id: "aniversario",
+    name: "Aniversário",
+    description: "Parabenize clientes no aniversário",
+    emoji: "🎂",
+    blocks: () => [
+      { id: crypto.randomUUID(), type: "header", data: { title: "Feliz Aniversário, {{nome}}! 🎉", subtitle: "A {{loja}} tem um presente especial para você", bgColor: "#be123c" } },
+      { id: crypto.randomUUID(), type: "text", data: { content: "Neste dia especial, queremos celebrar com você!\n\nUse o cupom **ANIVER20** e ganhe **20% de desconto** em qualquer compra. Válido por 30 dias a partir de hoje." } },
+      { id: crypto.randomUUID(), type: "button", data: { label: "Resgatar meu presente", url: "https://", color: "primary" } },
+      { id: crypto.randomUUID(), type: "text", data: { content: "Com carinho,\n_Equipe {{loja}}_" } },
+    ],
+  },
+];

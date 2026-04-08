@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useContacts } from "@/hooks/useDashboard";
-import { TrendingUp, Users, Crown, AlertTriangle, UserX, Loader2, Info } from "lucide-react";
+import { RFM_ENGLISH_ALIASES, type RfmEnglishSegment } from "@/lib/rfm-segments";
+import { TrendingUp, Users, Crown, AlertTriangle, UserX, Loader2, Info, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -17,16 +18,16 @@ type Contact = {
   name: string | null;
   phone: string | null;
   status: string;
-  rfm_recency: number | null;    // score 1-5, calculado pelo backend
-  rfm_frequency: number | null;  // score 1-5, calculado pelo backend
-  rfm_monetary: number | null;   // score 1-5, calculado pelo backend
-  rfm_segment: string | null;    // segmento pré-calculado ("champions", "loyal", etc.)
+  rfm_recency: number | null;
+  rfm_frequency: number | null;
+  rfm_monetary: number | null;
+  rfm_segment: string | null;
   last_purchase_at: string | null;
   created_at: string;
   tags: string[] | null;
 };
 
-type RFMSegment = "champions" | "loyal" | "at_risk" | "lost" | "new";
+type RFMSegment = RfmEnglishSegment;
 
 const SEGMENTS: Record<RFMSegment, {
   label: string;
@@ -41,7 +42,7 @@ const SEGMENTS: Record<RFMSegment, {
     description: "Compraram recentemente, compram com frequência e gastam mais",
     icon: Crown,
     color: "text-yellow-600",
-    bg: "bg-yellow-50 border-yellow-200",
+    bg: "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/20 dark:border-yellow-900",
     action: "Recompense com exclusividades e peça indicações",
   },
   loyal: {
@@ -49,7 +50,7 @@ const SEGMENTS: Record<RFMSegment, {
     description: "Compram regularmente, bom valor médio",
     icon: TrendingUp,
     color: "text-green-600",
-    bg: "bg-green-50 border-green-200",
+    bg: "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900",
     action: "Envie programa de fidelidade e upsell de produtos premium",
   },
   at_risk: {
@@ -57,7 +58,7 @@ const SEGMENTS: Record<RFMSegment, {
     description: "Foram bons clientes mas estão sumindo",
     icon: AlertTriangle,
     color: "text-orange-600",
-    bg: "bg-orange-50 border-orange-200",
+    bg: "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900",
     action: "Campanha de win-back com oferta especial personalizada",
   },
   lost: {
@@ -65,7 +66,7 @@ const SEGMENTS: Record<RFMSegment, {
     description: "Baixa frequência, baixo valor, inativos",
     icon: UserX,
     color: "text-red-600",
-    bg: "bg-red-50 border-red-200",
+    bg: "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900",
     action: "Último esforço de reativação com desconto agressivo",
   },
   new: {
@@ -73,42 +74,58 @@ const SEGMENTS: Record<RFMSegment, {
     description: "Primeira ou segunda compra recente",
     icon: Users,
     color: "text-blue-600",
-    bg: "bg-blue-50 border-blue-200",
+    bg: "bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900",
     action: "Onboarding: boas-vindas, dicas de uso, cross-sell",
   },
 };
 
-// Mapeamento de valores do banco → chaves locais
-const DB_SEGMENT_MAP: Record<string, RFMSegment> = {
-  champions: "champions",
-  loyal_customers: "loyal",
-  loyal: "loyal",
-  at_risk: "at_risk",
-  cant_lose: "at_risk",
-  lost: "lost",
-  hibernating: "lost",
-  new_customers: "new",
-  new: "new",
-  promising: "new",
-};
+const DB_SEGMENT_MAP: Record<string, RFMSegment> = (() => {
+  const m: Record<string, RFMSegment> = {};
+  (Object.keys(RFM_ENGLISH_ALIASES) as RFMSegment[]).forEach((en) => {
+    for (const a of RFM_ENGLISH_ALIASES[en] ?? []) {
+      m[a.toLowerCase()] = en;
+    }
+  });
+  return m;
+})();
 
-function classifyContact(c: Contact, maxDaysInactive: number): RFMSegment {
-  // 1. Usar segmento pré-calculado do banco quando disponível
+function buildMonetaryScores(contacts: Contact[]): Map<string, number> {
+  const map = new Map<string, number>();
+  const bigContacts = [...contacts]
+    .filter((c) => Number(c.rfm_monetary ?? 0) > 5)
+    .sort((a, b) => Number(a.rfm_monetary) - Number(b.rfm_monetary));
+  for (const c of contacts) {
+    const num = Number(c.rfm_monetary ?? 0);
+    if (c.rfm_monetary == null || num === 0) {
+      map.set(c.id, 1);
+    } else if (num <= 5 && num >= 1) {
+      map.set(c.id, Math.max(1, Math.min(5, num)));
+    } else if (bigContacts.length === 0) {
+      map.set(c.id, 3);
+    } else {
+      const idx = bigContacts.findIndex((x) => x.id === c.id);
+      const frac = bigContacts.length <= 1 ? 1 : idx / (bigContacts.length - 1);
+      map.set(c.id, Math.min(5, Math.max(1, Math.round(1 + frac * 4))));
+    }
+  }
+  return map;
+}
+
+function classifyContact(
+  c: Contact,
+  maxDaysInactive: number,
+  monetary1to5: number,
+): RFMSegment {
   if (c.rfm_segment) {
     const mapped = DB_SEGMENT_MAP[c.rfm_segment.toLowerCase()];
     if (mapped) return mapped;
   }
 
-  // 2. Calcular localmente usando last_purchase_at (recência real)
   const recencyDate = c.last_purchase_at ?? c.created_at;
   const daysSincePurchase = (Date.now() - new Date(recencyDate).getTime()) / 86_400_000;
-
-  // Recência: menor = melhor (score 0-1)
   const recencyScore = maxDaysInactive > 0 ? Math.max(0, 1 - daysSincePurchase / maxDaysInactive) : 1;
-
-  // Frequência e valor: normalizar scores 1-5 para 0-1
   const freqScore = c.rfm_frequency != null ? (c.rfm_frequency - 1) / 4 : 0;
-  const valueScore = c.rfm_monetary != null ? (c.rfm_monetary - 1) / 4 : 0;
+  const valueScore = (monetary1to5 - 1) / 4;
 
   const isNew = freqScore <= 0.25 && daysSincePurchase < 90;
   if (isNew) return "new";
@@ -123,34 +140,41 @@ function classifyContact(c: Contact, maxDaysInactive: number): RFMSegment {
 
 export default function RFM() {
   const navigate = useNavigate();
-  const { data: contacts = [], isLoading } = useContacts();
+  const { data: contactsResult, isLoading } = useContacts();
+  const contacts = (contactsResult?.contacts ?? []) as unknown as Contact[];
+  const totalCount = contactsResult?.totalCount ?? 0;
+  const isTruncated = totalCount > contacts.length;
 
-  const { segments, maxFreq, maxMonetary } = useMemo(() => {
-    const typedContacts = contacts as unknown as Contact[];
+  const { segments, maxFreq, maxMonetary, maxDaysInactive, monetaryById } = useMemo(() => {
+    const typedContacts = contacts as Contact[];
 
-    // Recência: usar last_purchase_at quando disponível, fallback para created_at
     const maxDaysInactive = Math.max(
       ...typedContacts.map((c) => {
         const d = c.last_purchase_at ?? c.created_at;
         return (Date.now() - new Date(d).getTime()) / 86_400_000;
       }),
-      1
+      1,
     );
 
-    // Para scatter plot: máximos dos scores
+    const monetaryById = buildMonetaryScores(typedContacts);
+
     const maxFreq = Math.max(...typedContacts.map((c) => c.rfm_frequency ?? 1), 1);
-    const maxMonetary = Math.max(...typedContacts.map((c) => c.rfm_monetary ?? 1), 1);
+    const maxMonetary = Math.max(
+      ...typedContacts.map((c) => monetaryById.get(c.id) ?? 1),
+      1,
+    );
 
     const groups: Record<RFMSegment, Contact[]> = {
       champions: [], loyal: [], at_risk: [], lost: [], new: [],
     };
 
     typedContacts.forEach((c) => {
-      const seg = classifyContact(c, maxDaysInactive);
+      const m = monetaryById.get(c.id) ?? 1;
+      const seg = classifyContact(c, maxDaysInactive, m);
       groups[seg].push(c);
     });
 
-    return { segments: groups, maxFreq, maxMonetary };
+    return { segments: groups, maxFreq, maxMonetary, maxDaysInactive, monetaryById };
   }, [contacts]);
 
   if (isLoading) {
@@ -161,13 +185,37 @@ export default function RFM() {
     );
   }
 
+  if (contacts.length === 0) {
+    return (
+      <div className="space-y-4 max-w-2xl">
+        <h1 className="text-2xl font-bold font-syne tracking-tight">Matriz RFM</h1>
+        <p className="text-muted-foreground text-sm">
+          Ainda não há contatos com dados de compra nesta loja. Conecte seu e-commerce via webhook ou importe clientes para calcular recência, frequência e valor automaticamente.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="default" onClick={() => navigate("/dashboard/integracoes")}>
+            Integrações
+          </Button>
+          <Button variant="outline" onClick={() => navigate("/dashboard/configuracoes")}>
+            Configurações
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-2xl font-bold">Matriz RFM</h1>
+        <h1 className="text-2xl font-bold font-syne tracking-tight">Matriz RFM</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Segmentação inteligente por Recência, Frequência e Valor para campanhas mais precisas
         </p>
+        {isTruncated && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+            Mostrando os {contacts.length} contatos mais recentes de {totalCount}. Para ver todos, use a página Contatos (export em breve).
+          </p>
+        )}
       </div>
 
       {/* Resumo */}
@@ -178,7 +226,7 @@ export default function RFM() {
             label: "Campeões",
             value: segments.champions.length,
             color: "text-yellow-600",
-            sub: `${contacts.length > 0 ? Math.round((segments.champions.length / contacts.length) * 100) : 0}% da base`,
+            sub: `${contacts.length > 0 ? Math.round((segments.champions.length / contacts.length) * 100) : 0}% da amostra`,
           },
           {
             label: "Em risco",
@@ -190,7 +238,7 @@ export default function RFM() {
             label: "Novos clientes",
             value: segments.new.length,
             color: "text-blue-600",
-            sub: `${contacts.length > 0 ? Math.round((segments.new.length / contacts.length) * 100) : 0}% da base`,
+            sub: `${contacts.length > 0 ? Math.round((segments.new.length / contacts.length) * 100) : 0}% da amostra`,
           },
         ].map(({ label, value, color, sub }) => (
           <div key={label} className="bg-card border rounded-xl p-4 space-y-1">
@@ -225,7 +273,7 @@ export default function RFM() {
               <div className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <div className={cn("p-2 rounded-lg bg-white/60")}>
+                    <div className={cn("p-2 rounded-lg bg-white/60 dark:bg-background/40")}>
                       <Icon className={cn("w-5 h-5", seg.color)} />
                     </div>
                     <div>
@@ -239,8 +287,7 @@ export default function RFM() {
                   </div>
                 </div>
 
-                {/* Progress bar */}
-                <div className="h-1.5 bg-white/50 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-white/50 dark:bg-white/10 rounded-full overflow-hidden">
                   <div
                     className={cn("h-full rounded-full transition-all",
                       key === "champions" ? "bg-yellow-500" :
@@ -258,26 +305,36 @@ export default function RFM() {
                   </span>
                 </div>
 
-                {/* Action */}
-                <div className="bg-white/60 rounded-lg p-2.5 text-xs">
+                <div className="bg-white/60 dark:bg-background/40 rounded-lg p-2.5 text-xs">
                   <span className="font-medium">Ação recomendada: </span>
                   <span className="text-muted-foreground">{seg.action}</span>
                 </div>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full font-bold text-xs border-white/40 bg-white/20 hover:bg-white/50"
-                  disabled={group.length === 0}
-                  onClick={() => navigate(`/dashboard/campanhas?segmento=${key}`)}
-                >
-                  {group.length === 0 ? "Nenhum cliente neste segmento" : `Criar Campanha para ${seg.label}`}
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full font-bold text-xs border-white/40 bg-white/20 hover:bg-white/50 dark:hover:bg-background/60"
+                    disabled={group.length === 0}
+                    onClick={() => navigate(`/dashboard/campanhas?segmento=${key}`)}
+                  >
+                    {group.length === 0 ? "Nenhum cliente neste segmento" : `Criar campanha — ${seg.label}`}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full text-xs gap-1 h-8"
+                    disabled={group.length === 0}
+                    onClick={() => navigate(`/dashboard/contatos?rfm=${key}`)}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Ver em Contatos
+                  </Button>
+                </div>
               </div>
 
-              {/* Contact list (top 4) */}
               {group.length > 0 && (
-                <div className="border-t border-white/40 bg-white/30 px-4 py-3 space-y-2">
+                <div className="border-t border-white/40 dark:border-white/10 bg-white/30 dark:bg-background/30 px-4 py-3 space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">Contatos neste segmento</p>
                   <div className="space-y-1">
                     {group.slice(0, 4).map((c) => {
@@ -286,7 +343,7 @@ export default function RFM() {
                       return (
                         <div key={c.id} className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5">
-                            <div className="w-5 h-5 rounded-full bg-white/60 flex items-center justify-center text-[10px] font-bold">
+                            <div className="w-5 h-5 rounded-full bg-white/60 dark:bg-background/50 flex items-center justify-center text-[10px] font-bold">
                               {c.name?.[0]?.toUpperCase() ?? "?"}
                             </div>
                             <span className="font-medium truncate max-w-[120px]">{c.name ?? "—"}</span>
@@ -305,7 +362,7 @@ export default function RFM() {
               )}
 
               {group.length === 0 && (
-                <div className="border-t border-white/40 bg-white/30 px-4 py-3 text-xs text-muted-foreground">
+                <div className="border-t border-white/40 dark:border-white/10 bg-white/30 dark:bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
                   Nenhum contato neste segmento ainda.
                 </div>
               )}
@@ -318,22 +375,19 @@ export default function RFM() {
       <div className="bg-card border rounded-xl p-5">
         <h2 className="font-semibold mb-4 text-sm">Distribuição Frequência × Valor (scores RFM)</h2>
         <div className="relative h-48 bg-muted/30 rounded-lg overflow-hidden">
-          {/* Grid lines */}
           <div className="absolute inset-0 grid grid-cols-4 grid-rows-4">
             {Array.from({ length: 16 }).map((_, i) => (
               <div key={i} className="border border-border/20" />
             ))}
           </div>
-          {/* Axis labels */}
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs text-muted-foreground">Frequência →</div>
           <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground" style={{ writingMode: "vertical-rl", transform: "translateY(-50%) rotate(180deg)" }}>← Valor</div>
-          {/* Dots */}
-          {(contacts as unknown as Contact[]).map((c) => {
+          {contacts.map((c) => {
             const freq = c.rfm_frequency ?? 1;
-            const monetary = c.rfm_monetary ?? 1;
+            const monetary = monetaryById.get(c.id) ?? 1;
             const x = maxFreq > 1 ? ((freq - 1) / (maxFreq - 1)) * 85 + 8 : 8;
             const y = maxMonetary > 1 ? (1 - (monetary - 1) / (maxMonetary - 1)) * 85 + 5 : 90;
-            const seg = classifyContact(c, 1);
+            const seg = classifyContact(c, maxDaysInactive, monetary);
             const dotColor =
               seg === "champions" ? "#ca8a04" :
               seg === "loyal" ? "#16a34a" :
@@ -349,7 +403,6 @@ export default function RFM() {
             );
           })}
         </div>
-        {/* Legend */}
         <div className="flex flex-wrap gap-3 mt-3">
           {(Object.entries(SEGMENTS) as [RFMSegment, typeof SEGMENTS[RFMSegment]][]).map(([key, seg]) => (
             <div key={key} className="flex items-center gap-1.5 text-xs">

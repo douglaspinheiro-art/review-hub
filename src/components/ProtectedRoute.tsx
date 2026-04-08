@@ -3,7 +3,10 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useDemo } from "@/contexts/DemoContext";
 import { toast } from "sonner";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { hasValidStepUp } from "@/lib/security-stepup";
+import { logSecurityEvent } from "@/lib/security-logger";
+import { supabase } from "@/lib/supabase";
 
 const planLevels = {
   starter: 0,
@@ -15,12 +18,17 @@ const planLevels = {
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredPlan?: keyof typeof planLevels;
+  requireStepUp?: boolean;
 }
 
-export default function ProtectedRoute({ children, requiredPlan }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, requiredPlan, requireStepUp }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
   const { isDemo } = useDemo();
   const location = useLocation();
+  const [stepUpOk, setStepUpOk] = useState(false);
+  const [stepUpChecked, setStepUpChecked] = useState(false);
+  const [passwordCheckDone, setPasswordCheckDone] = useState(false);
+  const [passwordRotationDue, setPasswordRotationDue] = useState(false);
 
   useEffect(() => {
     if (!loading && user && profile && requiredPlan) {
@@ -34,6 +42,48 @@ export default function ProtectedRoute({ children, requiredPlan }: ProtectedRout
     }
   }, [loading, user, profile, requiredPlan]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function checkStepUp() {
+      if (!requireStepUp || !user) {
+        setStepUpOk(true);
+        setStepUpChecked(true);
+        return;
+      }
+      localStorage.setItem("ltv_stepup_user_hint", user.id);
+      const valid = await hasValidStepUp(user.id);
+      if (!cancelled) {
+        setStepUpOk(valid);
+        setStepUpChecked(true);
+      }
+    }
+    checkStepUp();
+    return () => {
+      cancelled = true;
+    };
+  }, [requireStepUp, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkPasswordRotation() {
+      if (!user) {
+        setPasswordCheckDone(true);
+        return;
+      }
+      const { data } = await supabase.rpc("is_password_rotation_due", {
+        _user_id: user.id,
+      });
+      if (!cancelled) {
+        setPasswordRotationDue(data === true);
+        setPasswordCheckDone(true);
+      }
+    }
+    checkPasswordRotation();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   if (!isDemo && loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -46,7 +96,40 @@ export default function ProtectedRoute({ children, requiredPlan }: ProtectedRout
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  if (requiredPlan && profile) {
+  if (!passwordCheckDone) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (passwordRotationDue && location.pathname !== "/reset-password") {
+    return <Navigate to="/reset-password" replace />;
+  }
+
+  if (requireStepUp && !stepUpChecked) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (requireStepUp && !stepUpOk) {
+    logSecurityEvent({
+      action: "step_up_required",
+      resource: location.pathname,
+      result: "failure",
+    });
+    return <Navigate to="/security/step-up" state={{ from: location.pathname }} replace />;
+  }
+
+  if (requiredPlan) {
+    // Fail-safe: if we cannot resolve profile, never allow paid features.
+    if (!profile) {
+      return <Navigate to="/planos" replace />;
+    }
     const currentLevel = planLevels[profile.plan] || 0;
     const neededLevel = planLevels[requiredPlan];
     if (currentLevel < neededLevel) {

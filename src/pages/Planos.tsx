@@ -1,18 +1,13 @@
-import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
-  Check, X, MessageCircle, Zap, Package, BarChart3,
-  TrendingUp, AlertTriangle, Users, Mail, Smartphone,
-  Info, ChevronRight,
+  Check, X, MessageCircle, Zap, Users, Mail, Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import Header from "@/components/landing/Header";
 import Footer from "@/components/landing/Footer";
-import { PLANS, BUNDLES, CONTACT_PACK, calcPlano } from "@/lib/pricing-constants";
+import { PLANS } from "@/lib/pricing-constants";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -127,68 +122,14 @@ const COMPARISON_ROWS = [
   { label: "Suporte" },
 ];
 
-// ─── Projeção MRR ─────────────────────────────────────────────────────────────
-
-const REF_CLIENT = {
-  starter: calcPlano("starter", { recovered: 5_000 }),
-  growth:  calcPlano("growth",  { recovered: 20_000 }),
-  scale:   calcPlano("scale",   { recovered: 60_000 }),
-};
-
-const MRR_SCENARIOS = [
-  { label: "Lançamento",  s: 10, g: 2,  sc: 0  },
-  { label: "Crescimento", s: 15, g: 8,  sc: 2  },
-  { label: "Aceleração",  s: 10, g: 20, sc: 8  },
-  { label: "Escala",      s: 5,  g: 15, sc: 25 },
-];
-
-function calcScenario(s: number, g: number, sc: number) {
-  const mrrStarter = s  * REF_CLIENT.starter.revTotal;
-  const mrrGrowth  = g  * REF_CLIENT.growth.revTotal;
-  const mrrScale   = sc * REF_CLIENT.scale.revTotal;
-  const mrr        = mrrStarter + mrrGrowth + mrrScale;
-  const profit     = s  * REF_CLIENT.starter.grossProfit
-                   + g  * REF_CLIENT.growth.grossProfit
-                   + sc * REF_CLIENT.scale.grossProfit;
-  const margin     = mrr > 0 ? (profit / mrr) * 100 : 0;
-  return { mrrStarter, mrrGrowth, mrrScale, mrr, profit, margin };
-}
-
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-interface PlanosProps {
-  defaultTab?: string;
-}
-
-export default function Planos({ defaultTab }: PlanosProps) {
-  // Simulador interativo (Aba 3)
-  const [simPlan, setSimPlan] = useState<keyof typeof PLANS>("growth");
-  const [simRecovered, setSimRecovered] = useState(15_000);
-  const [simContacts, setSimContacts] = useState(0);
-  const [simBundles, setSimBundles] = useState<string[]>([]);
-
-  const simResult = useMemo(
-    () => calcPlano(simPlan, { recovered: simRecovered, contactPacks: simContacts, bundles: simBundles }),
-    [simPlan, simRecovered, simContacts, simBundles]
-  );
-
-  const toggleBundle = (id: string) =>
-    setSimBundles(prev => prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id]);
-
-  const simMarginColor =
-    simResult.grossMargin >= 50 ? "text-emerald-500" :
-    simResult.grossMargin >= 30 ? "text-amber-500" : "text-red-500";
-
-  const simAlertBg =
-    simResult.grossMargin >= 50 ? "bg-emerald-500/5 border-emerald-500/20" :
-    simResult.grossMargin >= 30 ? "bg-amber-500/5 border-amber-500/20" :
-    "bg-red-500/5 border-red-500/20";
-
+export default function Planos({ embedInDashboard, defaultTab: _defaultTab }: { embedInDashboard?: boolean; defaultTab?: string } = {}) {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
+    <div className={cn("flex flex-col bg-background", embedInDashboard ? "min-h-0" : "min-h-screen")}>
+      {!embedInDashboard && <Header />}
 
-      <main className="flex-1 py-16 md:py-24 px-4">
+      <main className={cn("flex-1 px-4", embedInDashboard ? "py-6 md:py-8" : "py-16 md:py-24")}>
         <div className="max-w-6xl mx-auto space-y-10">
 
           {/* Hero */}
@@ -199,29 +140,11 @@ export default function Planos({ defaultTab }: PlanosProps) {
             </div>
             <h1 className="text-3xl md:text-5xl font-bold tracking-tight">Investimento por Resultado</h1>
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Sua assinatura se paga em média nas primeiras 48h de operação.
+              Cobrança orientada por valor incremental capturado. Sua assinatura se paga em média nas primeiras 48h de operação.
             </p>
           </div>
 
-          {/* Tabs */}
-          <Tabs defaultValue={defaultTab ?? "planos"} className="w-full">
-            <TabsList className="w-full grid grid-cols-4 h-12 mb-10">
-              <TabsTrigger value="planos" className="gap-2 text-xs font-bold">
-                <Package className="w-3.5 h-3.5" /> Planos & Limites
-              </TabsTrigger>
-              <TabsTrigger value="pacotes" className="gap-2 text-xs font-bold">
-                <MessageCircle className="w-3.5 h-3.5" /> Pacotes
-              </TabsTrigger>
-              <TabsTrigger value="simulador" className="gap-2 text-xs font-bold">
-                <BarChart3 className="w-3.5 h-3.5" /> Simulador
-              </TabsTrigger>
-              <TabsTrigger value="mrr" className="gap-2 text-xs font-bold">
-                <TrendingUp className="w-3.5 h-3.5" /> Projeção MRR
-              </TabsTrigger>
-            </TabsList>
-
-            {/* ═══ ABA 1 — PLANOS & LIMITES ══════════════════════════════════ */}
-            <TabsContent value="planos" className="space-y-16 focus-visible:outline-none">
+          <div className="space-y-16">
 
               {/* Cards de plano */}
               <div className="grid md:grid-cols-3 gap-6 items-start">
@@ -385,6 +308,26 @@ export default function Planos({ defaultTab }: PlanosProps) {
                 </div>
               </div>
 
+              <div className="max-w-5xl mx-auto bg-card border rounded-2xl p-6 space-y-4">
+                <h3 className="text-lg font-bold">Add-ons de expansão de LTV</h3>
+                <p className="text-sm text-muted-foreground">
+                  Faça upgrade por maturidade, sem migrar de plataforma: ative camadas de inteligência conforme seu ROI evolui.
+                </p>
+                <div className="grid md:grid-cols-3 gap-3 text-sm">
+                  {[
+                    { name: "Predictive Benchmarks", price: "R$ 297/mês", detail: "Benchmarks anonimizados por vertical e faixa de GMV" },
+                    { name: "Autopilot de Retenção", price: "R$ 497/mês", detail: "Priorização automática de jornadas com guardrails de margem" },
+                    { name: "Governança Multi-loja", price: "R$ 697/mês", detail: "Consolidação de performance para grupos e agências" },
+                  ].map((addon) => (
+                    <div key={addon.name} className="rounded-xl border p-4 bg-muted/20">
+                      <p className="font-semibold">{addon.name}</p>
+                      <p className="text-primary font-black mt-1">{addon.price}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{addon.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Tabela comparativa */}
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-center">Comparativo completo</h2>
@@ -464,424 +407,11 @@ export default function Planos({ defaultTab }: PlanosProps) {
                   <Link to="/contato"><Button variant="outline" size="lg">Falar com especialista</Button></Link>
                 </div>
               </div>
-            </TabsContent>
-
-            {/* ═══ ABA 2 — PACOTES DE MENSAGENS ══════════════════════════════ */}
-            <TabsContent value="pacotes" className="space-y-12 focus-visible:outline-none">
-
-              {(["wa", "email", "sms"] as const).map((channel) => {
-                const channelMeta = {
-                  wa:    { label: "WhatsApp",  icon: Smartphone, color: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/20", note: null },
-                  email: { label: "E-mail",    icon: Mail,       color: "text-blue-500",    bg: "bg-blue-500/10",    border: "border-blue-500/20",    note: null },
-                  sms:   { label: "SMS",       icon: MessageCircle, color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20",
-                    note: "SMS tem margens menores. Recomendado apenas para lojas no plano Scale com volume elevado." },
-                }[channel];
-                const Icon = channelMeta.icon;
-
-                return (
-                  <div key={channel} className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center", channelMeta.bg, channelMeta.border, "border")}>
-                        <Icon className={cn("w-5 h-5", channelMeta.color)} />
-                      </div>
-                      <h2 className="text-xl font-bold">{channelMeta.label}</h2>
-                    </div>
-
-                    {channelMeta.note && (
-                      <div className="flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl text-sm text-amber-600">
-                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                        <span>{channelMeta.note}</span>
-                      </div>
-                    )}
-
-                    <div className="grid md:grid-cols-3 gap-4">
-                      {BUNDLES[channel].map((b) => {
-                        const profit = b.price - b.qty * b.costPerUnit;
-                        const margin = b.price > 0 ? (profit / b.price) * 100 : 0;
-                        return (
-                          <div key={b.id} className="bg-card border border-border/50 rounded-2xl p-5 space-y-4">
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <p className="font-black text-base">{b.name}</p>
-                                <p className="text-sm text-muted-foreground">{fmtN(b.qty)} mensagens</p>
-                              </div>
-                              <MarginBadge pct={margin} />
-                            </div>
-
-                            <div className="space-y-2 text-sm">
-                              {[
-                                { label: "Preço cobrado",  val: fmt(b.price), bold: true },
-                                { label: "Custo real",     val: fmt(b.qty * b.costPerUnit), muted: true },
-                                { label: "Lucro bruto",    val: fmt(profit), color: profit >= 0 ? "text-emerald-500" : "text-red-500" },
-                              ].map(({ label, val, bold, muted, color }) => (
-                                <div key={label} className="flex justify-between">
-                                  <span className={muted ? "text-muted-foreground" : ""}>{label}</span>
-                                  <span className={cn(bold && "font-black", color)}>{val}</span>
-                                </div>
-                              ))}
-                            </div>
-
-                            <ProgressBar
-                              value={Math.max(0, profit)}
-                              max={b.price}
-                              color={margin >= 50 ? "bg-emerald-500" : margin >= 30 ? "bg-amber-500" : "bg-red-500"}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Contatos extras */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-violet-500/10 border border-violet-500/20">
-                    <Users className="w-5 h-5 text-violet-500" />
-                  </div>
-                  <h2 className="text-xl font-bold">Contatos Extras</h2>
-                </div>
-                <div className="bg-card border border-border/50 rounded-2xl p-5 max-w-sm space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-black text-base">+1.000 Contatos</p>
-                      <p className="text-sm text-muted-foreground">Por pacote</p>
-                    </div>
-                    <MarginBadge pct={((CONTACT_PACK.price - CONTACT_PACK.cost) / CONTACT_PACK.price) * 100} />
-                  </div>
-                  {[
-                    { label: "Preço cobrado", val: fmt(CONTACT_PACK.price), bold: true },
-                    { label: "Custo real",    val: fmt(CONTACT_PACK.cost), muted: true },
-                    { label: "Lucro bruto",   val: fmt(CONTACT_PACK.price - CONTACT_PACK.cost), color: "text-emerald-500" },
-                  ].map(({ label, val, bold, muted, color }) => (
-                    <div key={label} className="flex justify-between text-sm">
-                      <span className={muted ? "text-muted-foreground" : ""}>{label}</span>
-                      <span className={cn(bold && "font-black", color)}>{val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tabela resumo */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Resumo — todos os pacotes</h3>
-                <div className="bg-card border rounded-2xl overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-muted/40">
-                          {["Pacote", "Qtd", "Preço", "Custo", "Lucro", "Margem"].map((h) => (
-                            <th key={h} className={cn("px-4 py-3 font-semibold text-muted-foreground", h === "Pacote" ? "text-left" : "text-center")}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...BUNDLES.wa, ...BUNDLES.email, ...BUNDLES.sms,
-                          { id: "ct", name: "Contatos +1k", qty: CONTACT_PACK.qty, price: CONTACT_PACK.price, costPerUnit: CONTACT_PACK.cost / CONTACT_PACK.qty },
-                        ].map((b, i) => {
-                          const cost   = b.qty * b.costPerUnit;
-                          const profit = b.price - cost;
-                          const margin = b.price > 0 ? (profit / b.price) * 100 : 0;
-                          return (
-                            <tr key={b.id} className={cn("border-b last:border-0", i % 2 === 1 && "bg-muted/20")}>
-                              <td className="px-4 py-3 font-medium">{b.name}</td>
-                              <td className="px-4 py-3 text-center text-muted-foreground">{fmtN(b.qty)}</td>
-                              <td className="px-4 py-3 text-center font-bold">{fmt(b.price)}</td>
-                              <td className="px-4 py-3 text-center text-muted-foreground">{fmt(cost)}</td>
-                              <td className={cn("px-4 py-3 text-center font-bold", profit >= 0 ? "text-emerald-500" : "text-red-500")}>{fmt(profit)}</td>
-                              <td className="px-4 py-3 text-center"><MarginBadge pct={margin} /></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* ═══ ABA 3 — SIMULADOR INTERATIVO ══════════════════════════════ */}
-            <TabsContent value="simulador" className="focus-visible:outline-none space-y-8">
-
-              {/* Seletor de plano */}
-              <div className="space-y-3">
-                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Selecione o plano</p>
-                <div className="grid grid-cols-3 gap-3">
-                  {(Object.keys(PLANS) as Array<keyof typeof PLANS>).map((key) => {
-                    const p = PLANS[key];
-                    const active = simPlan === key;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setSimPlan(key)}
-                        className={cn(
-                          "p-4 rounded-2xl border text-left transition-all duration-200",
-                          active
-                            ? "border-primary bg-primary/5 shadow-lg shadow-primary/10"
-                            : "border-border/50 hover:border-primary/30 bg-card"
-                        )}
-                      >
-                        <p className="text-lg font-black">{p.emoji} {p.name}</p>
-                        <p className="text-sm text-muted-foreground">{fmt(p.base)}/mês</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">{p.audience}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-8">
-                {/* Coluna inputs */}
-                <div className="space-y-8">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <label className="text-sm font-bold">Receita recuperada/mês</label>
-                      <span className="text-primary font-black font-mono text-sm">{fmt(simRecovered)}</span>
-                    </div>
-                    <Slider
-                      value={[simRecovered]}
-                      onValueChange={([v]) => setSimRecovered(v)}
-                      min={0} max={500_000} step={1_000}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Success fee: <span className="font-bold text-primary">{fmt(simRecovered * PLANS[simPlan].successFeeRate)}</span>
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <label className="text-sm font-bold">Pacotes extras de contatos</label>
-                      <span className="font-black font-mono text-sm">{simContacts}× (+{fmtN(simContacts * CONTACT_PACK.qty)})</span>
-                    </div>
-                    <Slider
-                      value={[simContacts]}
-                      onValueChange={([v]) => setSimContacts(v)}
-                      min={0} max={20} step={1}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Base total: <span className="font-bold">{fmtN(PLANS[simPlan].maxContacts + simContacts * CONTACT_PACK.qty)} contatos</span>
-                    </p>
-                  </div>
-
-                  {(["wa", "email", "sms"] as const).map((ch) => {
-                    const meta = { wa: { label: "Pacotes WhatsApp", color: "text-emerald-500" }, email: { label: "Pacotes E-mail", color: "text-blue-500" }, sms: { label: "Pacotes SMS", color: "text-amber-500" } }[ch];
-                    return (
-                      <div key={ch} className="space-y-2">
-                        <p className="text-sm font-bold">{meta.label}</p>
-                        <div className="space-y-2">
-                          {BUNDLES[ch].map((b) => (
-                            <label key={b.id} className="flex items-center justify-between p-3 rounded-xl border border-border/50 cursor-pointer hover:border-primary/30 transition-colors">
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={simBundles.includes(b.id)}
-                                  onChange={() => toggleBundle(b.id)}
-                                  className="w-4 h-4 accent-primary"
-                                />
-                                <span className="text-sm font-medium">{b.name}</span>
-                              </div>
-                              <span className={cn("text-sm font-black", meta.color)}>{fmt(b.price)}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Coluna resultado */}
-                <div className="space-y-6">
-                  {/* KPIs */}
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: "Receita Total",  val: fmt(simResult.revTotal),    color: "text-foreground" },
-                      { label: "Lucro Bruto",    val: fmt(simResult.grossProfit), color: simResult.grossProfit >= 0 ? "text-emerald-500" : "text-red-500" },
-                      { label: "COGS Total",     val: fmt(simResult.cogsTotal),   color: "text-muted-foreground" },
-                      { label: "Margem Bruta",   val: fmtPct(simResult.grossMargin), color: simMarginColor },
-                    ].map(({ label, val, color }) => (
-                      <div key={label} className="bg-card border border-border/50 rounded-2xl p-4 space-y-1">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
-                        <p className={cn("text-xl font-black font-mono", color)}>{val}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Composição da receita */}
-                  <div className="bg-card border border-border/50 rounded-2xl p-5 space-y-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Composição da Receita</p>
-                    {[
-                      { label: "Base Fixa",    val: simResult.revBase,     color: "bg-primary" },
-                      { label: "Success Fee",  val: simResult.revSuccess,  color: "bg-emerald-500" },
-                      { label: "Contatos",     val: simResult.revContacts, color: "bg-blue-500" },
-                      { label: "Pacotes",      val: simResult.revBundles,  color: "bg-amber-500" },
-                    ].map(({ label, val, color }) => (
-                      <div key={label} className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span className="font-bold">{fmt(val)}</span>
-                        </div>
-                        <ProgressBar value={val} max={simResult.revTotal || 1} color={color} />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Composição do COGS */}
-                  <div className="bg-card border border-border/50 rounded-2xl p-5 space-y-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Composição do COGS</p>
-                    {[
-                      { label: "COGS Fixo",    val: simResult.cogsFixed },
-                      { label: "Pacotes",      val: simResult.cogsBundles },
-                      { label: "Gateway (2,5%)", val: simResult.cogsGW },
-                    ].map(({ label, val }) => (
-                      <div key={label} className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span className="font-bold">{fmt(val)}</span>
-                        </div>
-                        <ProgressBar value={val} max={simResult.cogsTotal || 1} color="bg-red-500/60" />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Alerta de margem */}
-                  <div className={cn("border rounded-2xl p-4 flex items-start gap-3", simAlertBg)}>
-                    {simResult.grossMargin >= 50
-                      ? <Check className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                      : <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                    }
-                    <div>
-                      <p className={cn("text-sm font-black", simMarginColor)}>
-                        Margem de {fmtPct(simResult.grossMargin)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {simResult.grossMargin >= 50
-                          ? "Excelente! Esta combinação é altamente lucrativa."
-                          : simResult.grossMargin >= 30
-                          ? "Margem aceitável. Considere reduzir pacotes SMS para melhorar."
-                          : "Margem baixa ou negativa. Revise a combinação de pacotes."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-center text-muted-foreground">
-                Projeções baseadas em benchmarks reais do mercado brasileiro. Usamos estimativa conservadora para não criar expectativas acima do que entregamos.
-              </p>
-            </TabsContent>
-
-            {/* ═══ ABA 4 — PROJEÇÃO DE MRR ════════════════════════════════════ */}
-            <TabsContent value="mrr" className="focus-visible:outline-none space-y-10">
-
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold">Projeção de MRR por Mix de Clientes</h2>
-                <p className="text-muted-foreground text-sm">
-                  Valores de referência assumem receita recuperada média por porte de loja.
-                </p>
-              </div>
-
-              {/* Tabela de cenários */}
-              <div className="bg-card border rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/40">
-                        {["Cenário", "🌱 Starter", "🚀 Growth", "⚡ Scale", "MRR Total", "Lucro Bruto", "Margem"].map((h) => (
-                          <th key={h} className={cn("px-4 py-4 font-semibold text-muted-foreground", h === "Cenário" ? "text-left" : "text-center")}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {MRR_SCENARIOS.map((sc, i) => {
-                        const r = calcScenario(sc.s, sc.g, sc.sc);
-                        return (
-                          <tr key={sc.label} className={cn("border-b last:border-0", i % 2 === 1 && "bg-muted/20")}>
-                            <td className="px-4 py-4 font-black">{sc.label}</td>
-                            <td className="px-4 py-4 text-center text-muted-foreground">{sc.s} clientes<br /><span className="text-xs font-bold">{fmt(r.mrrStarter)}</span></td>
-                            <td className="px-4 py-4 text-center text-muted-foreground">{sc.g} clientes<br /><span className="text-xs font-bold">{fmt(r.mrrGrowth)}</span></td>
-                            <td className="px-4 py-4 text-center text-muted-foreground">{sc.sc} clientes<br /><span className="text-xs font-bold">{fmt(r.mrrScale)}</span></td>
-                            <td className="px-4 py-4 text-center font-black text-primary">{fmt(r.mrr)}</td>
-                            <td className="px-4 py-4 text-center font-bold text-emerald-500">{fmt(r.profit)}</td>
-                            <td className="px-4 py-4 text-center"><MarginBadge pct={r.margin} /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Premissas */}
-              <div className="grid grid-cols-3 gap-4 text-xs text-muted-foreground bg-muted/20 rounded-2xl p-4">
-                {[
-                  { plan: "🌱 Starter", ref: "R$5k recuperados/mês" },
-                  { plan: "🚀 Growth",  ref: "R$20k recuperados/mês" },
-                  { plan: "⚡ Scale",   ref: "R$60k recuperados/mês" },
-                ].map(({ plan, ref }) => (
-                  <div key={plan}><span className="font-bold">{plan}:</span> {ref} (referência)</div>
-                ))}
-              </div>
-
-              {/* Cards de margem nos excedentes */}
-              <div>
-                <h3 className="text-lg font-bold mb-4">Margem nos excedentes (por mensagem)</h3>
-                <div className="grid md:grid-cols-3 gap-4">
-                  {[
-                    {
-                      label: "WhatsApp Excedente",
-                      icon: Smartphone,
-                      price: 0.50, cost: 0.036,
-                      color: "text-emerald-500", bg: "bg-emerald-500/5", border: "border-emerald-500/20",
-                      note: "Maior margem do portfólio. Incentive pacotes WA nos planos Starter e Growth.",
-                    },
-                    {
-                      label: "E-mail Excedente",
-                      icon: Mail,
-                      price: 0.01, cost: 0.0055,
-                      color: "text-blue-500", bg: "bg-blue-500/5", border: "border-blue-500/20",
-                      note: "Volume alto compensa margem menor. Ideal para campanhas de reativação.",
-                    },
-                    {
-                      label: "SMS Excedente",
-                      icon: MessageCircle,
-                      price: 0.20, cost: 0.10,
-                      color: "text-amber-500", bg: "bg-amber-500/5", border: "border-amber-500/20",
-                      note: "Recomendado somente para Scale. Custo de operadora é alto.",
-                    },
-                  ].map(({ label, icon: Icon, price, cost, color, bg, border, note }) => {
-                    const margin = ((price - cost) / price) * 100;
-                    return (
-                      <div key={label} className={cn("border rounded-2xl p-5 space-y-4", bg, border)}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Icon className={cn("w-5 h-5", color)} />
-                            <span className="font-bold text-sm">{label}</span>
-                          </div>
-                          <MarginBadge pct={margin} />
-                        </div>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between"><span className="text-muted-foreground">Preço</span><span className="font-bold">{fmt(price)}/msg</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Custo</span><span>{fmt(cost)}/msg</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Lucro</span><span className={cn("font-black", color)}>{fmt(price - cost)}/msg</span></div>
-                        </div>
-                        <ProgressBar value={price - cost} max={price} color={margin >= 50 ? "bg-emerald-500" : "bg-amber-500"} />
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">{note}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <p className="text-[11px] text-center text-muted-foreground">
-                Projeções baseadas em benchmarks reais do mercado brasileiro. Estimativa conservadora para não criar expectativas acima do que entregamos.
-              </p>
-            </TabsContent>
-          </Tabs>
+          </div>
         </div>
       </main>
 
-      <Footer />
+      {!embedInDashboard && <Footer />}
     </div>
   );
 }

@@ -653,13 +653,19 @@ export type Database = {
       }
       campaigns: {
         Row: {
+          ab_subject_enabled: boolean | null
           blocks: Json | null
           channel: string
+          click_count: number | null
           created_at: string
           delivered_count: number
+          email_recipient_mode: string | null
+          email_recipient_rfm: string | null
+          email_recipient_tag: string | null
           id: string
           message: string
           name: string
+          preheader: string | null
           read_count: number
           reply_count: number
           scheduled_at: string | null
@@ -667,18 +673,25 @@ export type Database = {
           status: string
           store_id: string | null
           subject: string | null
+          subject_variant_b: string | null
           total_contacts: number
           updated_at: string
           user_id: string
         }
         Insert: {
+          ab_subject_enabled?: boolean | null
           blocks?: Json | null
           channel?: string
+          click_count?: number | null
           created_at?: string
           delivered_count?: number
+          email_recipient_mode?: string | null
+          email_recipient_rfm?: string | null
+          email_recipient_tag?: string | null
           id?: string
           message: string
           name: string
+          preheader?: string | null
           read_count?: number
           reply_count?: number
           scheduled_at?: string | null
@@ -686,18 +699,25 @@ export type Database = {
           status?: string
           store_id?: string | null
           subject?: string | null
+          subject_variant_b?: string | null
           total_contacts?: number
           updated_at?: string
           user_id: string
         }
         Update: {
+          ab_subject_enabled?: boolean | null
           blocks?: Json | null
           channel?: string
+          click_count?: number | null
           created_at?: string
           delivered_count?: number
+          email_recipient_mode?: string | null
+          email_recipient_rfm?: string | null
+          email_recipient_tag?: string | null
           id?: string
           message?: string
           name?: string
+          preheader?: string | null
           read_count?: number
           reply_count?: number
           scheduled_at?: string | null
@@ -705,6 +725,7 @@ export type Database = {
           status?: string
           store_id?: string | null
           subject?: string | null
+          subject_variant_b?: string | null
           total_contacts?: number
           updated_at?: string
           user_id?: string
@@ -996,6 +1017,8 @@ export type Database = {
           created_at: string | null
           customer_health_score: number | null
           email: string | null
+          email_complaint_at: string | null
+          email_hard_bounce_at: string | null
           id: string
           last_purchase_at: string | null
           name: string | null
@@ -1006,6 +1029,8 @@ export type Database = {
           rfm_recency: number | null
           rfm_segment: string | null
           store_id: string | null
+          tags: string[] | null
+          unsubscribed_at: string | null
           user_id: string
         }
         Insert: {
@@ -1015,6 +1040,8 @@ export type Database = {
           created_at?: string | null
           customer_health_score?: number | null
           email?: string | null
+          email_complaint_at?: string | null
+          email_hard_bounce_at?: string | null
           id?: string
           last_purchase_at?: string | null
           name?: string | null
@@ -1025,6 +1052,8 @@ export type Database = {
           rfm_recency?: number | null
           rfm_segment?: string | null
           store_id?: string | null
+          tags?: string[] | null
+          unsubscribed_at?: string | null
           user_id: string
         }
         Update: {
@@ -1034,6 +1063,8 @@ export type Database = {
           created_at?: string | null
           customer_health_score?: number | null
           email?: string | null
+          email_complaint_at?: string | null
+          email_hard_bounce_at?: string | null
           id?: string
           last_purchase_at?: string | null
           name?: string | null
@@ -1044,6 +1075,8 @@ export type Database = {
           rfm_recency?: number | null
           rfm_segment?: string | null
           store_id?: string | null
+          tags?: string[] | null
+          unsubscribed_at?: string | null
           user_id?: string
         }
         Relationships: [
@@ -1062,6 +1095,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_engagement_events: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          customer_id: string
+          event_type: string
+          id: string
+          link_url: string | null
+          send_recipient_id: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          customer_id: string
+          event_type: string
+          id?: string
+          link_url?: string | null
+          send_recipient_id: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          customer_id?: string
+          event_type?: string
+          id?: string
+          link_url?: string | null
+          send_recipient_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       diagnostics: {
         Row: {
@@ -1748,6 +1814,57 @@ export type Database = {
           },
         ]
       }
+      newsletter_saved_blocks: {
+        Row: {
+          blocks: Json
+          created_at: string
+          id: string
+          name: string
+          store_id: string | null
+          user_id: string
+        }
+        Insert: {
+          blocks?: Json
+          created_at?: string
+          id?: string
+          name: string
+          store_id?: string | null
+          user_id: string
+        }
+        Update: {
+          blocks?: Json
+          created_at?: string
+          id?: string
+          name?: string
+          store_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      newsletter_send_recipients: {
+        Row: {
+          campaign_id: string
+          customer_id: string
+          id: string
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          customer_id: string
+          id?: string
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          customer_id?: string
+          id?: string
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
@@ -2246,6 +2363,7 @@ export type Database = {
           estoque: number | null
           estoque_critico: boolean | null
           id: string
+          imagem_url: string | null
           media_avaliacao: number | null
           nome: string
           num_adicionados_carrinho: number | null
@@ -2269,6 +2387,7 @@ export type Database = {
           estoque?: number | null
           estoque_critico?: boolean | null
           id?: string
+          imagem_url?: string | null
           media_avaliacao?: number | null
           nome: string
           num_adicionados_carrinho?: number | null
@@ -2292,6 +2411,7 @@ export type Database = {
           estoque?: number | null
           estoque_critico?: boolean | null
           id?: string
+          imagem_url?: string | null
           media_avaliacao?: number | null
           nome?: string
           num_adicionados_carrinho?: number | null
@@ -2782,9 +2902,12 @@ export type Database = {
       }
       stores: {
         Row: {
+          brand_primary_color: string | null
           chs_history: Json | null
           conversion_health_score: number | null
           created_at: string | null
+          email_from_address: string | null
+          email_reply_to: string | null
           id: string
           name: string
           pix_key: string | null
@@ -2793,9 +2916,12 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          brand_primary_color?: string | null
           chs_history?: Json | null
           conversion_health_score?: number | null
           created_at?: string | null
+          email_from_address?: string | null
+          email_reply_to?: string | null
           id?: string
           name: string
           pix_key?: string | null
@@ -2804,9 +2930,12 @@ export type Database = {
           user_id: string
         }
         Update: {
+          brand_primary_color?: string | null
           chs_history?: Json | null
           conversion_health_score?: number | null
           created_at?: string | null
+          email_from_address?: string | null
+          email_reply_to?: string | null
           id?: string
           name?: string
           pix_key?: string | null

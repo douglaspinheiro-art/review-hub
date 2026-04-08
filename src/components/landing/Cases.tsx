@@ -8,36 +8,39 @@ const cases = [
     id: "modafit",
     company: "ModaFit",
     segment: "Moda Fitness",
-    quote: "Em 6 meses triplicamos a base de clientes recorrentes. O ROI se pagou na primeira semana.",
+    quote: "Com playbook de recompra e operacao diaria, triplicamos recorrencia. O setup se pagou na primeira semana.",
     author: "Carolina M., CEO",
     metrics: [
       { icon: DollarSign, value: "R$ 2.4M", label: "Receita via WhatsApp" },
       { icon: Users, value: "15K", label: "Clientes fidelizados" },
       { icon: TrendingUp, value: "18x", label: "ROI da plataforma" },
+      { icon: Repeat, value: "11 dias", label: "Payback do setup" },
     ],
   },
   {
     id: "techstore",
     company: "TechStore",
     segment: "Eletrônicos",
-    quote: "Automatizamos 80% do atendimento e as vendas pelo WhatsApp cresceram 250% no trimestre.",
+    quote: "Unificamos atendimento + campanhas. O time ganhou velocidade e o WhatsApp virou canal previsivel de receita.",
     author: "Ricardo O., Head de Marketing",
     metrics: [
       { icon: DollarSign, value: "R$ 1.8M", label: "Vendas incrementais" },
       { icon: ShoppingBag, value: "3.2K", label: "Carrinhos recuperados" },
       { icon: TrendingUp, value: "250%", label: "Crescimento em vendas" },
+      { icon: Repeat, value: "-27%", label: "Redução no CAC de recompra" },
     ],
   },
   {
     id: "belezapura",
     company: "BelezaPura",
     segment: "Cosméticos",
-    quote: "A segmentação RFM nos mostrou clientes que estávamos ignorando. O LTV subiu 340% em 6 meses.",
+    quote: "Com segmentacao RFM acionavel, paramos de enviar no escuro e elevamos recompra com margem.",
     author: "Juliana S., Diretora",
     metrics: [
       { icon: DollarSign, value: "R$ 890K", label: "Receita de recompra" },
       { icon: Repeat, value: "67%", label: "Taxa de retenção" },
       { icon: TrendingUp, value: "340%", label: "Aumento no LTV" },
+      { icon: Users, value: "+19pts", label: "Evolução no CHS" },
     ],
   },
 ];
@@ -58,6 +61,9 @@ export default function Cases() {
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
             Cases de <span className="text-gradient">Sucesso</span>
           </h2>
+          <p className="text-muted-foreground">
+            Provas por vertical com impacto em margem, payback e recompra.
+          </p>
         </div>
 
         {/* Tabs */}
