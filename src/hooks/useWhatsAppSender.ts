@@ -1,14 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { sendText, sendTemplate, sendFlow, getConnectionState, mapEvolutionState } from "@/lib/evolution-api";
+import {
+  sendText as evolutionSendText,
+  sendTemplate as evolutionSendTemplate,
+  sendFlow,
+  getConnectionState,
+  mapEvolutionState,
+} from "@/lib/evolution-api";
+import {
+  sendText as metaSendText,
+  sendTemplate as metaSendTemplate,
+  sendInteractiveButtons as metaSendInteractiveButtons,
+} from "@/lib/meta-whatsapp-api";
 import { useAuth } from "@/hooks/useAuth";
 
 interface WhatsAppConnection {
   id: string;
   instance_name: string;
   status: string;
-  evolution_api_url: string;
-  evolution_api_key: string;
+  evolution_api_url: string | null;
+  evolution_api_key: string | null;
+  api_provider: "evolution" | "meta";
+  meta_phone_number_id: string | null;
+  meta_waba_id: string | null;
 }
 
 interface SendResult {
@@ -29,6 +43,11 @@ interface FlowPayload {
   screenId: string;
 }
 
+function normalizePhone(phone: string): string {
+  const normalized = phone.replace(/\D/g, "");
+  return normalized.startsWith("55") ? normalized : `55${normalized}`;
+}
+
 export function useWhatsAppSender() {
   const { user } = useAuth();
 
@@ -36,9 +55,9 @@ export function useWhatsAppSender() {
     queryKey: ["whatsapp_connection_active", user?.id],
     queryFn: async () => {
       if (!user) return null;
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("whatsapp_connections")
-        .select("id, instance_name, status, evolution_api_url, evolution_api_key")
+        .select("id, instance_name, status, evolution_api_url, evolution_api_key, api_provider, meta_phone_number_id, meta_waba_id")
         .eq("user_id", user.id)
         .eq("status", "connected")
         .limit(1)
@@ -50,31 +69,44 @@ export function useWhatsAppSender() {
   });
 
   const isReady = !isLoading && !!connection && connection.status === "connected";
+  const isMeta = connection?.api_provider === "meta";
 
   async function sendMessage(phone: string, text: string): Promise<SendResult> {
     if (!connection) {
       return { success: false, error: "Nenhuma conexão WhatsApp ativa. Configure em Configurações." };
     }
 
-    // Normalize phone: strip non-digits, ensure starts with 55
-    const normalized = phone.replace(/\D/g, "");
-    const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
+    const e164 = normalizePhone(phone);
 
     try {
-      const cfg = {
-        baseUrl: connection.evolution_api_url,
-        apiKey: connection.evolution_api_key,
-      };
-
-      const response = await sendText(cfg, connection.instance_name, {
-        number: e164,
-        text,
-        delay: 1200,
-      });
-
-      // Evolution API returns the message key with id
-      const external_id = response?.key?.id ?? response?.messageId ?? undefined;
-      return { success: true, external_id };
+      if (isMeta) {
+        // Meta Cloud API
+        const accessToken = await getMetaAccessToken();
+        if (!accessToken || !connection.meta_phone_number_id) {
+          return { success: false, error: "Credenciais Meta WhatsApp não configuradas." };
+        }
+        const result = await metaSendText(
+          { accessToken, phoneNumberId: connection.meta_phone_number_id },
+          { to: e164, text }
+        );
+        return { success: true, external_id: result.messages?.[0]?.id };
+      } else {
+        // Evolution API
+        if (!connection.evolution_api_url || !connection.evolution_api_key) {
+          return { success: false, error: "Evolution API não configurada." };
+        }
+        const cfg = {
+          baseUrl: connection.evolution_api_url,
+          apiKey: connection.evolution_api_key,
+        };
+        const response = await evolutionSendText(cfg, connection.instance_name, {
+          number: e164,
+          text,
+          delay: 1200,
+        });
+        const external_id = response?.key?.id ?? response?.messageId ?? undefined;
+        return { success: true, external_id };
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao enviar mensagem";
       return { success: false, error: message };
@@ -85,20 +117,37 @@ export function useWhatsAppSender() {
     if (!connection) {
       return { success: false, error: "Nenhuma conexão WhatsApp ativa. Configure em Configurações." };
     }
-    const normalized = phone.replace(/\D/g, "");
-    const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
+    const e164 = normalizePhone(phone);
     try {
-      const cfg = {
-        baseUrl: connection.evolution_api_url,
-        apiKey: connection.evolution_api_key,
-      };
-      const response = await sendTemplate(cfg, connection.instance_name, {
-        number: e164,
-        text,
-        buttons: [{ type: "url", displayText: button.label, content: button.url }],
-      });
-      const external_id = response?.key?.id ?? response?.messageId ?? undefined;
-      return { success: true, external_id };
+      if (isMeta) {
+        // Meta doesn't support ad-hoc URL buttons; use interactive buttons instead
+        const accessToken = await getMetaAccessToken();
+        if (!accessToken || !connection.meta_phone_number_id) {
+          return { success: false, error: "Credenciais Meta WhatsApp não configuradas." };
+        }
+        const result = await metaSendInteractiveButtons(
+          { accessToken, phoneNumberId: connection.meta_phone_number_id },
+          {
+            to: e164,
+            bodyText: text,
+            buttons: [{ id: "btn_1", title: button.label.slice(0, 20) }],
+            footerText: button.url,
+          }
+        );
+        return { success: true, external_id: result.messages?.[0]?.id };
+      } else {
+        const cfg = {
+          baseUrl: connection.evolution_api_url!,
+          apiKey: connection.evolution_api_key!,
+        };
+        const response = await evolutionSendTemplate(cfg, connection.instance_name, {
+          number: e164,
+          text,
+          buttons: [{ type: "url", displayText: button.label, content: button.url }],
+        });
+        const external_id = response?.key?.id ?? response?.messageId ?? undefined;
+        return { success: true, external_id };
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao enviar template";
       return { success: false, error: message };
@@ -109,19 +158,35 @@ export function useWhatsAppSender() {
     if (!connection) {
       return { success: false, error: "Nenhuma conexão WhatsApp ativa. Configure em Configurações." };
     }
-    const normalized = phone.replace(/\D/g, "");
-    const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
+    const e164 = normalizePhone(phone);
     try {
-      const cfg = { baseUrl: connection.evolution_api_url, apiKey: connection.evolution_api_key };
-      const response = await sendFlow(cfg, connection.instance_name, {
-        number: e164,
-        text: payload.text,
-        buttonText: payload.buttonText,
-        flowId: payload.flowId,
-        screenId: payload.screenId,
-      });
-      const external_id = response?.key?.id ?? response?.messageId ?? undefined;
-      return { success: true, external_id };
+      if (isMeta) {
+        // Meta Flows are a separate API — for now send as interactive
+        const accessToken = await getMetaAccessToken();
+        if (!accessToken || !connection.meta_phone_number_id) {
+          return { success: false, error: "Credenciais Meta WhatsApp não configuradas." };
+        }
+        const result = await metaSendInteractiveButtons(
+          { accessToken, phoneNumberId: connection.meta_phone_number_id },
+          {
+            to: e164,
+            bodyText: payload.text,
+            buttons: [{ id: payload.flowId, title: payload.buttonText.slice(0, 20) }],
+          }
+        );
+        return { success: true, external_id: result.messages?.[0]?.id };
+      } else {
+        const cfg = { baseUrl: connection.evolution_api_url!, apiKey: connection.evolution_api_key! };
+        const response = await sendFlow(cfg, connection.instance_name, {
+          number: e164,
+          text: payload.text,
+          buttonText: payload.buttonText,
+          flowId: payload.flowId,
+          screenId: payload.screenId,
+        });
+        const external_id = response?.key?.id ?? response?.messageId ?? undefined;
+        return { success: true, external_id };
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao enviar fluxo";
       return { success: false, error: message };
@@ -130,10 +195,32 @@ export function useWhatsAppSender() {
 
   async function refreshConnectionStatus(): Promise<void> {
     if (!connection) return;
+
+    if (isMeta) {
+      // Meta connections are always-on; just verify the phone number is accessible
+      try {
+        const accessToken = await getMetaAccessToken();
+        if (!accessToken || !connection.meta_phone_number_id) return;
+        const { getPhoneNumberInfo } = await import("@/lib/meta-whatsapp-api");
+        await getPhoneNumberInfo({ accessToken, phoneNumberId: connection.meta_phone_number_id });
+        await (supabase as any)
+          .from("whatsapp_connections")
+          .update({ status: "connected" })
+          .eq("id", connection.id);
+      } catch {
+        await (supabase as any)
+          .from("whatsapp_connections")
+          .update({ status: "error" })
+          .eq("id", connection.id);
+      }
+      return;
+    }
+
+    // Evolution API
     try {
       const cfg = {
-        baseUrl: connection.evolution_api_url,
-        apiKey: connection.evolution_api_key,
+        baseUrl: connection.evolution_api_url!,
+        apiKey: connection.evolution_api_key!,
       };
       const state = await getConnectionState(cfg, connection.instance_name);
       const mapped = mapEvolutionState(state.state);
@@ -142,7 +229,7 @@ export function useWhatsAppSender() {
         .update({ status: mapped })
         .eq("id", connection.id);
     } catch {
-      // silent — connection may be temporarily unreachable
+      // silent
     }
   }
 
@@ -150,9 +237,28 @@ export function useWhatsAppSender() {
     connection,
     isReady,
     isLoading,
+    isMeta,
     sendMessage,
     sendTemplateButton,
     sendFlowMessage,
     refreshConnectionStatus,
   };
+}
+
+/**
+ * Get the Meta WhatsApp access token from Supabase secrets (edge function proxy)
+ * or from the connection's stored token.
+ */
+async function getMetaAccessToken(): Promise<string | null> {
+  // The token is stored as a Supabase secret (META_WHATSAPP_ACCESS_TOKEN)
+  // We call an edge function to proxy the request, or use the token
+  // stored server-side. For client-side, we invoke an edge function.
+  try {
+    const { data } = await supabase.functions.invoke("meta-whatsapp-token", {
+      method: "GET",
+    });
+    return data?.access_token ?? null;
+  } catch {
+    return null;
+  }
 }
