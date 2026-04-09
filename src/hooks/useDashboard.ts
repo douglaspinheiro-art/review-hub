@@ -296,7 +296,7 @@ export function useConversations(statusFilter = "all") {
       const { userId } = await getCurrentUserAndStore();
       if (!userId) return [];
 
-      let query = supabase
+      let query = (supabase as any)
         .from("conversations")
         .select(`
           id, status, last_message, last_message_at, unread_count, assigned_to, assigned_to_name, priority, sla_due_at,
