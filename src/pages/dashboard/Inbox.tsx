@@ -395,7 +395,7 @@ export default function Inbox() {
     setPriority(((selectedConv as any).priority ?? "normal") as "low" | "normal" | "high" | "urgent");
   }, [selectedConv?.id]);
 
-  const uniqueTags = Array.from(new Set(
+  const uniqueTags: string[] = Array.from(new Set(
     conversations.flatMap((c: any) => Array.isArray(c.contacts?.tags) ? c.contacts.tags : [])
   ));
 
