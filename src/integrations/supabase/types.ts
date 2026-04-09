@@ -3344,6 +3344,7 @@ export type Database = {
       }
       whatsapp_connections: {
         Row: {
+          api_provider: string
           created_at: string | null
           evolution_api_key: string | null
           evolution_api_url: string | null
@@ -3361,6 +3362,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          api_provider?: string
           created_at?: string | null
           evolution_api_key?: string | null
           evolution_api_url?: string | null
@@ -3378,6 +3380,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          api_provider?: string
           created_at?: string | null
           evolution_api_key?: string | null
           evolution_api_url?: string | null
