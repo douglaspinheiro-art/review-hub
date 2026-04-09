@@ -142,7 +142,7 @@ export function useCampaigns() {
         : supabase.from("message_sends").select("campaign_id,status").eq("user_id", userId);
 
       const attributionBase = storeId
-        ? supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("store_id", storeId)
+        ? (supabase as any).from("attribution_events").select("order_value,attributed_campaign_id").eq("store_id", storeId)
         : supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("user_id", userId);
 
       const [campaignsRes, sendsRes, attributionRes] = await Promise.all([
@@ -344,7 +344,7 @@ export function useConversationIdsByMessageSearch(search: string) {
     queryKey: ["conversation-search-messages", q],
     queryFn: async () => {
       if (q.length < 2) return [] as string[];
-      const { data, error } = await supabase.rpc("search_conversation_ids_by_message", { p_search: q });
+      const { data, error } = await (supabase as any).rpc("search_conversation_ids_by_message", { p_search: q });
       if (error) throw error;
       const rows = (data ?? []) as { conversation_id: string }[];
       return rows.map((r) => r.conversation_id);
@@ -361,7 +361,7 @@ export function useInboxRoutingSettings() {
       const { userId } = await getCurrentUserAndStore();
       if (!userId) return { agent_names: [] as string[], round_robin_index: 0 };
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("inbox_routing_settings")
         .select("agent_names, round_robin_index")
         .eq("user_id", userId)
@@ -463,16 +463,16 @@ export function useConversionBaseline(days = 30) {
       const prevSinceIso = new Date(Date.now() - days * 2 * 86_400_000).toISOString();
 
       const sendsBase = storeId
-        ? supabase.from("message_sends").select("status,created_at").eq("store_id", storeId)
-        : supabase.from("message_sends").select("status,created_at").eq("user_id", userId);
+        ? (supabase as any).from("message_sends").select("status,created_at").eq("store_id", storeId)
+        : (supabase as any).from("message_sends").select("status,created_at").eq("user_id", userId);
 
       const convBase = storeId
         ? supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("store_id", storeId)
         : supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("user_id", userId);
 
       const attrBase = storeId
-        ? supabase.from("attribution_events").select("order_value,order_date").eq("store_id", storeId)
-        : supabase.from("attribution_events").select("order_value,order_date").eq("user_id", userId);
+        ? (supabase as any).from("attribution_events").select("order_value,order_date").eq("store_id", storeId)
+        : (supabase as any).from("attribution_events").select("order_value,order_date").eq("user_id", userId);
 
       const [sendsRes, sendsPrevRes, conversationsRes, attributionRes] = await Promise.all([
         sendsBase.gte("created_at", sinceIso),

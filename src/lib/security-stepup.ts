@@ -31,7 +31,7 @@ export async function markStepUpVerified(userId: string) {
   writeLocalStepUp({ userId, verifiedUntil });
 
   // Best-effort backend TTL state for server-side checks.
-  await supabase
+  await (supabase as any)
     .from("security_stepup_sessions")
     .upsert(
       {
@@ -49,7 +49,7 @@ export async function hasValidStepUp(userId: string): Promise<boolean> {
     return true;
   }
 
-  const { data } = await supabase
+  const { data } = await (supabase as any)
     .from("security_stepup_sessions")
     .select("expires_at")
     .eq("user_id", userId)

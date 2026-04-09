@@ -377,7 +377,7 @@ export function useExecutionPlaybooks(lojaId: string | null) {
     queryFn: async (): Promise<ExecutionPlaybookItem[]> => {
       const uid = await getUid();
       if (!uid) return [];
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("convertiq_execution_playbooks")
         .select("id,action_key,action_title,owner,status,planned_week,expected_lift_pp,expected_impact_reais,observed_result,observed_lift_pp,observed_impact_reais,updated_at")
         .eq("user_id", uid)
@@ -411,7 +411,7 @@ export function useUpsertExecutionPlaybook() {
       const uid = await getUid();
       if (!uid) throw new Error("Não autenticado");
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("convertiq_execution_playbooks")
         .upsert(
           {
