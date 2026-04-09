@@ -9,26 +9,50 @@ function run(command, args) {
   return (result.stdout || "").trim();
 }
 
-function getChangedFiles() {
-  const baseRef = process.env.GITHUB_BASE_REF;
-  let diffArgs;
-  if (baseRef) {
-    try {
-      run("git", ["fetch", "--depth=1", "origin", baseRef]);
-    } catch {
-      // Best effort fetch for CI shallow clones.
-    }
-    diffArgs = ["diff", "--name-only", "--diff-filter=ACMRT", `origin/${baseRef}...HEAD`];
-  } else {
-    diffArgs = ["diff", "--name-only", "--diff-filter=ACMRT", "HEAD~1...HEAD"];
-  }
+function runSafe(command, args) {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  return {
+    ok: result.status === 0 && !result.error,
+    stdout: (result.stdout || "").trim(),
+    stderr: (result.stderr || "").trim(),
+  };
+}
 
-  const out = run("git", diffArgs);
+function listTsFilesFromOutput(out) {
   return out
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)
     .filter((f) => /\.(ts|tsx)$/.test(f));
+}
+
+function listChangedFromHead() {
+  // Works even when checkout is shallow and HEAD~1 is unavailable.
+  const headOnly = runSafe("git", ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]);
+  if (!headOnly.ok) return [];
+  return listTsFilesFromOutput(headOnly.stdout);
+}
+
+function getChangedFiles() {
+  const baseRef = process.env.GITHUB_BASE_REF;
+  if (baseRef) {
+    try {
+      run("git", ["fetch", "--depth=50", "origin", baseRef]);
+    } catch {
+      // Best effort fetch for CI shallow clones.
+    }
+    const prDiff = runSafe("git", ["diff", "--name-only", "--diff-filter=ACMRT", `origin/${baseRef}...HEAD`]);
+    if (prDiff.ok) return listTsFilesFromOutput(prDiff.stdout);
+    return listChangedFromHead();
+  }
+
+  const hasPrevious = runSafe("git", ["rev-parse", "--verify", "HEAD~1"]);
+  if (hasPrevious.ok) {
+    const pushDiff = runSafe("git", ["diff", "--name-only", "--diff-filter=ACMRT", "HEAD~1...HEAD"]);
+    if (pushDiff.ok) return listTsFilesFromOutput(pushDiff.stdout);
+  }
+
+  return listChangedFromHead();
 }
 
 try {
