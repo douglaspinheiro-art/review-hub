@@ -6,20 +6,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/edge-utils.ts";
 
 function isAuthorized(req: Request): boolean {
+  // Only the dedicated TRIGGER_AUTOMATIONS_SECRET is accepted.
+  // The SUPABASE_SERVICE_ROLE_KEY must NOT be used as a password — if it
+  // leaks the attacker gains full database access, not just this worker.
+  const cronSecret = Deno.env.get("TRIGGER_AUTOMATIONS_SECRET");
+  if (!cronSecret) {
+    console.error("TRIGGER_AUTOMATIONS_SECRET is not configured");
+    return false;
+  }
   const authHeader = req.headers.get("authorization") ?? "";
   const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const cronSecret = Deno.env.get("TRIGGER_AUTOMATIONS_SECRET") ?? "";
-  if (!bearer) return false;
-  if (serviceKey && bearer === serviceKey) return true;
-  if (cronSecret && bearer === cronSecret) return true;
-  return false;
+  return bearer === cronSecret;
 }
 
 serve(async (req) => {

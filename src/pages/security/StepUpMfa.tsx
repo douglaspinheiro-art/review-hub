@@ -9,10 +9,11 @@ export default function StepUpMfa() {
   const location = useLocation();
   const { user: clerkUser, isLoaded } = useUser();
   const [verifying, setVerifying] = useState(false);
-  const from = useMemo(
-    () => (location.state as { from?: string } | null)?.from ?? "/dashboard",
-    [location.state],
-  );
+  const from = useMemo(() => {
+    const raw = (location.state as { from?: string } | null)?.from;
+    // Only allow relative internal paths to prevent open redirect attacks.
+    return raw?.startsWith("/") && !raw.startsWith("//") ? raw : "/dashboard";
+  }, [location.state]);
 
   const supabaseUserId = localStorage.getItem("ltv_stepup_user_hint");
   if (!supabaseUserId) {

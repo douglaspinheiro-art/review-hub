@@ -13,8 +13,8 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "noFallthroughCasesInSwitch": false,
-    "noImplicitAny": false,
-    "noUnusedLocals": false,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
     "noUnusedParameters": false,
     "paths": {
       "@/*": [
@@ -26,6 +26,7 @@
     },
     "skipLibCheck": true,
     "strict": false,
+    "strictNullChecks": true,
     "target": "ES2020",
     "types": [
       "vitest/globals"

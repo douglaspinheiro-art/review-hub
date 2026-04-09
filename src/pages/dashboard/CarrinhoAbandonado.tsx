@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { sendText } from "@/lib/evolution-api";
+import { sendTextForConnection, sendTemplateForConnection, type ConnRow } from "@/lib/evolution-api";
 import { cn } from "@/lib/utils";
 
 type Cart = {
@@ -61,20 +61,36 @@ export default function CarrinhoAbandonado() {
 
   const sendMutation = useMutation({
     mutationFn: async (cart: Cart) => {
-      // 1. Get user's active WhatsApp connection with Evolution API config
-      const { data: waConns, error: waErr } = await supabase
+      // 1. Get user's active WhatsApp connection — do NOT select sensitive credentials
+      // (evolution_api_key, meta_access_token). Those are only accessed server-side by
+      // the edge function proxies (evolution-proxy / meta-whatsapp-send).
+      const { data: waRow, error: waErr } = await supabase
         .from("whatsapp_connections")
-        .select("instance_name, evolution_api_url, evolution_api_key")
+        .select(
+          "id, instance_name, status, evolution_api_url, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
+        )
         .eq("user_id", user!.id)
         .eq("status", "connected")
         .limit(1)
         .single();
 
-      if (waErr || !waConns) {
-        throw new Error("Nenhuma conexão WhatsApp ativa. Conecte o WhatsApp em Configurações.");
+      if (waErr || !waRow) {
+        throw new Error("Nenhuma conexão WhatsApp ativa. Conecte em Dashboard → WhatsApp.");
       }
-      if (!waConns.evolution_api_url || !waConns.evolution_api_key) {
-        throw new Error("Evolution API não configurada. Configure em Configurações → WhatsApp API.");
+
+      const waConns = waRow as ConnRow;
+      const isMeta = waConns.provider === "meta_cloud";
+      if (isMeta) {
+        if (!waConns.meta_phone_number_id?.trim()) {
+          throw new Error("Meta Cloud API: informe Phone number ID em Dashboard → WhatsApp → Configurar API.");
+        }
+        if (!waConns.meta_default_template_name?.trim()) {
+          throw new Error(
+            "Meta Cloud API: fora da janela de 24h é obrigatório um template aprovado. Defina o template padrão em Configurar API (deve ter variável de corpo compatível com o texto enviado).",
+          );
+        }
+      } else if (!waConns.evolution_api_url) {
+        throw new Error("Evolution API não configurada. Use Configurar API no painel WhatsApp.");
       }
 
       // 2. Build recovery message
@@ -82,12 +98,20 @@ export default function CarrinhoAbandonado() {
       const value = cart.cart_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       const message = `Olá ${name}! 👋 Você deixou ${value} em itens no carrinho.\n\nSua seleção ainda está guardada. Finalize sua compra agora e garanta seus produtos! 🛍️`;
 
-      // 3. Send WhatsApp message via Evolution API
-      await sendText(
-        { baseUrl: waConns.evolution_api_url, apiKey: waConns.evolution_api_key },
-        waConns.instance_name,
-        { number: cart.customer_phone, text: message }
-      );
+      const number = cart.customer_phone.replace(/\D/g, "").startsWith("55")
+        ? cart.customer_phone.replace(/\D/g, "")
+        : `55${cart.customer_phone.replace(/\D/g, "")}`;
+
+      // 3. Envio: texto livre (Evolution); template (Meta — contato frio)
+      if (isMeta) {
+        await sendTemplateForConnection(waConns, {
+          number,
+          text: message,
+          buttons: [{ type: "url", displayText: "Loja", content: "https://example.com" }],
+        });
+      } else {
+        await sendTextForConnection(waConns, { number, text: message });
+      }
 
       // 4. Update cart status in DB
       const { error: updateErr } = await supabase

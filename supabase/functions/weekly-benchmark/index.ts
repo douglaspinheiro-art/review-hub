@@ -5,15 +5,17 @@
 // cron: "0 12 * * 1"  (UTC, = 09:00 BRT)
 //
 // POST /functions/v1/weekly-benchmark  (manual trigger for testing)
+// Requires CRON_SECRET header for all invocations.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyCronSecret } from "../_shared/edge-utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Content-Type": "application/json",
 };
@@ -209,6 +211,9 @@ serve(async (req: Request) => {
     return new Response(null, { headers: CORS });
   }
 
+  const cronErr = verifyCronSecret(req);
+  if (cronErr) return cronErr;
+
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -268,7 +273,7 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error("weekly-benchmark error:", err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "Erro interno" }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: CORS },
     );
   }

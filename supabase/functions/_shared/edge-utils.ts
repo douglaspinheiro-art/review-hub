@@ -1,11 +1,14 @@
 /**
  * Shared utilities for Supabase Edge Functions:
+ * - JWT authentication helper
+ * - Cron secret verification
  * - Zod input validation helper
  * - In-memory rate limiting
  * - Standard CORS headers
  */
 
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -127,6 +130,54 @@ export function rateLimitedResponseWithRetry(retryAfterSeconds: number): Respons
       },
     },
   );
+}
+
+// ── JWT Authentication ────────────────────────────────────────────────────────
+
+export type AuthResult =
+  | { ok: true; userId: string }
+  | { ok: false; response: Response };
+
+/**
+ * Verifies the Bearer JWT from the Authorization header.
+ * Returns the authenticated userId or an error Response.
+ * Use for all user-invoked Edge Functions.
+ */
+export async function verifyJwt(req: Request): Promise<AuthResult> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return { ok: false, response: errorResponse("Missing or invalid Authorization header", 401) };
+  }
+  const token = authHeader.slice(7);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { ok: false, response: errorResponse("Server misconfiguration", 500) };
+  }
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const { data: { user }, error } = await client.auth.getUser(token);
+  if (error || !user) {
+    return { ok: false, response: errorResponse("Unauthorized", 401) };
+  }
+  return { ok: true, userId: user.id };
+}
+
+/**
+ * Verifies the Authorization header contains the CRON_SECRET.
+ * Use for cron-triggered Edge Functions to prevent unauthorized execution.
+ */
+export function verifyCronSecret(req: Request): Response | null {
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  if (!cronSecret) {
+    return errorResponse("CRON_SECRET is not configured on this server", 500);
+  }
+  const authHeader = req.headers.get("Authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return errorResponse("Unauthorized", 401);
+  }
+  return null;
 }
 
 export function validateBrowserOrigin(req: Request): Response | null {

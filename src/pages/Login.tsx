@@ -31,7 +31,10 @@ export default function Login() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string })?.from ?? "/dashboard";
+  // Sanitize the redirect target: only allow relative paths starting with "/" to
+  // prevent open redirect attacks via manipulated location.state.
+  const rawFrom = (location.state as { from?: string } | null)?.from;
+  const from = rawFrom?.startsWith("/") && !rawFrom.startsWith("//") ? rawFrom : "/dashboard";
 
   // Fix 4: redirect already-authenticated users
   useEffect(() => {

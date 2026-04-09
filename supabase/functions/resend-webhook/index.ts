@@ -28,12 +28,17 @@ serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  if (RESEND_WEBHOOK_SECRET) {
-    const q = new URL(req.url).searchParams.get("secret");
-    const header = req.headers.get("x-webhook-secret");
-    if (q !== RESEND_WEBHOOK_SECRET && header !== RESEND_WEBHOOK_SECRET) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+  // RESEND_WEBHOOK_SECRET is mandatory — reject all requests if not configured
+  // to prevent unauthorized writes to customers_v3.
+  if (!RESEND_WEBHOOK_SECRET) {
+    console.error("resend-webhook: RESEND_WEBHOOK_SECRET is not configured");
+    return new Response("Service unavailable", { status: 503 });
+  }
+
+  const q = new URL(req.url).searchParams.get("secret");
+  const header = req.headers.get("x-webhook-secret");
+  if (q !== RESEND_WEBHOOK_SECRET && header !== RESEND_WEBHOOK_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   try {

@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { verifyJwt } from "../_shared/edge-utils.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -11,6 +12,9 @@ const BodySchema = z.object({ store_id: z.string().uuid() });
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const auth = await verifyJwt(req);
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await req.json();
@@ -22,8 +26,17 @@ serve(async (req) => {
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
+    // Verify the authenticated user owns this store
+    const { data: store } = await supabase.from("stores").select("user_id").eq("id", store_id).single();
+    if (!store || store.user_id !== auth.userId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+    }
+
     const { data: customers, error: custErr } = await supabase.from("customers_v3").select("id").eq("store_id", store_id);
-    if (custErr) return new Response(JSON.stringify({ error: custErr.message }), { status: 500, headers: corsHeaders });
+    if (custErr) {
+      console.error("calculate-rfm customer fetch error:", custErr.code);
+      return new Response(JSON.stringify({ error: "Database error" }), { status: 500, headers: corsHeaders });
+    }
 
     let updatedCount = 0;
     for (const customer of customers ?? []) {
@@ -65,7 +78,8 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ ok: true, updated: updatedCount }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+  } catch (err) {
+    console.error("calculate-rfm error:", err);
+    return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: corsHeaders });
   }
 });

@@ -1,12 +1,13 @@
 // supabase/functions/email-onboarding/index.ts
 // Deno Edge Function — sends D+1 and D+3 onboarding reminder emails.
 // Triggered by a Supabase cron job daily at 10:00 BRT.
-// Requires RESEND_API_KEY secret (or swap for SendGrid/AWS SES).
+// Requires RESEND_API_KEY and CRON_SECRET secrets.
 //
 // POST /functions/v1/email-onboarding
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyCronSecret } from "../_shared/edge-utils.ts";
 
 const SUPABASE_URL        = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -15,7 +16,7 @@ const FROM_EMAIL          = "no-reply@ltvboost.com.br";
 const APP_URL             = "https://ltvboost.com.br";
 
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Content-Type": "application/json",
 };
@@ -129,6 +130,9 @@ function d3Html(name: string, hasIntegration: boolean): string {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+  const cronErr = verifyCronSecret(req);
+  if (cronErr) return cronErr;
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const now = new Date();

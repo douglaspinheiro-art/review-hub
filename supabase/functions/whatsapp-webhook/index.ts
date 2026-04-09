@@ -10,6 +10,8 @@ import {
   z,
 } from "../_shared/edge-utils.ts";
 import { rejectIfBodyTooLarge } from "../_shared/validation.ts";
+import { persistInboundWhatsAppMessage } from "../_shared/whatsapp-inbound-persist.ts";
+import { outboundSendText } from "../_shared/whatsapp-outbound.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,16 +116,27 @@ Deno.serve(async (req) => {
     }
     const { event, data, instance } = parsed.data;
 
-    // 1. Identify store by instance name
+    // 1. Identify store by instance name (Evolution)
     const { data: connection } = await supabase
       .from("whatsapp_connections")
-      .select("store_id, user_id, evolution_api_url, evolution_api_key")
+      .select(
+        "store_id, user_id, provider, instance_name, evolution_api_url, evolution_api_key, meta_phone_number_id, meta_access_token, meta_api_version",
+      )
       .eq("instance_name", instance)
       .single();
 
     if (!connection) return new Response("Instance not found", { status: 404, headers: corsHeaders });
 
     const { store_id, user_id } = connection;
+    const connRow = connection as {
+      provider?: string;
+      instance_name: string;
+      evolution_api_url: string | null;
+      evolution_api_key: string | null;
+      meta_phone_number_id: string | null;
+      meta_access_token: string | null;
+      meta_api_version: string | null;
+    };
 
     // 2. Handle Message Received (Inbound)
     if (event === "messages.upsert") {
@@ -153,171 +166,112 @@ Deno.serve(async (req) => {
       const remoteJid = data.key.remoteJid;
       const phone = remoteJid.replace(/\D/g, "");
       const isMe = data.key.fromMe;
-      const inboundText = String(data.message?.conversation ?? "").trim().toLowerCase();
-      const optOutKeywords = ["pare", "parar", "sair", "stop", "unsubscribe", "cancelar"];
 
       if (isMe) return new Response("Self message ignored", { status: 200, headers: corsHeaders });
 
-      // Upsert Customer (v3)
-      const { data: customer } = await supabase.from("customers_v3").upsert({
+      const persisted = await persistInboundWhatsAppMessage(supabase, {
         user_id,
         store_id,
         phone,
-        name: data.pushName || "Cliente WhatsApp",
-      }, { onConflict: "store_id, phone" }).select("id").single();
+        messageContent,
+        messageType,
+        external_id: String(data.key.id ?? ""),
+        pushName: typeof (data as Record<string, unknown>).pushName === "string"
+          ? (data as Record<string, unknown>).pushName as string
+          : undefined,
+      });
 
-      if (customer) {
-        // Compliance: detect opt-out intent in inbound WhatsApp message.
-        if (optOutKeywords.some((k) => inboundText === k || inboundText.includes(`${k} `) || inboundText.endsWith(` ${k}`))) {
-          await (supabase as any)
-            .from("customers_v3")
-            .update({ unsubscribed_at: new Date().toISOString() })
-            .eq("id", customer.id);
-        }
+      if (!persisted) {
+        return new Response("Persist failed", { status: 500, headers: corsHeaders });
+      }
 
-        // Find or create conversation
-        let { data: conversation } = await supabase
-          .from("conversations")
-          .select("id")
-          .eq("store_id", store_id)
-          .eq("contact_id", customer.id)
-          .maybeSingle();
+      const { customer_id, conversation_id } = persisted;
 
-        if (!conversation) {
-          const { data: newConv } = await supabase.from("conversations").insert({
-            user_id,
-            store_id,
-            contact_id: customer.id,
-            status: "open",
-            last_message: messageContent || "Mensagem recebida",
-            last_message_at: new Date().toISOString(),
-          }).select("id").single();
-          conversation = newConv;
-        }
+      // Instrument reply count on last touched campaign (up to 7 days)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: lastSend } = await (supabase as any)
+        .from("message_sends")
+        .select("id, campaign_id")
+        .eq("customer_id", customer_id)
+        .eq("store_id", store_id)
+        .not("campaign_id", "is", null)
+        .gte("created_at", sevenDaysAgo)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-        if (conversation) {
-          // Insert Message
-          await supabase.from("messages").insert({
-            user_id,
-            conversation_id: conversation.id,
-            content: messageContent || "",
-            direction: "inbound",
-            status: "delivered",
-            type: messageType,
-            external_id: data.key.id
-          });
-
-          await supabase
-            .from("conversations")
-            .update({
-              last_message: messageContent || "Mensagem recebida",
-              last_message_at: new Date().toISOString(),
-            })
-            .eq("id", conversation.id);
-
-          // Update conversation unread count
-          await supabase.rpc('increment_unread_count', { conv_id: conversation.id });
-
-          // Round-robin assignee when fila is configured and conversation has no owner yet
-          const { data: convAssign } = await supabase
-            .from("conversations")
-            .select("assigned_to_name")
-            .eq("id", conversation.id)
-            .single();
-          const stillEmpty = !String((convAssign as { assigned_to_name?: string | null } | null)?.assigned_to_name ?? "").trim();
-          if (stillEmpty) {
-            const { data: nextAgent } = await supabase.rpc("bump_inbox_round_robin", { p_user_id: user_id });
-            const name = typeof nextAgent === "string" ? nextAgent.trim() : "";
-            if (name) {
-              await supabase
-                .from("conversations")
-                .update({ assigned_to_name: name })
-                .eq("id", conversation.id);
-            }
-          }
-
-          // Instrument reply count on last touched campaign (up to 7 days)
-          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-          const { data: lastSend } = await (supabase as any)
-            .from("message_sends")
-            .select("id, campaign_id")
-            .eq("customer_id", customer.id)
-            .eq("store_id", store_id)
-            .not("campaign_id", "is", null)
-            .gte("created_at", sevenDaysAgo)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (lastSend?.campaign_id) {
+      if (lastSend?.campaign_id) {
+        await supabase
+          .from("campaigns")
+          .select("reply_count")
+          .eq("id", lastSend.campaign_id)
+          .single()
+          .then(async ({ data: c }) => {
+            if (!c) return;
             await supabase
               .from("campaigns")
-              .select("reply_count")
-              .eq("id", lastSend.campaign_id)
-              .single()
-              .then(async ({ data: c }) => {
-                if (!c) return;
-                await supabase
-                  .from("campaigns")
-                  .update({ reply_count: Number((c as any).reply_count ?? 0) + 1 } as any)
-                  .eq("id", lastSend.campaign_id);
-              });
-          }
+              .update({ reply_count: Number((c as any).reply_count ?? 0) + 1 } as any)
+              .eq("id", lastSend.campaign_id);
+          });
+      }
 
-          // Chatbot auto-reply (piloto_automatico) integrated with Inbox flow.
-          const { data: aiCfg } = await (supabase as any)
-            .from("ai_agent_config")
-            .select("ativo,modo")
-            .eq("store_id", store_id)
-            .maybeSingle();
+      // Chatbot auto-reply (Evolution ou Meta via outbound unificado)
+      const { data: aiCfg } = await (supabase as any)
+        .from("ai_agent_config")
+        .select("ativo,modo")
+        .eq("store_id", store_id)
+        .maybeSingle();
 
-          if (aiCfg?.ativo && aiCfg?.modo === "piloto_automatico") {
-            try {
-              const suggestRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-reply-suggest`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
-                },
-                body: JSON.stringify({ conversation_id: conversation.id }),
-              });
-              if (suggestRes.ok) {
-                const suggest = await suggestRes.json();
-                const aiText = String(suggest?.suggestion ?? suggest?.reply ?? "").trim();
-                if (aiText) {
-                  const waUrl = `${connection.evolution_api_url.replace(/\/$/, "")}/message/sendText/${instance}`;
-                  await fetch(waUrl, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      apikey: connection.evolution_api_key,
-                    },
-                    body: JSON.stringify({
-                      number: phone,
-                      text: aiText,
-                      delay: 1000,
-                    }),
-                  }).then(() => {}, () => {});
-
-                  await supabase.from("messages").insert({
-                    user_id,
-                    conversation_id: conversation.id,
-                    content: aiText,
-                    direction: "outbound",
-                    status: "sent",
-                    type: "text",
-                  });
-
-                  await supabase
-                    .from("conversations")
-                    .update({ last_message: aiText, last_message_at: new Date().toISOString() })
-                    .eq("id", conversation.id);
-                }
+      if (aiCfg?.ativo && aiCfg?.modo === "piloto_automatico") {
+        try {
+          const suggestRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-reply-suggest`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+            },
+            body: JSON.stringify({ conversation_id }),
+          });
+          if (suggestRes.ok) {
+            const suggest = await suggestRes.json();
+            const aiText = String(suggest?.suggestion ?? suggest?.reply ?? "").trim();
+            if (aiText) {
+              try {
+                await outboundSendText(
+                  {
+                    provider: connRow.provider ?? "evolution",
+                    instance_name: connRow.instance_name,
+                    evolution_api_url: connRow.evolution_api_url,
+                    evolution_api_key: connRow.evolution_api_key,
+                    meta_phone_number_id: connRow.meta_phone_number_id,
+                    meta_access_token: connRow.meta_access_token,
+                    meta_api_version: connRow.meta_api_version,
+                  },
+                  phone,
+                  aiText,
+                  1000,
+                );
+              } catch (sendErr) {
+                console.warn("Auto-reply send failed:", sendErr);
               }
-            } catch (err) {
-              console.warn("Auto-reply failed:", err);
+
+              await supabase.from("messages").insert({
+                user_id,
+                conversation_id,
+                content: aiText,
+                direction: "outbound",
+                status: "sent",
+                type: "text",
+              });
+
+              await supabase
+                .from("conversations")
+                .update({ last_message: aiText, last_message_at: new Date().toISOString() })
+                .eq("id", conversation_id);
             }
           }
+        } catch (err) {
+          console.warn("Auto-reply failed:", err);
         }
       }
     }

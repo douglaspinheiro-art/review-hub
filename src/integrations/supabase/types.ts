@@ -3098,6 +3098,12 @@ export type Database = {
           evolution_api_url: string | null
           id: string
           instance_name: string
+          meta_access_token: string | null
+          meta_api_version: string | null
+          meta_default_template_name: string | null
+          meta_phone_number_id: string | null
+          meta_waba_id: string | null
+          provider: string
           status: string | null
           store_id: string | null
           updated_at: string | null
@@ -3109,6 +3115,12 @@ export type Database = {
           evolution_api_url?: string | null
           id?: string
           instance_name: string
+          meta_access_token?: string | null
+          meta_api_version?: string | null
+          meta_default_template_name?: string | null
+          meta_phone_number_id?: string | null
+          meta_waba_id?: string | null
+          provider?: string
           status?: string | null
           store_id?: string | null
           updated_at?: string | null
@@ -3120,6 +3132,12 @@ export type Database = {
           evolution_api_url?: string | null
           id?: string
           instance_name?: string
+          meta_access_token?: string | null
+          meta_api_version?: string | null
+          meta_default_template_name?: string | null
+          meta_phone_number_id?: string | null
+          meta_waba_id?: string | null
+          provider?: string
           status?: string | null
           store_id?: string | null
           updated_at?: string | null

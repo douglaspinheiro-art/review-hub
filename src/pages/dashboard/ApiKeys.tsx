@@ -26,24 +26,6 @@ type ApiKey = {
   created_at: string;
 };
 
-/** SHA-256 hash via Web Crypto (non-reversible) */
-async function sha256(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/** Generates a random API key (client-side — in prod, move generation to an Edge Function) */
-async function generateKey(env: "production" | "sandbox"): Promise<{ full: string; preview: string; prefix: string; hash: string }> {
-  const prefix = env === "production" ? "chb_live_" : "chb_test_";
-  const random = Array.from(crypto.getRandomValues(new Uint8Array(24)))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 32);
-  const full = `${prefix}${random}`;
-  const preview = `${prefix}${"•".repeat(20)}${random.slice(-6)}`;
-  const hash = await sha256(full);
-  return { full, preview, prefix, hash };
-}
 
 export default function ApiKeys() {
   const { user } = useAuth();
@@ -72,19 +54,14 @@ export default function ApiKeys() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const { full, preview, prefix, hash } = await generateKey(env);
-      const { error } = await supabase.from("api_keys").insert({
-        user_id: user!.id,
-        name: newKeyName.trim(),
-        key_prefix: prefix,
-        key_hash: hash,
-        key_preview: preview,
-        environment: env,
-        scopes: ["read", "write"],
-        is_active: true,
+      // Key generation happens server-side in the generate-api-key Edge Function.
+      // The full key is returned once and never stored in plaintext.
+      const { data, error } = await supabase.functions.invoke<{ fullKey: string; preview: string }>("generate-api-key", {
+        body: { name: newKeyName.trim(), environment: env },
       });
-      if (error) throw error;
-      return full;
+      if (error) throw new Error(error.message);
+      if (!data?.fullKey) throw new Error("Resposta inválida do servidor");
+      return data.fullKey;
     },
     onSuccess: (full) => {
       setNewKeyFull(full);

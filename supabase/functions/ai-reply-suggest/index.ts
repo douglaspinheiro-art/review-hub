@@ -1,11 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, checkRateLimit } from "../_shared/edge-utils.ts";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 function checkRL(key: string, max = 20, windowMs = 60_000): boolean {
@@ -82,9 +77,15 @@ serve(async (req) => {
       const { conversation_id, context } = parsedConversation.data;
       const { data: conv } = await supabase
         .from("conversations")
-        .select("store_id")
+        .select("store_id, user_id")
         .eq("id", conversation_id)
         .maybeSingle();
+
+      // IDOR guard: verify the authenticated user owns this conversation
+      if (!conv || conv.user_id !== authData.user.id) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+      }
+
       const { data: aiCfg } = conv?.store_id
         ? await (supabase as any)
           .from("ai_agent_config")

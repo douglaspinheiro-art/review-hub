@@ -21,35 +21,35 @@ export default function Analisando() {
   const perda = searchParams.get("perda");
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [recoverable, setRecoverable] = useState(0);
 
   useEffect(() => {
-    // Simulação de cálculo de recuperação real baseado na perda informada
-    if (perda) {
-      const basePerda = Number(perda);
-      const randomBoost = 0.15 + (Math.random() * 0.1); // 15-25% de recuperação imediata
-      setRecoverable(Math.round(basePerda * randomBoost));
+    let channelRef: ReturnType<typeof supabase.channel> | null = null;
+
+    async function setupRealtime() {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (!userId) return;
+
+      // Filter by user_id so only the authenticated user's own diagnostics trigger navigation.
+      channelRef = supabase
+        .channel(`diagnosticos-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "diagnosticos_v3",
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            setProgress(100);
+            setTimeout(() => navigate(`/resultado${perda ? `?perda=${perda}` : ""}`), 1000);
+          }
+        )
+        .subscribe();
     }
-  }, [perda]);
 
-  useEffect(() => {
-    // 1. Configura o listener Realtime para o diagnóstico
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'diagnosticos_v3'
-        },
-        (payload) => {
-          console.log('Diagnóstico gerado com sucesso!', payload);
-          setProgress(100);
-          setTimeout(() => navigate(`/resultado${perda ? `?perda=${perda}` : ""}`), 1000);
-        }
-      )
-      .subscribe();
+    setupRealtime();
 
     // 2. Lógica visual de progresso (fake progress até 95%)
     let elapsedMs = 0;
@@ -72,7 +72,7 @@ export default function Analisando() {
     }, 16000);
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channelRef) supabase.removeChannel(channelRef);
       clearInterval(visualInterval);
       clearTimeout(fallbackTimer);
     };

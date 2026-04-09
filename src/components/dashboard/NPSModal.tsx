@@ -4,6 +4,7 @@ import { Heart, X, ArrowRight, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
 
 interface NPSModalProps {
   onClose: () => void;
@@ -24,8 +25,17 @@ export function NPSModal({ onClose }: NPSModalProps) {
     if (selected === null) return;
     setSubmitting(true);
 
-    // NPS data is logged but not saved to a table that doesn't exist
-    console.log("NPS Response:", { user_id: user?.id, score: selected, comment });
+    try {
+      await supabase.from("nps_responses").insert({
+        user_id: user?.id ?? null,
+        score: selected,
+        comment: comment.trim() || null,
+        category: isPromoter ? "promoter" : isDetractor ? "detractor" : "neutral",
+      });
+    } catch {
+      // Non-blocking: if the table doesn't exist yet, proceed anyway.
+      // Do not re-throw — feedback experience must not break due to a missing table.
+    }
 
     setSubmitting(false);
     setStep("done");

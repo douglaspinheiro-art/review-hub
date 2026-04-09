@@ -211,18 +211,12 @@ export default function ConvertIQPlano() {
     window.localStorage.setItem(`convertiq-playbook-results:${loja.data.id}`, JSON.stringify(resultadoAcao));
   }, [resultadoAcao, loja.data?.id]);
 
-  if (loja.isLoading || lastDiag.isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
-  }
-
+  // All derived values and hooks must be declared BEFORE any early return to
+  // satisfy the Rules of Hooks (no conditional hook calls).
   const diagJson   = lastDiag.data?.recomendacoes as unknown as DiagnosticoJSON | null;
   const recs       = diagJson?.recomendacoes ?? [];
   const totalImpacto = recs.reduce((s, r) => s + r.impacto_pp, 0);
-  const ticket     = Number((loja.data as any)?.ticket_medio ?? 250);
+  const ticket     = Number((loja.data as unknown as Record<string, unknown>)?.ticket_medio ?? 250);
   const visitantes = (lastDiag.data?.dados_funil as Record<string, number> | null)?.visitantes ?? 12400;
   const ganhoPotencial = Math.round((totalImpacto / 100) * visitantes * ticket);
   const oportunidades = useMemo(() => {
@@ -294,6 +288,15 @@ export default function ConvertIQPlano() {
     } catch {
       // keep local fallback only
     }
+  }
+
+  // Early return AFTER all hooks have been declared
+  if (loja.isLoading || lastDiag.isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (

@@ -21,7 +21,18 @@ import { cn } from "@/lib/utils";
 import { buildMagicLink, EcommercePlatform } from "@/lib/checkout-builder";
 import { mockProdutos } from "@/lib/mock-data";
 import { useLoja } from "@/hooks/useConvertIQ";
-type LojaExtended = any;
+/** Shape of the store record returned by useLoja() */
+type LojaExtended = {
+  id: string;
+  name?: string | null;
+  url?: string | null;
+  plataforma?: string | null;
+  segment?: string | null;
+  user_id?: string | null;
+  ticket_medio?: number | null;
+  meta_conversao?: number | null;
+  [key: string]: unknown;
+};
 import { useProductsV3 as useProdutosV3 } from "@/hooks/useLTVBoost";
 import { contactMatchesEnglishRfmSegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
 
@@ -176,6 +187,8 @@ export default function CampaignModal({
   const [waMediaUrl, setWaMediaUrl] = useState("");
   const [waButtonLabel, setWaButtonLabel] = useState("");
   const [waButtonUrl, setWaButtonUrl] = useState("");
+  /** Nome exato do template aprovado na Meta (Cloud API), para campanhas fora da janela de 24h */
+  const [waMetaTemplateName, setWaMetaTemplateName] = useState("");
   const [templateName, setTemplateName] = useState("");
 
   // Product campaign state
@@ -188,6 +201,7 @@ export default function CampaignModal({
 
   const { user, profile } = useAuth();
   const loja = useLoja();
+  const lojaData = (loja.data as LojaExtended | null) ?? null;
   const produtos = useProdutosV3(loja.data?.id ?? undefined);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -278,7 +292,7 @@ export default function CampaignModal({
       if (!message.trim()) throw new Error("Escreva uma mensagem antes de salvar");
       const { error } = await (supabase as any).from("campaign_message_templates").insert({
         user_id: user.id,
-        store_id: (loja.data as any)?.id ?? null,
+        store_id: lojaData?.id ?? null,
         name: templateName.trim(),
         objective,
         channel,
@@ -287,6 +301,7 @@ export default function CampaignModal({
           ? {
             content_type: waContentType,
             media_url: waMediaUrl || null,
+            meta_template_name: waMetaTemplateName.trim() || null,
             buttons: waContentType === "template" && waButtonLabel && waButtonUrl
               ? [{ type: "url", label: waButtonLabel, value: waButtonUrl }]
               : [],
@@ -331,6 +346,7 @@ export default function CampaignModal({
           whatsapp: {
             content_type: waContentType,
             media_url: waMediaUrl || null,
+            meta_template_name: waMetaTemplateName.trim() || null,
             buttons: waContentType === "template" && waButtonLabel && waButtonUrl
               ? [{ type: "url", label: waButtonLabel, value: waButtonUrl }]
               : [],
@@ -420,7 +436,7 @@ export default function CampaignModal({
   }
 
   function handleInsertMagicLink() {
-    if (!(loja.data as any)?.url) {
+    if (!lojaData?.url) {
       toast({ title: "Configure a URL da loja", description: "Acesse Funil → Configurar loja e informe a URL da sua loja.", variant: "destructive" });
       return;
     }
@@ -428,10 +444,10 @@ export default function CampaignModal({
       toast({ title: "Informe o SKU/ID do produto", variant: "destructive" });
       return;
     }
-    const platform = ((loja.data as any)?.plataforma === "outro" ? "custom" : (loja.data as any)?.plataforma) as EcommercePlatform;
+    const platform = ((lojaData?.plataforma === "outro" ? "custom" : lojaData?.plataforma) ?? "custom") as EcommercePlatform;
     const url = buildMagicLink({
       platform,
-      storeUrl: (loja.data as any)?.url,
+      storeUrl: lojaData.url,
       cartItems: [{ id: magicSku.trim(), quantity: Number(magicQty) || 1 }],
       couponCode: magicCoupon.trim() || undefined,
     });
@@ -457,7 +473,7 @@ export default function CampaignModal({
       // Auto-generate message and advance
       const msg = gerarMensagemProdutos(
         campaignMode, selectedProducts, collectionName, prodCoupon,
-        (loja.data as any)?.url ?? "", (loja.data as any)?.plataforma ?? "custom"
+        lojaData?.url ?? "", lojaData?.plataforma ?? "custom"
       );
       if (msg) setValue("message", msg);
       setStep(s => s + 1);
@@ -806,6 +822,20 @@ export default function CampaignModal({
 
                     {channel === "whatsapp" && (
                       <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                            <Info className="w-3 h-3" /> Template Meta (Cloud API)
+                          </Label>
+                          <Input
+                            placeholder="nome_do_template_aprovado — opcional; obrigatório se a conexão for Meta e o contato estiver fora da janela de 24h"
+                            value={waMetaTemplateName}
+                            onChange={(e) => setWaMetaTemplateName(e.target.value)}
+                            className="h-10 rounded-xl text-xs"
+                          />
+                          <p className="text-[10px] text-muted-foreground leading-relaxed">
+                            Se a loja usa WhatsApp oficial (Meta), o disparo em massa usa este nome ou o template padrão salvo na conexão. A mensagem da campanha é enviada como parâmetro do corpo do template (primeira variável).
+                          </p>
+                        </div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Formato WhatsApp</p>
                         <div className="flex bg-muted/40 p-1 rounded-xl flex-wrap gap-1">
                           {(["text", "image", "video", "audio", "document", "template"] as const).map((t) => (

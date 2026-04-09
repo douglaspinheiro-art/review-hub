@@ -255,7 +255,9 @@ export default function Newsletter() {
   useEffect(() => {
     if (!initialized.current) return;
     saveMutation.mutate();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // saveMutation is intentionally excluded from deps: including it would create an infinite
+    // loop because useMutation returns a new reference on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     debouncedBlocks, debouncedSubject, debouncedName, debouncedPreheader, debouncedSubjectB,
     abSubjectEnabled, storeRow?.id, recipientMode, recipientTag, recipientRFM,

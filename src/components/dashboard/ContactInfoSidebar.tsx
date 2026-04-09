@@ -14,7 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { buildMagicLink, EcommercePlatform } from "@/lib/checkout-builder";
 import { generatePixPayload } from "@/lib/pix-generator";
-import { sendText } from "@/lib/evolution-api";
+import { sendTextForConnection } from "@/lib/evolution-api";
 
 interface Contact {
   id: string;
@@ -98,11 +98,10 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
         couponCode: coupon.trim() || undefined,
       });
       const phone = normalizePhone(contact.phone);
-      await sendText(
-        { baseUrl: conn.evolution_api_url, apiKey: conn.evolution_api_key },
-        conn.instance_name,
-        { number: phone, text: `🛒 *Link de compra personalizado*\n\nOlá ${contact.name?.split(" ")[0] ?? ""}! Preparei este link especial pra você:\n\n${url}` }
-      );
+      await sendTextForConnection(conn, {
+        number: phone,
+        text: `🛒 *Link de compra personalizado*\n\nOlá ${contact.name?.split(" ")[0] ?? ""}! Preparei este link especial pra você:\n\n${url}`,
+      });
       toast.success("Link de compra enviado via WhatsApp!");
       setShowCheckout(false);
       setSku(""); setQty("1"); setCoupon("");
@@ -139,14 +138,10 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
       });
       const phone = normalizePhone(contact.phone);
       const amountFormatted = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-      await sendText(
-        { baseUrl: conn.evolution_api_url, apiKey: conn.evolution_api_key },
-        conn.instance_name,
-        {
-          number: phone,
-          text: `💳 *PIX — ${amountFormatted}*${pixDesc.trim() ? `\n${pixDesc.trim()}` : ""}\n\nCopie o código abaixo:\n\n\`${payload}\``,
-        }
-      );
+      await sendTextForConnection(conn, {
+        number: phone,
+        text: `💳 *PIX — ${amountFormatted}*${pixDesc.trim() ? `\n${pixDesc.trim()}` : ""}\n\nCopie o código abaixo:\n\n\`${payload}\``,
+      });
       toast.success("PIX enviado via WhatsApp!");
       setShowPix(false);
       setPixAmount(""); setPixDesc(""); setPixKeyInput("");

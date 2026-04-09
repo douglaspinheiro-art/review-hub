@@ -14,6 +14,7 @@ npm run preview      # Preview production build
 npm run validate:env          # Valida frontend + edge (env exportado)
 npm run validate:env:frontend # Só VITE_* (build / Vercel)
 npm run validate:env:edge     # Secrets das Edge Functions
+npm run supabase:migration-list  # Local vs remoto (migrações); ver docs/supabase-migrations-sync.md
 npm run release:check         # Smoke + ProtectedRoute + env opcional (ver docs/production-env-checklist.md)
 ```
 
@@ -60,13 +61,13 @@ LTV Boost is a WhatsApp marketing SaaS for Brazilian e-commerces. The app has tw
   - `CarrinhoAbandonado.tsx` — abandoned cart monitoring and recovery
   - `Reviews.tsx` — review aggregation + AI reply suggestions
   - `Analytics.tsx` — charts with period selector
-  - `WhatsApp.tsx` — Evolution API instance management
+  - `WhatsApp.tsx` — WhatsApp: Evolution API ou **Meta Cloud** (`whatsapp_connections.provider`)
   - `Configuracoes.tsx` — profile, Evolution API config, webhook URLs
   - `Billing.tsx` — plan comparison, usage meters, trial countdown
 
 ### External integrations
 
-- `src/lib/evolution-api.ts` — Evolution API client (WhatsApp Business open-source wrapper)
+- `src/lib/evolution-api.ts` — Cliente WhatsApp: **Evolution** via `evolution-proxy` (padrão) ou **Meta Cloud** via `meta-whatsapp-send` quando `provider === meta_cloud`. **Dev local Evolution:** `VITE_EVOLUTION_USE_PROXY=false` + CORS na Evolution. **Meta:** secrets `META_WHATSAPP_VERIFY_TOKEN` + `META_APP_SECRET`; webhook `meta-whatsapp-webhook`. Ver `docs/meta-whatsapp-cloud-setup.md`.
 - `supabase/functions/webhook-cart/index.ts` — Deno edge function, receives abandoned cart events from Shopify/Nuvemshop/Tray/VTEX/WooCommerce
 
 ### Database migrations (run in order in Supabase SQL Editor)
@@ -95,8 +96,9 @@ LTV Boost is a WhatsApp marketing SaaS for Brazilian e-commerces. The app has tw
 | `dispatch-newsletter` | `dispatch-newsletter` |
 | `send-email` | `send-email` (e.g. `useEmailSender`) |
 | `unsubscribe-contact` | `unsubscribe-contact` |
+| `meta-whatsapp-send` | `meta-whatsapp-send` (envio Cloud API; JWT + `connectionId`) |
 
-Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, `whatsapp-webhook`, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, and others present in the repo.
+Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, `whatsapp-webhook` (Evolution), **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, and others present in the repo.
 
 **Beta UI scope (channel/stripe-poor environments):** Set `VITE_BETA_LIMITED_SCOPE=true` on the frontend build. This hides WhatsApp, Newsletter, Campanhas, Inbox, Automações, and Carrinho abandonado from the sidebar and redirects direct URLs to `/dashboard`. Routes under `/demo/*` ignore this flag.
 

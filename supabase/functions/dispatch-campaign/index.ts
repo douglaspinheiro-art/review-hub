@@ -9,10 +9,18 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z, errorResponse, validateBrowserOrigin } from "../_shared/edge-utils.ts";
 import { uuidSchema, validateRequest } from "../_shared/validation.ts";
+import {
+  evolutionSendMedia,
+  evolutionSendTemplateButtons,
+  evolutionSendText,
+  DEFAULT_EVOLUTION_DELAY_MS,
+} from "../_shared/whatsapp-evolution-send.ts";
+import { metaGraphSendImageLink } from "../_shared/meta-graph-send.ts";
+import { outboundSendMetaTemplate, outboundSendText } from "../_shared/whatsapp-outbound.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ANTI_SPAM_DELAY_MS = 1200;
+const ANTI_SPAM_DELAY_MS = DEFAULT_EVOLUTION_DELAY_MS;
 const BodySchema = z.object({ campaign_id: uuidSchema });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -58,95 +66,13 @@ function clampPct(value: unknown, fallback: number): number {
   return Math.min(50, Math.max(0, num));
 }
 
-async function evolutionSendText(
-  baseUrl: string,
-  apiKey: string,
-  instanceName: string,
-  number: string,
-  text: string,
-): Promise<{ key?: { id?: string }; messageId?: string } | null> {
-  const url = `${baseUrl.replace(/\/$/, "")}/message/sendText/${instanceName}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: apiKey,
-    },
-    body: JSON.stringify({ number, text, delay: ANTI_SPAM_DELAY_MS }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Evolution API error ${res.status}: ${body}`);
-  }
-  return res.json();
-}
-
-async function evolutionSendMedia(
-  baseUrl: string,
-  apiKey: string,
-  instanceName: string,
-  number: string,
-  mediaUrl: string,
-  mediaType: "image" | "video" | "audio" | "document",
-  caption?: string,
-): Promise<{ key?: { id?: string }; messageId?: string } | null> {
-  const url = `${baseUrl.replace(/\/$/, "")}/message/sendMedia/${instanceName}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: apiKey,
-    },
-    body: JSON.stringify({
-      number,
-      mediatype: mediaType,
-      media: mediaUrl,
-      caption: caption ?? "",
-      delay: ANTI_SPAM_DELAY_MS,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Evolution API media error ${res.status}: ${body}`);
-  }
-  return res.json();
-}
-
-async function evolutionSendTemplateButtons(
-  baseUrl: string,
-  apiKey: string,
-  instanceName: string,
-  number: string,
-  text: string,
-  buttons: Array<{ type: "url" | "call" | "reply"; label: string; value: string }>,
-): Promise<{ key?: { id?: string }; messageId?: string } | null> {
-  const url = `${baseUrl.replace(/\/$/, "")}/message/sendTemplate/${instanceName}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: apiKey,
-    },
-    body: JSON.stringify({
-      number,
-      templateMessage: {
-        text,
-        footer: "LTV Boost",
-        buttons: buttons.slice(0, 3).map((btn, idx) => ({
-          index: idx + 1,
-          urlButton: btn.type === "url" ? { displayText: btn.label, url: btn.value } : undefined,
-          callButton: btn.type === "call" ? { displayText: btn.label, phoneNumber: btn.value } : undefined,
-          quickReplyButton: btn.type === "reply" ? { displayText: btn.label, id: btn.value } : undefined,
-        })),
-      },
-      delay: ANTI_SPAM_DELAY_MS,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Evolution API template error ${res.status}: ${body}`);
-  }
-  return res.json();
+function graphToResult(v: { messages?: Array<{ id?: string }> } | null): {
+  key?: { id?: string };
+  messageId?: string;
+} | null {
+  const id = v?.messages?.[0]?.id;
+  if (!id) return null;
+  return { messageId: id, key: { id } };
 }
 
 // ── Contact resolution ────────────────────────────────────────────────────────
@@ -390,7 +316,9 @@ serve(async (req: Request) => {
     // Load WhatsApp connection
     const { data: conn } = await supabase
       .from("whatsapp_connections")
-      .select("instance_name, evolution_api_url, evolution_api_key, status")
+      .select(
+        "instance_name, evolution_api_url, evolution_api_key, status, provider, meta_phone_number_id, meta_access_token, meta_api_version, meta_default_template_name",
+      )
       .eq("store_id", campaign.store_id)
       .eq("status", "connected")
       .limit(1)
@@ -401,6 +329,23 @@ serve(async (req: Request) => {
         JSON.stringify({ error: "No active WhatsApp connection for this store." }),
         { status: 422 },
       );
+    }
+
+    const prov = (conn as { provider?: string }).provider ?? "evolution";
+    if (prov === "evolution" && (!conn.evolution_api_url || !conn.evolution_api_key)) {
+      return new Response(
+        JSON.stringify({ error: "Evolution API URL/Key não configurados para esta loja." }),
+        { status: 422 },
+      );
+    }
+    if (prov === "meta_cloud") {
+      const c = conn as { meta_phone_number_id?: string | null; meta_access_token?: string | null };
+      if (!c.meta_phone_number_id?.trim() || !c.meta_access_token?.trim()) {
+        return new Response(
+          JSON.stringify({ error: "Meta Cloud API não configurada (phone_number_id / token)." }),
+          { status: 422 },
+        );
+      }
     }
 
     // Mark campaign as running
@@ -504,33 +449,70 @@ serve(async (req: Request) => {
         const waConfig = (campaign as any)?.blocks?.whatsapp ?? {};
         const contentType = String(waConfig?.content_type ?? "text");
         let result: { key?: { id?: string }; messageId?: string } | null = null;
-        if (contentType === "template" && Array.isArray(waConfig?.buttons) && waConfig.buttons.length > 0) {
+
+        const waRow = {
+          provider: prov,
+          instance_name: conn.instance_name,
+          evolution_api_url: conn.evolution_api_url,
+          evolution_api_key: conn.evolution_api_key,
+          meta_phone_number_id: (conn as { meta_phone_number_id?: string | null }).meta_phone_number_id ?? null,
+          meta_access_token: (conn as { meta_access_token?: string | null }).meta_access_token ?? null,
+          meta_api_version: (conn as { meta_api_version?: string | null }).meta_api_version ?? null,
+        };
+
+        if (prov === "meta_cloud") {
+          const metaTplName = String(waConfig?.meta_template_name ?? (conn as any).meta_default_template_name ?? "")
+            .trim();
+          if (contentType === "template" && Array.isArray(waConfig?.buttons) && waConfig.buttons.length > 0) {
+            if (!metaTplName) {
+              throw new Error(
+                "Campanha Meta: defina blocks.whatsapp.meta_template_name ou meta_default_template_name na conexão.",
+              );
+            }
+            result = await outboundSendMetaTemplate(waRow, phone, metaTplName, "pt_BR", [text]);
+          } else if (contentType === "image" && waConfig?.media_url) {
+            const raw = await metaGraphSendImageLink(
+              waRow.meta_phone_number_id!,
+              waRow.meta_access_token!,
+              phone,
+              String(waConfig.media_url),
+              text,
+              waRow.meta_api_version ?? "v21.0",
+            );
+            result = graphToResult(raw);
+          } else {
+            // Texto livre: fora da janela de 24h a Meta pode exigir template aprovado.
+            result = await outboundSendText(waRow, phone, text, ANTI_SPAM_DELAY_MS);
+          }
+        } else if (contentType === "template" && Array.isArray(waConfig?.buttons) && waConfig.buttons.length > 0) {
           result = await evolutionSendTemplateButtons(
-            conn.evolution_api_url,
-            conn.evolution_api_key,
+            conn.evolution_api_url!,
+            conn.evolution_api_key!,
             conn.instance_name,
             phone,
             text,
             waConfig.buttons as Array<{ type: "url" | "call" | "reply"; label: string; value: string }>,
+            ANTI_SPAM_DELAY_MS,
           );
         } else if (["image", "video", "audio", "document"].includes(contentType) && waConfig?.media_url) {
           result = await evolutionSendMedia(
-            conn.evolution_api_url,
-            conn.evolution_api_key,
+            conn.evolution_api_url!,
+            conn.evolution_api_key!,
             conn.instance_name,
             phone,
             String(waConfig.media_url),
             contentType as "image" | "video" | "audio" | "document",
             text,
+            ANTI_SPAM_DELAY_MS,
           );
         } else {
-          // Send via Evolution API text fallback
           result = await evolutionSendText(
-            conn.evolution_api_url,
-            conn.evolution_api_key,
+            conn.evolution_api_url!,
+            conn.evolution_api_key!,
             conn.instance_name,
             phone,
             text,
+            ANTI_SPAM_DELAY_MS,
           );
         }
 

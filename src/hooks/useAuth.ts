@@ -75,7 +75,8 @@ export function useAuth() {
     ? new Date(profile.trial_ends_at) > new Date()
     : false;
 
-  const isPaid = profile?.plan !== "starter";
+  // Fail-safe: only mark as paid when profile is loaded and explicitly non-starter.
+  const isPaid = !!profile && profile.plan !== "starter";
 
   return { user, session, profile, loading, signIn, signUp, signOut, isTrialActive, isPaid };
 }

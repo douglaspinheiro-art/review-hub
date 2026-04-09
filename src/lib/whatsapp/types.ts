@@ -1,0 +1,13 @@
+/**
+ * Contratos canônicos do canal WhatsApp (Evolution + Meta Cloud API).
+ * Implementações: evolution-api.ts + edge functions.
+ */
+
+export const WHATSAPP_PROVIDERS = ["evolution", "meta_cloud"] as const;
+export type WhatsappProviderId = (typeof WHATSAPP_PROVIDERS)[number];
+
+export type CanonicalSendText = {
+  number: string;
+  text: string;
+  delayMs?: number;
+};

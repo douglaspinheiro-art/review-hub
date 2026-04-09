@@ -6,10 +6,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/edge-utils.ts";
 
 const ANTI_SPAM_DELAY_MS = 1000;
 
@@ -18,13 +15,16 @@ serve(async (req) => {
   const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // Only the dedicated PROCESS_SCHEDULED_MESSAGES_SECRET is accepted — not the service_role_key.
+  const internalSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET");
+  if (!internalSecret) {
+    console.error("PROCESS_SCHEDULED_MESSAGES_SECRET is not configured");
+    return new Response(JSON.stringify({ error: "Service unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
   const authHeader = req.headers.get("authorization") ?? "";
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const internalSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET") ?? "";
   const providedSecret = req.headers.get("x-internal-secret") ?? "";
   const validInternal =
-    (serviceRole && authHeader === `Bearer ${serviceRole}`) ||
-    (internalSecret && providedSecret === internalSecret);
+    authHeader === `Bearer ${internalSecret}` || providedSecret === internalSecret;
   if (!validInternal) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,

@@ -1,8 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyJwt } from "../_shared/edge-utils.ts";
 
 const cors = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
@@ -26,6 +27,10 @@ const DESCONTO_POR_SEGMENTO: Record<string, { tipo: string; valor: number; justi
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  const auth = await verifyJwt(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -214,24 +219,31 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
 
     // Salvar diagnóstico no banco
     if (loja_id) {
+      // Verify the authenticated user owns this store
+      const { data: storeData } = await supabase.from("stores").select("user_id").eq("id", loja_id).single();
+      if (!storeData || storeData.user_id !== auth.userId) {
+        return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      const storeUserId = storeData.user_id;
+
       await supabase.from("diagnostics_v3").insert({
         store_id: loja_id,
+        user_id: storeUserId,
         diagnostic_json: diag,
         chs,
         chs_label
       });
-      
-      // Atualizar CHS da loja
-      await supabase.from("stores").update({
-        conversion_health_score: chs,
-        chs_history: supabase.rpc('append_chs_history', { new_score: chs, new_label: chs_label })
-      }).eq("id", loja_id);
+
+      // Atualizar CHS da loja — rpc() não é serializável dentro de .update(),
+      // então atualizamos o score e executamos o RPC separadamente
+      await supabase.from("stores").update({ conversion_health_score: chs }).eq("id", loja_id);
+      await supabase.rpc("append_chs_history", { store_id_input: loja_id, new_score: chs, new_label: chs_label });
 
       // Criar problemas e prescrições sugeridas
       for (const p of diag.problemas) {
         const { data: probData } = await supabase.from("opportunities").insert({
           store_id: loja_id,
-          user_id: (await supabase.from("stores").select("user_id").eq("id", loja_id).single()).data?.user_id,
+          user_id: storeUserId,
           type: p.tipo,
           title: p.titulo,
           description: p.descricao,
@@ -245,7 +257,7 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
           const s = p.prescricao_sugerida;
           await supabase.from("prescriptions").insert({
             store_id: loja_id,
-            user_id: probData.user_id,
+            user_id: storeUserId,
             opportunity_id: probData.id,
             title: s.titulo,
             description: s.descricao || p.descricao,
@@ -270,8 +282,9 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
       { headers: { ...cors, "Content-Type": "application/json" } }
     );
   } catch (e) {
+    console.error("gerar-diagnostico error:", e);
     return new Response(
-      JSON.stringify({ success: false, error: e.message }),
+      JSON.stringify({ success: false, error: "Internal server error" }),
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
     );
   }

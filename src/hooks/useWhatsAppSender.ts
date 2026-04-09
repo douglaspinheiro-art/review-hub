@@ -1,15 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { sendText, sendTemplate, sendFlow, getConnectionState, mapEvolutionState } from "@/lib/evolution-api";
+import {
+  type ConnRow,
+  sendTextForConnection,
+  sendTemplateForConnection,
+  sendFlowForConnection,
+  getConnectionStateForConnection,
+  mapEvolutionState,
+} from "@/lib/evolution-api";
 import { useAuth } from "@/hooks/useAuth";
-
-interface WhatsAppConnection {
-  id: string;
-  instance_name: string;
-  status: string;
-  evolution_api_url: string;
-  evolution_api_key: string;
-}
 
 interface SendResult {
   success: boolean;
@@ -32,24 +31,37 @@ interface FlowPayload {
 export function useWhatsAppSender() {
   const { user } = useAuth();
 
-  const { data: connection, isLoading } = useQuery<WhatsAppConnection | null>({
+  const { data: connection, isLoading } = useQuery<ConnRow | null>({
     queryKey: ["whatsapp_connection_active", user?.id],
     queryFn: async () => {
       if (!user) return null;
+      // Do NOT select evolution_api_key or meta_access_token — credentials must
+      // stay on the server and be accessed only through the edge function proxies
+      // (evolution-proxy / meta-whatsapp-send).
       const { data } = await supabase
         .from("whatsapp_connections")
-        .select("id, instance_name, status, evolution_api_url, evolution_api_key")
+        .select(
+          "id, instance_name, status, evolution_api_url, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
+        )
         .eq("user_id", user.id)
         .eq("status", "connected")
         .limit(1)
         .maybeSingle();
-      return data ?? null;
+      return (data as ConnRow | null) ?? null;
     },
     enabled: !!user,
     staleTime: 30_000,
   });
 
-  const isReady = !isLoading && !!connection && connection.status === "connected";
+  // hasCredentials: proxy handles the actual API keys server-side;
+  // we only need to know if the connection row has enough metadata to route the call.
+  const hasCredentials =
+    !!connection &&
+    (connection.provider === "meta_cloud"
+      ? !!connection.meta_phone_number_id
+      : !!connection.evolution_api_url);
+
+  const isReady = !isLoading && !!connection && connection.status === "connected" && hasCredentials;
 
   async function sendMessage(phone: string, text: string): Promise<SendResult> {
     if (!connection) {
@@ -61,12 +73,7 @@ export function useWhatsAppSender() {
     const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
 
     try {
-      const cfg = {
-        baseUrl: connection.evolution_api_url,
-        apiKey: connection.evolution_api_key,
-      };
-
-      const response = await sendText(cfg, connection.instance_name, {
+      const response = await sendTextForConnection(connection, {
         number: e164,
         text,
         delay: 1200,
@@ -88,11 +95,7 @@ export function useWhatsAppSender() {
     const normalized = phone.replace(/\D/g, "");
     const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
     try {
-      const cfg = {
-        baseUrl: connection.evolution_api_url,
-        apiKey: connection.evolution_api_key,
-      };
-      const response = await sendTemplate(cfg, connection.instance_name, {
+      const response = await sendTemplateForConnection(connection, {
         number: e164,
         text,
         buttons: [{ type: "url", displayText: button.label, content: button.url }],
@@ -112,8 +115,7 @@ export function useWhatsAppSender() {
     const normalized = phone.replace(/\D/g, "");
     const e164 = normalized.startsWith("55") ? normalized : `55${normalized}`;
     try {
-      const cfg = { baseUrl: connection.evolution_api_url, apiKey: connection.evolution_api_key };
-      const response = await sendFlow(cfg, connection.instance_name, {
+      const response = await sendFlowForConnection(connection, {
         number: e164,
         text: payload.text,
         buttonText: payload.buttonText,
@@ -129,13 +131,9 @@ export function useWhatsAppSender() {
   }
 
   async function refreshConnectionStatus(): Promise<void> {
-    if (!connection) return;
+    if (!connection || connection.provider === "meta_cloud") return;
     try {
-      const cfg = {
-        baseUrl: connection.evolution_api_url,
-        apiKey: connection.evolution_api_key,
-      };
-      const state = await getConnectionState(cfg, connection.instance_name);
+      const state = await getConnectionStateForConnection(connection);
       const mapped = mapEvolutionState(state.state);
       await supabase
         .from("whatsapp_connections")

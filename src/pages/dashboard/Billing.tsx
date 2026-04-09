@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CreditCard, Zap, Check, ArrowRight, TrendingUp, Sparkles, X, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -49,6 +49,16 @@ export default function Billing() {
   const { data: stats } = useDashboardStats();
   const { data: problems = [] } = useProblems();
   const [showCancelModal, setShowCancelModal] = useState(false);
+
+  useEffect(() => {
+    if (limits.contacts < 0) return;
+    const usedContacts = usage?.contacts ?? 0;
+    const pct = Math.round((usedContacts / limits.contacts) * 100);
+    if (pct >= 80 && !showLimitModal) {
+      const t = window.setTimeout(() => setShowLimitModal(true), 500);
+      return () => window.clearTimeout(t);
+    }
+  }, [usage?.contacts, limits.contacts, showLimitModal]);
 
   const revenueAtRisk = problems.reduce((acc, p) => acc + Number(p.estimated_impact || 0), 0);
   const totalRecovered = stats?.revenueLast30 ?? 0;
@@ -167,9 +177,6 @@ export default function Billing() {
               );
             }
             const pct = Math.round((used / total) * 100);
-            if (label === "Contatos" && pct >= 80 && !showLimitModal) {
-              setTimeout(() => setShowLimitModal(true), 500);
-            }
             return (
               <div key={label} className="space-y-2">
                 <div className="flex justify-between text-sm">

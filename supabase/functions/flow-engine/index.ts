@@ -2,10 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/edge-utils.ts";
 
 const BodySchema = z.object({
   event: z.string().min(1).max(100),
@@ -19,13 +16,16 @@ serve(async (req) => {
   const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    // Only the dedicated FLOW_ENGINE_SECRET is accepted — not the service_role_key.
+    const internalSecret = Deno.env.get("FLOW_ENGINE_SECRET");
+    if (!internalSecret) {
+      console.error("FLOW_ENGINE_SECRET is not configured");
+      return new Response(JSON.stringify({ error: "Service unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const authHeader = req.headers.get("authorization") ?? "";
-    const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const internalSecret = Deno.env.get("FLOW_ENGINE_SECRET") ?? "";
     const providedSecret = req.headers.get("x-internal-secret") ?? "";
     const validInternal =
-      (serviceRole && authHeader === `Bearer ${serviceRole}`) ||
-      (internalSecret && providedSecret === internalSecret);
+      authHeader === `Bearer ${internalSecret}` || providedSecret === internalSecret;
     if (!validInternal) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,

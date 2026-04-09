@@ -102,7 +102,7 @@ export default function Integracoes() {
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   const { data: integrations = [], isLoading } = useQuery({
-    queryKey: ["integrations"],
+    queryKey: ["integrations", user?.id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("integrations")

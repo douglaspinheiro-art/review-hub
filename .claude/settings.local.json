@@ -8,7 +8,26 @@
       "WebSearch",
       "WebFetch(domain:www.reviewflowz.com)",
       "WebFetch(domain:userevi.com)",
-      "Bash(grep -E \"\\\\.tsx$\")"
+      "Bash(grep -E \"\\\\.tsx$\")",
+      "WebFetch(domain:botmaker.com)",
+      "WebFetch(domain:www.blip.ai)",
+      "WebFetch(domain:zenvia.com)",
+      "WebFetch(domain:www.kommo.com)",
+      "WebFetch(domain:sleekflow.io)",
+      "WebFetch(domain:yazo.ai)",
+      "WebFetch(domain:www.rdstation.com)",
+      "WebFetch(domain:www.wati.io)",
+      "WebFetch(domain:gallabox.com)",
+      "WebFetch(domain:www.zoko.io)",
+      "Bash(tabs\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(xargs -0 grep -l \"ADD COLUMN.*channel\\\\|ADD COLUMN.*subject\")",
+      "Skill(update-config)",
+      "Bash(npx supabase:*)",
+      "Read(//c/Users/Douglas - Performanc/AppData/Roaming/supabase/**)",
+      "Read(//c/Users/Douglas - Performanc/.supabase/**)"
     ]
   }
 }

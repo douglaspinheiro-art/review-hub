@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { MessageCircle, Search, Clock, Send, Loader2, WifiOff, Settings, AlertCircle, Sparkles, User, Check, MoreVertical, Plus, Smile, Paperclip, Zap as ZapIcon, Minus } from "lucide-react";
+import { ConversationListItem, getSlaBucket } from "@/components/dashboard/ConversationListItem";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useConversations, useMessages, useConversationIdsByMessageSearch, useInboxRoutingSettings } from "@/hooks/useDashboard";
@@ -14,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { ContactInfoSidebar } from "@/components/dashboard/ContactInfoSidebar";
-import { formatDistanceToNow, isSameDay, format, isYesterday, isToday } from "date-fns";
+import { isSameDay, format, isYesterday, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { TrialGate } from "@/components/dashboard/TrialGate";
@@ -27,36 +28,7 @@ const STATUS_FILTERS = [
   { label: "Fechadas", value: "closed" },
 ];
 
-const STATUS_COLORS: Record<string, string> = {
-  open: "bg-green-500/10 text-green-600 border-green-500/20",
-  pending: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-  closed: "bg-muted text-muted-foreground",
-};
-
-function getSlaBucket(slaDueAt: string | null | undefined): "none" | "breach" | "soon" | "ok" {
-  if (!slaDueAt) return "none";
-  const t = new Date(slaDueAt).getTime();
-  if (Number.isNaN(t)) return "none";
-  const now = Date.now();
-  if (t < now) return "breach";
-  if (t - now <= 60 * 60 * 1000) return "soon";
-  return "ok";
-}
-
-const AVATAR_COLORS = [
-  "bg-blue-500/10 text-blue-600",
-  "bg-emerald-500/10 text-emerald-600",
-  "bg-violet-500/10 text-violet-600",
-  "bg-amber-500/10 text-amber-600",
-  "bg-rose-500/10 text-rose-600",
-  "bg-cyan-500/10 text-cyan-600",
-];
-
-function getAvatarColor(name: string = "") {
-  if (!name) return AVATAR_COLORS[0];
-  const charCode = name.charCodeAt(0);
-  return AVATAR_COLORS[charCode % AVATAR_COLORS.length];
-}
+// getSlaBucket, getAvatarColor, and STATUS_COLORS are now in ConversationListItem.tsx
 
 function formatDateSeparator(date: Date) {
   if (isToday(date)) return "Hoje";
@@ -171,9 +143,6 @@ export default function Inbox() {
         if (error) throw error;
         const suggestion = data?.suggestion ?? data?.suggestions?.[0] ?? null;
         setAiSuggestion(suggestion);
-        if (suggestion) {
-          void trackMoatEvent("inbox_ai_used", { conversation_id: selectedId });
-        }
       } catch (e) {
         console.error("AI Error:", e);
       } finally {
@@ -211,17 +180,19 @@ export default function Inbox() {
 
   // Real-time: conversations list
   useEffect(() => {
+    if (!user?.id) return;
     const channel = supabase
-      .channel("conversations-list")
+      .channel(`conversations-list:${user.id}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "conversations",
+          filter: `user_id=eq.${user.id}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          queryClient.invalidateQueries({ queryKey: ["conversations", user.id] });
         }
       )
       .subscribe();
@@ -229,7 +200,7 @@ export default function Inbox() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, user?.id]);
 
   // Scroll to bottom when messages load or new message arrives
   useEffect(() => {
@@ -572,89 +543,22 @@ export default function Inbox() {
               <span className="text-sm">Nenhuma conversa encontrada</span>
             </div>
           )}
-          {prioritized.map((conv) => {
-            const contact = conv.contacts as { name: string; phone: string } | null;
-            const isSelected = selectedId === conv.id;
-            const isOnline = conv.last_message_at && (Date.now() - new Date(conv.last_message_at).getTime() < 1000 * 60 * 5);
-            const avatarColor = getAvatarColor(contact?.name || contact?.phone);
-            const sla = getSlaBucket((conv as { sla_due_at?: string | null }).sla_due_at);
-
-            return (
-              <button
-                key={conv.id}
-                onClick={() => setSelectedId(conv.id)}
-                className={cn(
-                  "w-full text-left p-4 border-b transition-all relative group",
-                  isSelected 
-                    ? "bg-primary/5 dark:bg-primary/10" 
-                    : "hover:bg-muted/50"
-                )}
-              >
-                {/* Active Indicator Line */}
-                {isSelected && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
-                )}
-
-                <div className="flex items-start gap-3">
-                  <div className="relative shrink-0">
-                    <div className={cn(
-                      "w-11 h-11 rounded-full flex items-center justify-center font-semibold text-base transition-transform group-hover:scale-105",
-                      avatarColor
-                    )}>
-                      {contact?.name?.[0]?.toUpperCase() ?? contact?.phone?.[0] ?? "?"}
-                    </div>
-                    {isOnline && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-background rounded-full" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className={cn(
-                        "font-semibold text-sm truncate",
-                        conv.unread_count > 0 ? "text-foreground" : "text-foreground/90"
-                      )}>
-                        {contact?.name ?? contact?.phone ?? "—"}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground shrink-0 flex items-center gap-1 font-medium">
-                        {conv.last_message_at ? formatDistanceToNow(new Date(conv.last_message_at), { locale: ptBR, addSuffix: false }).replace('cerca de ', '') : "—"}
-                      </span>
-                    </div>
-
-                    <p className={cn(
-                      "text-xs truncate",
-                      conv.unread_count > 0 ? "text-foreground font-medium" : "text-muted-foreground"
-                    )}>
-                      {conv.last_message ?? "Sem mensagens"}
-                    </p>
-
-                    <div className="flex items-center justify-between mt-2 gap-1 flex-wrap">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <Badge variant="outline" className={cn("text-[10px] px-2 py-0 h-4 border-none", STATUS_COLORS[conv.status] ?? "")}>
-                          {conv.status === 'open' ? 'Aberta' : conv.status === 'pending' ? 'Pendente' : 'Fechada'}
-                        </Badge>
-                        {sla === "breach" && (
-                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4 font-bold">
-                            SLA
-                          </Badge>
-                        )}
-                        {sla === "soon" && (
-                          <Badge className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500 hover:bg-amber-500 text-white border-0">
-                            1h
-                          </Badge>
-                        )}
-                      </div>
-                      {conv.unread_count > 0 && (
-                        <span className="bg-primary text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center shadow-sm animate-pulse">
-                          {conv.unread_count}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          {prioritized.map((conv) => (
+            <ConversationListItem
+              key={conv.id}
+              conv={{
+                id: conv.id,
+                status: conv.status,
+                unread_count: conv.unread_count,
+                last_message: conv.last_message,
+                last_message_at: conv.last_message_at,
+                sla_due_at: (conv as { sla_due_at?: string | null }).sla_due_at,
+                contacts: conv.contacts as { name: string; phone: string } | null,
+              }}
+              isSelected={selectedId === conv.id}
+              onClick={setSelectedId}
+            />
+          ))}
         </div>
       </div>
 
@@ -1007,7 +911,12 @@ export default function Inbox() {
                         <Sparkles className="w-3.5 h-3.5 text-primary" />
                       </div>
                       <button 
-                        onClick={() => setDraft(aiSuggestion)}
+                        onClick={() => {
+                          setDraft(aiSuggestion);
+                          if (selectedId) {
+                            void trackMoatEvent("inbox_ai_used", { conversation_id: selectedId });
+                          }
+                        }}
                         className="text-left text-[11px] bg-primary/5 border border-primary/20 hover:bg-primary/10 transition-colors p-2 rounded-xl italic text-primary group"
                       >
                         <span className="font-bold not-italic block mb-0.5 text-[9px] uppercase tracking-widest opacity-60">Sugestão da IA (clique para usar)</span>

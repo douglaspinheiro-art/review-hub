@@ -26,12 +26,11 @@ export function clearLocalStepUp() {
   localStorage.removeItem(LOCAL_STEPUP_KEY);
 }
 
-export async function markStepUpVerified(userId: string) {
+export async function markStepUpVerified(userId: string): Promise<void> {
   const verifiedUntil = Date.now() + STEPUP_TTL_MS;
-  writeLocalStepUp({ userId, verifiedUntil });
 
-  // Best-effort backend TTL state for server-side checks.
-  await supabase
+  // Persist to server FIRST — server is the authoritative source.
+  const { error } = await supabase
     .from("security_stepup_sessions")
     .upsert(
       {
@@ -41,14 +40,29 @@ export async function markStepUpVerified(userId: string) {
       },
       { onConflict: "user_id" },
     );
+
+  if (error) {
+    // Do not mark as verified locally if the server failed to persist.
+    throw new Error(`Failed to persist step-up session: ${error.code}`);
+  }
+
+  // Write to localStorage only after server confirms — acts as a cache only.
+  writeLocalStepUp({ userId, verifiedUntil });
 }
 
 export async function hasValidStepUp(userId: string): Promise<boolean> {
+  // localStorage acts as an early-exit ONLY for sessions that are already
+  // expired locally. It is NOT used to grant access — the server is authoritative.
   const local = readLocalStepUp();
-  if (local?.userId === userId && local.verifiedUntil > Date.now()) {
-    return true;
+  if (local?.userId === userId && local.verifiedUntil <= Date.now()) {
+    // Locally expired — no need to hit the server, definitely false.
+    clearLocalStepUp();
+    return false;
   }
 
+  // Always verify against the server. localStorage cannot be trusted as the
+  // sole source of truth for security-sensitive access control decisions —
+  // it is trivially manipulable via DevTools.
   const { data } = await supabase
     .from("security_stepup_sessions")
     .select("expires_at")
@@ -57,8 +71,13 @@ export async function hasValidStepUp(userId: string): Promise<boolean> {
 
   if (!data?.expires_at) return false;
   const expiresAt = new Date(data.expires_at).getTime();
-  if (Number.isNaN(expiresAt) || expiresAt < Date.now()) return false;
+  const isValid = !Number.isNaN(expiresAt) && expiresAt > Date.now();
 
-  writeLocalStepUp({ userId, verifiedUntil: expiresAt });
-  return true;
+  if (isValid) {
+    // Update local cache with server-authoritative expiry
+    writeLocalStepUp({ userId, verifiedUntil: expiresAt });
+  } else {
+    clearLocalStepUp();
+  }
+  return isValid;
 }

@@ -31,6 +31,18 @@ serve(async (req) => {
     targetUrl = dest;
   }
 
+  // Validate the redirect destination to prevent open redirect attacks.
+  // Only http and https schemes are allowed.
+  try {
+    const parsed = new URL(targetUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return redirect("/");
+    }
+  } catch {
+    // Not a valid URL — redirect to safe fallback
+    return redirect("/");
+  }
+
   if (campaignId) {
     try {
       const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);

@@ -4,7 +4,7 @@ import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import ErrorBoundary from "./components/ErrorBoundary.tsx";
+import ErrorBoundary, { RouteErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { BetaLimitedPageGuard } from "./components/BetaLimitedPageGuard.tsx";
 import ProtectedRoute from "./components/ProtectedRoute.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
@@ -37,10 +37,14 @@ function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function DashboardRoute({ children, requiredPlan }: { children: React.ReactNode; requiredPlan?: "starter" | "growth" | "scale" | "enterprise" }) {
+function DashboardRoute({ children, requiredPlan, routeLabel }: { children: React.ReactNode; requiredPlan?: "starter" | "growth" | "scale" | "enterprise"; routeLabel?: string }) {
   return (
     <ProtectedRoute requiredPlan={requiredPlan}>
-      <DashboardLayout>{children}</DashboardLayout>
+      <DashboardLayout>
+        <RouteErrorBoundary routeLabel={routeLabel}>
+          {children}
+        </RouteErrorBoundary>
+      </DashboardLayout>
     </ProtectedRoute>
   );
 }

@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { verifyJwt } from "../_shared/edge-utils.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -26,6 +27,9 @@ const BodySchema = z.object({
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const auth = await verifyJwt(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
     const parsed = BodySchema.safeParse(body);
@@ -41,6 +45,11 @@ serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
     const { data: store } = await supabase.from("stores").select("name, segment, user_id").eq("id", store_id).single();
+
+    // Verify the authenticated user owns this store
+    if (!store || store.user_id !== auth.userId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+    }
     const { data: aiConfig } = await supabase.from("ai_agent_config").select("*").eq("store_id", store_id).maybeSingle();
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -59,14 +68,16 @@ Instruções: Nunca invente informações. Se não souber algo, direcione para u
     });
 
     const data = await response.json();
-    const replyText = data.content[0].text;
+    if (!data?.content?.[0]?.text) throw new Error("Unexpected AI response structure");
+    const replyText = data.content[0].text as string;
 
     await supabase.from("messages").insert({
-      conversation_id, content: replyText, direction: "outbound", status: "pending", type: "text", user_id: store?.user_id
+      conversation_id, content: replyText, direction: "outbound", status: "pending", type: "text", user_id: store.user_id
     });
 
     return new Response(JSON.stringify({ reply: replyText }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+  } catch (err) {
+    console.error("ai-agent error:", err);
+    return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: corsHeaders });
   }
 });

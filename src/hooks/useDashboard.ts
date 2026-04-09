@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 
 async function getCurrentUserAndStore(): Promise<{ userId: string | null; storeId: string | null }> {
   const { data } = await supabase.auth.getUser();
@@ -18,8 +19,9 @@ async function getCurrentUserAndStore(): Promise<{ userId: string | null; storeI
 }
 
 export function useDashboardStats(days = 30) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["dashboard-stats", days],
+    queryKey: ["dashboard-stats", user?.id ?? null, days],
     queryFn: async () => {
       const { userId, storeId } = await getCurrentUserAndStore();
       if (!userId) throw new Error("Não autenticado");
@@ -39,21 +41,26 @@ export function useDashboardStats(days = 30) {
         ? supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("store_id", storeId)
         : supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("user_id", userId);
 
-      const analyticsFilter = storeId
-        ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
-        : supabase.from("analytics_daily").select("*").eq("user_id", userId);
+      // Each query in Promise.all must use an independently constructed builder.
+      // Reusing the same Postgrest builder instance across parallel chains is unsafe
+      // because the builder is mutated in-place and shared state causes incorrect filters.
+      const buildAnalytics = () =>
+        storeId
+          ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
+          : supabase.from("analytics_daily").select("*").eq("user_id", userId);
 
-      const opportunitiesFilter = storeId
-        ? supabase.from("opportunities").select("id", { count: "exact" }).eq("store_id", storeId)
-        : supabase.from("opportunities").select("id", { count: "exact" }).eq("user_id", userId);
+      const buildOpportunities = () =>
+        storeId
+          ? supabase.from("opportunities").select("id", { count: "exact" }).eq("store_id", storeId)
+          : supabase.from("opportunities").select("id", { count: "exact" }).eq("user_id", userId);
 
       const [customersRes, conversationsRes, campaignsRes, analyticsRes, analyticsPrevRes, opportunitiesRes] = await Promise.all([
         customersQuery,
         conversationsQuery,
         campaignsQuery,
-        analyticsFilter.gte("date", since).order("date", { ascending: true }),
-        analyticsFilter.select("revenue_influenced").gte("date", prevSince).lt("date", since),
-        opportunitiesFilter.neq("status", "resolvido"),
+        buildAnalytics().gte("date", since).order("date", { ascending: true }),
+        buildAnalytics().select("revenue_influenced").gte("date", prevSince).lt("date", since),
+        buildOpportunities().neq("status", "resolvido"),
       ]);
 
       const analytics = analyticsRes.data ?? [];
@@ -99,6 +106,7 @@ export function useDashboardStats(days = 30) {
       };
     },
     staleTime: 60_000,
+    enabled: !!user,
   });
 }
 
@@ -127,28 +135,28 @@ export function useRecentConversations() {
 }
 
 export function useCampaigns() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["campaigns"],
+    queryKey: ["campaigns", user?.id ?? null],
     queryFn: async () => {
       const { userId, storeId } = await getCurrentUserAndStore();
       if (!userId) return [];
 
-      const campaignsBase = storeId
-        ? supabase.from("campaigns").select("*").eq("store_id", storeId)
-        : supabase.from("campaigns").select("*").eq("user_id", userId);
-
-      const sendsBase = storeId
-        ? supabase.from("message_sends").select("campaign_id,status").eq("store_id", storeId)
-        : supabase.from("message_sends").select("campaign_id,status").eq("user_id", userId);
-
-      const attributionBase = storeId
-        ? supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("store_id", storeId)
-        : supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("user_id", userId);
-
+      // Each Promise.all entry needs its own builder instance to avoid shared mutable state.
       const [campaignsRes, sendsRes, attributionRes] = await Promise.all([
-        campaignsBase.order("created_at", { ascending: false }).limit(50),
-        sendsBase,
-        attributionBase.then((r: any) => r, () => ({ data: [], error: null })),
+        (storeId
+          ? supabase.from("campaigns").select("*").eq("store_id", storeId)
+          : supabase.from("campaigns").select("*").eq("user_id", userId)
+        ).order("created_at", { ascending: false }).limit(50),
+
+        storeId
+          ? supabase.from("message_sends").select("campaign_id,status").eq("store_id", storeId)
+          : supabase.from("message_sends").select("campaign_id,status").eq("user_id", userId),
+
+        (storeId
+          ? supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("store_id", storeId)
+          : supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("user_id", userId)
+        ).then((r) => r, () => ({ data: [], error: null })),
       ]);
 
       const { data, error } = campaignsRes;
@@ -253,6 +261,7 @@ export function useCampaigns() {
       });
     },
     staleTime: 60_000,
+    enabled: !!user,
   });
 }
 
@@ -290,8 +299,9 @@ export function useContacts() {
 }
 
 export function useConversations(statusFilter = "all") {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["conversations", statusFilter],
+    queryKey: ["conversations", user?.id ?? null, statusFilter],
     queryFn: async () => {
       const { userId } = await getCurrentUserAndStore();
       if (!userId) return [];
@@ -315,6 +325,7 @@ export function useConversations(statusFilter = "all") {
       return data ?? [];
     },
     staleTime: 20_000,
+    enabled: !!user,
   });
 }
 
@@ -355,8 +366,9 @@ export function useConversationIdsByMessageSearch(search: string) {
 }
 
 export function useInboxRoutingSettings() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["inbox_routing_settings"],
+    queryKey: ["inbox_routing_settings", user?.id ?? null],
     queryFn: async () => {
       const { userId } = await getCurrentUserAndStore();
       if (!userId) return { agent_names: [] as string[], round_robin_index: 0 };
@@ -374,6 +386,7 @@ export function useInboxRoutingSettings() {
       };
     },
     staleTime: 60_000,
+    enabled: !!user,
   });
 }
 
@@ -462,23 +475,24 @@ export function useConversionBaseline(days = 30) {
       const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
       const prevSinceIso = new Date(Date.now() - days * 2 * 86_400_000).toISOString();
 
-      const sendsBase = storeId
-        ? supabase.from("message_sends").select("status,created_at").eq("store_id", storeId)
-        : supabase.from("message_sends").select("status,created_at").eq("user_id", userId);
+      // Each Promise.all entry needs its own builder to avoid shared mutable state.
+      const buildSends = () =>
+        storeId
+          ? supabase.from("message_sends").select("status,created_at").eq("store_id", storeId)
+          : supabase.from("message_sends").select("status,created_at").eq("user_id", userId);
 
-      const convBase = storeId
-        ? supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("store_id", storeId)
-        : supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("user_id", userId);
-
-      const attrBase = storeId
-        ? supabase.from("attribution_events").select("order_value,order_date").eq("store_id", storeId)
-        : supabase.from("attribution_events").select("order_value,order_date").eq("user_id", userId);
+      const buildAttr = () =>
+        storeId
+          ? supabase.from("attribution_events").select("order_value,order_date").eq("store_id", storeId)
+          : supabase.from("attribution_events").select("order_value,order_date").eq("user_id", userId);
 
       const [sendsRes, sendsPrevRes, conversationsRes, attributionRes] = await Promise.all([
-        sendsBase.gte("created_at", sinceIso),
-        sendsBase.gte("created_at", prevSinceIso).lt("created_at", sinceIso),
-        convBase,
-        attrBase.gte("order_date", sinceIso).then((r: any) => r, () => ({ data: [] })),
+        buildSends().gte("created_at", sinceIso),
+        buildSends().gte("created_at", prevSinceIso).lt("created_at", sinceIso),
+        storeId
+          ? supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("store_id", storeId)
+          : supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("user_id", userId),
+        buildAttr().gte("order_date", sinceIso).then((r) => r, () => ({ data: [] })),
       ]);
 
       const sends = sendsRes.data ?? [];
@@ -561,30 +575,32 @@ export function useROIAttribution(days = 30) {
       const prevSince = new Date(Date.now() - days * 2 * 86_400_000).toISOString().split("T")[0];
       const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
 
-      const analyticsBase = storeId
-        ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
-        : supabase.from("analytics_daily").select("*").eq("user_id", userId);
-
-      const cartsBase = storeId
-        ? supabase.from("abandoned_carts").select("status,cart_value,recovered_at,campaign_id,automation_id").eq("store_id", storeId)
-        : supabase.from("abandoned_carts").select("status,cart_value,recovered_at,campaign_id,automation_id").eq("user_id", userId);
-
-      const campaignsBase = storeId
-        ? supabase.from("campaigns").select("id,name,channel,sent_count").eq("store_id", storeId)
-        : supabase.from("campaigns").select("id,name,channel,sent_count").eq("user_id", userId);
+      // Each builder must be constructed fresh per query in Promise.all.
+      const buildAnalyticsROI = () =>
+        storeId
+          ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
+          : supabase.from("analytics_daily").select("*").eq("user_id", userId);
 
       const [analyticsRes, analyticsPrevRes, cartsRes, campaignsRes, attributionRes] = await Promise.all([
-        analyticsBase.gte("date", since).order("date", { ascending: true }),
-        analyticsBase.select("revenue_influenced").gte("date", prevSince).lt("date", since),
-        cartsBase.gte("created_at", sinceIso),
-        campaignsBase,
+        buildAnalyticsROI().gte("date", since).order("date", { ascending: true }),
+        buildAnalyticsROI().select("revenue_influenced").gte("date", prevSince).lt("date", since),
+
+        (storeId
+          ? supabase.from("abandoned_carts").select("status,cart_value,recovered_at,campaign_id,automation_id").eq("store_id", storeId)
+          : supabase.from("abandoned_carts").select("status,cart_value,recovered_at,campaign_id,automation_id").eq("user_id", userId)
+        ).gte("created_at", sinceIso),
+
+        storeId
+          ? supabase.from("campaigns").select("id,name,channel,sent_count").eq("store_id", storeId)
+          : supabase.from("campaigns").select("id,name,channel,sent_count").eq("user_id", userId),
+
         // attribution_events may not exist — handle gracefully
         supabase
           .from("attribution_events")
           .select("order_value,attributed_campaign_id,attributed_automation_id")
           .eq("user_id", userId)
           .gte("order_date", sinceIso)
-          .then((r: any) => r, () => ({ data: null, error: { message: "table missing" } })),
+          .then((r) => r, () => ({ data: null, error: { message: "table missing" } })),
       ]);
 
       const analytics = analyticsRes.data ?? [];
@@ -720,8 +736,9 @@ export function useROIAttribution(days = 30) {
 }
 
 export function useProblems() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["problems"],
+    queryKey: ["problems", user?.id ?? null],
     queryFn: async () => {
       const { userId, storeId } = await getCurrentUserAndStore();
       if (!userId) return [];
@@ -739,5 +756,6 @@ export function useProblems() {
       return data ?? [];
     },
     staleTime: 60_000,
+    enabled: !!user,
   });
 }
