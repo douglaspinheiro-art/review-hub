@@ -446,6 +446,24 @@ export type Database = {
           },
         ]
       }
+      api_request_logs: {
+        Row: {
+          created_at: string
+          id: number
+          rate_key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          rate_key: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          rate_key?: string
+        }
+        Relationships: []
+      }
       attribution_events: {
         Row: {
           attributed_automation_id: string | null
@@ -512,6 +530,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          ip_hash: string | null
+          metadata: Json | null
+          resource: string
+          result: string
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          metadata?: Json | null
+          resource: string
+          result: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          metadata?: Json | null
+          resource?: string
+          result?: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       automations: {
         Row: {
@@ -653,10 +707,10 @@ export type Database = {
       }
       campaigns: {
         Row: {
-          ab_subject_enabled: boolean | null
+          ab_subject_enabled: boolean
           blocks: Json | null
           channel: string
-          click_count: number | null
+          click_count: number
           created_at: string
           delivered_count: number
           email_recipient_mode: string | null
@@ -679,10 +733,10 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          ab_subject_enabled?: boolean | null
+          ab_subject_enabled?: boolean
           blocks?: Json | null
           channel?: string
-          click_count?: number | null
+          click_count?: number
           created_at?: string
           delivered_count?: number
           email_recipient_mode?: string | null
@@ -705,10 +759,10 @@ export type Database = {
           user_id: string
         }
         Update: {
-          ab_subject_enabled?: boolean | null
+          ab_subject_enabled?: boolean
           blocks?: Json | null
           channel?: string
-          click_count?: number | null
+          click_count?: number
           created_at?: string
           delivered_count?: number
           email_recipient_mode?: string | null
@@ -792,6 +846,39 @@ export type Database = {
           store_id?: string | null
           tipo?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      client_error_events: {
+        Row: {
+          component_stack: string | null
+          created_at: string
+          id: string
+          message: string
+          route: string | null
+          stack: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          component_stack?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          route?: string | null
+          stack?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          component_stack?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          route?: string | null
+          stack?: string | null
+          user_agent?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -911,6 +998,38 @@ export type Database = {
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_notes: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          id: string
+          note: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          id?: string
+          note: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          note?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_notes_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
             referencedColumns: ["id"]
           },
         ]
@@ -1096,39 +1215,6 @@ export type Database = {
           },
         ]
       }
-      email_engagement_events: {
-        Row: {
-          campaign_id: string
-          created_at: string
-          customer_id: string
-          event_type: string
-          id: string
-          link_url: string | null
-          send_recipient_id: string
-          user_id: string
-        }
-        Insert: {
-          campaign_id: string
-          created_at?: string
-          customer_id: string
-          event_type: string
-          id?: string
-          link_url?: string | null
-          send_recipient_id: string
-          user_id: string
-        }
-        Update: {
-          campaign_id?: string
-          created_at?: string
-          customer_id?: string
-          event_type?: string
-          id?: string
-          link_url?: string | null
-          send_recipient_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       diagnostics: {
         Row: {
           created_at: string | null
@@ -1182,6 +1268,7 @@ export type Database = {
           diagnostic_json: Json | null
           id: string
           store_id: string | null
+          user_id: string | null
         }
         Insert: {
           chs?: number | null
@@ -1190,6 +1277,7 @@ export type Database = {
           diagnostic_json?: Json | null
           id?: string
           store_id?: string | null
+          user_id?: string | null
         }
         Update: {
           chs?: number | null
@@ -1198,6 +1286,7 @@ export type Database = {
           diagnostic_json?: Json | null
           id?: string
           store_id?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -1212,6 +1301,68 @@ export type Database = {
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_engagement_events: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          customer_id: string
+          event_type: string
+          id: string
+          link_url: string | null
+          send_recipient_id: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          customer_id: string
+          event_type: string
+          id?: string
+          link_url?: string | null
+          send_recipient_id: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          customer_id?: string
+          event_type?: string
+          id?: string
+          link_url?: string | null
+          send_recipient_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_engagement_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_engagement_events_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_engagement_events_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_v3"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_engagement_events_send_recipient_id_fkey"
+            columns: ["send_recipient_id"]
+            isOneToOne: false
+            referencedRelation: "newsletter_send_recipients"
             referencedColumns: ["id"]
           },
         ]
@@ -1431,6 +1582,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      inbox_routing_settings: {
+        Row: {
+          agent_names: string[]
+          round_robin_index: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_names?: string[]
+          round_robin_index?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_names?: string[]
+          round_robin_index?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       integrations: {
         Row: {
@@ -1814,57 +1986,6 @@ export type Database = {
           },
         ]
       }
-      newsletter_saved_blocks: {
-        Row: {
-          blocks: Json
-          created_at: string
-          id: string
-          name: string
-          store_id: string | null
-          user_id: string
-        }
-        Insert: {
-          blocks?: Json
-          created_at?: string
-          id?: string
-          name: string
-          store_id?: string | null
-          user_id: string
-        }
-        Update: {
-          blocks?: Json
-          created_at?: string
-          id?: string
-          name?: string
-          store_id?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      newsletter_send_recipients: {
-        Row: {
-          campaign_id: string
-          customer_id: string
-          id: string
-          sent_at: string
-          user_id: string
-        }
-        Insert: {
-          campaign_id: string
-          customer_id: string
-          id?: string
-          sent_at?: string
-          user_id: string
-        }
-        Update: {
-          campaign_id?: string
-          customer_id?: string
-          id?: string
-          sent_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       messages: {
         Row: {
           content: string
@@ -1905,6 +2026,94 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      newsletter_saved_blocks: {
+        Row: {
+          blocks: Json
+          created_at: string
+          id: string
+          name: string
+          store_id: string | null
+          user_id: string
+        }
+        Insert: {
+          blocks?: Json
+          created_at?: string
+          id?: string
+          name: string
+          store_id?: string | null
+          user_id: string
+        }
+        Update: {
+          blocks?: Json
+          created_at?: string
+          id?: string
+          name?: string
+          store_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "newsletter_saved_blocks_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "newsletter_saved_blocks_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      newsletter_send_recipients: {
+        Row: {
+          campaign_id: string
+          customer_id: string
+          id: string
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          customer_id: string
+          id?: string
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          customer_id?: string
+          id?: string
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "newsletter_send_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "newsletter_send_recipients_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "newsletter_send_recipients_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_v3"
             referencedColumns: ["id"]
           },
         ]
@@ -2448,6 +2657,7 @@ export type Database = {
         Row: {
           ai_model: string | null
           avatar_url: string | null
+          company: string | null
           company_name: string | null
           created_at: string
           full_name: string | null
@@ -2458,6 +2668,8 @@ export type Database = {
           loyalty_program_name: string | null
           loyalty_slug: string | null
           onboarding_completed: boolean
+          password_rotated_at: string | null
+          phone: string | null
           pix_key: string | null
           plan: string
           points_per_real: number | null
@@ -2469,6 +2681,7 @@ export type Database = {
         Insert: {
           ai_model?: string | null
           avatar_url?: string | null
+          company?: string | null
           company_name?: string | null
           created_at?: string
           full_name?: string | null
@@ -2479,6 +2692,8 @@ export type Database = {
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
           onboarding_completed?: boolean
+          password_rotated_at?: string | null
+          phone?: string | null
           pix_key?: string | null
           plan?: string
           points_per_real?: number | null
@@ -2490,6 +2705,7 @@ export type Database = {
         Update: {
           ai_model?: string | null
           avatar_url?: string | null
+          company?: string | null
           company_name?: string | null
           created_at?: string
           full_name?: string | null
@@ -2500,6 +2716,8 @@ export type Database = {
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
           onboarding_completed?: boolean
+          password_rotated_at?: string | null
+          phone?: string | null
           pix_key?: string | null
           plan?: string
           points_per_real?: number | null
@@ -2670,6 +2888,39 @@ export type Database = {
           taxa_checkout_media?: number | null
           ticket_medio_referencia?: number | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      security_stepup_sessions: {
+        Row: {
+          challenge_consumed_at: string | null
+          challenge_nonce_hash: string | null
+          clerk_user_id: string | null
+          expires_at: string
+          session_id: string
+          updated_at: string
+          user_id: string
+          verified_at: string
+        }
+        Insert: {
+          challenge_consumed_at?: string | null
+          challenge_nonce_hash?: string | null
+          clerk_user_id?: string | null
+          expires_at: string
+          session_id?: string
+          updated_at?: string
+          user_id: string
+          verified_at?: string
+        }
+        Update: {
+          challenge_consumed_at?: string | null
+          challenge_nonce_hash?: string | null
+          clerk_user_id?: string | null
+          expires_at?: string
+          session_id?: string
+          updated_at?: string
+          user_id?: string
+          verified_at?: string
         }
         Relationships: []
       }
@@ -3098,6 +3349,12 @@ export type Database = {
           evolution_api_url: string | null
           id: string
           instance_name: string
+          meta_access_token: string | null
+          meta_api_version: string | null
+          meta_default_template_name: string | null
+          meta_phone_number_id: string | null
+          meta_waba_id: string | null
+          provider: string
           status: string | null
           store_id: string | null
           updated_at: string | null
@@ -3109,6 +3366,12 @@ export type Database = {
           evolution_api_url?: string | null
           id?: string
           instance_name: string
+          meta_access_token?: string | null
+          meta_api_version?: string | null
+          meta_default_template_name?: string | null
+          meta_phone_number_id?: string | null
+          meta_waba_id?: string | null
+          provider?: string
           status?: string | null
           store_id?: string | null
           updated_at?: string | null
@@ -3120,6 +3383,12 @@ export type Database = {
           evolution_api_url?: string | null
           id?: string
           instance_name?: string
+          meta_access_token?: string | null
+          meta_api_version?: string | null
+          meta_default_template_name?: string | null
+          meta_phone_number_id?: string | null
+          meta_waba_id?: string | null
+          provider?: string
           status?: string | null
           store_id?: string | null
           updated_at?: string | null
@@ -3920,9 +4189,16 @@ export type Database = {
             Returns: undefined
           }
       increment_unread_count: { Args: { conv_id: string }; Returns: undefined }
+      is_password_rotation_due: { Args: { _user_id: string }; Returns: boolean }
       resolve_loyalty_by_phone: {
         Args: { p_phone: string; p_slug: string }
         Returns: Json
+      }
+      search_conversation_ids_by_message: {
+        Args: { p_search: string }
+        Returns: {
+          conversation_id: string
+        }[]
       }
       update_loja_chs: {
         Args: { loja_uuid: string; new_label: string; new_score: number }
@@ -3930,7 +4206,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "moderator" | "user"
+      app_role: "admin" | "editor" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4058,7 +4334,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "moderator", "user"],
+      app_role: ["admin", "editor", "user"],
     },
   },
 } as const
