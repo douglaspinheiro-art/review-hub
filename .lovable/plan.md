@@ -1,68 +1,38 @@
 
 
-# Análise: Integrações na página /dashboard/integracoes
+# Correção: Erros de lint `@typescript-eslint/no-explicit-any`
 
-## Estado Atual
+O CI falhou porque 20 usos de `any` foram detectados em 4 arquivos. A correção é substituir cada `any` por tipos específicos.
 
-A página de integrações está **bem estruturada em UI** mas tem **limitações significativas no backend**.
+## Arquivos e correções
 
-### O que funciona (Frontend)
+### 1. `src/pages/dashboard/Integracoes.tsx` (2 erros)
+- **L172**: `onError: (err: any)` → `onError: (err: Error)`
+- **L296**: `(item as any).isComingSoon` → tipagem correta do item (adicionar `isComingSoon` ao tipo do array ou usar type guard)
 
-| Categoria | Integrações | Status UI |
-|---|---|---|
-| E-commerce | Shopify, Nuvemshop, Tray, VTEX, WooCommerce, Dizy Commerce | Formulário de conexão funcional |
-| CRM & Marketing | HubSpot, RD Station, Mailchimp | Formulário funcional |
-| Reputação | Google Meu Negócio, Reclame Aqui | Formulário funcional |
-| Marketplaces | Mercado Livre, Shopee, Amazon | Badge "Me avise" (coming soon) |
-| SMS | Zenvia, Twilio | Formulário funcional |
-| Parceiros Oficiais | Nuvemshop, Shopify Brasil | Cards com links externos |
+### 2. `supabase/functions/fetch-store-metrics/index.ts` (6 erros)
+- **L35, L78, L113, L140, L172**: callbacks de `.reduce()` com `o: any` → usar interfaces tipadas:
+  ```typescript
+  interface ShopifyOrder { total_price?: string }
+  interface NuvemshopOrder { total?: string }
+  interface WooOrder { total?: string }
+  interface TrayOrder { Order?: { total?: string } }
+  interface VTEXOrder { totalValue?: number }
+  ```
+- **L242**: `catch (err: any)` → `catch (err: unknown)` com cast `(err as Error).message`
 
-**Total: 16 integrações listadas** (13 conectáveis + 3 coming soon)
+### 3. `supabase/functions/send-sms/index.ts` (2 erros)
+- **L68**: `let data: any` → `let data: Record<string, unknown>`
+- **L110**: `catch (err: any)` → `catch (err: unknown)`
 
-### O que realmente acontece ao "Conectar"
+### 4. `supabase/functions/validate-integration/index.ts` (10 erros)
+- **L22, L42, L60, L74, L91, L106, L119, L135, L158**: todos `catch (e: any)` → `catch (e: unknown)` com `(e as Error).message`
+- **L199**: `catch (err: any)` → `catch (err: unknown)`
 
-Quando o usuário clica "Conectar" e preenche os campos:
-1. Os dados são salvos na tabela `integrations` no Supabase (type, name, config JSON)
-2. Automações padrão são criadas automaticamente (carrinho abandonado, pós-compra, etc.)
-3. A integração aparece como "Conectada" na UI
-
-**Porém, não há validação real das credenciais.** O sistema aceita qualquer valor nos campos — não testa se o token Shopify é válido, se a API Key do HubSpot funciona, etc.
-
-### Backend real por integração
-
-| Integração | Backend funcional? | Detalhes |
-|---|---|---|
-| **Shopify** | Parcial | `integration-gateway` recebe webhooks e normaliza pedidos. `fetch-store-metrics` puxa métricas via API. Mas não há OAuth — requer token manual. |
-| **Nuvemshop** | Parcial | Mesmo que Shopify — gateway normaliza, fetch-store-metrics funciona. Sem OAuth. |
-| **WooCommerce** | Parcial | Gateway + fetch-store-metrics implementados. |
-| **Tray** | Parcial | Gateway normaliza pedidos, mas fetch-store-metrics não suporta Tray (retorna 422). |
-| **VTEX** | Parcial | Gateway normaliza, fetch-store-metrics não suporta (retorna 422). |
-| **Dizy Commerce** | Nenhum | Apenas salva credenciais. Sem gateway, sem sync. |
-| **HubSpot** | Nenhum | Apenas salva credenciais. Nenhuma Edge Function processa dados. |
-| **RD Station** | Nenhum | Apenas salva credenciais. |
-| **Mailchimp** | Nenhum | Apenas salva credenciais. |
-| **Google Meu Negócio** | Nenhum | Apenas salva Place ID. Sem fetch de reviews. |
-| **Reclame Aqui** | Nenhum | Apenas salva ID. |
-| **Zenvia** | Parcial | Edge Function `send-sms` existe mas não lê config da tabela `integrations` — usa env vars. |
-| **Twilio** | Nenhum | Apenas salva credenciais. |
-
-### Problemas identificados
-
-1. **Sem validação de credenciais** — qualquer valor é aceito, o usuário não sabe se conectou corretamente
-2. **CRM/Marketing são fachada** — HubSpot, RD Station e Mailchimp não fazem nada após salvar
-3. **Sem sincronização real** — não há cron/worker que puxe dados periodicamente das plataformas
-4. **Tray e VTEX** — gateway recebe webhooks mas `fetch-store-metrics` não os suporta
-5. **SMS desconectado** — Zenvia/Twilio salvos na UI mas Edge Functions usam env vars separadas
-
-### Recomendações prioritárias
-
-Se quiser que as integrações funcionem de verdade, sugiro implementar por ordem de impacto:
-
-1. **Validação de credenciais** — ao conectar, testar a API antes de salvar (ex: Shopify → GET /admin/api/shop.json)
-2. **Completar fetch-store-metrics** para Tray e VTEX
-3. **Conectar SMS** — fazer `send-sms` ler config da tabela `integrations` em vez de env vars fixas
-4. **CRM sync** — pelo menos HubSpot (sincronizar contatos bidirecionalmente)
-5. **Revisão de reviews** — Google Meu Negócio puxar avaliações reais
-
-Deseja que eu implemente alguma dessas melhorias?
+## Resumo
+- Substituir `catch (x: any)` por `catch (x: unknown)` + cast `(x as Error).message` (20 ocorrências nos 4 arquivos)
+- Criar interfaces para os objetos de pedidos no `fetch-store-metrics`
+- Tipar `data` no `send-sms`
+- Corrigir cast `as any` no `Integracoes.tsx`
+- Re-deploy das 3 Edge Functions após correção
 
