@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Link2, Check, Plus, Trash2, RefreshCw, Loader2,
   ShoppingCart, BarChart3, Mail, MessageSquare, Star, Sparkles, ArrowRight,
+  ShieldCheck, ShieldX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,6 +101,7 @@ export default function Integracoes() {
   const queryClient = useQueryClient();
   const [connecting, setConnecting] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [validationState, setValidationState] = useState<{ status: "idle" | "validating" | "success" | "error"; detail: string }>({ status: "idle", detail: "" });
 
   const { data: integrations = [], isLoading } = useQuery({
     queryKey: ["integrations"],
@@ -115,8 +117,23 @@ export default function Integracoes() {
     enabled: !!user,
   });
 
-  const connectMutation = useMutation({
+  const validateAndConnect = useMutation({
     mutationFn: async ({ type, name }: { type: string; name: string }) => {
+      // Step 1: Validate credentials
+      setValidationState({ status: "validating", detail: "Testando conexão..." });
+      const { data: valResult, error: valError } = await supabase.functions.invoke("validate-integration", {
+        body: { type, config: formData },
+      });
+
+      if (valError || !valResult?.ok) {
+        const detail = valResult?.detail || valError?.message || "Falha na validação";
+        setValidationState({ status: "error", detail });
+        throw new Error(detail);
+      }
+
+      setValidationState({ status: "success", detail: valResult.detail });
+
+      // Step 2: Save integration
       const { error } = await supabase.from("integrations").insert({
         user_id: user!.id,
         type,
@@ -126,7 +143,7 @@ export default function Integracoes() {
       });
       if (error) throw error;
 
-      // ETAPA 8: Auto-seed standard automations on store connection
+      // Auto-seed automations on first store connection
       const { count } = await supabase
         .from("automations")
         .select("id", { count: "exact", head: true })
@@ -145,13 +162,16 @@ export default function Integracoes() {
       }
     },
     onSuccess: (_, { name }) => {
-      toast({ title: `${name} conectado com sucesso!`, description: "Jornadas padrão ativadas automaticamente." });
+      toast({ title: `${name} conectado com sucesso!`, description: "Credenciais validadas ✓ — Jornadas padrão ativadas." });
       setConnecting(null);
       setFormData({});
+      setValidationState({ status: "idle", detail: "" });
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       queryClient.invalidateQueries({ queryKey: ["automations"] });
     },
-    onError: () => toast({ title: "Erro ao conectar", variant: "destructive" }),
+    onError: (err: any) => {
+      toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
+    },
   });
 
   const deleteMutation = useMutation({
