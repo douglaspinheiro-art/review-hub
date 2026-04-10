@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Link2, Check, Plus, Trash2, RefreshCw, Loader2,
   ShoppingCart, BarChart3, Mail, MessageSquare, Star, Sparkles, ArrowRight,
+  ShieldCheck, ShieldX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,6 +101,7 @@ export default function Integracoes() {
   const queryClient = useQueryClient();
   const [connecting, setConnecting] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [validationState, setValidationState] = useState<{ status: "idle" | "validating" | "success" | "error"; detail: string }>({ status: "idle", detail: "" });
 
   const { data: integrations = [], isLoading } = useQuery({
     queryKey: ["integrations"],
@@ -115,8 +117,23 @@ export default function Integracoes() {
     enabled: !!user,
   });
 
-  const connectMutation = useMutation({
+  const validateAndConnect = useMutation({
     mutationFn: async ({ type, name }: { type: string; name: string }) => {
+      // Step 1: Validate credentials
+      setValidationState({ status: "validating", detail: "Testando conexão..." });
+      const { data: valResult, error: valError } = await supabase.functions.invoke("validate-integration", {
+        body: { type, config: formData },
+      });
+
+      if (valError || !valResult?.ok) {
+        const detail = valResult?.detail || valError?.message || "Falha na validação";
+        setValidationState({ status: "error", detail });
+        throw new Error(detail);
+      }
+
+      setValidationState({ status: "success", detail: valResult.detail });
+
+      // Step 2: Save integration
       const { error } = await supabase.from("integrations").insert({
         user_id: user!.id,
         type,
@@ -126,7 +143,7 @@ export default function Integracoes() {
       });
       if (error) throw error;
 
-      // ETAPA 8: Auto-seed standard automations on store connection
+      // Auto-seed automations on first store connection
       const { count } = await supabase
         .from("automations")
         .select("id", { count: "exact", head: true })
@@ -145,13 +162,16 @@ export default function Integracoes() {
       }
     },
     onSuccess: (_, { name }) => {
-      toast({ title: `${name} conectado com sucesso!`, description: "Jornadas padrão ativadas automaticamente." });
+      toast({ title: `${name} conectado com sucesso!`, description: "Credenciais validadas ✓ — Jornadas padrão ativadas." });
       setConnecting(null);
       setFormData({});
+      setValidationState({ status: "idle", detail: "" });
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       queryClient.invalidateQueries({ queryKey: ["automations"] });
     },
-    onError: () => toast({ title: "Erro ao conectar", variant: "destructive" }),
+    onError: (err: any) => {
+      toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -312,20 +332,33 @@ export default function Integracoes() {
                           />
                         </div>
                       ))}
+                      {validationState.status !== "idle" && connecting === item.type && (
+                        <div className={cn(
+                          "text-xs rounded-lg px-3 py-2 flex items-center gap-2",
+                          validationState.status === "validating" && "bg-muted text-muted-foreground",
+                          validationState.status === "success" && "bg-emerald-500/10 text-emerald-500",
+                          validationState.status === "error" && "bg-destructive/10 text-destructive",
+                        )}>
+                          {validationState.status === "validating" && <Loader2 className="w-3 h-3 animate-spin" />}
+                          {validationState.status === "success" && <ShieldCheck className="w-3 h-3" />}
+                          {validationState.status === "error" && <ShieldX className="w-3 h-3" />}
+                          {validationState.detail}
+                        </div>
+                      )}
                       <div className="flex gap-2 pt-1">
                         <Button
                           size="sm"
                           className="h-8 gap-1.5"
-                          onClick={() => connectMutation.mutate({ type: item.type, name: item.name })}
-                          disabled={connectMutation.isPending}
+                          onClick={() => validateAndConnect.mutate({ type: item.type, name: item.name })}
+                          disabled={validateAndConnect.isPending}
                         >
-                          {connectMutation.isPending
+                          {validateAndConnect.isPending
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <Link2 className="w-3.5 h-3.5" />
+                            : <ShieldCheck className="w-3.5 h-3.5" />
                           }
-                          Conectar
+                          Testar e Conectar
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setConnecting(null)}>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => { setConnecting(null); setValidationState({ status: "idle", detail: "" }); }}>
                           Cancelar
                         </Button>
                       </div>
