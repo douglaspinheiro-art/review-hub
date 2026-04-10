@@ -65,7 +65,7 @@ serve(async (req) => {
     const jwt = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
     const { data: { user } } = await supabase.auth.getUser(jwt);
 
-    let data: any;
+    let data: Record<string, unknown>;
 
     if (user) {
       // Look for SMS integrations saved by the user
@@ -107,8 +107,8 @@ serve(async (req) => {
     return new Response(JSON.stringify(data), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
+  } catch (err: unknown) {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
