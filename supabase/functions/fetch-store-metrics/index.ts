@@ -117,6 +117,61 @@ async function fetchWooCommerce(config: Record<string, string>) {
   return { faturamento, ticketMedio, totalClientes, taxaAbandono: 0.70 };
 }
 
+// ─── Tray ────────────────────────────────────────────────────
+async function fetchTray(config: Record<string, string>) {
+  const apiAddress = config.api_address?.replace(/\/$/, "");
+  const token = config.access_token;
+  if (!apiAddress || !token) throw new Error("Credenciais Tray incompletas");
+
+  const base = `https://${apiAddress}/web_api`;
+  const since = thirtyDaysAgo().split("T")[0]; // yyyy-mm-dd
+
+  const ordersRes = await fetch(
+    `${base}/orders?access_token=${encodeURIComponent(token)}&created=${since}&limit=50&status=approved`,
+  );
+  if (!ordersRes.ok) throw new Error(`Tray orders: ${ordersRes.status}`);
+  const ordersData = await ordersRes.json();
+  const orders = ordersData.Orders || [];
+
+  const faturamento = orders.reduce((s: number, o: any) => s + parseFloat(o.Order?.total || "0"), 0);
+  const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
+
+  const custRes = await fetch(`${base}/customers?access_token=${encodeURIComponent(token)}&limit=1`);
+  const totalClientes = custRes.ok
+    ? parseInt((await custRes.json())?.paging?.total || "0", 10)
+    : 0;
+
+  return { faturamento, ticketMedio, totalClientes, taxaAbandono: 0.72 };
+}
+
+// ─── VTEX ────────────────────────────────────────────────────
+async function fetchVTEX(config: Record<string, string>) {
+  const account = config.account_name;
+  const appKey = config.app_key;
+  const appToken = config.app_token;
+  if (!account || !appKey || !appToken) throw new Error("Credenciais VTEX incompletas");
+
+  const base = `https://${account}.vtexcommercestable.com.br/api`;
+  const headers = { "X-VTEX-API-AppKey": appKey, "X-VTEX-API-AppToken": appToken };
+  const since = thirtyDaysAgo().toISOString().split("T")[0];
+  const today = new Date().toISOString().split("T")[0];
+
+  // OMS List orders
+  const ordersRes = await fetch(
+    `${base}/oms/pvt/orders?f_creationDate=creationDate:[${since}T00:00:00.000Z TO ${today}T23:59:59.999Z]&per_page=100`,
+    { headers },
+  );
+  if (!ordersRes.ok) throw new Error(`VTEX orders: ${ordersRes.status}`);
+  const ordersData = await ordersRes.json();
+  const orders = ordersData.list || [];
+
+  const faturamento = orders.reduce((s: number, o: any) => s + (o.totalValue || 0) / 100, 0);
+  const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
+  const totalClientes = ordersData.paging?.total || orders.length;
+
+  return { faturamento, ticketMedio, totalClientes, taxaAbandono: 0.68 };
+}
+
 // ─── Handler principal ───────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -162,6 +217,12 @@ serve(async (req) => {
         break;
       case "woocommerce":
         metrics = await fetchWooCommerce(integration.config);
+        break;
+      case "tray":
+        metrics = await fetchTray(integration.config as Record<string, string>);
+        break;
+      case "vtex":
+        metrics = await fetchVTEX(integration.config as Record<string, string>);
         break;
       default:
         return new Response(

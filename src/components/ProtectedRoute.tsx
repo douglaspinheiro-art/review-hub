@@ -70,7 +70,7 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp }
         setPasswordCheckDone(true);
         return;
       }
-      const { data } = await supabase.rpc("is_password_rotation_due", {
+      const { data } = await (supabase as any).rpc("is_password_rotation_due", {
         _user_id: user.id,
       });
       if (!cancelled) {
