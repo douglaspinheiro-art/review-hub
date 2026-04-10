@@ -332,20 +332,33 @@ export default function Integracoes() {
                           />
                         </div>
                       ))}
+                      {validationState.status !== "idle" && connecting === item.type && (
+                        <div className={cn(
+                          "text-xs rounded-lg px-3 py-2 flex items-center gap-2",
+                          validationState.status === "validating" && "bg-muted text-muted-foreground",
+                          validationState.status === "success" && "bg-emerald-500/10 text-emerald-500",
+                          validationState.status === "error" && "bg-destructive/10 text-destructive",
+                        )}>
+                          {validationState.status === "validating" && <Loader2 className="w-3 h-3 animate-spin" />}
+                          {validationState.status === "success" && <ShieldCheck className="w-3 h-3" />}
+                          {validationState.status === "error" && <ShieldX className="w-3 h-3" />}
+                          {validationState.detail}
+                        </div>
+                      )}
                       <div className="flex gap-2 pt-1">
                         <Button
                           size="sm"
                           className="h-8 gap-1.5"
-                          onClick={() => connectMutation.mutate({ type: item.type, name: item.name })}
-                          disabled={connectMutation.isPending}
+                          onClick={() => validateAndConnect.mutate({ type: item.type, name: item.name })}
+                          disabled={validateAndConnect.isPending}
                         >
-                          {connectMutation.isPending
+                          {validateAndConnect.isPending
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <Link2 className="w-3.5 h-3.5" />
+                            : <ShieldCheck className="w-3.5 h-3.5" />
                           }
-                          Conectar
+                          Testar e Conectar
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setConnecting(null)}>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => { setConnecting(null); setValidationState({ status: "idle", detail: "" }); }}>
                           Cancelar
                         </Button>
                       </div>
