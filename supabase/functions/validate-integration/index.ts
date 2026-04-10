@@ -19,8 +19,8 @@ async function testShopify(config: Record<string, string>): Promise<{ ok: boolea
     if (!res.ok) return { ok: false, detail: `Shopify retornou ${res.status}. Verifique o token.` };
     const data = await res.json();
     return { ok: true, detail: `Loja "${data.shop?.name}" conectada com sucesso` };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -39,8 +39,8 @@ async function testNuvemshop(config: Record<string, string>): Promise<{ ok: bool
     if (!res.ok) return { ok: false, detail: `Nuvemshop retornou ${res.status}. Verifique as credenciais.` };
     const data = await res.json();
     return { ok: true, detail: `Loja "${data.name?.pt || data.name?.es || 'OK'}" conectada` };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -57,8 +57,8 @@ async function testWooCommerce(config: Record<string, string>): Promise<{ ok: bo
     });
     if (!res.ok) return { ok: false, detail: `WooCommerce retornou ${res.status}. Verifique as credenciais.` };
     return { ok: true, detail: "WooCommerce conectado com sucesso" };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -71,8 +71,8 @@ async function testTray(config: Record<string, string>): Promise<{ ok: boolean; 
     const res = await fetch(`https://${apiAddress}/web_api/auth?access_token=${encodeURIComponent(token)}`);
     if (!res.ok) return { ok: false, detail: `Tray retornou ${res.status}. Verifique as credenciais.` };
     return { ok: true, detail: "Tray conectada com sucesso" };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -88,8 +88,8 @@ async function testVTEX(config: Record<string, string>): Promise<{ ok: boolean; 
     });
     if (!res.ok) return { ok: false, detail: `VTEX retornou ${res.status}. Verifique as credenciais.` };
     return { ok: true, detail: "VTEX conectada com sucesso" };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -103,8 +103,8 @@ async function testHubSpot(config: Record<string, string>): Promise<{ ok: boolea
     });
     if (!res.ok) return { ok: false, detail: `HubSpot retornou ${res.status}. Verifique o token.` };
     return { ok: true, detail: "HubSpot conectado com sucesso" };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -116,8 +116,8 @@ async function testRDStation(config: Record<string, string>): Promise<{ ok: bool
     const res = await fetch(`https://api.rd.services/platform/contacts?token=${encodeURIComponent(apiKey)}&page=1&page_size=1`);
     if (!res.ok) return { ok: false, detail: `RD Station retornou ${res.status}. Verifique a API Key.` };
     return { ok: true, detail: "RD Station conectado com sucesso" };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -132,8 +132,8 @@ async function testMailchimp(config: Record<string, string>): Promise<{ ok: bool
     });
     if (!res.ok) return { ok: false, detail: `Mailchimp retornou ${res.status}. Verifique a API Key.` };
     return { ok: true, detail: "Mailchimp conectado com sucesso" };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -155,8 +155,8 @@ async function testTwilio(config: Record<string, string>): Promise<{ ok: boolean
     });
     if (!res.ok) return { ok: false, detail: `Twilio retornou ${res.status}. Verifique as credenciais.` };
     return { ok: true, detail: "Twilio conectado com sucesso" };
-  } catch (e: any) {
-    return { ok: false, detail: `Erro ao conectar: ${e.message}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
   }
 }
 
@@ -196,8 +196,8 @@ serve(async (req) => {
       status: result.ok ? 200 : 422,
       headers: { ...cors, "Content-Type": "application/json" },
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ ok: false, detail: err.message }), {
+  } catch (err: unknown) {
+    return new Response(JSON.stringify({ ok: false, detail: (err as Error).message }), {
       status: 500, headers: { ...cors, "Content-Type": "application/json" },
     });
   }

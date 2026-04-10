@@ -25,7 +25,11 @@ type Integration = {
   created_at: string;
 };
 
-const CATALOG = [
+type CatalogField = { key: string; label: string; placeholder: string };
+type CatalogItem = { type: string; name: string; logo: string; fields: CatalogField[]; isComingSoon?: boolean };
+type CatalogCategory = { category: string; icon: typeof ShoppingCart; items: CatalogItem[] };
+
+const CATALOG: CatalogCategory[] = [
   {
     category: "E-commerce",
     icon: ShoppingCart,
@@ -169,7 +173,7 @@ export default function Integracoes() {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       queryClient.invalidateQueries({ queryKey: ["automations"] });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
     },
   });
@@ -293,7 +297,7 @@ export default function Integracoes() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
-                    ) : (item as any).isComingSoon ? (
+                    ) : item.isComingSoon ? (
                       <Button
                         size="sm"
                         variant="outline"

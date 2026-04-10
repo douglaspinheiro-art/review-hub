@@ -32,7 +32,7 @@ async function fetchShopify(config: Record<string, string>) {
   if (!ordersRes.ok) throw new Error(`Shopify orders: ${ordersRes.status} ${await ordersRes.text()}`);
   const { orders } = await ordersRes.json();
 
-  const faturamento = orders.reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0);
+  const faturamento = orders.reduce((s: number, o: Record<string, string>) => s + parseFloat(o.total_price || "0"), 0);
   const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
 
   // Total de clientes
@@ -75,7 +75,7 @@ async function fetchNuvemshop(config: Record<string, string>) {
   const orders = await ordersRes.json();
 
   const faturamento = (Array.isArray(orders) ? orders : [])
-    .reduce((s: number, o: any) => s + parseFloat(o.total || "0"), 0);
+    .reduce((s: number, o: Record<string, string>) => s + parseFloat(o.total || "0"), 0);
   const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
 
   // Total de clientes
@@ -110,7 +110,7 @@ async function fetchWooCommerce(config: Record<string, string>) {
   const orders = await ordersRes.json();
 
   const faturamento = (Array.isArray(orders) ? orders : [])
-    .reduce((s: number, o: any) => s + parseFloat(o.total || "0"), 0);
+    .reduce((s: number, o: Record<string, string>) => s + parseFloat(o.total || "0"), 0);
   const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
 
   const custRes = await fetch(`${base}/customers?per_page=1`, { headers });
@@ -137,7 +137,7 @@ async function fetchTray(config: Record<string, string>) {
   const ordersData = await ordersRes.json();
   const orders = ordersData.Orders || [];
 
-  const faturamento = orders.reduce((s: number, o: any) => s + parseFloat(o.Order?.total || "0"), 0);
+  const faturamento = orders.reduce((s: number, o: { Order?: { total?: string } }) => s + parseFloat(o.Order?.total || "0"), 0);
   const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
 
   const custRes = await fetch(`${base}/customers?access_token=${encodeURIComponent(token)}&limit=1`);
@@ -169,7 +169,7 @@ async function fetchVTEX(config: Record<string, string>) {
   const ordersData = await ordersRes.json();
   const orders = ordersData.list || [];
 
-  const faturamento = orders.reduce((s: number, o: any) => s + (o.totalValue || 0) / 100, 0);
+  const faturamento = orders.reduce((s: number, o: { totalValue?: number }) => s + (o.totalValue || 0) / 100, 0);
   const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
   const totalClientes = ordersData.paging?.total || orders.length;
 
@@ -239,10 +239,10 @@ serve(async (req) => {
       JSON.stringify({ plataforma: integration.type, ...metrics }),
       { status: 200, headers: { ...cors, "Content-Type": "application/json" } }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("fetch-store-metrics error:", err);
     return new Response(
-      JSON.stringify({ error: err.message ?? "Erro interno" }),
+      JSON.stringify({ error: (err as Error).message ?? "Erro interno" }),
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
     );
   }
