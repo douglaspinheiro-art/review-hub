@@ -113,11 +113,6 @@
       "sha256": "3e470d4198315814dd5c67f1fd8ee026ff7051534c995be7f89e7aa9c85cafe2"
     },
     {
-      "function": "stepup-verify",
-      "file": "supabase/functions/stepup-verify/index.ts",
-      "sha256": "e7494972cb0b90bcefe43ac49a01e409698a321ed1ce78801b1a39e30099dcfb"
-    },
-    {
       "function": "track-email-click",
       "file": "supabase/functions/track-email-click/index.ts",
       "sha256": "45e1a0a8e07a38f4f2bcd5d050f4c3a4c708d6774ef727745ebe1eaf05d55bd0"
