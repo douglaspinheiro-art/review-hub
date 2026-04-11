@@ -12,10 +12,20 @@ create table if not exists public.audit_logs (
   ip text
 );
 
+-- Legacy installs may already have audit_logs without these columns; CREATE TABLE IF NOT EXISTS skips them.
+alter table public.audit_logs add column if not exists store_id uuid references public.stores(id);
+alter table public.audit_logs add column if not exists user_id uuid references auth.users(id);
+alter table public.audit_logs add column if not exists action text;
+alter table public.audit_logs add column if not exists resource text;
+alter table public.audit_logs add column if not exists metadata jsonb default '{}';
+alter table public.audit_logs add column if not exists ip text;
+alter table public.audit_logs add column if not exists created_at timestamptz not null default now();
+
 create index if not exists idx_audit_logs_store_id on public.audit_logs(store_id);
 create index if not exists idx_audit_logs_user_id on public.audit_logs(user_id);
 
 alter table public.audit_logs enable row level security;
+drop policy if exists "Owners can view own audit logs" on public.audit_logs;
 create policy "Owners can view own audit logs" on public.audit_logs
   for select using (auth.uid() = (select user_id from stores where id = store_id));
 

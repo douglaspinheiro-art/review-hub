@@ -25,7 +25,17 @@ create index if not exists idx_message_sends_campaign_id on public.message_sends
 create index if not exists idx_attribution_events_campaign_id on public.attribution_events(attributed_campaign_id) where attributed_campaign_id is not null;
 create index if not exists idx_attribution_events_automation_id on public.attribution_events(attributed_automation_id) where attributed_automation_id is not null;
 
--- 6. Scheduled Messages optimization
--- Used by the flow-engine and trigger-automations cron jobs
-create index if not exists idx_scheduled_messages_store_status on public.scheduled_messages(store_id, status) where status = 'pending';
-create index if not exists idx_scheduled_messages_journey_id on public.scheduled_messages(journey_id);
+-- 6. Scheduled Messages optimization (table may be absent on DBs that skipped legacy migrations)
+DO $perf_sched$
+BEGIN
+  IF to_regclass('public.scheduled_messages') IS NOT NULL THEN
+    EXECUTE $idx$
+      create index if not exists idx_scheduled_messages_store_status
+      on public.scheduled_messages(store_id, status) where status = 'pending'
+    $idx$;
+    EXECUTE $idx$
+      create index if not exists idx_scheduled_messages_journey_id
+      on public.scheduled_messages(journey_id)
+    $idx$;
+  END IF;
+END $perf_sched$;
