@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import type { Database } from "@/integrations/supabase/types";
 import { UI_NICHE_TO_SECTOR_DB, type BenchmarkNicheKey } from "@/lib/benchmark-niches";
 
@@ -164,22 +167,23 @@ export function calcFunil(m: MetricasFunil, meta: number, ticket: number) {
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
-/** Returns user's first store (or null). */
+/** Loja ativa (multi-loja: `sessionStorage` + escopo do dashboard). */
 export function useLoja() {
+  const { user } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeHint = scope?.activeStoreId;
   return useQuery({
-    queryKey: ["convertiq-loja"],
+    queryKey: ["convertiq-loja", user?.id ?? null, storeHint ?? ""],
     queryFn: async () => {
       const uid = await getUid();
       if (!uid) return null;
-      const { data } = await supabase
-        .from("stores")
-        .select("*")
-        .eq("user_id", uid)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+      const { storeId } = await getCurrentUserAndStore(storeHint);
+      if (!storeId) return null;
+      const { data, error } = await supabase.from("stores").select("*").eq("id", storeId).maybeSingle();
+      if (error) throw error;
       return data ?? null;
     },
+    enabled: !!user,
   });
 }
 
@@ -334,7 +338,6 @@ export function useLatestDiagnostico(lojaId: string | null) {
       const { data, error } = await supabase
         .from("diagnostics")
         .select("*")
-        .eq("user_id", (await getUid())!)
         .eq("store_id", lojaId)
         .eq("status", "done")
         .order("created_at", { ascending: false })
@@ -355,7 +358,6 @@ export function useDiagnosticos(lojaId: string | null) {
       const { data, error } = await supabase
         .from("diagnostics")
         .select("*")
-        .eq("user_id", (await getUid())!)
         .eq("store_id", lojaId)
         .eq("status", "done")
         .order("created_at", { ascending: false })
@@ -437,6 +439,7 @@ export function useSaveLoja() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["convertiq-loja"] });
       qc.invalidateQueries({ queryKey: ["convertiq-config"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stores-list"] });
     },
   });
 }

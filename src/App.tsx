@@ -8,6 +8,7 @@ import ErrorBoundary, { RouteErrorBoundary } from "./components/ErrorBoundary.ts
 import { BetaLimitedPageGuard } from "./components/BetaLimitedPageGuard.tsx";
 import ProtectedRoute from "./components/ProtectedRoute.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
+import AdminStaffRoute from "./components/AdminStaffRoute.tsx";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
 import { useIsAdmin } from "@/hooks/useAdminCheck";
 import TelaManutencao from "./components/TelaManutencao";
@@ -150,6 +151,7 @@ const ConvertIQSetup = lazy(() => import("./pages/dashboard/ConvertIQSetup.tsx")
 const Newsletter = lazy(() => import("./pages/dashboard/Newsletter.tsx"));
 const Atribuicao = lazy(() => import("./pages/dashboard/Atribuicao.tsx"));
 const Operacoes = lazy(() => import("./pages/dashboard/Operacoes.tsx"));
+const Admin = lazy(() => import("./pages/admin/Admin.tsx"));
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -251,6 +253,7 @@ const App = () => (
           <Route path="/dashboard/newsletter/:id" element={<DashboardRoute routeLabel="Edição de Newsletter"><BetaLimitedPageGuard><Newsletter /></BetaLimitedPageGuard></DashboardRoute>} />
           <Route path="/dashboard/atribuicao" element={<DashboardRoute routeLabel="Atribuição de Vendas"><Atribuicao /></DashboardRoute>} />
           <Route path="/dashboard/operacoes" element={<DashboardRoute routeLabel="Operações Logísticas"><Operacoes /></DashboardRoute>} />
+          <Route path="/admin" element={<AdminStaffRoute routeLabel="Administração da plataforma"><Admin /></AdminStaffRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

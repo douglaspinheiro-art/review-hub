@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   TrendingUp, Monitor, Smartphone, AlertTriangle,
@@ -31,6 +31,29 @@ import { isDashboardPathBlockedInBetaScope } from "@/lib/beta-scope";
 type Periodo = "7d" | "30d" | "90d";
 
 type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
+
+/** Monta Recharts só quando o bloco entra no viewport — alivia TTI da página. */
+function LazyInView({ children, minHeight = 280 }: { children: ReactNode; minHeight?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || show) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setShow(true);
+      },
+      { rootMargin: "200px", threshold: 0 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [show]);
+  return (
+    <div ref={ref} className="w-full" style={{ minHeight: show ? undefined : minHeight }}>
+      {show ? children : <div className="h-full w-full min-h-[inherit] rounded-xl bg-muted/20" aria-hidden />}
+    </div>
+  );
+}
 
 const DIAG_STEP_LABELS = [
   "Calculando taxas de conversão",
@@ -996,27 +1019,29 @@ export default function Funil() {
         </div>
         {chartData.length >= 2 ? (
           <>
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorCvr" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
-                  <XAxis dataKey="data" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} unit="%" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "12px", border: "1px solid hsl(var(--border))" }}
-                    itemStyle={{ fontSize: "12px", fontWeight: "bold" }}
-                  />
-                  <Area type="monotone" dataKey="cvr" name="Sua CVR" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorCvr)" strokeWidth={3} />
-                  <Line type="monotone" dataKey="bench" name="Meta" stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" dot={false} strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            <LazyInView minHeight={280}>
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="colorCvr" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                    <XAxis dataKey="data" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} unit="%" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "12px", border: "1px solid hsl(var(--border))" }}
+                      itemStyle={{ fontSize: "12px", fontWeight: "bold" }}
+                    />
+                    <Area type="monotone" dataKey="cvr" name="Sua CVR" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorCvr)" strokeWidth={3} />
+                    <Line type="monotone" dataKey="bench" name="Meta" stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" dot={false} strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </LazyInView>
             <div className="flex gap-6 mt-4 justify-center">
               <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                 <div className="w-3 h-0.5 bg-primary rounded-full" /> Sua CVR

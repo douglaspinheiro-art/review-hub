@@ -156,7 +156,7 @@ export default function Contatos() {
 
   const handleRefresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["contacts", user?.id ?? null] });
-    void queryClient.invalidateQueries({ queryKey: ["rfm-report-counts", user?.id ?? null] });
+    void queryClient.invalidateQueries({ queryKey: ["rfm-report-counts"] });
     void refetch();
     void refetchRfmReport();
     toast.success("Atualizando lista…");

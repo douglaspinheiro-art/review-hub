@@ -41,13 +41,10 @@ import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
 import {
   useDashboardSnapshot,
-  useROIAttribution,
-  useRfmReportCounts,
   useCustomerCohorts,
   useMessageSendHeatmap,
 } from "@/hooks/useDashboard";
 import { useLoja } from "@/hooks/useConvertIQ";
-import { usePrescriptionsV3 } from "@/hooks/useLTVBoost";
 
 const PERIODS: Array<{ label: string; value: 7 | 30 | 90 }> = [
   { label: "7 dias", value: 7 },
@@ -78,7 +75,10 @@ type SharePayload = {
   prescricoesAtivas: number;
   prescricoesPendentes: number;
   atribuidoPedidos: number;
-  atribuidoReais: number;
+  /** Receita de pedidos com atribuição a campanhas (attribution_events no período). */
+  atribuidoReceitaPedidos: number;
+  /** ISO do snapshot `get_dashboard_snapshot` (quando existir). */
+  snapshotGeradoEm: string | null;
 };
 
 function formatRetentionD30(v: number | null): string {
@@ -100,8 +100,11 @@ function buildShareText(p: SharePayload) {
     chsLine +
     `⚡ Prescrições em execução ou concluídas: *${p.prescricoesAtivas}*\n` +
     `📋 Aguardando aprovação: *${p.prescricoesPendentes}*\n` +
-    `📈 Pedidos com atribuição: *${p.atribuidoPedidos}* (R$ ${p.atribuidoReais.toLocaleString("pt-BR")})\n\n` +
-    `_Resumo gerado a partir dos dados da sua conta no período indicado._`
+    `📈 Pedidos com atribuição: *${p.atribuidoPedidos}* (R$ ${p.atribuidoReceitaPedidos.toLocaleString("pt-BR")})\n` +
+    (p.snapshotGeradoEm
+      ? `🕐 Snapshot dos dados: *${new Date(p.snapshotGeradoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}*\n`
+      : "") +
+    `\n_Resumo alinhado ao período do dashboard e ao RPC get_dashboard_snapshot._`
   );
 }
 
@@ -133,6 +136,8 @@ export default function Relatorios() {
 
   const { data: cohorts = [], isLoading: cohortsLoading, refetch: refetchCohorts } = useCustomerCohorts();
 
+  const { data: heatmap, isLoading: heatmapLoading, refetch: refetchHeatmap } = useMessageSendHeatmap(period);
+
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;
 
@@ -142,8 +147,8 @@ export default function Relatorios() {
 
   const prescricoesAtivas = snapshot?.prescriptions.active_count ?? 0;
   const prescricoesPendentes = snapshot?.prescriptions.pending_count ?? 0;
-  const atribuidoReais = snapshot?.analytics.total_revenue ?? 0;
-  const atribuidoPedidos = 0; 
+  const atribuidoPedidos = snapshot?.attributed_order_count ?? 0;
+  const atribuidoReceitaPedidos = snapshot?.attributed_order_revenue ?? 0;
 
   const sharePayload: SharePayload = useMemo(
     () => ({
@@ -154,7 +159,8 @@ export default function Relatorios() {
       prescricoesAtivas,
       prescricoesPendentes,
       atribuidoPedidos,
-      atribuidoReais: atribuidoReais,
+      atribuidoReceitaPedidos,
+      snapshotGeradoEm: snapshot?.timestamp ?? null,
     }),
     [
       periodLabel,
@@ -162,7 +168,7 @@ export default function Relatorios() {
       prescricoesAtivas,
       prescricoesPendentes,
       atribuidoPedidos,
-      atribuidoReais,
+      atribuidoReceitaPedidos,
     ],
   );
 
@@ -203,6 +209,7 @@ export default function Relatorios() {
   const refetchAll = () => {
     void refetchSnapshot();
     void refetchCohorts();
+    void refetchHeatmap();
   };
 
   const copyTexto = () => {
@@ -384,10 +391,13 @@ export default function Relatorios() {
                 />
                 <MetricCard
                   label="Pedidos atribuídos"
-                  value={snapshot ? String(snapshot.analytics.total_read > 0 ? Math.round(snapshot.analytics.total_read * 0.05) : 0) : "—"}
-                  subValue={revenueFmt}
+                  value={String(snapshot.attributed_order_count ?? 0)}
+                  subValue={(snapshot.attributed_order_revenue ?? 0).toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
                   icon={BarChart3}
-                  tooltip="Com base em eventos de atribuição."
+                  tooltip="Pedidos com atribuição a campanhas da loja no período (attribution_events)."
                 />
                 <MetricCard
                   label="Oportunidades abertas"
@@ -477,14 +487,10 @@ export default function Relatorios() {
               <h3 className="font-bold text-base mb-6 flex items-center gap-2">
                 <PieChart className="w-4 h-4 text-primary" /> Distribuição RFM (clientes na base)
               </h3>
-              {rfmLoading && <p className="text-sm text-muted-foreground">Carregando segmentos…</p>}
-              {rfmError && !rfmLoading && (
-                <p className="text-sm text-destructive">Não foi possível carregar a distribuição RFM.</p>
-              )}
-              {!rfmLoading && !rfmError && rfm && rfm.total === 0 && (
+              {snapshot.rfm.total_customers === 0 && rfmScatterData.length === 0 && (
                 <p className="text-sm text-muted-foreground">Sem clientes em customers_v3 para esta loja.</p>
               )}
-              {!rfmLoading && !rfmError && rfmScatterData.length > 0 && (
+              {rfmScatterData.length > 0 && (
                 <>
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">

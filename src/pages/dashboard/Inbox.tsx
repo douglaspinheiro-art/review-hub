@@ -20,6 +20,7 @@ import { supabase } from "@/lib/supabase";
 import { ContactInfoSidebar } from "@/components/dashboard/ContactInfoSidebar";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import type { Database } from "@/integrations/supabase/types";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 
 // Subcomponents
 import { ConversationList } from "@/components/dashboard/inbox/ConversationList";
@@ -77,6 +78,10 @@ function inboxSidebarContact(
 }
 
 export default function Inbox() {
+  const storeScope = useStoreScopeOptional();
+  const activeStoreHint = storeScope?.activeStoreId ?? null;
+  const storeScopeReady = storeScope?.ready ?? true;
+
   const [searchParams] = useSearchParams();
   const initialSearchFromUrl = searchParams.get("q") ?? searchParams.get("phone") ?? "";
 
@@ -272,22 +277,41 @@ export default function Inbox() {
 
   useEffect(() => {
     if (!selectedId) return;
+    const degradedFlag = messagesRealtimeDegraded ? 1 : 0;
     const channel = supabase
       .channel(`messages:${selectedId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${selectedId}` }, () => {
-        queryClient.invalidateQueries({ queryKey: ["messages", selectedId] });
-      })
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${selectedId}` },
+        (payload) => {
+          const row = payload.new as DbMessage;
+          if (!row?.id) return;
+          queryClient.setQueryData(
+            ["messages", selectedId, messageFetchLimit, degradedFlag],
+            (prev: DbMessage[] | undefined) => {
+              const list = prev ?? [];
+              if (list.some((m) => m.id === row.id)) return list;
+              const next = [...list, row].sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+              );
+              if (next.length > messageFetchLimit) return next.slice(-messageFetchLimit);
+              return next;
+            },
+          );
+        },
+      )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") setLiveMessagesRt("ok");
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") setLiveMessagesRt("err");
       });
     return () => { void supabase.removeChannel(channel); };
-  }, [selectedId, queryClient]);
+  }, [selectedId, queryClient, messageFetchLimit, messagesRealtimeDegraded]);
 
   useEffect(() => {
+    if (!storeScopeReady) return;
     let cancelled = false;
     void (async () => {
-      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      const { storeId, effectiveUserId } = await getCurrentUserAndStore(activeStoreHint);
       if (cancelled || !effectiveUserId) return;
       const filter = storeId ? `store_id=eq.${storeId}` : `user_id=eq.${effectiveUserId}`;
       const channel = supabase
@@ -306,7 +330,7 @@ export default function Inbox() {
       cancelled = true;
       if (conversationsListChannelRef.current) void supabase.removeChannel(conversationsListChannelRef.current);
     };
-  }, [queryClient]);
+  }, [queryClient, activeStoreHint, storeScopeReady]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

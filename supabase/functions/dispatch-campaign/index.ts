@@ -1,29 +1,26 @@
 // supabase/functions/dispatch-campaign/index.ts
-// Deno Edge Function — dispatches a campaign to its target contacts via Meta Cloud API.
+// Deno Edge Function — enfileira campanha WhatsApp em `scheduled_messages` (worker process-scheduled-messages).
 //
 // POST /functions/v1/dispatch-campaign
 // Headers: Authorization: Bearer <user_jwt>
 // Body: { campaign_id: string }
+//
+// Idempotência: transição atómica draft|scheduled → running; RPC com ON CONFLICT DO NOTHING
+// (índice parcial uniq_scheduled_messages_campaign_customer_pending + enqueue_campaign_scheduled_messages).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z, errorResponse, validateBrowserOrigin } from "../_shared/edge-utils.ts";
 import { uuidSchema, validateRequest } from "../_shared/validation.ts";
-import { metaGraphSendImageLink } from "../_shared/meta-graph-send.ts";
-import { outboundSendMetaTemplate, outboundSendText } from "../_shared/whatsapp-outbound.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ANTI_SPAM_DELAY_MS = 1200;
-/** Evita timeout da Edge Function; use "Disparar" de novo para continuar o lote. */
-const MAX_SENDS_PER_INVOCATION = 35;
 const BodySchema = z.object({ campaign_id: uuidSchema });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const ENQUEUE_RPC_CHUNK = 200;
+const CART_FETCH_CHUNK = 400;
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -62,15 +59,6 @@ function clampPct(value: unknown, fallback: number): number {
   return Math.min(50, Math.max(0, num));
 }
 
-function graphToResult(v: { messages?: Array<{ id?: string }> } | null): {
-  key?: { id?: string };
-  messageId?: string;
-} | null {
-  const id = v?.messages?.[0]?.id;
-  if (!id) return null;
-  return { messageId: id, key: { id } };
-}
-
 // ── Contact resolution ────────────────────────────────────────────────────────
 
 async function resolveContacts(
@@ -84,7 +72,6 @@ async function resolveContacts(
   suppressedCooldown: Array<{ id: string; name: string; phone: string; email?: string | null; tags: string[]; status: string }>;
   outsideSendWindow: boolean;
 }> {
-  // Get segment rules for this campaign
   const { data: segments } = await supabase
     .from("campaign_segments")
     .select("type, filters")
@@ -107,7 +94,7 @@ async function resolveContacts(
   let cooldownHours = 24;
   let sendWindowStartHour = 8;
   let sendWindowEndHour = 21;
-  let timezoneOffsetHours = -3; // default BR timezone
+  let timezoneOffsetHours = -3;
 
   if (segments && segments.length > 0) {
     const seg = segments[0];
@@ -167,7 +154,6 @@ async function resolveContacts(
       const monetary = Number(c.rfm_monetary ?? 1);
       const recency = Number(c.rfm_recency ?? 1);
       const churn = Number(c.churn_score ?? 0);
-      // rfm_* scores are 1–5 (higher = better recency / frequency / monetary tier)
       const expectedValue = (Math.min(5, Math.max(1, monetary)) * 18)
         + (Math.min(5, Math.max(1, recency)) * 18)
         + (Math.max(0, 1 - Math.min(1, churn)) * 12);
@@ -178,7 +164,6 @@ async function resolveContacts(
 
   const limited = maxRecipients > 0 ? scored.slice(0, maxRecipients) : scored;
 
-  // Frequency cap / cooldown suppression using recent sends.
   const ids = limited.map((c) => c.id);
   let suppressedByCooldown = new Set<string>();
   if (ids.length > 0) {
@@ -305,10 +290,8 @@ serve(async (req: Request) => {
     if (!parsedReq.ok) return parsedReq.response;
     const { campaign_id } = parsedReq.data;
 
-    // Use service role to bypass RLS for server-side operations
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Get user from JWT (external calls only)
     let requesterUserId: string | null = null;
     if (!isInternal) {
       const userClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -321,7 +304,6 @@ serve(async (req: Request) => {
       requesterUserId = user.id;
     }
 
-    // Load campaign
     const { data: campaign, error: campError } = await supabase
       .from("campaigns")
       .select(
@@ -364,7 +346,6 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "Campaign cannot be dispatched in this state" }), { status: 409 });
     }
 
-    // Load WhatsApp connection
     const { data: conn } = await supabase
       .from("whatsapp_connections")
       .select(
@@ -397,14 +378,38 @@ serve(async (req: Request) => {
       );
     }
 
+    let claimedFreshDispatch = false;
     if (!isResume) {
-      await supabase
+      const { data: transitioned, error: transErr } = await supabase
         .from("campaigns")
         .update({ status: "running" })
-        .eq("id", campaign_id);
+        .eq("id", campaign_id)
+        .in("status", ["draft", "scheduled"])
+        .select("id");
+      if (transErr) throw transErr;
+      if (!transitioned?.length) {
+        const { data: st } = await supabase.from("campaigns").select("status").eq("id", campaign_id).maybeSingle();
+        if (st?.status === "running") {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              sent: 0,
+              failed: 0,
+              partial: false,
+              remaining: 0,
+              enqueued: 0,
+              total: 0,
+              message: "Esta campanha já está em disparo. A fila não foi duplicada.",
+              duplicate_dispatch: true,
+            }),
+            { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "Campaign cannot be dispatched in this state" }), { status: 409 });
+      }
+      claimedFreshDispatch = true;
     }
 
-    // Resolve target contacts using prioritization + optional holdout.
     const {
       targets: contacts,
       holdouts,
@@ -429,6 +434,9 @@ serve(async (req: Request) => {
           success: true,
           sent: 0,
           failed: 0,
+          partial: false,
+          remaining: 0,
+          enqueued: 0,
           total: 0,
           suppressed_opt_out: 0,
           suppressed_cooldown: 0,
@@ -439,7 +447,7 @@ serve(async (req: Request) => {
       );
     }
 
-    if (!isResume) {
+    if (claimedFreshDispatch) {
       const rxId = (campaign as { source_prescription_id?: string | null }).source_prescription_id;
       if (rxId) {
         const { error: prRxErr } = await supabase
@@ -469,26 +477,25 @@ serve(async (req: Request) => {
     );
 
     const eligible = contacts.filter((c) => !sentCustomerIds.has(c.id));
-    const batch = eligible.slice(0, MAX_SENDS_PER_INVOCATION);
-    const partial = eligible.length > batch.length;
 
-    const contactIds = batch.map((c) => c.id);
-    const { data: carts } = contactIds.length > 0
-      ? await supabase
+    const latestCartByCustomer = new Map<string, { cart_value?: number; recovery_url?: string; cart_items?: Record<string, unknown>[] }>();
+    const eligibleIds = eligible.map((c) => c.id);
+    for (let off = 0; off < eligibleIds.length; off += CART_FETCH_CHUNK) {
+      const slice = eligibleIds.slice(off, off + CART_FETCH_CHUNK);
+      if (slice.length === 0) continue;
+      const { data: carts } = await supabase
         .from("abandoned_carts")
         .select("customer_id,cart_value,recovery_url,cart_items,created_at")
         .eq("store_id", campaign.store_id)
-        .in("customer_id", contactIds)
-        .order("created_at", { ascending: false })
-      : { data: [] };
-    const latestCartByCustomer = new Map<string, { cart_value?: number; recovery_url?: string; cart_items?: Record<string, unknown>[] }>();
-    for (const cart of (carts ?? [])) {
-      if (!latestCartByCustomer.has(cart.customer_id)) {
-        latestCartByCustomer.set(cart.customer_id, cart);
+        .in("customer_id", slice)
+        .order("created_at", { ascending: false });
+      for (const cart of carts ?? []) {
+        if (!latestCartByCustomer.has(cart.customer_id)) {
+          latestCartByCustomer.set(cart.customer_id, cart);
+        }
       }
     }
 
-    // Track suppressed contacts for visibility in incremental analysis (uma vez por campanha).
     const suppressedOptOut = await resolveSuppressedOptOut(supabase, campaign.store_id, campaign_id);
 
     if (!alreadyInitialized) {
@@ -531,57 +538,59 @@ serve(async (req: Request) => {
       }
     }
 
-    // Enqueue ELIGIBLE contacts into scheduled_messages
+    interface WhatsAppBlocks {
+      content_type?: string;
+      media_url?: string;
+      meta_template_name?: string;
+    }
+    interface CampaignBlocks {
+      whatsapp?: WhatsAppBlocks;
+    }
+    const blocks = (campaign.blocks as unknown as CampaignBlocks) || {};
+
+    let totalInserted = 0;
     if (eligible.length > 0) {
-      const CHUNK_SIZE = 500;
-      for (let i = 0; i < eligible.length; i += CHUNK_SIZE) {
-        const chunk = eligible.slice(i, i + CHUNK_SIZE);
-        const { error: insErr } = await supabase.from("scheduled_messages").insert(
-          chunk.map((contact) => {
-            const cart = latestCartByCustomer.get(contact.id);
-            const firstItem = Array.isArray(cart?.cart_items) && cart.cart_items.length > 0 ? cart.cart_items[0] : null;
-            const text = interpolate(campaign.message, {
-              name: contact.name ?? "",
-              phone: contact.phone ?? "",
-              email: contact.email ?? "",
-              valor_carrinho: cart?.cart_value != null
-                ? Number(cart.cart_value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-                : "",
-              ultimo_produto: firstItem?.name ?? "",
-              link_checkout: cart?.recovery_url ?? "",
-            });
-            // Link tracking is handled here so it's ready in the DB
-            const trackedText = wrapLinksForTracking(text, campaign_id, actorUserId, contact.id);
+      const rowsJson: Record<string, unknown>[] = [];
+      for (const contact of eligible) {
+        const cart = latestCartByCustomer.get(contact.id);
+        const firstItem = Array.isArray(cart?.cart_items) && cart.cart_items.length > 0 ? cart.cart_items[0] : null;
+        const text = interpolate(campaign.message, {
+          name: contact.name ?? "",
+          phone: contact.phone ?? "",
+          email: contact.email ?? "",
+          valor_carrinho: cart?.cart_value != null
+            ? Number(cart.cart_value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+            : "",
+          ultimo_produto: (firstItem as { name?: string } | null)?.name ?? "",
+          link_checkout: cart?.recovery_url ?? "",
+        });
+        const trackedText = wrapLinksForTracking(text, campaign_id, actorUserId, contact.id);
+        rowsJson.push({
+          user_id: actorUserId,
+          store_id: campaign.store_id,
+          customer_id: contact.id,
+          journey_id: null,
+          campaign_id,
+          message_content: trackedText,
+          scheduled_for: new Date().toISOString(),
+          status: "pending",
+          metadata: {
+            campaign_name: campaign.name,
+            content_type: blocks.whatsapp?.content_type || "text",
+            media_url: blocks.whatsapp?.media_url || null,
+            meta_template_name: blocks.whatsapp?.meta_template_name || null,
+          },
+        });
+      }
 
-            interface WhatsAppBlocks {
-              content_type?: string;
-              media_url?: string;
-              meta_template_name?: string;
-            }
-            interface CampaignBlocks {
-              whatsapp?: WhatsAppBlocks;
-            }
-            const blocks = (campaign.blocks as unknown as CampaignBlocks) || {};
-
-            return {
-              user_id: actorUserId,
-              store_id: campaign.store_id,
-              customer_id: contact.id,
-              journey_id: null, // this is a manual campaign
-              campaign_id: campaign_id,
-              message_content: trackedText,
-              scheduled_for: new Date().toISOString(),
-              status: "pending",
-              metadata: {
-                campaign_name: campaign.name,
-                content_type: blocks.whatsapp?.content_type || "text",
-                media_url: blocks.whatsapp?.media_url || null,
-                meta_template_name: blocks.whatsapp?.meta_template_name || null,
-              }
-            };
-          })
-        );
-        if (insErr) throw insErr;
+      for (let i = 0; i < rowsJson.length; i += ENQUEUE_RPC_CHUNK) {
+        const chunk = rowsJson.slice(i, i + ENQUEUE_RPC_CHUNK);
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("enqueue_campaign_scheduled_messages", {
+          p_messages: chunk,
+        });
+        if (rpcErr) throw rpcErr;
+        const j = rpcRes as { inserted?: number } | null;
+        totalInserted += Number(j?.inserted ?? 0);
       }
     }
 
@@ -590,7 +599,7 @@ serve(async (req: Request) => {
       .update({
         status: "running",
         total_contacts: contacts.length + holdouts.length,
-        sent_count: 0
+        sent_count: 0,
       })
       .eq("id", campaign_id);
 
@@ -598,12 +607,16 @@ serve(async (req: Request) => {
       JSON.stringify({
         success: true,
         message: "Campanha WhatsApp enfileirada com sucesso.",
-        enqueued: eligible.length,
+        sent: totalInserted,
+        failed: 0,
+        partial: false,
+        remaining: 0,
+        enqueued: totalInserted,
+        skipped_duplicates: Math.max(0, eligible.length - totalInserted),
         total: contacts.length + holdouts.length,
       }),
       { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
     );
-
   } catch (err) {
     console.error(`[${requestId}] dispatch-campaign error:`, err);
     return errorResponse(`Internal server error [${requestId}]`, 500);

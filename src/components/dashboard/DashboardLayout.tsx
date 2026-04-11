@@ -5,7 +5,7 @@ import {
   Settings, LogOut, Menu, X, Zap, HelpCircle, Wifi,
   PieChart, FileBarChart, RefreshCcw, Sparkles, CreditCard,
   Clock, ArrowRight, Smartphone, ShoppingCart, BarChart3, TrendingUp,
-  Bot, Gift, Star, Mail, Target, Lock,
+  Bot, Gift, Star, Mail, Target, Lock, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ import {
   isBetaLimitedScope,
   shouldHideNavItemHref,
 } from "@/lib/beta-scope";
+import { useIsAdmin } from "@/hooks/useAdminCheck";
+import { StoreScopeProvider } from "@/contexts/StoreScopeContext";
+import { StoreSwitcher } from "@/components/dashboard/StoreSwitcher";
 
 const planLevels = { starter: 0, growth: 1, scale: 2, enterprise: 3 } as const;
 type MinPlan = keyof typeof planLevels;
@@ -32,6 +35,8 @@ type NavItem = {
   highlight?: boolean;
   /** Plano mínimo para acessar sem upgrade (alinha a rotas `requiredPlan`). */
   minPlan?: MinPlan;
+  /** Só para staff da plataforma (`has_role` admin em `user_roles`). */
+  platformStaffOnly?: boolean;
 };
 
 function planLevel(plan: string | undefined): number {
@@ -105,6 +110,7 @@ const nav: { section: string; items: NavItem[] }[] = [
       { label: "White Label",    icon: Star,            href: "/dashboard/white-label" },
       { label: "Operações",      icon: Zap,             href: "/dashboard/operacoes" },
       { label: "Afiliados",      icon: Target,          href: "/dashboard/afiliados" },
+      { label: "Plataforma",     icon: Shield,          href: "/admin", platformStaffOnly: true },
     ],
   },
 ];
@@ -133,6 +139,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { pathname } = useLocation();
   const { signOut, user, profile, isTrialActive } = useAuth();
   const { data: teamAccess } = useTeamAccess();
+  const { data: isPlatformStaff } = useIsAdmin();
 
   const trialDaysLeft = profile?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(profile.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
@@ -164,15 +171,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           }))
           .filter((section) => section.items.length > 0);
 
-    if (isDemo) return base;
+    if (isDemo) {
+      return base
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => !item.platformStaffOnly),
+        }))
+        .filter((section) => section.items.length > 0);
+    }
 
     return base
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => !teamNavItemHidden(item.href, teamAccess)),
+        items: section.items.filter((item) => {
+          if (item.platformStaffOnly && !isPlatformStaff) return false;
+          return !teamNavItemHidden(item.href, teamAccess);
+        }),
       }))
       .filter((section) => section.items.length > 0);
-  }, [demoNav, isDemo, teamAccess]);
+  }, [demoNav, isDemo, teamAccess, isPlatformStaff]);
 
   const dashboardHome = isDemo ? "/demo" : "/dashboard";
   const settingsHref = rewriteDashboardHref("/dashboard/configuracoes", isDemo);
@@ -337,6 +354,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
+    <StoreScopeProvider>
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar desktop */}
       <div className="hidden md:flex shrink-0">
@@ -356,7 +374,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar desktop */}
-        <div className="hidden md:flex h-14 shrink-0 items-center justify-end gap-1 px-6 border-b bg-card/50 backdrop-blur-sm">
+        <div className="hidden md:flex h-14 shrink-0 items-center justify-between gap-3 px-6 border-b bg-card/50 backdrop-blur-sm">
+          <div className="flex items-center min-w-0 flex-1">
+            <StoreSwitcher />
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
           <Button variant="ghost" size="sm" className="h-9 gap-2 text-muted-foreground font-bold text-xs" asChild>
             <Link to="/central-de-ajuda">
               <HelpCircle className="w-4 h-4" />
@@ -364,6 +386,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           </Button>
           <NotificationBell />
+          </div>
         </div>
 
         {/* Topbar mobile */}
@@ -378,6 +401,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {isTrialActive ? "Trial" : planLabels[plan]}
               </Badge>
             )}
+            <StoreSwitcher />
           </div>
           <NotificationBell />
         </div>
@@ -422,5 +446,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+    </StoreScopeProvider>
   );
 }

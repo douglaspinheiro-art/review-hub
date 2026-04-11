@@ -1,7 +1,7 @@
 import { useMemo, useCallback, type ElementType } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useContacts, useRfmReportCounts } from "@/hooks/useDashboard";
+import { useContacts, useRfmReportCounts, getCurrentUserAndStore } from "@/hooks/useDashboard";
 import { useAuth } from "@/hooks/useAuth";
 import type { Database } from "@/integrations/supabase/types";
 import type { RfmEnglishSegment } from "@/lib/rfm-segments";
@@ -152,24 +152,13 @@ export default function RFM() {
 
   const recalcRfm = useMutation({
     mutationFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      const uid = u.user?.id;
-      if (!uid) throw new Error("Sessão inválida");
-
-      const { data: store, error: storeErr } = await supabase
-        .from("stores")
-        .select("id")
-        .eq("user_id", uid)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (storeErr) throw storeErr;
-      if (!store?.id) throw new Error("Nenhuma loja vinculada à conta.");
+      const { userId, storeId } = await getCurrentUserAndStore();
+      if (!userId) throw new Error("Sessão inválida");
+      if (!storeId) throw new Error("Nenhuma loja vinculada à conta.");
 
       const { data, error } = await supabase.functions.invoke<{ ok?: boolean; updated?: number; error?: string }>(
         "calculate-rfm",
-        { body: { store_id: store.id } },
+        { body: { store_id: storeId } },
       );
       if (error) throw error;
       if (data && typeof data === "object" && "error" in data && data.error) {
@@ -182,7 +171,7 @@ export default function RFM() {
         description: `Registros recalculados com base em pedidos: ${data?.updated ?? 0}.`,
       });
       void queryClient.invalidateQueries({ queryKey: ["contacts", user?.id ?? null] });
-      void queryClient.invalidateQueries({ queryKey: ["rfm-report-counts", user?.id ?? null] });
+      void queryClient.invalidateQueries({ queryKey: ["rfm-report-counts"] });
     },
     onError: (e: Error) => {
       toast.error("Não foi possível recalcular o RFM", { description: e.message });

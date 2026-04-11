@@ -1,6 +1,8 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { pickStoreIdFromList } from "@/lib/active-store-id";
 import { useAuth } from "@/hooks/useAuth";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
 import {
   contactMatchesEnglishRfmSegment,
@@ -39,7 +41,7 @@ export type CampaignListItem = Database["public"]["Tables"]["campaigns"]["Row"] 
  * Resolve sessão + loja do tenant.
  * Se existir membership ativo em `team_members`, usa a loja do `account_owner_id` (colaborador).
  */
-export async function getCurrentUserAndStore(): Promise<{
+export async function getCurrentUserAndStore(storeIdHint?: string | null): Promise<{
   userId: string | null;
   storeId: string | null;
   /** Dono dos dados (campanhas, contacts.user_id, etc.); igual a userId quando é proprietário. */
@@ -59,30 +61,18 @@ export async function getCurrentUserAndStore(): Promise<{
     .maybeSingle();
 
   const ownerId = (membership as { account_owner_id?: string } | null)?.account_owner_id;
-  if (ownerId) {
-    const { data: ownerStore } = await supabase
-      .from("stores")
-      .select("id")
-      .eq("user_id", ownerId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    return {
-      userId,
-      storeId: ownerStore?.id ?? null,
-      effectiveUserId: ownerId,
-    };
-  }
+  const effectiveUserId = ownerId ?? userId;
 
-  const { data: store } = await supabase
+  const { data: stores, error } = await supabase
     .from("stores")
     .select("id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .eq("user_id", effectiveUserId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  const ids = (stores ?? []).map((r) => r.id as string);
+  const storeId = pickStoreIdFromList(ids, storeIdHint ?? null);
 
-  return { userId, storeId: store?.id ?? null, effectiveUserId: userId };
+  return { userId, storeId, effectiveUserId };
 }
 
 /** Agregação legada (várias queries) — usada sem `store_id` ou como fallback se o RPC falhar. */
@@ -180,10 +170,12 @@ export function useDashboardStats(days = 30) {
 /** Métricas unificadas da home: RPC `get_dashboard_snapshot` com fallback legado. */
 export function useDashboardHomeStats(period: 7 | 30 | 90) {
   const { user, loading: authLoading } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeKey = scope?.activeStoreId ?? "";
   return useQuery({
-    queryKey: ["dashboard-home-stats", user?.id ?? null, period],
+    queryKey: ["dashboard-home-stats", user?.id ?? null, period, storeKey],
     queryFn: async (): Promise<DashboardHomeStats> => {
-      const { storeId } = await getCurrentUserAndStore();
+      const { storeId } = await getCurrentUserAndStore(scope?.activeStoreId);
       if (storeId) {
         try {
           const { data, error } = await supabase.rpc("get_dashboard_snapshot", {
@@ -231,17 +223,134 @@ export function useRecentConversations() {
 
 export type UseCampaignsOptions = { limit?: number; createdSince?: string | null };
 
+type CampaignSendAggRow = {
+  campaign_id: string;
+  holdout: number;
+  sent_n: number;
+  suppressed_opt_out: number;
+  suppressed_cooldown: number;
+};
+type CampaignRevRow = { campaign_id: string; revenue: number };
+
+const CAMPAIGN_METRICS_FALLBACK_CHUNK = 40;
+
+async function fetchCampaignMetricsBundle(
+  storeId: string | null,
+  effectiveUserId: string,
+  campaignIds: string[],
+): Promise<Map<string, { holdout: number; sent: number; revenue: number; suppressedOptOut: number; suppressedCooldown: number }>> {
+  const empty = () =>
+    new Map<string, { holdout: number; sent: number; revenue: number; suppressedOptOut: number; suppressedCooldown: number }>();
+  if (campaignIds.length === 0) return empty();
+
+  const { data: bundle, error } = await supabase.rpc("get_campaign_metrics_bundle", {
+    p_store_id: storeId,
+    p_owner_user_id: effectiveUserId,
+    p_campaign_ids: campaignIds,
+  });
+
+  const byCampaignStats = empty();
+  if (!error && bundle && typeof bundle === "object") {
+    const b = bundle as { sends?: CampaignSendAggRow[]; revenue?: CampaignRevRow[] };
+    for (const row of b.sends ?? []) {
+      if (!row?.campaign_id) continue;
+      byCampaignStats.set(row.campaign_id, {
+        holdout: Number(row.holdout ?? 0),
+        sent: Number(row.sent_n ?? 0),
+        revenue: 0,
+        suppressedOptOut: Number(row.suppressed_opt_out ?? 0),
+        suppressedCooldown: Number(row.suppressed_cooldown ?? 0),
+      });
+    }
+    for (const row of b.revenue ?? []) {
+      if (!row?.campaign_id) continue;
+      const curr = byCampaignStats.get(row.campaign_id) ?? {
+        holdout: 0,
+        sent: 0,
+        revenue: 0,
+        suppressedOptOut: 0,
+        suppressedCooldown: 0,
+      };
+      curr.revenue += Number(row.revenue ?? 0);
+      byCampaignStats.set(row.campaign_id, curr);
+    }
+    return byCampaignStats;
+  }
+
+  if (error) {
+    console.warn(
+      "[fetchCampaignMetricsBundle] RPC get_campaign_metrics_bundle falhou — agregação em lotes no browser.",
+      error.message,
+    );
+  }
+
+  const attributionRawAll: Array<{ order_value: number; attributed_campaign_id: string | null }> = [];
+
+  for (let off = 0; off < campaignIds.length; off += CAMPAIGN_METRICS_FALLBACK_CHUNK) {
+    const chunk = campaignIds.slice(off, off + CAMPAIGN_METRICS_FALLBACK_CHUNK);
+    if (chunk.length === 0) continue;
+
+    const sendsQ = storeId
+      ? supabase.from("message_sends").select("campaign_id,status").eq("store_id", storeId).in("campaign_id", chunk)
+      : supabase.from("message_sends").select("campaign_id,status").eq("user_id", effectiveUserId).in("campaign_id", chunk);
+    const attrQ = supabase
+      .from("attribution_events")
+      .select("order_value,attributed_campaign_id")
+      .eq("user_id", effectiveUserId)
+      .in("attributed_campaign_id", chunk);
+
+    const [sendsRes, attributionRes] = await Promise.all([sendsQ, attrQ]);
+    if (sendsRes.error) throw sendsRes.error;
+    if (attributionRes.error) throw attributionRes.error;
+
+    const sends = (sendsRes.data ?? []) as Array<{ campaign_id: string | null; status: string | null }>;
+    attributionRawAll.push(...((attributionRes.data ?? []) as Array<{ order_value: number; attributed_campaign_id: string | null }>));
+
+    for (const row of sends) {
+      if (!row.campaign_id) continue;
+      const curr = byCampaignStats.get(row.campaign_id) ?? {
+        holdout: 0,
+        sent: 0,
+        revenue: 0,
+        suppressedOptOut: 0,
+        suppressedCooldown: 0,
+      };
+      if (row.status === "holdout") curr.holdout += 1;
+      if (row.status?.startsWith("sent")) curr.sent += 1;
+      if (row.status === "suppressed_opt_out") curr.suppressedOptOut += 1;
+      if (row.status === "suppressed_cooldown") curr.suppressedCooldown += 1;
+      byCampaignStats.set(row.campaign_id, curr);
+    }
+  }
+
+  const attribution = scopeAttributionEventsForStore(attributionRawAll, storeId, campaignIds);
+  for (const row of attribution) {
+    if (!row.attributed_campaign_id) continue;
+    const curr = byCampaignStats.get(row.attributed_campaign_id) ?? {
+      holdout: 0,
+      sent: 0,
+      revenue: 0,
+      suppressedOptOut: 0,
+      suppressedCooldown: 0,
+    };
+    curr.revenue += Number(row.order_value ?? 0);
+    byCampaignStats.set(row.attributed_campaign_id, curr);
+  }
+  return byCampaignStats;
+}
+
 export function useCampaigns(opts?: UseCampaignsOptions) {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeKey = scope?.activeStoreId ?? "";
   const limit = Math.min(500, Math.max(1, opts?.limit ?? 50));
   const createdSince = opts?.createdSince?.trim() || null;
   return useQuery({
-    queryKey: ["campaigns", user?.id ?? null, limit, createdSince ?? ""],
+    queryKey: ["campaigns", user?.id ?? null, limit, createdSince ?? "", storeKey],
     queryFn: async (): Promise<CampaignListItem[]> => {
-      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
+      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore(scope?.activeStoreId);
       if (!userId || !effectiveUserId) return [];
 
-      // Each Promise.all entry needs its own builder instance to avoid shared mutable state.
       const baseCampaignsQuery = storeId
         ? supabase.from("campaigns").select("*").eq("store_id", storeId)
         : supabase.from("campaigns").select("*").eq("user_id", effectiveUserId);
@@ -249,66 +358,15 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
         ? baseCampaignsQuery.gte("created_at", createdSince)
         : baseCampaignsQuery;
 
-      const [campaignsRes, sendsRes, attributionRes] = await Promise.all([
-        campaignsQuery.order("created_at", { ascending: false }).limit(limit),
-
-        storeId
-          ? supabase.from("message_sends").select("campaign_id,status").eq("store_id", storeId)
-          : supabase.from("message_sends").select("campaign_id,status").eq("user_id", effectiveUserId),
-
-        supabase.from("attribution_events").select("order_value,attributed_campaign_id").eq("user_id", effectiveUserId),
-      ]);
-
+      const campaignsRes = await campaignsQuery.order("created_at", { ascending: false }).limit(limit);
       const { data, error } = campaignsRes;
 
       if (error) throw error;
       const campaigns = (data ?? []) as Array<
         Database["public"]["Tables"]["campaigns"]["Row"] & { ab_test_id?: string | null; ab_variant?: string | null }
       >;
-      const sends = (sendsRes.data ?? []) as Array<{ campaign_id: string | null; status: string | null }>;
-      const attributionRaw = (attributionRes.data ?? []) as Array<{ order_value: number; attributed_campaign_id: string | null }>;
-      const attribution = scopeAttributionEventsForStore(
-        attributionRaw,
-        storeId,
-        campaigns.map((c) => c.id),
-      );
 
-      const byCampaignStats = new Map<string, {
-        holdout: number;
-        sent: number;
-        revenue: number;
-        suppressedOptOut: number;
-        suppressedCooldown: number;
-      }>();
-
-      for (const row of sends) {
-        if (!row.campaign_id) continue;
-        const curr = byCampaignStats.get(row.campaign_id) ?? {
-          holdout: 0,
-          sent: 0,
-          revenue: 0,
-          suppressedOptOut: 0,
-          suppressedCooldown: 0,
-        };
-        if (row.status === "holdout") curr.holdout += 1;
-        if (row.status?.startsWith("sent")) curr.sent += 1;
-        if (row.status === "suppressed_opt_out") curr.suppressedOptOut += 1;
-        if (row.status === "suppressed_cooldown") curr.suppressedCooldown += 1;
-        byCampaignStats.set(row.campaign_id, curr);
-      }
-
-      for (const row of attribution) {
-        if (!row.attributed_campaign_id) continue;
-        const curr = byCampaignStats.get(row.attributed_campaign_id) ?? {
-          holdout: 0,
-          sent: 0,
-          revenue: 0,
-          suppressedOptOut: 0,
-          suppressedCooldown: 0,
-        };
-        curr.revenue += Number(row.order_value ?? 0);
-        byCampaignStats.set(row.attributed_campaign_id, curr);
-      }
+      const byCampaignStats = await fetchCampaignMetricsBundle(storeId, effectiveUserId, campaigns.map((c) => c.id));
 
       const abTestIds = campaigns.map((c) => c.ab_test_id).filter(Boolean);
       let winnersByTestId = new Map<string, string | null>();
@@ -538,6 +596,8 @@ export function useConversations(
   });
 }
 
+const MESSAGE_LIST_COLUMNS = "id,conversation_id,content,created_at,direction,status,type,external_id,user_id";
+
 export function useMessages(
   conversationId: string | null,
   limit = 200,
@@ -549,7 +609,7 @@ export function useMessages(
       if (!conversationId) return [];
       const { data, error } = await supabase
         .from("messages")
-        .select("*")
+        .select(MESSAGE_LIST_COLUMNS)
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })
         .limit(limit);
@@ -564,9 +624,12 @@ export function useMessages(
 
 /** Conversation ids whose message history contains the search text (min 2 chars). */
 export function useConversationIdsByMessageSearch(search: string) {
+  const { user } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeKey = scope?.activeStoreId ?? "";
   const q = search.trim();
   return useQuery({
-    queryKey: ["conversation-search-messages", q],
+    queryKey: ["conversation-search-messages", user?.id ?? null, storeKey, q],
     queryFn: async () => {
       if (q.length < 2) return [] as string[];
       const { data, error } = await supabase.rpc("search_conversation_ids_by_message", { p_search: q });
@@ -574,7 +637,7 @@ export function useConversationIdsByMessageSearch(search: string) {
       const rows = (data ?? []) as { conversation_id: string }[];
       return rows.map((r) => r.conversation_id);
     },
-    enabled: q.length >= 2,
+    enabled: !!user && q.length >= 2,
     staleTime: 25_000,
   });
 }
@@ -1086,67 +1149,52 @@ export type RfmReportCounts = {
   avgChs: number | null;
 };
 
-/** Contagens RFM + CHS médio a partir de `customers_v3` (mesma loja/conta que o resto do dashboard). */
+const EMPTY_RFM_REPORT_COUNTS: RfmReportCounts = {
+  champions: 0,
+  loyal: 0,
+  at_risk: 0,
+  lost: 0,
+  new: 0,
+  other: 0,
+  total: 0,
+  avgChs: null,
+};
+
+/** Contagens RFM + CHS médio via RPC `get_rfm_report_counts` (sem full-scan no browser). */
 export function useRfmReportCounts() {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeKey = scope?.activeStoreId ?? "";
   return useQuery({
-    queryKey: ["rfm-report-counts", user?.id ?? null],
-    queryFn: async (): Promise<RfmReportCounts | null> => {
-      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
-      if (!userId || !effectiveUserId) return null;
+    queryKey: ["rfm-report-counts", user?.id ?? null, storeKey],
+    queryFn: async (): Promise<RfmReportCounts> => {
+      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore(scope?.activeStoreId);
+      if (!userId || !effectiveUserId) return { ...EMPTY_RFM_REPORT_COUNTS };
 
-      const base = storeId
-        ? supabase.from("customers_v3").select("rfm_segment, customer_health_score").eq("store_id", storeId)
-        : supabase.from("customers_v3").select("rfm_segment, customer_health_score").eq("user_id", effectiveUserId);
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("get_rfm_report_counts", {
+        p_store_id: storeId,
+        p_owner_user_id: effectiveUserId,
+      });
 
-      const { data, error } = await base;
-      if (error) throw error;
-
-      const list = (data ?? []) as { rfm_segment: string | null; customer_health_score: number | null }[];
-      const c: RfmReportCounts = {
-        champions: 0,
-        loyal: 0,
-        at_risk: 0,
-        lost: 0,
-        new: 0,
-        other: 0,
-        total: list.length,
-        avgChs: null,
-      };
-      let chsSum = 0;
-      let chsN = 0;
-
-      for (const r of list) {
-        if (r.customer_health_score != null && !Number.isNaN(Number(r.customer_health_score))) {
-          chsSum += Number(r.customer_health_score);
-          chsN++;
-        }
-        const raw = r.rfm_segment;
-        let matched = false;
-        if (contactMatchesEnglishRfmSegment(raw, "champions")) {
-          c.champions++;
-          matched = true;
-        }
-        if (contactMatchesEnglishRfmSegment(raw, "loyal")) {
-          c.loyal++;
-          matched = true;
-        }
-        if (contactMatchesEnglishRfmSegment(raw, "at_risk")) {
-          c.at_risk++;
-          matched = true;
-        }
-        if (contactMatchesEnglishRfmSegment(raw, "lost")) {
-          c.lost++;
-          matched = true;
-        }
-        if (contactMatchesEnglishRfmSegment(raw, "new")) {
-          c.new++;
-          matched = true;
-        }
-        if (!matched) c.other++;
+      if (!rpcErr && rpcData && typeof rpcData === "object") {
+        const j = rpcData as Record<string, unknown>;
+        return {
+          champions: Number(j.champions ?? 0),
+          loyal: Number(j.loyal ?? 0),
+          at_risk: Number(j.at_risk ?? 0),
+          lost: Number(j.lost ?? 0),
+          new: Number(j.new ?? 0),
+          other: Number(j.other ?? 0),
+          total: Number(j.total ?? 0),
+          avgChs: j.avg_chs == null ? null : Number(j.avg_chs),
+        };
       }
-      c.avgChs = chsN > 0 ? Math.round(chsSum / chsN) : null;
-      return c;
+
+      console.warn(
+        "[useRfmReportCounts] RPC get_rfm_report_counts indisponível — contagens zeradas até aplicar a migração no Supabase.",
+        rpcErr?.message ?? rpcErr,
+      );
+      return { ...EMPTY_RFM_REPORT_COUNTS };
     },
     staleTime: 60_000,
     enabled: !!user,
@@ -1164,10 +1212,12 @@ export type CustomerCohortRow = {
 /** Snapshots de cohort gerados pelo pipeline (`customer_cohorts`). */
 export function useCustomerCohorts() {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeKey = scope?.activeStoreId ?? "";
   return useQuery({
-    queryKey: ["customer-cohorts", user?.id ?? null],
+    queryKey: ["customer-cohorts", user?.id ?? null, storeKey],
     queryFn: async (): Promise<CustomerCohortRow[]> => {
-      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
+      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore(scope?.activeStoreId);
       if (!userId || !effectiveUserId) return [];
 
       const q = storeId
@@ -1192,10 +1242,12 @@ export type MessageSendHeatmap = {
 /** Agrega envios por dia da semana e faixa horária (últimos `days`). */
 export function useMessageSendHeatmap(days: number) {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeKey = scope?.activeStoreId ?? "";
   return useQuery({
-    queryKey: ["message-send-heatmap", user?.id ?? null, days],
+    queryKey: ["message-send-heatmap", user?.id ?? null, days, storeKey],
     queryFn: async (): Promise<MessageSendHeatmap> => {
-      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
+      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore(scope?.activeStoreId);
       if (!userId || !effectiveUserId) return { cells: {}, max: 0 };
 
       const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
@@ -1287,10 +1339,12 @@ export function useForecastProjection(storeId: string | null, days = 30) {
  */
 export function useDashboardSnapshot(days = 30) {
   const { user, loading: authLoading } = useAuth();
+  const scope = useStoreScopeOptional();
+  const storeKey = scope?.activeStoreId ?? "";
   return useQuery({
-    queryKey: ["dashboard-snapshot", user?.id ?? null, days],
+    queryKey: ["dashboard-snapshot", user?.id ?? null, days, storeKey],
     queryFn: async () => {
-      const { storeId } = await getCurrentUserAndStore();
+      const { storeId } = await getCurrentUserAndStore(scope?.activeStoreId);
       if (!storeId) throw new Error("Loja não encontrada");
 
       const { data, error } = await supabase.rpc("get_dashboard_snapshot", {
@@ -1335,6 +1389,8 @@ export function useDashboardSnapshot(days = 30) {
         estimated_opportunity_revenue?: number;
         chs_breakdown?: Record<string, number>;
         chart_series?: unknown[];
+        attributed_order_count?: number;
+        attributed_order_revenue?: number;
         timestamp: string;
       };
     },

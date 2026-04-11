@@ -178,16 +178,30 @@ export default function Campanhas() {
         failed: data.failed ?? 0,
         partial: Boolean(data.partial),
         dispatch_reason: data.dispatch_reason ?? "",
+        enqueued: data.enqueued,
+        duplicate_dispatch: Boolean(data.duplicate_dispatch),
       });
       if (data.dispatch_reason === "outside_send_window") {
         toast({
           title: "Fora da janela de envio",
           description: data.message ?? "Ajuste o horário no segmento ou tente mais tarde.",
         });
+      } else if (data.duplicate_dispatch) {
+        toast({
+          title: "Disparo já em curso",
+          description: data.message ?? "A fila não foi duplicada.",
+        });
       } else if (data.partial) {
         toast({
           title: "Lote enviado",
           description: `${data.sent} mensagens neste lote. ${(data.remaining ?? 0) > 0 ? `Restam ${data.remaining}. Clique em «Continuar envio» para o próximo lote.` : "Clique em «Continuar envio» se ainda houver destinatários."}`,
+        });
+      } else if (data.enqueued !== undefined) {
+        const skip = data.skipped_duplicates ?? 0;
+        toast({
+          title: "Campanha na fila",
+          description:
+            `${data.enqueued} mensagem(ns) novas na fila de envio.${skip > 0 ? ` (${skip} já estavam pendentes — idempotente.)` : ""} O processador envia respeitando os limites da Meta.`,
         });
       } else {
         toast({

@@ -175,9 +175,8 @@ export default function EmExecucao() {
               Em execução
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Acompanhe prescrições aprovadas e campanhas vinculadas por{" "}
-              <code className="text-[11px] bg-muted px-1 rounded">source_prescription_id</code> (atualize para ver os
-              últimos números).
+              Veja prescrições em curso e a campanha associada a cada uma. Use «Atualizar métricas» para refletir os
+              últimos envios e estados.
             </p>
           </div>
           <Button
