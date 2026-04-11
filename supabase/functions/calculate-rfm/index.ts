@@ -10,6 +10,13 @@ const corsHeaders = {
 
 const BodySchema = z.object({ store_id: z.string().uuid() });
 
+function isPaidLikeStatus(status: string | null | undefined, internalStatus: string | null | undefined): boolean {
+  const s = (status || "").toLowerCase();
+  if (["cancelled", "canceled", "refunded", "failed", "voided"].includes(s)) return false;
+  if (internalStatus === "cancelled") return false;
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -26,7 +33,6 @@ serve(async (req) => {
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
-    // Verify the authenticated user owns this store
     const { data: store } = await supabase.from("stores").select("user_id").eq("id", store_id).single();
     if (!store || store.user_id !== auth.userId) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
@@ -40,12 +46,19 @@ serve(async (req) => {
 
     let updatedCount = 0;
     for (const customer of customers ?? []) {
-      const { data: orders } = await supabase.from("orders").select("total_amount, created_at").eq("contact_id", customer.id).eq("status", "paid").order("created_at", { ascending: false });
-      if (!orders || orders.length === 0) continue;
+      const { data: orders } = await supabase
+        .from("orders_v3")
+        .select("valor, created_at, status, internal_status")
+        .eq("store_id", store_id)
+        .eq("cliente_id", customer.id)
+        .order("created_at", { ascending: false });
 
-      const totalSpent = orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
-      const totalOrders = orders.length;
-      const lastOrderDate = new Date(orders[0].created_at);
+      const paidOrders = (orders ?? []).filter((o) => isPaidLikeStatus(o.status as string, o.internal_status as string));
+      if (paidOrders.length === 0) continue;
+
+      const totalSpent = paidOrders.reduce((sum, o) => sum + Number(o.valor || 0), 0);
+      const totalOrders = paidOrders.length;
+      const lastOrderDate = new Date(paidOrders[0].created_at as string);
       const daysSinceLastOrder = Math.floor((Date.now() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24));
 
       const rScore = daysSinceLastOrder < 30 ? 5 : daysSinceLastOrder < 90 ? 4 : daysSinceLastOrder < 180 ? 3 : daysSinceLastOrder < 365 ? 2 : 1;
@@ -57,7 +70,6 @@ serve(async (req) => {
         avgTicket >= 100 ? 3 :
         avgTicket >= 50 ? 2 : 1;
 
-      // English keys — aligned with newsletter, dispatch-campaign, dashboard RFM
       let segment = "loyal";
       if (rScore >= 4 && fScore >= 4) segment = "champions";
       else if (fScore >= 4) segment = "loyal";

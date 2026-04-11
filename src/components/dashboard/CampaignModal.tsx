@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -145,6 +145,8 @@ export type CampaignPrefill = {
   skipObjective?: boolean;
   /** Badge exibido no topo do modal */
   source?: string;
+  /** Prescrição da Central — atualizada para "aprovada" após salvar rascunho da campanha */
+  prescriptionId?: string;
 };
 
 const EMPTY_SEGMENT_COUNTS = {
@@ -165,16 +167,43 @@ const LAUNCH_SEGMENT_META: { value: FormData["segment"]; label: string }[] = [
   { value: "rfm_new", label: "RFM — Novos" },
 ];
 
+const RFM_DB_TO_FORM: Record<string, FormData["segment"]> = {
+  champions: "rfm_champions",
+  loyal: "rfm_loyal",
+  at_risk: "rfm_at_risk",
+  lost: "rfm_lost",
+  new: "rfm_new",
+};
+
+function segmentFromServerRow(seg: { type?: string; filters?: Record<string, unknown> } | null | undefined): FormData["segment"] {
+  if (!seg?.filters) return "all";
+  const f = seg.filters;
+  if (seg.type === "rfm" && typeof f.rfm_segment === "string") {
+    const mapped = RFM_DB_TO_FORM[f.rfm_segment];
+    if (mapped) return mapped;
+  }
+  const key = String(f.segment_key ?? "all");
+  if (key === "vip" || key === "active" || key === "inactive" || key === "cart_abandoned" || key === "all") {
+    return key as FormData["segment"];
+  }
+  return "all";
+}
+
 export default function CampaignModal({
   onClose,
   initialProducts,
   initialObjective,
   prefill,
+  whatsappOnly,
+  editingCampaignId,
 }: {
   onClose: () => void;
   initialProducts?: ProdutoParaCampanha[];
   initialObjective?: "recovery" | "rebuy" | "lancamento" | "loyalty";
   prefill?: CampaignPrefill;
+  /** Na página Campanhas só WhatsApp (e-mail = Newsletter). */
+  whatsappOnly?: boolean;
+  editingCampaignId?: string;
 }) {
   const [step, setStep] = useState(prefill?.skipObjective ? 1 : 0);
   const [aiLoading, setAiLoading] = useState(false);
@@ -203,13 +232,19 @@ export default function CampaignModal({
   const loja = useLoja();
   const lojaData = (loja.data as LojaExtended | null) ?? null;
   const produtos = useProdutosV3(loja.data?.id ?? undefined);
+  const editHydratedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!editingCampaignId) editHydratedRef.current = null;
+  }, [editingCampaignId]);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { register, handleSubmit, watch, setValue, trigger, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, trigger, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      channel: prefill?.channel ?? "whatsapp",
+      channel: whatsappOnly ? "whatsapp" : (prefill?.channel ?? "whatsapp"),
       segment: prefill?.rfmSegment
         ? (`rfm_${prefill.rfmSegment}` as FormData["segment"])
         : (prefill?.segment ?? "all"),
@@ -220,6 +255,56 @@ export default function CampaignModal({
       ai_tone: "friendly",
     },
   });
+
+  const { data: editBundle, isLoading: editLoading } = useQuery({
+    queryKey: ["campaign_edit_bundle", editingCampaignId],
+    enabled: !!editingCampaignId && !!user?.id,
+    queryFn: async () => {
+      const { data: camp, error } = await (supabase.from("campaigns") as any).select("*").eq("id", editingCampaignId).single();
+      if (error) throw error;
+      const { data: seg } = await (supabase as any).from("campaign_segments").select("type,filters").eq("campaign_id", editingCampaignId).maybeSingle();
+      return { camp, seg } as {
+        camp: Record<string, unknown>;
+        seg: { type?: string; filters?: Record<string, unknown> } | null;
+      };
+    },
+  });
+
+  useEffect(() => {
+    if (!whatsappOnly) return;
+    setValue("channel", "whatsapp");
+  }, [whatsappOnly, setValue]);
+
+  useEffect(() => {
+    if (!editingCampaignId || !editBundle?.camp) return;
+    if (editHydratedRef.current === editingCampaignId) return;
+    editHydratedRef.current = editingCampaignId;
+    const c = editBundle.camp;
+    const seg = segmentFromServerRow(editBundle.seg ?? null);
+    const blocks = (c.blocks as { whatsapp?: Record<string, unknown> } | null)?.whatsapp ?? {};
+    setWaContentType((String(blocks.content_type ?? "text") || "text") as typeof waContentType);
+    setWaMediaUrl(String(blocks.media_url ?? ""));
+    const btnArr = Array.isArray(blocks.buttons) ? (blocks.buttons as Array<{ label?: string; value?: string }>) : [];
+    const b0 = btnArr[0];
+    setWaButtonLabel(b0?.label ?? "");
+    setWaButtonUrl(b0?.value ?? "");
+    setWaMetaTemplateName(String(blocks.meta_template_name ?? ""));
+    reset({
+      name: String(c.name ?? ""),
+      message: String(c.message ?? ""),
+      channel: "whatsapp",
+      objective: (prefill?.objective ?? initialObjective ?? "recovery") as FormData["objective"],
+      segment: seg,
+      subject: String(c.subject ?? ""),
+      scheduled_at: (c.scheduled_at as string) ?? "",
+      send_now: true,
+      ai_context: "",
+      ai_tone: "friendly",
+      magic_link_product: "",
+      magic_link_coupon: "",
+    });
+    setStep(1);
+  }, [editingCampaignId, editBundle, initialObjective, prefill?.objective, reset]);
 
   const { data: segmentCounts = EMPTY_SEGMENT_COUNTS } = useQuery({
     queryKey: ["campaign_modal_segment_counts", loja.data?.id],
@@ -322,27 +407,23 @@ export default function CampaignModal({
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const { data: inserted, error } = await (supabase.from("campaigns") as any).insert([{
-        user_id: user!.id,
-        name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
-        message: data.message,
-        channel: data.channel,
-        subject: data.subject ?? null,
-        tags: (() => {
-          if (data.segment === "all") return [];
-          if (data.segment.startsWith("rfm_")) {
-            const key = data.segment.replace("rfm_", "");
-            return ["rfm", key];
-          }
-          return [data.segment];
-        })(),
-        status: "draft",
-        total_contacts: 0,
-        sent_count: 0,
-        delivered_count: 0,
-        read_count: 0,
-        reply_count: 0,
-        blocks: data.channel === "whatsapp" ? {
+      const isEdit = !!editingCampaignId;
+      if (!user) throw new Error("Não autenticado");
+      if (!lojaData?.id) {
+        throw new Error("Associe uma loja antes de salvar (configure em Funil / dados da loja).");
+      }
+      const prescriptionId = prefill?.prescriptionId;
+      const channelSave = whatsappOnly ? "whatsapp" : data.channel;
+      const tags = (() => {
+        if (data.segment === "all") return [];
+        if (data.segment.startsWith("rfm_")) {
+          const key = data.segment.replace("rfm_", "");
+          return ["rfm", key];
+        }
+        return [data.segment];
+      })();
+      const blocksPayload = channelSave === "whatsapp"
+        ? {
           whatsapp: {
             content_type: waContentType,
             media_url: waMediaUrl || null,
@@ -351,12 +432,59 @@ export default function CampaignModal({
               ? [{ type: "url", label: waButtonLabel, value: waButtonUrl }]
               : [],
           },
-        } : null,
-      }]).select("id").single();
-      if (error) throw error;
+        }
+        : null;
 
-      const campaignId = inserted?.id as string | undefined;
-      if (!campaignId) return;
+      let campaignId: string | undefined;
+
+      if (isEdit && editingCampaignId) {
+        const { error: upErr } = await (supabase.from("campaigns") as any).update({
+          store_id: lojaData.id,
+          name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
+          message: data.message,
+          channel: channelSave,
+          subject: data.subject ?? null,
+          tags,
+          blocks: blocksPayload,
+        }).eq("id", editingCampaignId).eq("user_id", user.id);
+        if (upErr) throw upErr;
+        campaignId = editingCampaignId;
+      } else {
+        const { data: inserted, error } = await (supabase.from("campaigns") as any).insert([{
+          user_id: user.id,
+          store_id: lojaData.id,
+          name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
+          message: data.message,
+          channel: channelSave,
+          subject: data.subject ?? null,
+          source_prescription_id: prescriptionId ?? null,
+          tags,
+          status: "draft",
+          total_contacts: 0,
+          sent_count: 0,
+          delivered_count: 0,
+          read_count: 0,
+          reply_count: 0,
+          blocks: blocksPayload,
+        }]).select("id").single();
+        if (error) throw error;
+        campaignId = inserted?.id as string | undefined;
+      }
+
+      if (!campaignId) return { isEdit };
+
+      if (!isEdit && prescriptionId) {
+        const { error: prErr } = await supabase
+          .from("prescriptions")
+          .update({ status: "aprovada" })
+          .eq("id", prescriptionId)
+          .eq("user_id", user!.id);
+        if (prErr) console.warn("prescription status update:", prErr.message);
+        try {
+          const n = parseInt(localStorage.getItem("ltv_prescricoes_aprovadas") ?? "0", 10);
+          localStorage.setItem("ltv_prescricoes_aprovadas", String(n + 1));
+        } catch { /* ignore */ }
+      }
 
       const segmentPayload = (() => {
         switch (data.segment) {
@@ -391,10 +519,17 @@ export default function CampaignModal({
         filters: segmentPayload.filters,
       });
       if (segErr) throw segErr;
+      return { isEdit };
     },
-    onSuccess: () => {
-      toast({ title: "Campanha criada!", description: "Salva como rascunho. Dispare quando quiser." });
+    onSuccess: (res) => {
+      const isEdit = Boolean(res?.isEdit);
+      toast({
+        title: isEdit ? "Campanha atualizada!" : "Campanha criada!",
+        description: isEdit ? "Alterações salvas no rascunho." : "Salva como rascunho. Dispare quando quiser.",
+      });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      void queryClient.invalidateQueries({ queryKey: ["campaign_edit_bundle", editingCampaignId] });
+      void queryClient.invalidateQueries({ queryKey: ["prescriptions_v3"] });
       onClose();
     },
     onError: (err: Error) => {
@@ -413,14 +548,41 @@ export default function CampaignModal({
 
   async function generateAiCopy() {
     setAiLoading(true);
-    // Simulando chamada ao Claude 3.5
-    setTimeout(() => {
-      setAiVariations([
-        { label: "FOMO (Urgência)", text: "Oi {{nome}}, notei que você deixou algo especial no carrinho. 😱 Restam apenas 3 unidades! Use o cupom VOLTE10 e garanta o seu aqui: {{link}}" },
-        { label: "Amigável", text: "Tudo bem, {{nome}}? Vi que você não finalizou seu pedido. 💖 Liberei frete grátis pra você fechar agora! Clica aqui: {{link}}" },
-      ]);
+    try {
+      const objectiveMap: Record<FormData["objective"], "recuperar_carrinho" | "boas_vindas" | "reativacao" | "upsell"> = {
+        recovery: "recuperar_carrinho",
+        rebuy: "reativacao",
+        loyalty: "upsell",
+        lancamento: "upsell",
+      };
+      const toneRaw = watch("ai_tone") ?? "friendly";
+      const toneMap: Record<string, "persuasivo" | "amigavel" | "urgente"> = {
+        friendly: "amigavel",
+        urgent: "urgente",
+        professional: "persuasivo",
+      };
+      const { data, error } = await supabase.functions.invoke("ai-copy", {
+        body: {
+          type: channel === "email" ? "email" : "whatsapp",
+          objective: objectiveMap[objective] ?? "reativacao",
+          tone: toneMap[toneRaw] ?? "amigavel",
+          brand_context: watch("ai_context") ?? "",
+        },
+      });
+      if (error) throw error;
+      const raw = String((data as { copy?: string })?.copy ?? "").trim();
+      if (!raw) throw new Error("Resposta vazia da IA");
+      const parts = raw.split(/\n---+\n|\n{2,}/).map((s) => s.trim()).filter((s) => s.length > 12);
+      const chunks = parts.length > 0 ? parts.slice(0, 5) : [raw];
+      const labels = ["Variação A", "Variação B", "Variação C", "Variação D", "Variação E"];
+      setAiVariations(chunks.slice(0, 5).map((text, i) => ({ label: labels[i] ?? `Opção ${i + 1}`, text })));
+      toast({ title: "Sugestões prontas", description: "Toque numa variação para colar na mensagem." });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro desconhecido";
+      toast({ title: "Não foi possível gerar com IA", description: msg, variant: "destructive" });
+    } finally {
       setAiLoading(false);
-    }, 1500);
+    }
   }
 
   function generateAbVariant(base: string): string {
@@ -491,6 +653,12 @@ export default function CampaignModal({
       <div className="absolute inset-0 bg-[#050508]/80 backdrop-blur-md" onClick={onClose} />
       
       <div className="relative bg-background border border-white/10 rounded-[2.5rem] shadow-2xl w-full max-w-5xl overflow-hidden max-h-[90vh] flex flex-col md:flex-row">
+        {editLoading && (
+          <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-background/85 backdrop-blur-sm rounded-[2.5rem]">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Carregando campanha…</span>
+          </div>
+        )}
         
         {/* Sidebar Stepper */}
         <div className="hidden md:flex flex-col w-72 bg-muted/20 border-r border-white/5 p-8 shrink-0">
@@ -499,7 +667,7 @@ export default function CampaignModal({
               <Megaphone className="w-5 h-5 text-white" />
             </div>
             <div className="flex flex-col">
-              <span className="font-black text-xs uppercase tracking-widest leading-none">Nova</span>
+              <span className="font-black text-xs uppercase tracking-widest leading-none">{editingCampaignId ? "Editar" : "Nova"}</span>
               <span className="font-black text-lg tracking-tighter text-primary">Campanha</span>
               {prefill?.source && (
                 <span className="text-[9px] font-black uppercase tracking-widest text-primary/60 mt-0.5">via {prefill.source}</span>
@@ -575,16 +743,25 @@ export default function CampaignModal({
                   <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic">Nome da Campanha & Canal</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input placeholder="ex: Recuperação de Inverno" {...register("name")} className="h-14 rounded-2xl bg-muted/30 border-none font-bold text-sm px-6" />
-                    <div className="flex bg-muted/30 p-1 rounded-2xl">
-                      {["whatsapp", "email", "sms"].map((ch) => (
-                        <button key={ch} type="button" onClick={() => setValue("channel", ch as any)} className={cn(
-                          "flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                          channel === ch ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-background/50"
-                        )}>
-                          {ch}
-                        </button>
-                      ))}
-                    </div>
+                    {whatsappOnly ? (
+                      <div className="rounded-2xl border border-green-500/20 bg-green-500/5 px-4 py-3 text-left space-y-1">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-green-600">Canal: WhatsApp</p>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          E-mail é enviado pela área <strong className="text-foreground">Newsletter</strong>. SMS seguirá em versões futuras.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex bg-muted/30 p-1 rounded-2xl">
+                        {(["whatsapp", "email", "sms"] as const).map((ch) => (
+                          <button key={ch} type="button" onClick={() => setValue("channel", ch)} className={cn(
+                            "flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                            channel === ch ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-background/50"
+                          )}>
+                            {ch}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

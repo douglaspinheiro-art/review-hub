@@ -14,8 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { normalizeTemplateForFlowEngine, slugifyJourneyTipo } from "@/lib/journey-template";
 
 // ─── Tipos de gatilho disponíveis ────────────────────────────────────────────
 
@@ -116,12 +116,12 @@ function renderPreview(template: string): string {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 interface AutomacaoModalProps {
+  storeId: string;
   onClose: () => void;
 }
 
-export default function AutomacaoModal({ onClose }: AutomacaoModalProps) {
+export default function AutomacaoModal({ storeId, onClose }: AutomacaoModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -149,19 +149,28 @@ export default function AutomacaoModal({ onClose }: AutomacaoModalProps) {
 
   const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const { error } = await supabase.from("automations").insert({
-        user_id: user!.id,
-        name: data.name,
-        trigger: data.trigger,
-        message_template: data.message_template,
-        delay_minutes: data.delay_minutes,
-        is_active: data.is_active,
+      if (!storeId) throw new Error("Loja não selecionada");
+      const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
+      const tipo_jornada = `custom_${slugifyJourneyTipo(data.name)}_${suffix}`;
+      const message_template = normalizeTemplateForFlowEngine(data.message_template);
+      const { error } = await supabase.from("journeys_config").insert({
+        store_id: storeId,
+        tipo_jornada,
+        ativa: data.is_active,
+        kpi_atual: 0,
+        config_json: {
+          delay_minutes: data.delay_minutes,
+          message_template,
+          ui_trigger: data.trigger,
+          display_name: data.name,
+        },
+        updated_at: new Date().toISOString(),
       });
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["automations", user?.id] });
-      toast.success("Jornada criada com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["automacoes_journeys", storeId] });
+      toast.success("Jornada criada — aparece em «Outras jornadas». O flow-engine dispara com o mesmo tipo_jornada.");
       onClose();
     },
     onError: (err: Error) => {
@@ -332,6 +341,13 @@ export default function AutomacaoModal({ onClose }: AutomacaoModalProps) {
                   <p className="text-xs text-muted-foreground">
                     Gatilho: <span className="font-medium text-foreground">{selectedTrigger?.label}</span>
                     {" · "}Envio {formatDelay(watchedDelay ?? 0)}
+                  </p>
+                  <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-snug">
+                    O <span className="font-mono">flow-engine</span> só agenda quando o evento recebido for igual ao{" "}
+                    <span className="font-mono">tipo_jornada</span> gerado (mostrado após criar, em «Outras jornadas»).
+                    Use <span className="font-mono">{"{{nome}}"}</span> e <span className="font-mono">{"{{link}}"}</span>{" "}
+                    na mensagem final (convertemos <span className="font-mono">{"{{name}}"}</span> /{" "}
+                    <span className="font-mono">{"{{magic_link}}"}</span> automaticamente).
                   </p>
 
                   {/* Chips de variáveis */}

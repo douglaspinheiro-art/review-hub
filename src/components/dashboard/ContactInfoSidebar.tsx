@@ -14,7 +14,9 @@ import { supabase } from "@/lib/supabase";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { buildMagicLink, EcommercePlatform } from "@/lib/checkout-builder";
 import { generatePixPayload } from "@/lib/pix-generator";
-import { sendTextForConnection } from "@/lib/evolution-api";
+import { sendTextForConnection, type ConnRow } from "@/lib/evolution-api";
+import { useAuth } from "@/hooks/useAuth";
+import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 
 interface Contact {
   id: string;
@@ -39,6 +41,7 @@ function normalizePhone(phone: string): string {
 }
 
 export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarProps) {
+  const { user } = useAuth();
   const [showCheckout, setShowCheckout] = useState(false);
   const [showPix, setShowPix] = useState(false);
 
@@ -56,16 +59,24 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
 
   const loja = useLoja();
 
-  const { data: conn } = useQuery({
-    queryKey: ["wpp-conn-sidebar"],
+  const { data: conn } = useQuery<ConnRow | null>({
+    queryKey: ["wpp-conn-sidebar", user?.id ?? null],
     queryFn: async () => {
-      const { data } = await supabase
+      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      if (!effectiveUserId) return null;
+      let q = supabase
         .from("whatsapp_connections")
-        .select("*")
-        .eq("status", "connected")
-        .maybeSingle();
-      return data;
+        .select(
+          "id, instance_name, status, evolution_api_url, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
+        )
+        .eq("status", "connected");
+      q = storeId ? q.eq("store_id", storeId) : q.eq("user_id", effectiveUserId);
+      const { data, error } = await q.order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
+      return (data as ConnRow | null) ?? null;
     },
+    enabled: !!user,
+    staleTime: 30_000,
   });
 
   if (!contact) return null;

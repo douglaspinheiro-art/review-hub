@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { UI_NICHE_TO_SECTOR_DB, type BenchmarkNicheKey } from "@/lib/benchmark-niches";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -191,7 +192,7 @@ export function useMetricasFunil(lojaId: string | null, periodo: "7d" | "30d" | 
     queryFn: async () => {
       const diasMap = { "7d": 7, "30d": 30, "90d": 90 };
       const since = new Date(Date.now() - diasMap[periodo] * 86400_000).toISOString().split("T")[0];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("funnel_metrics")
         .select("*")
         .eq("store_id", lojaId!)
@@ -199,9 +200,123 @@ export function useMetricasFunil(lojaId: string | null, periodo: "7d" | "30d" | 
         .order("data", { ascending: false })
         .limit(1)
         .maybeSingle();
+      if (error) throw error;
       return data ?? null;
     },
   });
+}
+
+export type FunilMetricasSource = "ga4" | "manual" | "none";
+
+export interface FunilPageMetricasResult {
+  metricas: MetricasFunil | null;
+  source: FunilMetricasSource;
+  /** ISO quando a fonte é GA4 (funil_diario) */
+  lastIngestedAt: string | null;
+  /** ISO da última linha manual (funnel_metrics) */
+  lastManualUpdatedAt: string | null;
+}
+
+function funnelMetricsRowToMetricas(row: Record<string, unknown>): MetricasFunil {
+  return {
+    visitantes: Number(row.visitantes ?? 0),
+    visualizacoes_produto: Number(row.visualizacoes_produto ?? 0),
+    adicionou_carrinho: Number(row.adicionou_carrinho ?? 0),
+    iniciou_checkout: Number(row.iniciou_checkout ?? 0),
+    compras: Number(row.compras ?? 0),
+    receita: Number(row.receita ?? 0),
+    fonte: "manual",
+  };
+}
+
+function funilDiarioRowToMetricas(row: {
+  sessions?: number | null;
+  view_item?: number | null;
+  add_to_cart?: number | null;
+  begin_checkout?: number | null;
+  purchases?: number | null;
+  purchase_revenue?: number | null;
+}): MetricasFunil {
+  return {
+    visitantes: Number(row.sessions ?? 0),
+    visualizacoes_produto: Number(row.view_item ?? 0),
+    adicionou_carrinho: Number(row.add_to_cart ?? 0),
+    iniciou_checkout: Number(row.begin_checkout ?? 0),
+    compras: Number(row.purchases ?? 0),
+    receita: Number(row.purchase_revenue ?? 0),
+    fonte: "ga4",
+  };
+}
+
+const GA4_SNAPSHOT_MAX_AGE_MS = 3 * 86400_000;
+
+/** Prefer funil_diario (cron GA4) for the period, else latest funnel_metrics in window, else none (UI uses mock). */
+export function useFunilPageMetricas(lojaId: string | null, periodo: "7d" | "30d" | "90d" = "30d") {
+  return useQuery({
+    queryKey: ["convertiq-funil-page-metricas", lojaId, periodo],
+    enabled: !!lojaId,
+    queryFn: async (): Promise<FunilPageMetricasResult> => {
+      const { data: gaRow, error: gaErr } = await supabase
+        .from("funil_diario")
+        .select("sessions,view_item,add_to_cart,begin_checkout,purchases,purchase_revenue,ingested_at,metric_date")
+        .eq("store_id", lojaId!)
+        .eq("periodo", periodo)
+        .order("metric_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (gaErr) throw gaErr;
+
+      if (gaRow) {
+        return {
+          metricas: funilDiarioRowToMetricas(gaRow),
+          source: "ga4",
+          lastIngestedAt: gaRow.ingested_at ?? null,
+          lastManualUpdatedAt: null,
+        };
+      }
+
+      const diasMap = { "7d": 7, "30d": 30, "90d": 90 };
+      const since = new Date(Date.now() - diasMap[periodo] * 86400_000).toISOString().split("T")[0];
+      const { data: fmRow, error: fmErr } = await supabase
+        .from("funnel_metrics")
+        .select("*")
+        .eq("store_id", lojaId!)
+        .gte("data", since)
+        .order("data", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fmErr) throw fmErr;
+
+      if (fmRow) {
+        return {
+          metricas: funnelMetricsRowToMetricas(fmRow as Record<string, unknown>),
+          source: "manual",
+          lastIngestedAt: null,
+          lastManualUpdatedAt: (fmRow as { created_at?: string | null }).created_at ?? null,
+        };
+      }
+
+      return { metricas: null, source: "none", lastIngestedAt: null, lastManualUpdatedAt: null };
+    },
+  });
+}
+
+/** True when GA4 snapshot exists and was ingested within the freshness window (for optional UI blocks). */
+export function isFunilGa4SnapshotRecent(lastIngestedAt: string | null): boolean {
+  if (!lastIngestedAt) return false;
+  const t = Date.parse(lastIngestedAt);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t <= GA4_SNAPSHOT_MAX_AGE_MS;
+}
+
+/** Percent of current revenue represented by recovery estimates; safe when receita is 0. */
+export function recoveryPctOfRevenue(recFrete: number, recPag: number, receita: number): number | null {
+  if (receita <= 0) return null;
+  const pct = ((recFrete + recPag) / receita) * 100;
+  if (!Number.isFinite(pct)) return null;
+  return pct;
 }
 
 /** Returns the latest completed diagnostic for the given store. */
@@ -210,14 +325,16 @@ export function useLatestDiagnostico(lojaId: string | null) {
     queryKey: ["convertiq-last-diag", lojaId],
     enabled: !!lojaId,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("diagnostics")
         .select("*")
         .eq("user_id", (await getUid())!)
+        .eq("store_id", lojaId)
         .eq("status", "done")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+      if (error) throw error;
       return data ?? null;
     },
   });
@@ -229,15 +346,38 @@ export function useDiagnosticos(lojaId: string | null) {
     queryKey: ["convertiq-diags", lojaId],
     enabled: !!lojaId,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("diagnostics")
         .select("*")
         .eq("user_id", (await getUid())!)
+        .eq("store_id", lojaId)
         .eq("status", "done")
         .order("created_at", { ascending: false })
         .limit(12);
+      if (error) throw error;
       return data ?? [];
     },
+  });
+}
+
+/** Linha agregada de `sector_benchmarks` para o segmento operacional (CVR/ticket referência). */
+export function useSectorBenchmark(niche: BenchmarkNicheKey) {
+  const dbSegment = UI_NICHE_TO_SECTOR_DB[niche];
+  return useQuery({
+    queryKey: ["sector-benchmark", dbSegment],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sector_benchmarks")
+        .select("*")
+        .eq("segmento", dbSegment)
+        .maybeSingle();
+      if (error) {
+        console.warn("[useSectorBenchmark]", error.message);
+        return null;
+      }
+      return data;
+    },
+    staleTime: 5 * 60_000,
   });
 }
 
@@ -319,6 +459,7 @@ export function useSaveMetricas() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["convertiq-metricas", vars.lojaId] });
+      qc.invalidateQueries({ queryKey: ["convertiq-funil-page-metricas", vars.lojaId] });
       toast.success("Métricas salvas com sucesso");
     },
     onError: (e) => toast.error(`Erro ao salvar: ${(e as Error).message}`),
@@ -337,10 +478,11 @@ export function useGerarDiagnostico() {
       const uid = await getUid();
       if (!uid) throw new Error("Não autenticado");
 
-      const { data: diagRow, error: diagErr } = await (supabase
-        .from("diagnostics") as any)
+      const { data: diagRow, error: diagErr } = await supabase
+        .from("diagnostics")
         .insert({
           user_id: uid,
+          store_id: payload.lojaId,
           status: "pending",
           meta_conversao: payload.metaConversao,
           dados_funil: payload.metricas as unknown as Record<string, unknown>,

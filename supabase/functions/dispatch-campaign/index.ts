@@ -21,6 +21,8 @@ import { outboundSendMetaTemplate, outboundSendText } from "../_shared/whatsapp-
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTI_SPAM_DELAY_MS = DEFAULT_EVOLUTION_DELAY_MS;
+/** Evita timeout da Edge Function; use "Disparar" de novo para continuar o lote. */
+const MAX_SENDS_PER_INVOCATION = 35;
 const BodySchema = z.object({ campaign_id: uuidSchema });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,6 +88,7 @@ async function resolveContacts(
   targets: Array<{ id: string; name: string; phone: string; email?: string | null; tags: string[]; status: string }>;
   holdouts: Array<{ id: string; name: string; phone: string; email?: string | null; tags: string[]; status: string }>;
   suppressedCooldown: Array<{ id: string; name: string; phone: string; email?: string | null; tags: string[]; status: string }>;
+  outsideSendWindow: boolean;
 }> {
   // Get segment rules for this campaign
   const { data: segments } = await supabase
@@ -208,7 +211,12 @@ async function resolveContacts(
   const eligible = limited.filter((c) => !suppressedByCooldown.has(c.id));
   const suppressedCooldown = limited.filter((c) => suppressedByCooldown.has(c.id));
   if (!inSendWindow) {
-    return { targets: [], holdouts: [], suppressedCooldown: [] };
+    return {
+      targets: [],
+      holdouts: [],
+      suppressedCooldown: [],
+      outsideSendWindow: true,
+    };
   }
 
   const targets = holdoutPct > 0
@@ -222,7 +230,29 @@ async function resolveContacts(
     targets: targets as Array<{ id: string; name: string; phone: string; email?: string | null; tags: string[]; status: string }>,
     holdouts: holdouts as Array<{ id: string; name: string; phone: string; email?: string | null; tags: string[]; status: string }>,
     suppressedCooldown: suppressedCooldown as Array<{ id: string; name: string; phone: string; email?: string | null; tags: string[]; status: string }>,
+    outsideSendWindow: false,
   };
+}
+
+async function canDispatchCampaign(
+  supabase: ReturnType<typeof createClient>,
+  requesterUserId: string,
+  campaign: { user_id: string; store_id: string | null },
+): Promise<boolean> {
+  if (campaign.user_id === requesterUserId) return true;
+  if (!campaign.store_id) return false;
+  const { data: store } = await supabase.from("stores").select("user_id").eq("id", campaign.store_id).maybeSingle();
+  const ownerId = store?.user_id as string | undefined;
+  if (!ownerId) return false;
+  if (ownerId === requesterUserId) return true;
+  const { data: team } = await supabase
+    .from("team_members")
+    .select("id")
+    .eq("account_owner_id", ownerId)
+    .eq("invited_user_id", requesterUserId)
+    .eq("status", "active")
+    .maybeSingle();
+  return !!team;
 }
 
 async function resolveSuppressedOptOut(
@@ -300,17 +330,44 @@ serve(async (req: Request) => {
     // Load campaign
     const { data: campaign, error: campError } = await supabase
       .from("campaigns")
-      .select("id, name, message, blocks, status, store_id, user_id, ab_test_id")
+      .select(
+        "id, name, message, blocks, status, store_id, user_id, ab_test_id, channel, sent_count, source_prescription_id",
+      )
       .eq("id", campaign_id)
       .single();
 
-    if (campError || !campaign || (!isInternal && campaign.user_id !== requesterUserId)) {
+    if (campError || !campaign) {
+      return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
+    }
+    if (!isInternal && requesterUserId && !(await canDispatchCampaign(supabase, requesterUserId, campaign))) {
       return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
     }
     const actorUserId = campaign.user_id as string;
 
-    if (campaign.status === "running" || campaign.status === "completed") {
+    const channel = String((campaign as { channel?: string }).channel ?? "whatsapp").toLowerCase();
+    if (channel !== "whatsapp") {
+      return new Response(
+        JSON.stringify({
+          error: "Esta campanha não é WhatsApp. Use a área Newsletter para e-mail ou o fluxo de SMS quando disponível.",
+        }),
+        { status: 400 },
+      );
+    }
+
+    if (!campaign.store_id) {
+      return new Response(
+        JSON.stringify({ error: "Associe a campanha a uma loja antes de disparar." }),
+        { status: 422 },
+      );
+    }
+
+    if (campaign.status === "completed") {
       return new Response(JSON.stringify({ error: "Campaign already dispatched" }), { status: 409 });
+    }
+
+    const isResume = campaign.status === "running";
+    if (!isResume && campaign.status !== "draft" && campaign.status !== "scheduled") {
+      return new Response(JSON.stringify({ error: "Campaign cannot be dispatched in this state" }), { status: 409 });
     }
 
     // Load WhatsApp connection
@@ -348,20 +405,82 @@ serve(async (req: Request) => {
       }
     }
 
-    // Mark campaign as running
-    await supabase
-      .from("campaigns")
-      .update({ status: "running" })
-      .eq("id", campaign_id);
+    if (!isResume) {
+      await supabase
+        .from("campaigns")
+        .update({ status: "running" })
+        .eq("id", campaign_id);
+    }
 
     // Resolve target contacts using prioritization + optional holdout.
-    const { targets: contacts, holdouts, suppressedCooldown } = await resolveContacts(
+    const {
+      targets: contacts,
+      holdouts,
+      suppressedCooldown,
+      outsideSendWindow,
+    } = await resolveContacts(
       supabase,
       actorUserId,
       campaign.store_id,
       campaign_id,
     );
-    const contactIds = contacts.map((c) => c.id);
+
+    if (outsideSendWindow) {
+      if (!isResume) {
+        await supabase
+          .from("campaigns")
+          .update({ status: "draft", total_contacts: 0 })
+          .eq("id", campaign_id);
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          sent: 0,
+          failed: 0,
+          total: 0,
+          suppressed_opt_out: 0,
+          suppressed_cooldown: 0,
+          dispatch_reason: "outside_send_window",
+          message: "Fora da janela de envio configurada no segmento. Tente novamente no horário permitido.",
+        }),
+        { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
+      );
+    }
+
+    if (!isResume) {
+      const rxId = (campaign as { source_prescription_id?: string | null }).source_prescription_id;
+      if (rxId) {
+        const { error: prRxErr } = await supabase
+          .from("prescriptions")
+          .update({ status: "em_execucao" })
+          .eq("id", rxId)
+          .eq("user_id", actorUserId);
+        if (prRxErr) console.warn("prescription em_execucao sync:", prRxErr.message);
+      }
+    }
+
+    const { count: existingDispatchLog } = await supabase
+      .from("message_sends")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaign_id);
+    const alreadyInitialized = (existingDispatchLog ?? 0) > 0;
+
+    const { data: sentRows } = await supabase
+      .from("message_sends")
+      .select("customer_id,status")
+      .eq("campaign_id", campaign_id);
+    const sentCustomerIds = new Set(
+      (sentRows ?? [])
+        .filter((r: { status?: string | null }) => String(r.status ?? "").startsWith("sent"))
+        .map((r: { customer_id?: string | null }) => r.customer_id)
+        .filter(Boolean) as string[],
+    );
+
+    const eligible = contacts.filter((c) => !sentCustomerIds.has(c.id));
+    const batch = eligible.slice(0, MAX_SENDS_PER_INVOCATION);
+    const partial = eligible.length > batch.length;
+
+    const contactIds = batch.map((c) => c.id);
     const { data: carts } = contactIds.length > 0
       ? await (supabase as any)
         .from("abandoned_carts")
@@ -377,58 +496,59 @@ serve(async (req: Request) => {
       }
     }
 
-    // Track suppressed contacts for visibility in incremental analysis.
+    // Track suppressed contacts for visibility in incremental analysis (uma vez por campanha).
     const suppressedOptOut = await resolveSuppressedOptOut(supabase, campaign.store_id, campaign_id);
 
-    if (suppressedOptOut.length > 0) {
-      await (supabase as any).from("message_sends").insert(
-        suppressedOptOut.map((contact: any) => ({
-          user_id: actorUserId,
-          store_id: campaign.store_id,
-          campaign_id,
-          customer_id: contact.id,
-          phone: normalizePhone(contact.phone),
-          status: "suppressed_opt_out",
-        })),
-      );
-    }
-    if (suppressedCooldown.length > 0) {
-      await (supabase as any).from("message_sends").insert(
-        suppressedCooldown.map((contact) => ({
-          user_id: actorUserId,
-          store_id: campaign.store_id,
-          campaign_id,
-          customer_id: contact.id,
-          phone: normalizePhone(contact.phone),
-          status: "suppressed_cooldown",
-        })),
-      );
+    if (!alreadyInitialized) {
+      if (suppressedOptOut.length > 0) {
+        await (supabase as any).from("message_sends").insert(
+          suppressedOptOut.map((contact: any) => ({
+            user_id: actorUserId,
+            store_id: campaign.store_id,
+            campaign_id,
+            customer_id: contact.id,
+            phone: normalizePhone(contact.phone),
+            status: "suppressed_opt_out",
+          })),
+        );
+      }
+      if (suppressedCooldown.length > 0) {
+        await (supabase as any).from("message_sends").insert(
+          suppressedCooldown.map((contact) => ({
+            user_id: actorUserId,
+            store_id: campaign.store_id,
+            campaign_id,
+            customer_id: contact.id,
+            phone: normalizePhone(contact.phone),
+            status: "suppressed_cooldown",
+          })),
+        );
+      }
+
+      if (holdouts.length > 0) {
+        await (supabase as any).from("message_sends").insert(
+          holdouts.map((contact) => ({
+            user_id: actorUserId,
+            store_id: campaign.store_id,
+            campaign_id,
+            customer_id: contact.id,
+            phone: normalizePhone(contact.phone),
+            status: "holdout",
+          })),
+        );
+      }
+
+      await supabase
+        .from("campaigns")
+        .update({ total_contacts: contacts.length + holdouts.length })
+        .eq("id", campaign_id);
     }
 
-    // Persist holdout group for incremental analysis.
-    if (holdouts.length > 0) {
-      await (supabase as any).from("message_sends").insert(
-        holdouts.map((contact) => ({
-          user_id: actorUserId,
-          store_id: campaign.store_id,
-          campaign_id,
-          customer_id: contact.id,
-          phone: normalizePhone(contact.phone),
-          status: "holdout",
-        })),
-      );
-    }
-
-    // Update total_contacts (targets + holdouts)
-    await supabase
-      .from("campaigns")
-      .update({ total_contacts: contacts.length + holdouts.length })
-      .eq("id", campaign_id);
-
+    const priorSent = Number((campaign as { sent_count?: number }).sent_count ?? 0);
     let sentCount = 0;
     let failedCount = 0;
 
-    for (const contact of contacts) {
+    for (const contact of batch) {
       try {
         const phone = normalizePhone(contact.phone);
         const cart = latestCartByCustomer.get(contact.id);
@@ -586,7 +706,7 @@ serve(async (req: Request) => {
         if (sentCount % 10 === 0) {
           await supabase
             .from("campaigns")
-            .update({ sent_count: sentCount })
+            .update({ sent_count: priorSent + sentCount })
             .eq("id", campaign_id);
         }
 
@@ -598,17 +718,33 @@ serve(async (req: Request) => {
       }
     }
 
-    // Mark campaign completed
+    const batchAttempted = batch.length;
+    const newSentTotal = priorSent + sentCount;
+    const allFailedInBatch = batchAttempted > 0 && sentCount === 0 && failedCount === batchAttempted;
+    const finalStatus = partial
+      ? "running"
+      : (allFailedInBatch ? "failed" : "completed");
+
     await supabase
       .from("campaigns")
       .update({
-        status: failedCount === contacts.length ? "failed" : "completed",
-        sent_count: sentCount,
+        status: finalStatus,
+        sent_count: newSentTotal,
       })
       .eq("id", campaign_id);
 
+    const sourceRx = (campaign as { source_prescription_id?: string | null }).source_prescription_id;
+    if (sourceRx && finalStatus === "completed") {
+      const { error: prDoneErr } = await supabase
+        .from("prescriptions")
+        .update({ status: "concluida" })
+        .eq("id", sourceRx)
+        .eq("user_id", actorUserId);
+      if (prDoneErr) console.warn("prescription concluida sync:", prDoneErr.message);
+    }
+
     // A/B continuous learning: if both variants have enough traffic, decide winner automatically.
-    if ((campaign as any).ab_test_id) {
+    if (!partial && (campaign as any).ab_test_id) {
       const { data: abVariants } = await (supabase as any)
         .from("campaigns")
         .select("id,ab_variant,sent_count,read_count,reply_count,status")
@@ -674,8 +810,12 @@ serve(async (req: Request) => {
         sent: sentCount,
         failed: failedCount,
         total: contacts.length + holdouts.length,
-        suppressed_opt_out: suppressedOptOut.length,
-        suppressed_cooldown: suppressedCooldown.length,
+        suppressed_opt_out: alreadyInitialized ? 0 : suppressedOptOut.length,
+        suppressed_cooldown: alreadyInitialized ? 0 : suppressedCooldown.length,
+        partial,
+        remaining: partial ? Math.max(0, eligible.length - batch.length) : 0,
+        sent_total: newSentTotal,
+        dispatch_reason: partial ? "batch_continue" : undefined,
       }),
       { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
     );

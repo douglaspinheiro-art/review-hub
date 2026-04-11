@@ -11,8 +11,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
+import { useTeamAccess, teamNavItemHidden } from "@/hooks/useTeamAccess";
 import { useDemo } from "@/contexts/DemoContext";
 import NotificationBell from "@/components/dashboard/NotificationBell";
+import { TeamCollaboratorPageGuard } from "@/components/TeamCollaboratorPageGuard";
 import {
   BETA_LIMITED_BANNER_PT,
   isBetaLimitedScope,
@@ -51,7 +53,7 @@ const nav: { section: string; items: NavItem[] }[] = [
   {
     section: "INÍCIO",
     items: [
-      { label: "Diagnóstico",   icon: Sparkles,       href: "/diagnostico",            highlight: true },
+      { label: "Simulador de receita", icon: Sparkles, href: "/diagnostico", highlight: true },
       { label: "Radar de Lucro", icon: LayoutDashboard, href: "/dashboard" },
       { label: "Prescrições",    icon: Zap,             href: "/dashboard/prescricoes", dot: true },
     ],
@@ -68,7 +70,7 @@ const nav: { section: string; items: NavItem[] }[] = [
       { label: "Analytics",      icon: FileBarChart,    href: "/dashboard/analytics" },
       { label: "Benchmark",      icon: TrendingUp,      href: "/dashboard/benchmark" },
       { label: "RFM",            icon: BarChart3,       href: "/dashboard/rfm" },
-      { label: "Forecast",       icon: TrendingUp,      href: "/dashboard/forecast", minPlan: "growth" },
+      { label: "Previsão",       icon: TrendingUp,      href: "/dashboard/forecast", minPlan: "growth" },
       { label: "Reviews",        icon: Star,            href: "/dashboard/reviews" },
       { label: "Atribuição",     icon: Target,          href: "/dashboard/atribuicao" },
     ],
@@ -103,7 +105,6 @@ const nav: { section: string; items: NavItem[] }[] = [
       { label: "White Label",    icon: Star,            href: "/dashboard/white-label" },
       { label: "Operações",      icon: Zap,             href: "/dashboard/operacoes" },
       { label: "Afiliados",      icon: Target,          href: "/dashboard/afiliados" },
-      { label: "Chatbot",        icon: MessageCircle,   href: "/dashboard/chatbot" },
     ],
   },
 ];
@@ -131,6 +132,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const { signOut, user, profile, isTrialActive } = useAuth();
+  const { data: teamAccess } = useTeamAccess();
 
   const trialDaysLeft = profile?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(profile.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
@@ -153,14 +155,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   const visibleNav = useMemo(() => {
-    if (isDemo || !isBetaLimitedScope) return demoNav;
-    return demoNav
+    const base = isDemo || !isBetaLimitedScope
+      ? demoNav
+      : demoNav
+          .map((section) => ({
+            ...section,
+            items: section.items.filter((item) => !shouldHideNavItemHref(item.href)),
+          }))
+          .filter((section) => section.items.length > 0);
+
+    if (isDemo) return base;
+
+    return base
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => !shouldHideNavItemHref(item.href)),
+        items: section.items.filter((item) => !teamNavItemHidden(item.href, teamAccess)),
       }))
       .filter((section) => section.items.length > 0);
-  }, [demoNav, isDemo]);
+  }, [demoNav, isDemo, teamAccess]);
 
   const dashboardHome = isDemo ? "/demo" : "/dashboard";
   const settingsHref = rewriteDashboardHref("/dashboard/configuracoes", isDemo);
@@ -405,7 +417,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="max-w-7xl mx-auto">
-            {children}
+            <TeamCollaboratorPageGuard>{children}</TeamCollaboratorPageGuard>
           </div>
         </main>
       </div>

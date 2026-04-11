@@ -1,29 +1,25 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, checkRateLimit } from "../_shared/edge-utils.ts";
-
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-function checkRL(key: string, max = 20, windowMs = 60_000): boolean {
-  const now = Date.now();
-  const e = rateLimitMap.get(key);
-  if (!e || now > e.resetAt) { rateLimitMap.set(key, { count: 1, resetAt: now + windowMs }); return true; }
-  if (e.count >= max) return false;
-  e.count++;
-  return true;
-}
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { corsHeaders, checkRateLimit, getClientIp } from "../_shared/edge-utils.ts";
 
 const ConversationBodySchema = z.object({
   conversation_id: z.string().uuid(),
   context: z.string().max(2000).default(""),
 });
 
-const ReviewBodySchema = z.object({
-  review_id: z.string().uuid().optional(),
-  content: z.string().min(1).max(4000),
-  rating: z.number().min(1).max(5).nullable().optional(),
-  reviewer_name: z.string().min(1).max(120).optional(),
-  context: z.string().max(2000).default(""),
-});
+const ReviewBodySchema = z
+  .object({
+    review_id: z.string().uuid().optional(),
+    content: z.string().max(4000).optional(),
+    rating: z.number().min(1).max(5).nullable().optional(),
+    reviewer_name: z.string().min(1).max(120).optional(),
+    context: z.string().max(2000).default(""),
+  })
+  .refine(
+    (d) => !!d.review_id || !!(d.content && d.content.trim().length > 0),
+    { message: "Informe review_id ou content", path: ["content"] },
+  );
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -61,8 +57,9 @@ serve(async (req) => {
       );
     }
 
-    const clientIp = req.headers.get("x-forwarded-for") || "unknown";
-    if (!checkRL(clientIp)) {
+    const clientIp = getClientIp(req);
+    const rlKey = `ai-reply:${authData.user.id}:${clientIp}`;
+    if (!checkRateLimit(rlKey, 30, 60_000)) {
       return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: corsHeaders });
     }
 
@@ -93,6 +90,13 @@ serve(async (req) => {
           .eq("store_id", conv.store_id)
           .maybeSingle()
         : { data: null };
+
+      const { data: ownerPrefs } = await supabase
+        .from("profiles")
+        .select("ia_negotiation_enabled, ia_max_discount_pct, social_proof_enabled, pix_key")
+        .eq("id", conv.user_id)
+        .maybeSingle();
+
       const { data: messages } = await supabase
         .from("messages")
         .select("content, direction")
@@ -105,17 +109,58 @@ serve(async (req) => {
         .map((m) => `${m.direction === "inbound" ? "Cliente" : "Atendente"}: ${m.content}`)
         .join("\n");
 
+      const negOn = ownerPrefs?.ia_negotiation_enabled !== false;
+      const maxDisc = Number(ownerPrefs?.ia_max_discount_pct ?? 10);
+      const socialOn = ownerPrefs?.social_proof_enabled !== false;
+      const pix = String(ownerPrefs?.pix_key ?? "").trim();
+
+      const commerceRules = `Regras comerciais (configuradas pelo lojista):
+- Negociação/objeção de preço: ${negOn ? "permitida dentro do limite abaixo" : "desativada — não ofereça descontos nem cupons improvisados; mantenha posicionamento de valor"}.
+${negOn ? `- Desconto máximo a mencionar ou aplicar em ofertas verbais: ${maxDisc}%. Nunca prometa acima disso.` : ""}
+- Prova social: ${socialOn ? "pode mencionar que outros clientes compraram recentemente quando couber de forma natural, sem inventar números ou estatísticas." : "não invente números de vendas, estoque ou urgência."}
+- PIX: ${pix ? `se o cliente pedir chave PIX, use apenas esta chave oficial: ${pix}. Não invente outra chave.` : "se pedirem PIX, oriente a pagar pelo checkout oficial da loja ou diga que um humano confirmará a chave; não invente chave PIX."}`;
+
       system = `${aiCfg?.prompt_sistema ? `${aiCfg.prompt_sistema}\n\n` : ""}Você é um assistente de atendimento de um e-commerce brasileiro.
 Sua tarefa é sugerir uma resposta empática, profissional e direta para o cliente.
 Baseie-se no histórico da conversa fornecido.
 Se o cliente estiver reclamando, seja solícito. Se estiver em dúvida, seja informativo.
 Tom preferido: ${aiCfg?.tom_de_voz ?? "amigável e profissional"}.
 Contexto da loja: ${aiCfg?.conhecimento_loja ?? "não informado"}.
+
+${commerceRules}
 Retorne APENAS o texto sugerido, sem introduções ou explicações.`;
 
       user = `Histórico da conversa:\n${history}\n\nContexto extra: ${context}\n\nSugira a próxima resposta para o Atendente:`;
     } else {
-      const { content, rating, reviewer_name, context } = parsedReview.data;
+      let content = parsedReview.data.content;
+      let rating = parsedReview.data.rating ?? null;
+      let reviewer_name = parsedReview.data.reviewer_name ?? "Cliente";
+      const { review_id, context } = parsedReview.data;
+
+      if (review_id) {
+        const { data: row, error: revErr } = await supabase
+          .from("reviews")
+          .select("user_id, content, rating, reviewer_name")
+          .eq("id", review_id)
+          .maybeSingle();
+
+        if (revErr) {
+          return new Response(JSON.stringify({ error: revErr.message }), { status: 500, headers: corsHeaders });
+        }
+        if (!row) {
+          return new Response(JSON.stringify({ error: "Review not found" }), { status: 404, headers: corsHeaders });
+        }
+        if (row.user_id !== authData.user.id) {
+          return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+        }
+        const c = (row.content ?? "").trim();
+        if (!c) {
+          return new Response(JSON.stringify({ error: "Review has no text content" }), { status: 400, headers: corsHeaders });
+        }
+        content = c;
+        rating = row.rating ?? null;
+        reviewer_name = row.reviewer_name ?? "Cliente";
+      }
 
       system = `Você é um especialista em atendimento e reputação para e-commerce brasileiro.
 Sua tarefa é escrever uma resposta pública para uma avaliação de cliente.
@@ -123,7 +168,7 @@ A resposta deve ser respeitosa, profissional, breve e em português brasileiro.
 Retorne APENAS o texto sugerido, sem introduções ou explicações.`;
 
       user = `Avaliação recebida:
-- Cliente: ${reviewer_name ?? "Cliente"}
+- Cliente: ${reviewer_name}
 - Nota: ${rating ?? "não informada"}
 - Texto: ${content}
 
@@ -139,6 +184,15 @@ Gere uma resposta ideal para publicar na avaliação.`;
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      const msg = typeof data?.error?.message === "string"
+        ? data.error.message
+        : (typeof data?.message === "string" ? data.message : JSON.stringify(data?.error ?? data));
+      return new Response(
+        JSON.stringify({ error: msg || "Anthropic API error", status: response.status }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     const suggestion = data?.content?.[0]?.text ?? "";
     if (!suggestion) {
       throw new Error("Empty model response");

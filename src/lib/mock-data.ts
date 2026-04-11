@@ -89,6 +89,23 @@ export const mockPrescricoes = [
     ab_teste_ativo: true,
     status: "aguardando_aprovacao",
     preview_msg: "Oi [Nome]! Frete grátis pra você hoje 🎁..."
+  },
+  {
+    id: "p-demo-exec",
+    titulo: "Reativação de clientes dormentes (demo)",
+    canal: "whatsapp",
+    segmento: "inactive",
+    num_clientes: 320,
+    desconto_tipo: "percentual",
+    desconto_valor: 12,
+    desconto_justificativa: "Demonstração: prescrição já aprovada, sem campanha vinculada no mock.",
+    melhor_horario: "Quarta às 15h",
+    custo_estimado: 45,
+    potencial_estimado: 5200,
+    roi_estimado: 42,
+    ab_teste_ativo: false,
+    status: "aprovada",
+    preview_msg: "Oi [Nome]! Sentimos sua falta — volte com 12% OFF..."
   }
 ];
 

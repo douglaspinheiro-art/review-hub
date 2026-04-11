@@ -12,7 +12,7 @@ CREATE INDEX IF NOT EXISTS messages_external_id_idx
 
 -- ─── 2. Revenue attribution on campaigns ─────────────────────────────────────
 ALTER TABLE campaigns
-  ADD COLUMN IF NOT EXISTS attribution_window_days int NOT NULL DEFAULT 7;
+  ADD COLUMN IF NOT EXISTS attribution_window_days int NOT NULL DEFAULT 3;
 
 -- ─── 3. Link abandoned carts to the automation/campaign that sent the message ─
 ALTER TABLE abandoned_carts

@@ -61,7 +61,7 @@ const PLANS = [
       "15.000 e-mails inclusos",
       "3.000 SMS inclusos",
       "10.000 clientes no perfil",
-      "Revenue Forecast Total",
+      "Previsão de receita completa",
       "Relatório executivo semanal PDF",
       "API & Webhooks ilimitados",
     ],

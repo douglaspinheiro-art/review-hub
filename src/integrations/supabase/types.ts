@@ -69,6 +69,7 @@ export type Database = {
       }
       abandoned_carts: {
         Row: {
+          abandon_step: string | null
           automation_id: string | null
           campaign_id: string | null
           cart_items: Json
@@ -92,6 +93,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          abandon_step?: string | null
           automation_id?: string | null
           campaign_id?: string | null
           cart_items?: Json
@@ -115,6 +117,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          abandon_step?: string | null
           automation_id?: string | null
           campaign_id?: string | null
           cart_items?: Json
@@ -478,6 +481,9 @@ export type Database = {
           order_value: number
           source_platform: string | null
           user_id: string
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
         }
         Insert: {
           attributed_automation_id?: string | null
@@ -492,6 +498,9 @@ export type Database = {
           order_value?: number
           source_platform?: string | null
           user_id: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Update: {
           attributed_automation_id?: string | null
@@ -506,6 +515,9 @@ export type Database = {
           order_value?: number
           source_platform?: string | null
           user_id?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Relationships: [
           {
@@ -708,10 +720,12 @@ export type Database = {
       campaigns: {
         Row: {
           ab_subject_enabled: boolean
+          attribution_window_days?: number
           blocks: Json | null
           channel: string
           click_count: number
           created_at: string
+          custo_total_envio?: number | null
           delivered_count: number
           email_recipient_mode: string | null
           email_recipient_rfm: string | null
@@ -726,6 +740,7 @@ export type Database = {
           sent_count: number
           status: string
           store_id: string | null
+          source_prescription_id: string | null
           subject: string | null
           subject_variant_b: string | null
           total_contacts: number
@@ -734,10 +749,12 @@ export type Database = {
         }
         Insert: {
           ab_subject_enabled?: boolean
+          attribution_window_days?: number
           blocks?: Json | null
           channel?: string
           click_count?: number
           created_at?: string
+          custo_total_envio?: number | null
           delivered_count?: number
           email_recipient_mode?: string | null
           email_recipient_rfm?: string | null
@@ -752,6 +769,7 @@ export type Database = {
           sent_count?: number
           status?: string
           store_id?: string | null
+          source_prescription_id?: string | null
           subject?: string | null
           subject_variant_b?: string | null
           total_contacts?: number
@@ -760,10 +778,12 @@ export type Database = {
         }
         Update: {
           ab_subject_enabled?: boolean
+          attribution_window_days?: number
           blocks?: Json | null
           channel?: string
           click_count?: number
           created_at?: string
+          custo_total_envio?: number | null
           delivered_count?: number
           email_recipient_mode?: string | null
           email_recipient_rfm?: string | null
@@ -778,6 +798,7 @@ export type Database = {
           sent_count?: number
           status?: string
           store_id?: string | null
+          source_prescription_id?: string | null
           subject?: string | null
           subject_variant_b?: string | null
           total_contacts?: number
@@ -1446,6 +1467,8 @@ export type Database = {
           data_calculo: string | null
           id: string
           store_id: string | null
+          /** Presente em alguns ambientes legados; RLS alinhado à loja via `store_id` + `stores`. */
+          user_id?: string | null
         }
         Insert: {
           cenario_base?: number | null
@@ -1456,6 +1479,7 @@ export type Database = {
           data_calculo?: string | null
           id?: string
           store_id?: string | null
+          user_id?: string | null
         }
         Update: {
           cenario_base?: number | null
@@ -1466,6 +1490,160 @@ export type Database = {
           data_calculo?: string | null
           id?: string
           store_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      catalog_snapshot: {
+        Row: {
+          captured_at: string
+          id: string
+          product_name: string | null
+          sku: string
+          stock_qty: number | null
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          captured_at?: string
+          id?: string
+          product_name?: string | null
+          sku: string
+          stock_qty?: number | null
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          captured_at?: string
+          id?: string
+          product_name?: string | null
+          sku?: string
+          stock_qty?: number | null
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      customer_cohorts: {
+        Row: {
+          cohort_month: string
+          cohort_size: number
+          computed_at: string
+          id: string
+          retention_d30: number | null
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          cohort_month: string
+          cohort_size?: number
+          computed_at?: string
+          id?: string
+          retention_d30?: number | null
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          cohort_month?: string
+          cohort_size?: number
+          computed_at?: string
+          id?: string
+          retention_d30?: number | null
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      data_quality_snapshots: {
+        Row: {
+          created_at: string
+          duplicate_order_rate: number | null
+          ga4_purchase_vs_orders_diff_pct: number | null
+          id: string
+          metadata: Json
+          parse_error_rate: number | null
+          phone_fill_rate: number | null
+          snapshot_date: string
+          store_id: string
+          user_id: string
+          utm_fill_rate: number | null
+        }
+        Insert: {
+          created_at?: string
+          duplicate_order_rate?: number | null
+          ga4_purchase_vs_orders_diff_pct?: number | null
+          id?: string
+          metadata?: Json
+          parse_error_rate?: number | null
+          phone_fill_rate?: number | null
+          snapshot_date: string
+          store_id: string
+          user_id: string
+          utm_fill_rate?: number | null
+        }
+        Update: {
+          created_at?: string
+          duplicate_order_rate?: number | null
+          ga4_purchase_vs_orders_diff_pct?: number | null
+          id?: string
+          metadata?: Json
+          parse_error_rate?: number | null
+          phone_fill_rate?: number | null
+          snapshot_date?: string
+          store_id?: string
+          user_id?: string
+          utm_fill_rate?: number | null
+        }
+        Relationships: []
+      }
+      funil_diario: {
+        Row: {
+          add_to_cart: number | null
+          begin_checkout: number | null
+          fonte: string
+          ga4_purchase_vs_orders_diff_pct: number | null
+          id: string
+          ingested_at: string
+          metric_date: string
+          periodo: string
+          purchase_revenue: number | null
+          purchases: number | null
+          sessions: number | null
+          store_id: string
+          user_id: string
+          view_item: number | null
+        }
+        Insert: {
+          add_to_cart?: number | null
+          begin_checkout?: number | null
+          fonte?: string
+          ga4_purchase_vs_orders_diff_pct?: number | null
+          id?: string
+          ingested_at?: string
+          metric_date: string
+          periodo: string
+          purchase_revenue?: number | null
+          purchases?: number | null
+          sessions?: number | null
+          store_id: string
+          user_id: string
+          view_item?: number | null
+        }
+        Update: {
+          add_to_cart?: number | null
+          begin_checkout?: number | null
+          fonte?: string
+          ga4_purchase_vs_orders_diff_pct?: number | null
+          id?: string
+          ingested_at?: string
+          metric_date?: string
+          periodo?: string
+          purchase_revenue?: number | null
+          purchases?: number | null
+          sessions?: number | null
+          store_id?: string
+          user_id?: string
+          view_item?: number | null
         }
         Relationships: []
       }
@@ -1667,6 +1845,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      integration_interest: {
+        Row: {
+          created_at: string
+          id: string
+          integration_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          integration_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          integration_type?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       journeys_config: {
         Row: {
@@ -1923,6 +2122,8 @@ export type Database = {
           automation_id: string | null
           campaign_id: string | null
           contact_id: string | null
+          created_at: string
+          customer_id: string | null
           id: string
           message_id: string | null
           phone: string
@@ -1935,6 +2136,8 @@ export type Database = {
           automation_id?: string | null
           campaign_id?: string | null
           contact_id?: string | null
+          created_at?: string
+          customer_id?: string | null
           id?: string
           message_id?: string | null
           phone: string
@@ -1947,6 +2150,8 @@ export type Database = {
           automation_id?: string | null
           campaign_id?: string | null
           contact_id?: string | null
+          created_at?: string
+          customer_id?: string | null
           id?: string
           message_id?: string | null
           phone?: string
@@ -2195,6 +2400,39 @@ export type Database = {
           },
         ]
       }
+      order_events: {
+        Row: {
+          event_type: string
+          id: string
+          occurred_at: string
+          pedido_externo_id: string
+          raw_payload: Json | null
+          reason: string | null
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          occurred_at?: string
+          pedido_externo_id: string
+          raw_payload?: Json | null
+          reason?: string | null
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          pedido_externo_id?: string
+          raw_payload?: Json | null
+          reason?: string | null
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       opportunities: {
         Row: {
           dados_json: Json | null
@@ -2340,8 +2578,11 @@ export type Database = {
           cupom_utilizado: string | null
           entregue_em: string | null
           id: string
+          internal_status: string | null
           is_primeira_compra: boolean | null
           margem_estimada: number | null
+          payment_installments: number | null
+          payment_method: string | null
           pedido_externo_id: string | null
           produtos_json: Json | null
           status: string | null
@@ -2352,6 +2593,7 @@ export type Database = {
           utm_source: string | null
           valor: number
           valor_desconto: number | null
+          valor_frete: number | null
         }
         Insert: {
           atribuicao_manual?: boolean | null
@@ -2362,8 +2604,11 @@ export type Database = {
           cupom_utilizado?: string | null
           entregue_em?: string | null
           id?: string
+          internal_status?: string | null
           is_primeira_compra?: boolean | null
           margem_estimada?: number | null
+          payment_installments?: number | null
+          payment_method?: string | null
           pedido_externo_id?: string | null
           produtos_json?: Json | null
           status?: string | null
@@ -2374,6 +2619,7 @@ export type Database = {
           utm_source?: string | null
           valor: number
           valor_desconto?: number | null
+          valor_frete?: number | null
         }
         Update: {
           atribuicao_manual?: boolean | null
@@ -2384,8 +2630,11 @@ export type Database = {
           cupom_utilizado?: string | null
           entregue_em?: string | null
           id?: string
+          internal_status?: string | null
           is_primeira_compra?: boolean | null
           margem_estimada?: number | null
+          payment_installments?: number | null
+          payment_method?: string | null
           pedido_externo_id?: string | null
           produtos_json?: Json | null
           status?: string | null
@@ -2396,6 +2645,7 @@ export type Database = {
           utm_source?: string | null
           valor?: number
           valor_desconto?: number | null
+          valor_frete?: number | null
         }
         Relationships: [
           {
@@ -2665,6 +2915,8 @@ export type Database = {
           ia_negotiation_enabled: boolean | null
           id: string
           knowledge_base: string | null
+          loyalty_points_ttl_days: number | null
+          loyalty_program_enabled: boolean
           loyalty_program_name: string | null
           loyalty_slug: string | null
           onboarding_completed: boolean
@@ -2689,6 +2941,8 @@ export type Database = {
           ia_negotiation_enabled?: boolean | null
           id: string
           knowledge_base?: string | null
+          loyalty_points_ttl_days?: number | null
+          loyalty_program_enabled?: boolean
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
           onboarding_completed?: boolean
@@ -2713,6 +2967,8 @@ export type Database = {
           ia_negotiation_enabled?: boolean | null
           id?: string
           knowledge_base?: string | null
+          loyalty_points_ttl_days?: number | null
+          loyalty_program_enabled?: boolean
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
           onboarding_completed?: boolean
@@ -2827,6 +3083,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      shipping_events: {
+        Row: {
+          captured_at: string
+          carrier: string | null
+          delivered_at: string | null
+          delivery_eta: string | null
+          id: string
+          pedido_externo_id: string
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          captured_at?: string
+          carrier?: string | null
+          delivered_at?: string | null
+          delivery_eta?: string | null
+          id?: string
+          pedido_externo_id: string
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          captured_at?: string
+          carrier?: string | null
+          delivered_at?: string | null
+          delivery_eta?: string | null
+          id?: string
+          pedido_externo_id?: string
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       seasonal_calendar: {
         Row: {
@@ -3222,6 +3511,8 @@ export type Database = {
           accepted_at: string | null
           account_owner_id: string
           id: string
+          invite_expires_at: string | null
+          invite_token: string | null
           invited_at: string
           invited_email: string
           invited_user_id: string | null
@@ -3232,6 +3523,8 @@ export type Database = {
           accepted_at?: string | null
           account_owner_id: string
           id?: string
+          invite_expires_at?: string | null
+          invite_token?: string | null
           invited_at?: string
           invited_email: string
           invited_user_id?: string | null
@@ -3242,6 +3535,8 @@ export type Database = {
           accepted_at?: string | null
           account_owner_id?: string
           id?: string
+          invite_expires_at?: string | null
+          invite_token?: string | null
           invited_at?: string
           invited_email?: string
           invited_user_id?: string | null

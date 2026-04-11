@@ -139,7 +139,7 @@ export default function ConvertIQSetup() {
       await saveMetricas.mutateAsync({ lojaId: loja.id, metricas: MOCK_METRICAS });
 
       toast.success("Configuração salva com sucesso!");
-      navigate("/dashboard/convertiq");
+      navigate("/dashboard/funil");
     } catch (e) {
       toast.error(`Erro: ${(e as Error).message}`);
     }

@@ -110,14 +110,20 @@ export const PrescriptionCard: React.FC<PrescriptionProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={onRejeitar} className="h-9 text-xs font-bold gap-1.5">
-            <X className="w-3.5 h-3.5" /> Rejeitar
-          </Button>
-          <Button onClick={onAprovar} className="h-9 text-xs font-bold gap-1.5 bg-primary text-primary-foreground">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
-          </Button>
-        </div>
+        {(onAprovar || onRejeitar) && (
+          <div className={cn("grid gap-2", onAprovar && onRejeitar ? "grid-cols-2" : "grid-cols-1")}>
+            {onRejeitar && (
+              <Button variant="outline" onClick={onRejeitar} className="h-9 text-xs font-bold gap-1.5">
+                <X className="w-3.5 h-3.5" /> Rejeitar
+              </Button>
+            )}
+            {onAprovar && (
+              <Button onClick={onAprovar} className="h-9 text-xs font-bold gap-1.5 bg-primary text-primary-foreground">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="px-5 py-2.5 bg-muted/10 border-t border-border/40 flex items-center justify-between text-[10px]">

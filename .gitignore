@@ -9,6 +9,9 @@ lerna-debug.log*
 
 node_modules
 dist
+
+# Artefactos efémeros do Vitest/Vite ao carregar configs TS
+*.timestamp-*.mjs
 dist-ssr
 *.local
 

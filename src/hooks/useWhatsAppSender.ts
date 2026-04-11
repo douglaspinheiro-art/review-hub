@@ -9,6 +9,7 @@ import {
   mapEvolutionState,
 } from "@/lib/evolution-api";
 import { useAuth } from "@/hooks/useAuth";
+import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 
 interface SendResult {
   success: boolean;
@@ -35,18 +36,20 @@ export function useWhatsAppSender() {
     queryKey: ["whatsapp_connection_active", user?.id],
     queryFn: async () => {
       if (!user) return null;
+      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      if (!effectiveUserId) return null;
       // Do NOT select evolution_api_key or meta_access_token — credentials must
       // stay on the server and be accessed only through the edge function proxies
       // (evolution-proxy / meta-whatsapp-send).
-      const { data } = await supabase
+      let q = supabase
         .from("whatsapp_connections")
         .select(
           "id, instance_name, status, evolution_api_url, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
         )
-        .eq("user_id", user.id)
-        .eq("status", "connected")
-        .limit(1)
-        .maybeSingle();
+        .eq("status", "connected");
+      q = storeId ? q.eq("store_id", storeId) : q.eq("user_id", effectiveUserId);
+      const { data, error } = await q.order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
       return (data as ConnRow | null) ?? null;
     },
     enabled: !!user,

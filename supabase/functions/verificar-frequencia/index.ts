@@ -10,6 +10,61 @@ const BodySchema = z.object({
   channel: z.string().min(1).max(50),
 });
 
+/** Resolve cap from settings_v3: prefer row scoped to store, then user-level row (UI upsert uses user_id). */
+async function resolveWeeklyCap(
+  supabase: ReturnType<typeof createClient>,
+  storeId: string,
+  channel: string
+): Promise<number> {
+  const { data: store, error: storeErr } = await supabase
+    .from("stores")
+    .select("user_id")
+    .eq("id", storeId)
+    .maybeSingle();
+  if (storeErr || !store?.user_id) return 2;
+
+  const userId = store.user_id as string;
+
+  const { data: byStore } = await supabase
+    .from("settings_v3")
+    .select("cap_msgs_whatsapp_semana, cap_msgs_email_semana")
+    .eq("user_id", userId)
+    .eq("store_id", storeId)
+    .maybeSingle();
+
+  const pick = (row: { cap_msgs_whatsapp_semana?: number | null; cap_msgs_email_semana?: number | null } | null) => {
+    if (!row) return null;
+    const ch = channel.toLowerCase();
+    if (ch.includes("email") || ch === "email") {
+      return row.cap_msgs_email_semana ?? 3;
+    }
+    return row.cap_msgs_whatsapp_semana ?? 2;
+  };
+
+  const fromStore = pick(byStore);
+  if (fromStore != null) return fromStore;
+
+  const { data: byUser } = await supabase
+    .from("settings_v3")
+    .select("cap_msgs_whatsapp_semana, cap_msgs_email_semana")
+    .eq("user_id", userId)
+    .is("store_id", null)
+    .maybeSingle();
+
+  const fromUser = pick(byUser);
+  if (fromUser != null) return fromUser;
+
+  const { data: fallback } = await supabase
+    .from("settings_v3")
+    .select("cap_msgs_whatsapp_semana, cap_msgs_email_semana")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return pick(fallback) ?? 2;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -21,22 +76,25 @@ serve(async (req) => {
     const { customer_id, store_id, channel } = parsed.data;
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-    const { data: config } = await supabase.from("settings_v3").select("cap_msgs_whatsapp_week").eq("store_id", store_id).maybeSingle();
-    const cap = (config as any)?.cap_msgs_whatsapp_week || 2;
+    const cap = await resolveWeeklyCap(supabase, store_id, channel);
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const { count, error } = await supabase
-      .from("communications_sent").select("id", { count: "exact" })
-      .eq("store_id", store_id).eq("cliente_id", customer_id)
-      .eq("canal", channel).gte("enviado_em", sevenDaysAgo.toISOString());
+      .from("communications_sent")
+      .select("id", { count: "exact" })
+      .eq("store_id", store_id)
+      .eq("cliente_id", customer_id)
+      .eq("canal", channel)
+      .gte("enviado_em", sevenDaysAgo.toISOString());
 
     if (error) throw error;
     const allowed = (count || 0) < cap;
 
     return new Response(JSON.stringify({ allowed, current_count: count, cap }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro interno";
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
   }
 });

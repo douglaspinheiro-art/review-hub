@@ -11,6 +11,12 @@ Use este checklist antes de liberar tráfego real.
 - `VITE_BETA_LIMITED_SCOPE` (recomendado para beta com usuários reais)
   - Defina `true` para ocultar/bloquear canais pesados (WhatsApp, newsletter, campanhas, inbox, automações, carrinho abandonado). Ver `src/lib/beta-scope.ts`.
 - Referência local: copie de `.env.example` na raiz do repositório.
+- `VITE_ENABLE_DIAGNOSTICO_ANALYTICS` (opcional)
+  - Defina `true` apenas se quiser enviar eventos sem PII do wizard `/diagnostico` para `window.dataLayer` (ex.: integração GTM). Ao usar GA/Pixel ou outros trackers nesse fluxo, atualize política de cookies/LGPD e opt-out. Implementação: `src/lib/analytics-events.ts`.
+
+### Edge `fetch-store-metrics`
+
+- Faça deploy da função em produção para o simulador `/diagnostico` pré-preencher métricas quando houver integração e-commerce ativa (`integrations`). Erros 404/401/422 são tratados na UI; JWT do utilizador é enviado no `invoke`.
 
 ### Comandos
 
@@ -52,7 +58,8 @@ Ajuste em **Authentication → URL configuration** do projeto:
 | `APP_URL` | Links absolutos (ex.: newsletter — `dispatch-newsletter`) |
 | `ALLOWED_ORIGIN` | CORS / `validateBrowserOrigin` (`_shared/edge-utils.ts`) — use a origem exata do app em produção |
 | `UNSUBSCRIBE_TOKEN_SECRET` | `unsubscribe-contact`, tokens HMAC |
-| `CONVERSION_ATTRIBUTION_SECRET` | `conversion-attribution` |
+| `CONVERSION_ATTRIBUTION_SECRET` | `conversion-attribution` (header `x-attribution-secret` ou Bearer service role) |
+| `ATTRIBUTION_WINDOW_HOURS` (opcional) | `conversion-attribution` — janela last-touch em horas; padrão **72**, alinhado a `src/lib/attribution-config.ts` e à cópia da área de Atribuição no dashboard. Defina o mesmo valor em produção para o cálculo na edge coincidir com o comunicado na UI. |
 | `RESEND_API_KEY` | `send-email`, `dispatch-newsletter`, etc. |
 | `PROCESS_SCHEDULED_MESSAGES_SECRET` | `process-scheduled-messages`, dispatch interno |
 | `TRIGGER_AUTOMATIONS_SECRET` | `trigger-automations` |
@@ -70,6 +77,7 @@ Ajuste em **Authentication → URL configuration** do projeto:
    - Deve rejeitar request sem `ts/sig` válidos.
 2. `conversion-attribution`
    - Deve retornar `401` sem `Authorization` de service role ou `x-attribution-secret`.
+   - **Origem dos registos:** a função insere em `attribution_events` com `source_platform = last_touch_send`, distinto dos upserts do `integration-gateway` (ex.: `shopify`, `nuvemshop` com cupom/UTM). A deduplicação usa `(user_id, order_id, source_platform)`, por isso o mesmo pedido pode ter um evento “e-commerce” e outro “último envio CRM” sem colisão.
 3. `process-scheduled-messages`
    - Deve rejeitar execução sem segredo interno/autorização.
 4. `trigger-automations`

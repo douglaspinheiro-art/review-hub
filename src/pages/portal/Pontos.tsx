@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { LOYALTY_REASON_LABELS } from "@/lib/loyalty-labels";
 
 const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string; next?: string; nextPoints?: number }> = {
   bronze: {
@@ -37,15 +38,6 @@ const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; ic
     bg: "bg-cyan-50",
     icon: "💎",
   },
-};
-
-const REASON_LABELS: Record<string, string> = {
-  purchase: "Compra",
-  review: "Avaliação",
-  birthday: "Aniversário",
-  referral: "Indicação",
-  redemption: "Resgate",
-  manual: "Ajuste manual",
 };
 
 interface LoyaltyData {
@@ -235,7 +227,7 @@ export default function Pontos() {
                   {data.transactions.map((tx, i) => (
                     <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{REASON_LABELS[tx.reason] ?? tx.reason}</p>
+                        <p className="text-sm font-medium">{LOYALTY_REASON_LABELS[tx.reason] ?? tx.reason}</p>
                         {tx.description && (
                           <p className="text-xs text-muted-foreground truncate">{tx.description}</p>
                         )}

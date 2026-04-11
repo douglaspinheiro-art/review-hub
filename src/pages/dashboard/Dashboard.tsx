@@ -32,6 +32,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useProblems, useDashboardStats, useConversionBaseline } from "@/hooks/useDashboard";
+import { useLoja } from "@/hooks/useConvertIQ";
+import { usePrescriptionsPendingStats } from "@/hooks/useLTVBoost";
 import { predictNextOrder } from "@/lib/ltv-predictor";
 import { buildChurnRiskSnapshot, buildRevenueActions, summarizeBenchmark } from "@/lib/revenue-orchestrator";
 import { getMoatSignals, trackMoatEvent } from "@/lib/moat-telemetry";
@@ -51,13 +53,24 @@ export default function Dashboard() {
   const { user } = useAuth();
 
   const { data: problems = [] } = useProblems();
+  const lojaDash = useLoja();
+  const storeIdDash = (lojaDash.data as { id?: string } | null)?.id;
+  const { pendingCount: pendingRxCount, pendingValue: pendingRxValue } = usePrescriptionsPendingStats(storeIdDash);
+  const problemsValue = problems.reduce(
+    (acc, p) => acc + Number((p as { impacto_estimado?: number; estimated_impact?: number }).impacto_estimado ?? (p as { estimated_impact?: number }).estimated_impact ?? 0),
+    0,
+  );
+  const queueIsPrescriptions = pendingRxCount > 0;
+  const pendingCount = queueIsPrescriptions ? pendingRxCount : problems.length;
+  const pendingValue = queueIsPrescriptions ? pendingRxValue : problemsValue;
+
   const { data: statsData } = useDashboardStats(period);
   const { data: baseline } = useConversionBaseline(period);
 
   // Use real data only — no mock fallbacks
   const revenueRecovered = statsData?.revenueLast30 ?? 0;
   const revenueGrowth = statsData?.revGrowth ?? 0;
-  const hasData = revenueRecovered > 0 || problems.length > 0;
+  const hasData = revenueRecovered > 0 || problems.length > 0 || pendingRxCount > 0;
 
   const { data: whatsappConnections = [] } = useQuery({
     queryKey: ["whatsapp_connections_status", user?.id ?? null],
@@ -162,8 +175,6 @@ export default function Dashboard() {
     { label: "Novos Clientes", value: ((statsData as any)?.newContacts ?? statsData?.newContactsLast30 ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
   ];
 
-  const pendingCount = problems.length;
-  const pendingValue = problems.reduce((acc, p) => acc + Number((p as any).impacto_estimado || p.estimated_impact || 0), 0);
   const conversionRate = Number((statsData as any)?.conversionRate ?? 0);
   const conversionTarget = 2.5;
   const conversionGap = Math.max(0, conversionTarget - conversionRate);
@@ -207,8 +218,11 @@ export default function Dashboard() {
       };
     }
     if (pendingCount > 0 && pendingValue > 0) {
+      const title = queueIsPrescriptions
+        ? `${pendingCount} ${pendingCount === 1 ? "prescrição aguardando aprovação" : "prescrições aguardando aprovação"}`
+        : `${pendingCount} ${pendingCount === 1 ? "recomendação aguardando você" : "recomendações aguardando você"}`;
       return {
-        title: `${pendingCount} ${pendingCount === 1 ? "recomendação aguardando você" : "recomendações aguardando você"}`,
+        title,
         body: `Estimamos cerca de R$ ${pendingValue.toLocaleString("pt-BR")} em impacto ainda não capturado. Nos ${periodPhrase}, você já registrou R$ ${revenueRecovered.toLocaleString("pt-BR")} em receita influenciada — a próxima aprovação pode aumentar esse número.`,
         ctaLabel: "Revisar prescrições",
         ctaPath: "/dashboard/prescricoes" as const,
@@ -228,7 +242,7 @@ export default function Dashboard() {
       ctaLabel: "Abrir prescrições",
       ctaPath: "/dashboard/prescricoes" as const,
     };
-  }, [isWhatsAppConnected, pendingCount, pendingValue, revenueRecovered, periodPhrase]);
+  }, [isWhatsAppConnected, pendingCount, pendingValue, revenueRecovered, periodPhrase, queueIsPrescriptions]);
 
   return (
     <>
@@ -352,7 +366,11 @@ export default function Dashboard() {
         )}
 
         {!isFirstWeek && !isNewSetup && pendingCount > 0 && (
-          <PrescricoesPendingBanner pendingCount={pendingCount} pendingValue={pendingValue} />
+          <PrescricoesPendingBanner
+            pendingCount={pendingCount}
+            pendingValue={pendingValue}
+            queueKind={queueIsPrescriptions ? "prescriptions" : "opportunities"}
+          />
         )}
 
         {/* Checklist de ativação — só aparece para usuários não-ativados */}
@@ -856,7 +874,10 @@ export default function Dashboard() {
           onClick={() => navigate("/dashboard/prescricoes")}
         >
           <Zap className="w-5 h-5 fill-primary-foreground" />
-          {pendingCount} {pendingCount === 1 ? "Prescrição" : "Prescrições"} — R$ {pendingValue.toLocaleString("pt-BR")} a recuperar
+          {queueIsPrescriptions
+            ? `${pendingCount} ${pendingCount === 1 ? "Prescrição" : "Prescrições"}`
+            : `${pendingCount} ${pendingCount === 1 ? "Recomendação" : "Recomendações"}`}
+          {" "}— R$ {pendingValue.toLocaleString("pt-BR")} a recuperar
         </Button>
       </div>
     </>

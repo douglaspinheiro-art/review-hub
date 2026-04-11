@@ -60,7 +60,7 @@ export const PLANS = {
       "10.000 contatos",
       "2.000 mensagens WhatsApp/mês inclusas",
       "Multi-loja + agente IA",
-      "Revenue Forecast completo",
+      "Previsão de receita completa",
       "Onboarding dedicado",
       "SLA prioritário",
     ],

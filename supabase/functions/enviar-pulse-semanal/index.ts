@@ -8,6 +8,67 @@ const cors = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+type SettingsPulse = {
+  id: string;
+  user_id: string;
+  store_id: string | null;
+  pulse_whatsapp_number: string | null;
+};
+
+type StorePulseRow = {
+  id: string;
+  name: string;
+  conversion_health_score: number | null;
+};
+
+type WaConnRow = {
+  instance_name: string | null;
+  evolution_api_url: string | null;
+  evolution_api_key: string | null;
+  provider: string;
+};
+
+async function resolveStoreId(
+  supabase: ReturnType<typeof createClient>,
+  row: SettingsPulse
+): Promise<{ storeId: string | null; storeName: string; chs: number }> {
+  if (row.store_id) {
+    const { data: s } = await supabase
+      .from("stores")
+      .select("id, name, conversion_health_score")
+      .eq("id", row.store_id)
+      .maybeSingle();
+    const rowS = s as StorePulseRow | null;
+    return {
+      storeId: rowS?.id ?? row.store_id,
+      storeName: rowS?.name ?? "Loja",
+      chs: Number(rowS?.conversion_health_score ?? 0),
+    };
+  }
+  const { data: s } = await supabase
+    .from("stores")
+    .select("id, name, conversion_health_score")
+    .eq("user_id", row.user_id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const rowS = s as StorePulseRow | null;
+  return {
+    storeId: rowS?.id ?? null,
+    storeName: rowS?.name ?? "Loja",
+    chs: Number(rowS?.conversion_health_score ?? 0),
+  };
+}
+
+function prescTitulo(p: Record<string, unknown>) {
+  return String((p as { titulo?: string }).titulo ?? p.title ?? "");
+}
+
+function prescValor(p: Record<string, unknown>) {
+  const v = (p as { valor_estimado?: unknown }).valor_estimado ?? p.estimated_potential;
+  return typeof v === "number" ? v : Number(v ?? 0);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -20,12 +81,11 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Busca todas as lojas com pulse ativo e número configurado
-    const { data: configs, error } = await supabase
-      .from("configuracoes_v3")
-      .select("*, lojas(*), whatsapp_connections(*)")
-      .eq("pulse_ativo", true)
-      .not("pulse_numero_whatsapp", "is", null);
+    const { data: settingsRows, error } = await supabase
+      .from("settings_v3")
+      .select("id, user_id, store_id, pulse_whatsapp_number, pulse_active")
+      .eq("pulse_active", true)
+      .not("pulse_whatsapp_number", "is", null);
 
     if (error) throw error;
 
@@ -34,73 +94,60 @@ serve(async (req) => {
     let enviados = 0;
     let erros = 0;
 
-    for (const config of configs ?? []) {
-      const loja = (config as any).lojas;
-      const userId = loja?.user_id;
-      if (!userId) continue;
+    for (const raw of settingsRows ?? []) {
+      const config = raw as SettingsPulse;
+      const userId = config.user_id;
+      const destino = (config.pulse_whatsapp_number ?? "").trim();
+      if (!userId || !destino) continue;
 
-      // Calcula métricas reais da semana
-      const [prescricoesRes, prescPendentesRes, recuperadoRes] = await Promise.all([
-        supabase
-          .from("prescricoes")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("status", "aprovada")
-          .gte("updated_at", seteDiasAtras),
-        supabase
-          .from("prescricoes")
-          .select("id, valor_estimado")
-          .eq("user_id", userId)
-          .eq("status", "pendente"),
-        supabase
-          .from("message_sends")
-          .select("receita_atribuida")
-          .eq("user_id", userId)
-          .gte("created_at", seteDiasAtras),
+      const { storeId, storeName, chs: chsAtual } = await resolveStoreId(supabase, config);
+
+      let prescAprovadas = supabase
+        .from("prescricoes")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .in("status", ["aprovada", "approved", "concluida", "completed", "em_execucao"])
+        .gte("updated_at", seteDiasAtras);
+      let prescPendentesQ = supabase
+        .from("prescricoes")
+        .select("id, title, estimated_potential")
+        .eq("user_id", userId)
+        .in("status", ["pendente", "pending", "draft", "aguardando_aprovacao"])
+        .limit(50);
+      if (storeId) {
+        prescAprovadas = prescAprovadas.eq("store_id", storeId);
+        prescPendentesQ = prescPendentesQ.eq("store_id", storeId);
+      }
+
+      const [prescricoesRes, prescPendentesRes] = await Promise.all([
+        prescAprovadas,
+        prescPendentesQ,
       ]);
 
       const prescricoesConcluidas = prescricoesRes.count ?? 0;
-      const prescricoesPendentes = prescPendentesRes.data ?? [];
-      const receitaRecuperada = (recuperadoRes.data ?? []).reduce(
-        (acc: number, m: any) => acc + (m.receita_atribuida ?? 0),
-        0
-      );
-      const chsAtual = loja.conversion_health_score ?? 0;
+      const prescricoesPendentes = (prescPendentesRes.data ?? []) as Record<string, unknown>[];
 
-      // Encontra maior oportunidade pendente
-      const maiorOportunidade = prescricoesPendentes.sort(
-        (a: any, b: any) => (b.valor_estimado ?? 0) - (a.valor_estimado ?? 0)
+      const maiorOportunidade = [...prescricoesPendentes].sort(
+        (a, b) => prescValor(b) - prescValor(a)
       )[0];
 
-      const valorPendente = prescricoesPendentes.reduce(
-        (acc: number, p: any) => acc + (p.valor_estimado ?? 0),
-        0
-      );
+      const valorPendente = prescricoesPendentes.reduce((acc, p) => acc + prescValor(p), 0);
 
       const sinal = chsAtual >= 60 ? "↑" : "↓";
       const emoji = chsAtual >= 60 ? "📈" : "⚠️";
 
-      const mensagem = receitaRecuperada > 0
-        ? `📊 *${loja.nome} — Relatório Semanal LTV Boost*
+      const tituloMaior = maiorOportunidade ? prescTitulo(maiorOportunidade) : "";
+
+      const mensagem = `📊 *${storeName} — Resumo Semanal LTV Boost*
 
 CHS: ${chsAtual}/100 ${sinal} ${emoji}
-
-💰 Recuperado esta semana: R$ ${receitaRecuperada.toLocaleString('pt-BR')}
-✅ ${prescricoesConcluidas} ${prescricoesConcluidas === 1 ? "prescrição concluída" : "prescrições concluídas"}
-
-${prescricoesPendentes.length > 0 ? `⚡ *R$ ${valorPendente.toLocaleString('pt-BR')} esperando aprovação:*
-"${maiorOportunidade?.titulo ?? prescricoesPendentes.length + " oportunidades detectadas"}"
-
-👉 Acesse o LTV Boost para aprovar e recuperar agora` : `✨ Todas as oportunidades da semana foram aprovadas! Bom trabalho.
-
-👉 Acesse o LTV Boost para ver o relatório completo`}`
-        : `📊 *${loja.nome} — Resumo Semanal LTV Boost*
+✅ ${prescricoesConcluidas} ${prescricoesConcluidas === 1 ? "prescrição concluída" : "prescrições concluídas"} (7 dias)
 
 ${prescricoesPendentes.length > 0
-  ? `⚠️ *R$ ${valorPendente.toLocaleString('pt-BR')} identificados e aguardando ação*
+  ? `⚠️ *R$ ${valorPendente.toLocaleString("pt-BR")} identificados e aguardando ação*
 ${prescricoesPendentes.length} ${prescricoesPendentes.length === 1 ? "oportunidade detectada" : "oportunidades detectadas"} pela IA.
 
-A cada hora sem aprovação, a taxa de recuperação cai ~3%.
+${tituloMaior ? `Destaque: _${tituloMaior}_` : ""}
 
 👉 Acesse o LTV Boost para não deixar esse dinheiro na mesa`
   : `✅ Nenhuma prescrição pendente esta semana.
@@ -108,26 +155,42 @@ Sua loja está operando bem!
 
 👉 Confira o relatório completo no dashboard`}`;
 
-      // Envia via Evolution API (usando a primeira conexão ativa do usuário)
-      const conexoes = (config as any).whatsapp_connections ?? [];
-      const conexaoAtiva = conexoes.find((c: any) => c.status === "connected");
+      const connQuery = supabase
+        .from("whatsapp_connections")
+        .select("id, instance_name, evolution_api_url, evolution_api_key, status, provider")
+        .eq("user_id", userId)
+        .eq("status", "connected");
+      if (storeId) connQuery.eq("store_id", storeId);
+      const { data: conexoes } = await connQuery.order("updated_at", { ascending: false }).limit(3);
+
+      const list = (conexoes ?? []) as WaConnRow[];
+      const conexaoAtiva = list.find((c) =>
+        Boolean(c.instance_name && c.evolution_api_url && c.evolution_api_key && c.provider !== "meta_cloud")
+      );
 
       if (!conexaoAtiva) {
-        console.log(`Usuário ${userId} sem WhatsApp conectado — pulando pulse`);
+        console.log(`Usuário ${userId} sem Evolution API conectada — pulando pulse`);
         continue;
       }
 
-      const evolutionUrl = Deno.env.get("EVOLUTION_API_URL") || loja.evolution_api_url;
-      const evolutionKey = Deno.env.get("EVOLUTION_API_KEY") || loja.evolution_api_key;
+      const evolutionUrl = Deno.env.get("EVOLUTION_API_URL") || conexaoAtiva.evolution_api_url;
+      const evolutionKey = Deno.env.get("EVOLUTION_API_KEY") || conexaoAtiva.evolution_api_key;
+      const instanceName = conexaoAtiva.instance_name;
 
-      if (!evolutionUrl || !evolutionKey) {
+      if (!evolutionUrl || !evolutionKey || !instanceName) {
         console.log(`Usuário ${userId} sem config Evolution API — pulando pulse`);
+        continue;
+      }
+
+      const numDigits = destino.replace(/\D/g, "");
+      if (numDigits.length < 10) {
+        console.log(`Pulse número inválido para ${userId}`);
         continue;
       }
 
       try {
         const response = await fetch(
-          `${evolutionUrl}/message/sendText/${conexaoAtiva.instance_name}`,
+          `${evolutionUrl.replace(/\/$/, "")}/message/sendText/${instanceName}`,
           {
             method: "POST",
             headers: {
@@ -135,7 +198,7 @@ Sua loja está operando bem!
               apikey: evolutionKey,
             },
             body: JSON.stringify({
-              number: config.pulse_numero_whatsapp,
+              number: numDigits,
               text: mensagem,
             }),
           }
@@ -143,13 +206,6 @@ Sua loja está operando bem!
 
         if (response.ok) {
           enviados++;
-          // Registra envio do pulse no log
-          await supabase.from("analytics_daily").upsert({
-            user_id: userId,
-            date: agora.toISOString().split("T")[0],
-            pulse_enviado: true,
-            pulse_receita_exibida: receitaRecuperada,
-          }, { onConflict: "user_id,date" });
         } else {
           erros++;
           console.error(`Erro ao enviar pulse para ${userId}:`, await response.text());
@@ -161,7 +217,7 @@ Sua loja está operando bem!
     }
 
     return new Response(
-      JSON.stringify({ success: true, enviados, erros, total: configs?.length ?? 0 }),
+      JSON.stringify({ success: true, enviados, erros, total: settingsRows?.length ?? 0 }),
       { headers: { ...cors, "Content-Type": "application/json" } }
     );
   } catch (e) {

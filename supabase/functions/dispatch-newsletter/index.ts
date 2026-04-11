@@ -378,7 +378,7 @@ serve(async (req) => {
 
     const { data: store } = await sb
       .from("stores")
-      .select("name,email_from_address,email_reply_to,brand_primary_color")
+      .select("id,name,email_from_address,email_reply_to,brand_primary_color")
       .eq("user_id", userId)
       .limit(1)
       .maybeSingle();
@@ -403,7 +403,8 @@ serve(async (req) => {
 
     const blocksHydrated = await hydrateProductBlocks(sb, userId, blocksRaw);
 
-    const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeRow?.id, contacts.map((c) => c.id));
+    const storeId = (store as { id?: string } | null)?.id ?? null;
+    const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeId, contacts.map((c) => c.id));
     let sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
     if (!isTest) {
       await sb.from("newsletter_send_recipients").delete().eq("campaign_id", campaign_id);

@@ -116,7 +116,7 @@ Retorne APENAS este JSON (sem markdown, sem texto extra):
       "prescricao_sugerida": {
         "titulo": "nome da ação",
         "canal": "whatsapp|email|sms|multicanal",
-        "segmento": "segmento RFM alvo",
+        "segmento": "OBRIGATÓRIO: use exatamente um destes valores (minúsculas, sem acento): all | active | inactive | vip | cart_abandoned | rfm_champions | rfm_loyal | rfm_at_risk | rfm_lost | rfm_new | em_risco | campiao | carrinho | hibernando | perdido | novo | fiel | promissor | potencial_fiel",
         "perfil_comportamental": "cacador_desconto|comprador_presente|etc ou null",
         "num_clientes_estimado": <number>,
         "desconto_tipo": "percentual|frete_gratis|fixo",
@@ -269,7 +269,11 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
             discount_type: s.desconto_tipo,
             estimated_potential: s.potencial_estimado,
             estimated_roi: s.roi_estimado,
-            template_json: { mensagem: s.mensagem_base, prazo: s.prazo_resultado_dias },
+            template_json: {
+              mensagem: s.mensagem_base,
+              prazo: s.prazo_resultado_dias,
+              ab_test: Boolean(s.ab_teste_recomendado),
+            },
             status: 'aguardando_aprovacao'
           });
         }

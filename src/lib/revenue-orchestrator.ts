@@ -41,8 +41,8 @@ export function buildRevenueActions(ctx: RevenueContext): RevenueAction[] {
   if (ctx.pendingCount > 0 || ctx.pendingValue > 0) {
     actions.push({
       id: "recover-opportunities",
-      title: "Ativar recuperação imediata das oportunidades",
-      description: `Existem ${ctx.pendingCount} oportunidades com potencial de caixa imediato.`,
+      title: "Ativar recuperação imediata da fila (prescrições / oportunidades)",
+      description: `Existem ${ctx.pendingCount} ações na fila com potencial de caixa imediato.`,
       ownerRoute: "/dashboard/prescricoes",
       priority: "alta",
       expectedImpact: Math.max(ctx.pendingValue, 1200),

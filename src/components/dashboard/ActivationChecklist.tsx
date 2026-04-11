@@ -39,15 +39,18 @@ function useActivationStatus(userId: string | undefined) {
     enabled: !!userId,
   });
 
-  // Automação ativa
+  // Jornada ativa (motor real: journeys_config por loja)
   const { data: automationActive = false, isLoading: l3 } = useQuery({
-    queryKey: ["activation_automation", userId],
+    queryKey: ["activation_journeys", userId],
     queryFn: async () => {
+      const { data: stores } = await supabase.from("stores").select("id").eq("user_id", userId!);
+      const ids = (stores ?? []).map((s) => s.id);
+      if (ids.length === 0) return false;
       const { count } = await supabase
-        .from("automations")
+        .from("journeys_config")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", userId!)
-        .eq("is_active", true);
+        .in("store_id", ids)
+        .eq("ativa", true);
       return (count ?? 0) > 0;
     },
     enabled: !!userId,

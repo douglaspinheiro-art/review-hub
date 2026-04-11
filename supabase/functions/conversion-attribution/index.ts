@@ -11,7 +11,20 @@ const BodySchema = z.object({
   total_value: z.number().min(0).optional(),
 });
 
-const ATTRIBUTION_WINDOW_HOURS = 72;
+/**
+ * Janela last-touch (horas). Opcional: definir `ATTRIBUTION_WINDOW_HOURS` nas secrets da função no Supabase (mesmo valor que o frontend em `src/lib/attribution-config.ts`).
+ * Eventos gravados usam `source_platform = last_touch_send` — não colidem com `integration-gateway` (ex.: shopify + UTM/cupom).
+ */
+const ATTRIBUTION_WINDOW_HOURS = Math.min(
+  168,
+  Math.max(1, Number(Deno.env.get("ATTRIBUTION_WINDOW_HOURS") ?? "72") || 72),
+);
+
+const ATTRIBUTION_SOURCE_PLATFORM = "last_touch_send";
+
+function digitsOnly(s: string) {
+  return s.replace(/\D/g, "");
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -38,9 +51,9 @@ serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
     const windowStart = new Date(Date.now() - ATTRIBUTION_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
-    const { data: sends, error } = await (supabase as any)
+    const { data: sends, error } = await supabase
       .from("message_sends")
-      .select("id, campaign_id, automation_id, sent_at, created_at, status")
+      .select("id, campaign_id, automation_id, message_id, phone, sent_at, created_at, status")
       .eq("customer_id", customer_id)
       .eq("store_id", store_id)
       .in("status", ["sent", "sent_handoff_recommended"])
@@ -51,12 +64,26 @@ serve(async (req) => {
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
 
     if (sends && sends.length > 0) {
-      const lastTouch = sends[0];
-      const { data: existingEvent } = await (supabase as any)
+      const lastTouch = sends[0] as {
+        id: string;
+        campaign_id: string | null;
+        automation_id: string | null;
+        message_id: string | null;
+        phone: string;
+      };
+
+      const { data: storeRow, error: storeErr } = await supabase.from("stores").select("user_id").eq("id", store_id).maybeSingle();
+      if (storeErr || !storeRow?.user_id) {
+        return new Response(JSON.stringify({ error: storeErr?.message ?? "Loja não encontrada" }), { status: 400, headers: corsHeaders });
+      }
+      const ownerUserId = storeRow.user_id as string;
+
+      const { data: existingEvent } = await supabase
         .from("attribution_events")
         .select("id")
         .eq("order_id", order_id)
-        .limit(1)
+        .eq("user_id", ownerUserId)
+        .eq("source_platform", ATTRIBUTION_SOURCE_PLATFORM)
         .maybeSingle();
       if (existingEvent?.id) {
         return new Response(JSON.stringify({ ok: true, attributed: true, deduped: true }), {
@@ -64,31 +91,65 @@ serve(async (req) => {
         });
       }
 
+      const { data: cust } = await supabase
+        .from("customers_v3")
+        .select("phone")
+        .eq("id", customer_id)
+        .eq("store_id", store_id)
+        .maybeSingle();
+
+      const phoneFromSend = digitsOnly(lastTouch.phone ?? "");
+      const phoneFromCustomer = digitsOnly((cust?.phone as string | null) ?? "");
+      const customer_phone = phoneFromSend.length >= 10
+        ? phoneFromSend
+        : phoneFromCustomer.length >= 10
+        ? phoneFromCustomer
+        : "00000000000";
+
       const today = new Date().toISOString().split("T")[0];
-      await supabase.rpc('increment_daily_revenue', { p_date: today, p_amount: Number(total_value ?? 0) }).then(
+      await supabase.rpc("increment_daily_revenue", { p_date: today, p_amount: Number(total_value ?? 0) }).then(
         () => {},
         async () => {
           const { data: current } = await supabase.from("analytics_daily").select("revenue_influenced").eq("store_id", store_id).eq("date", today).maybeSingle();
-          await supabase.from("analytics_daily").upsert({ store_id, date: today, revenue_influenced: (Number(current?.revenue_influenced || 0) + Number(total_value ?? 0)) }, { onConflict: 'store_id, date' });
-        }
+          await supabase.from("analytics_daily").upsert(
+            {
+              store_id,
+              date: today,
+              revenue_influenced: (Number(current?.revenue_influenced || 0) + Number(total_value ?? 0)),
+            },
+            { onConflict: "store_id, date" },
+          );
+        },
       );
-      await (supabase as any).from("attribution_events").insert({
-        user_id: null,
-        order_id: order_id,
-        order_value: Number(total_value ?? 0),
-        attributed_message_id: lastTouch.id,
-        attributed_campaign_id: lastTouch.campaign_id ?? null,
-        attributed_automation_id: lastTouch.automation_id ?? null,
-        source_platform: "ecommerce",
-        order_date: new Date().toISOString(),
-      }).then(() => {}, () => {});
 
-      return new Response(JSON.stringify({
-        ok: true,
-        attributed_to: lastTouch.id,
+      const { error: insErr } = await supabase.from("attribution_events").insert({
+        user_id: ownerUserId,
+        order_id,
+        customer_phone,
+        order_value: Number(total_value ?? 0),
+        attributed_message_id: lastTouch.message_id,
         attributed_campaign_id: lastTouch.campaign_id ?? null,
         attributed_automation_id: lastTouch.automation_id ?? null,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        source_platform: ATTRIBUTION_SOURCE_PLATFORM,
+        order_date: new Date().toISOString(),
+      });
+
+      if (insErr) {
+        return new Response(JSON.stringify({ ok: false, error: insErr.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          attributed_to: lastTouch.id,
+          attributed_campaign_id: lastTouch.campaign_id ?? null,
+          attributed_automation_id: lastTouch.automation_id ?? null,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     return new Response(JSON.stringify({ ok: true, attributed: false }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

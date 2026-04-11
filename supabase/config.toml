@@ -1,1 +1,12 @@
 project_id = "ydkglitowqlpizpnnofy"
+
+# Cron / jobs internos usam Authorization: Bearer CRON_SECRET (sem JWT de usuário).
+[functions.sync-funil-ga4]
+verify_jwt = false
+
+[functions.data-pipeline-cron]
+verify_jwt = false
+
+# Validação de credenciais chamada só com sessão do cliente (invoke com JWT).
+[functions.validate-integration]
+verify_jwt = true

@@ -16,16 +16,21 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line,
 } from "recharts";
 import {
-  useLoja, useConvertIQConfig, useMetricasFunil, useLatestDiagnostico,
+  useLoja, useConvertIQConfig, useFunilPageMetricas, useLatestDiagnostico,
   useDiagnosticos, useSaveLoja, useSaveMetricas, useGerarDiagnostico,
   useMetricasEnriquecidas, useDataHealth,
   calcFunil, MOCK_METRICAS, MOCK_CONFIG, MetricasFunil,
+  recoveryPctOfRevenue, isFunilGa4SnapshotRecent,
 } from "@/hooks/useConvertIQ";
-import { useProductsV3 as useProdutosV3 } from "@/hooks/useLTVBoost";
-import { mockMetricas } from "@/lib/mock-data";
+import { useProductsV3 as useProdutosV3, useMetricsV3 } from "@/hooks/useLTVBoost";
 import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
+import type { Database } from "@/lib/database.types";
+import { Skeleton } from "@/components/ui/skeleton";
+import { isDashboardPathBlockedInBetaScope } from "@/lib/beta-scope";
 
 type Periodo = "7d" | "30d" | "90d";
+
+type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
 
 const DIAG_STEPS = [
   { label: "Calculando taxas de conversão",       ms: 2000 },
@@ -246,6 +251,31 @@ function FunnelBar({ label, valor, barPct, dropPct, cor, isCritical }: {
   );
 }
 
+function FunilQueryErrorBar({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-sm">
+      <span className="text-destructive font-medium">Não foi possível carregar alguns dados. Verifique a ligação e tente outra vez.</span>
+      <Button type="button" size="sm" variant="outline" className="shrink-0 border-destructive/50" onClick={onRetry}>
+        Tentar novamente
+      </Button>
+    </div>
+  );
+}
+
+function FunilKpiSkeleton() {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="bg-card border rounded-2xl p-5 space-y-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-20" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Funil() {
   const navigate = useNavigate();
@@ -255,66 +285,96 @@ export default function Funil() {
 
   const loja      = useLoja();
   const config    = useConvertIQConfig();
-  const metrics   = useMetricasFunil(loja.data?.id ?? null, periodo);
+  const funilMetricas = useFunilPageMetricas(loja.data?.id ?? null, periodo);
   const enriched  = useMetricasEnriquecidas(loja.data?.id ?? null, periodo);
   const dataHealth = useDataHealth(loja.data?.id ?? null, periodo);
   const lastDiag  = useLatestDiagnostico(loja.data?.id ?? null);
   const allDiags  = useDiagnosticos(loja.data?.id ?? null);
   const produtos  = useProdutosV3(loja.data?.id);
+  const metricsV3 = useMetricsV3(loja.data?.id);
   const saveMet   = useSaveMetricas();
   const gerarDiag = useGerarDiagnostico();
 
-  const isMock = !metrics.data;
-  
+  const pageM = funilMetricas.data;
+  const isMock = !!loja.data && pageM?.source === "none";
+
+  const refetchQueries = () => {
+    funilMetricas.refetch();
+    enriched.refetch();
+    dataHealth.refetch();
+    produtos.refetch();
+    metricsV3.refetch();
+    lastDiag.refetch();
+    allDiags.refetch();
+  };
+
+  const hasQueryError =
+    funilMetricas.isError || enriched.isError || dataHealth.isError || produtos.isError || metricsV3.isError
+    || lastDiag.isError || allDiags.isError;
+
   // Enriched data handling
   const recFrete = enriched.data?.receita_travada_frete ?? MOCK_METRICAS.receita_travada_frete ?? 0;
   const recPag   = enriched.data?.receita_travada_pagamento ?? MOCK_METRICAS.receita_travada_pagamento ?? 0;
   const totalF   = enriched.data?.total_abandonos_frete ?? MOCK_METRICAS.total_abandonos_frete ?? 0;
   const totalP   = enriched.data?.total_abandonos_pagamento ?? MOCK_METRICAS.total_abandonos_pagamento ?? 0;
 
-  const raw: MetricasFunil = metrics.data
-    ? {
-        ...metrics.data,
-        receita_travada_frete: recFrete,
-        receita_travada_pagamento: recPag,
-        total_abandonos_frete: totalF,
-        total_abandonos_pagamento: totalP,
-        fonte: "real",
-      }
-    : {
-        ...MOCK_METRICAS,
-        receita_travada_frete: recFrete,
-        receita_travada_pagamento: recPag,
-        total_abandonos_frete: totalF,
-        total_abandonos_pagamento: totalP,
-      };
+  const baseMetricas: MetricasFunil =
+    loja.data && pageM?.metricas
+      ? pageM.metricas
+      : MOCK_METRICAS;
+
+  const raw: MetricasFunil = {
+    ...baseMetricas,
+    receita_travada_frete: recFrete,
+    receita_travada_pagamento: recPag,
+    total_abandonos_frete: totalF,
+    total_abandonos_pagamento: totalP,
+    fonte:
+      pageM?.source === "ga4"
+        ? "ga4"
+        : pageM?.source === "manual"
+          ? "real"
+          : (baseMetricas.fonte ?? "mockado"),
+  };
 
   const meta   = Number(config.data?.meta_conversao ?? MOCK_CONFIG.meta_conversao);
-  const ticket = Number((loja.data as any)?.ticket_medio     ?? MOCK_CONFIG.ticket_medio);
+  const store = loja.data as StoreRow | null | undefined;
+  const ticket = Number(
+    (store as StoreRow & { ticket_medio?: number })?.ticket_medio ?? MOCK_CONFIG.ticket_medio,
+  );
   const { taxaConversao, perdaMensal, etapas, maiorGargalo } = calcFunil(raw, meta, ticket);
 
   const maxDropIdx = etapas.reduce((mi, e, i) => i > 0 && e.dropPct > (etapas[mi]?.dropPct ?? 0) ? i : mi, 1);
 
-  const m = mockMetricas;
+  const recoveryPct = recoveryPctOfRevenue(recFrete, recPag, raw.receita);
 
-  // Build chart data from real diagnostics (newest last for chart)
   const diagsForChart = [...(allDiags.data ?? [])].reverse();
-  const chartData = diagsForChart.length >= 2
-    ? diagsForChart.map((d, i) => ({
-        data: new Date(d.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
-        cvr: Number(d.taxa_conversao),
-        bench: 2.8,
-        score: d.score,
-      }))
-    : [
-        { data: "Sem 1", cvr: 1.2, bench: 2.8, score: 0 },
-        { data: "Sem 2", cvr: 1.4, bench: 2.8, score: 0 },
-        { data: "Sem 3", cvr: 1.1, bench: 2.8, score: 0 },
-        { data: "Sem 4", cvr: 1.6, bench: 2.8, score: 0 },
-        { data: "Sem 5", cvr: 1.4, bench: 2.8, score: 0 },
-        { data: "Sem 6", cvr: 1.5, bench: 2.8, score: 0 },
-        { data: "Sem 7", cvr: taxaConversao, bench: 2.8, score: 0 },
-      ];
+  const chartData =
+    diagsForChart.length >= 2
+      ? diagsForChart.map((d) => ({
+          data: new Date(d.created_at!).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
+          cvr: Number(d.taxa_conversao),
+          bench: meta,
+          score: d.score,
+        }))
+      : [];
+
+  const hasRecentGa4Layout =
+    !!loja.data &&
+    pageM?.source === "ga4" &&
+    isFunilGa4SnapshotRecent(pageM.lastIngestedAt ?? null);
+
+  const showDeviceBreakdown =
+    !!metricsV3.data &&
+    (metricsV3.data.mobile_visitors > 0 || metricsV3.data.desktop_visitors > 0);
+
+  const mobileCvr = metricsV3.data?.mobile_cvr ?? 0;
+  const desktopCvr = metricsV3.data?.desktop_cvr ?? 0;
+  const deviceGapPp = showDeviceBreakdown ? mobileCvr - desktopCvr : 0;
+  const showMobileGapAlert =
+    showDeviceBreakdown && desktopCvr > 0 && mobileCvr > 0 && mobileCvr < desktopCvr / 1.2;
+  const mobileRecoveryHint =
+    perdaMensal > 0 ? Math.round(perdaMensal * 0.15) : 0;
 
   // CVR drop alert: compare latest vs previous diagnostic
   const cvrDrop = (allDiags.data ?? []).length >= 2
@@ -347,8 +407,23 @@ export default function Funil() {
     if (!loja.data) return;
     await saveMet.mutateAsync({ lojaId: loja.data.id, metricas: m });
     setShowManual(false);
-    metrics.refetch();
+    funilMetricas.refetch();
   }
+
+  const campanhasBlocked = isDashboardPathBlockedInBetaScope("/dashboard/campanhas");
+  const whatsappBlocked = isDashboardPathBlockedInBetaScope("/dashboard/whatsapp");
+
+  const syncSubtitle = (() => {
+    if (!loja.data || !pageM) return null;
+    if (pageM.source === "ga4" && pageM.lastIngestedAt) {
+      return `GA4 · última sincronização: ${new Date(pageM.lastIngestedAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`;
+    }
+    if (pageM.source === "manual" && pageM.lastManualUpdatedAt) {
+      return `Métricas manuais · atualizado: ${new Date(pageM.lastManualUpdatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`;
+    }
+    if (pageM.source === "manual") return "Métricas manuais (último snapshot no período)";
+    return null;
+  })();
 
   if (loja.isLoading) {
     return (
@@ -371,6 +446,8 @@ export default function Funil() {
         />
       )}
 
+      {hasQueryError && <FunilQueryErrorBar onRetry={refetchQueries} />}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -378,8 +455,16 @@ export default function Funil() {
             Funil de <span className="text-primary">Conversão</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {loja.data ? `${(loja.data as any).nome ?? loja.data.name} · ${(loja.data as any).plataforma ?? (loja.data as any).segment}` : "Análise profunda do comportamento de compra"}
+            {store
+              ? `${store.name} · ${store.segment ?? "—"}`
+              : "Análise profunda do comportamento de compra"}
           </p>
+          {loja.data && (
+            <p className="text-[11px] text-muted-foreground mt-1 max-w-xl">
+              Métricas do funil: último snapshot disponível para o período selecionado ({periodo}).
+              {syncSubtitle ? ` ${syncSubtitle}` : ""}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-muted rounded-xl p-1">
@@ -438,6 +523,9 @@ export default function Funil() {
       )}
 
       {/* KPI cards */}
+      {loja.data && funilMetricas.isPending && !funilMetricas.data ? (
+        <FunilKpiSkeleton />
+      ) : (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-card border rounded-2xl p-5">
           <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Conversão Atual</p>
@@ -476,6 +564,7 @@ export default function Funil() {
           </span>
         </div>
       </div>
+      )}
 
       {/* Data Health Score */}
       {loja.data && (
@@ -618,14 +707,23 @@ export default function Funil() {
 
       {/* Potential Recovery Dashboard */}
       <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <h3 className="font-black text-base uppercase tracking-tighter flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" /> Recuperação Potencial (ConvertIQ)
           </h3>
-          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-black">
-            {periodo} · {((recFrete + recPag) / raw.receita * 100).toFixed(1)}% da Receita Atual
-          </Badge>
+          {recoveryPct != null ? (
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-black" title="Estimativa a partir de carrinhos pendentes; não substitui contabilidade.">
+              {periodo} · {recoveryPct.toFixed(1)}% da receita atual (estimativa)
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-muted text-muted-foreground border-border font-black">
+              {periodo} · receita zero — sem percentual
+            </Badge>
+          )}
         </div>
+        <p className="text-xs text-muted-foreground mb-6 max-w-3xl">
+          Valores estimados a partir de carrinhos pendentes (heurística interna); não são contabilidade nem garantia de recuperação.
+        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-card border rounded-xl p-5 shadow-sm">
@@ -639,9 +737,17 @@ export default function Funil() {
             <p className="text-xs text-muted-foreground mb-4">
               {totalF} clientes abandonaram porque o frete representava {">"}20% do pedido.
             </p>
-            <Button size="sm" variant="outline" className="w-full gap-2 font-bold border-orange-500/30 text-orange-600 hover:bg-orange-500/5">
-              <Sparkles className="w-3 h-3" /> Ver campanha de Frete Grátis
-            </Button>
+            {campanhasBlocked ? (
+              <Button size="sm" variant="outline" className="w-full gap-2 font-bold border-muted text-muted-foreground" disabled title="Campanhas indisponíveis nesta fase beta">
+                <Sparkles className="w-3 h-3" /> Criar campanha
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" className="w-full gap-2 font-bold border-orange-500/30 text-orange-600 hover:bg-orange-500/5" asChild>
+                <Link to="/dashboard/campanhas">
+                  <Sparkles className="w-3 h-3" /> Criar campanha
+                </Link>
+              </Button>
+            )}
           </div>
 
           <div className="bg-card border rounded-xl p-5 shadow-sm">
@@ -655,9 +761,17 @@ export default function Funil() {
             <p className="text-xs text-muted-foreground mb-4">
               {totalP} pedidos não finalizados por erro no gateway ou cartão negado.
             </p>
-            <Button size="sm" variant="outline" className="w-full gap-2 font-bold border-red-500/30 text-red-600 hover:bg-red-500/5">
-              <Smartphone className="w-3 h-3" /> Oferecer link PIX (WhatsApp)
-            </Button>
+            {whatsappBlocked ? (
+              <Button size="sm" variant="outline" className="w-full gap-2 font-bold border-muted text-muted-foreground" disabled title="WhatsApp indisponível nesta fase beta">
+                <Smartphone className="w-3 h-3" /> Abrir WhatsApp
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" className="w-full gap-2 font-bold border-red-500/30 text-red-600 hover:bg-red-500/5" asChild>
+                <Link to="/dashboard/whatsapp">
+                  <Smartphone className="w-3 h-3" /> Abrir WhatsApp
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -670,8 +784,8 @@ export default function Funil() {
             <h3 className="font-black text-base uppercase tracking-tighter flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-primary" /> Funil Visual
             </h3>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => metrics.refetch()}>
-              <RefreshCw className={cn("w-3.5 h-3.5", metrics.isFetching && "animate-spin")} />
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => funilMetricas.refetch()}>
+              <RefreshCw className={cn("w-3.5 h-3.5", funilMetricas.isFetching && "animate-spin")} />
               Atualizar
             </Button>
           </div>
@@ -703,50 +817,68 @@ export default function Funil() {
 
         {/* Mobile/Desktop comparison */}
         <div className="space-y-6">
-          <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6">
-            <h3 className="font-black text-sm mb-2 flex items-center gap-2 text-red-500 uppercase tracking-tighter">
-              <AlertTriangle className="w-4 h-4" /> Alerta Mobile
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Usuários mobile convertem <span className="text-red-500 font-bold">2.8x menos</span> que desktop. Otimizar o checkout mobile pode recuperar <span className="text-foreground font-bold">+R$ 21.000/mês</span>.
-            </p>
-          </div>
+          {showMobileGapAlert && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6">
+              <h3 className="font-black text-sm mb-2 flex items-center gap-2 text-red-500 uppercase tracking-tighter">
+                <AlertTriangle className="w-4 h-4" /> Alerta Mobile
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                A conversão em mobile está abaixo da de desktop. Melhorar checkout mobile pode reduzir parte da perda estimada do funil
+                {mobileRecoveryHint > 0 ? (
+                  <> (ordem de grandeza ~R$ {mobileRecoveryHint.toLocaleString("pt-BR")}/mês, estimativa).</>
+                ) : (
+                  <>.</>
+                )}
+              </p>
+            </div>
+          )}
 
-          <div className="bg-card border rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black text-sm uppercase tracking-tighter">Por Dispositivo</h3>
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest px-1.5 py-0.5 bg-muted rounded-full">Estimado</span>
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
-                    <Smartphone className="w-4 h-4 text-indigo-500" />
+          {showDeviceBreakdown ? (
+            <div className="bg-card border rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-sm uppercase tracking-tighter">Por dispositivo</h3>
+                <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest px-1.5 py-0.5 bg-muted rounded-full">Fonte: métricas v3</span>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                      <Smartphone className="w-4 h-4 text-indigo-500" />
+                    </div>
+                    <span className="text-sm font-bold">Mobile</span>
                   </div>
-                  <span className="text-sm font-bold">Mobile</span>
+                  <span className="text-lg font-black font-mono text-indigo-500">{mobileCvr.toFixed(2)}%</span>
                 </div>
-                <span className="text-lg font-black font-mono text-indigo-500">{m.cvr_mobile}%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-slate-500/10 flex items-center justify-center">
-                    <Monitor className="w-4 h-4 text-slate-500" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-slate-500/10 flex items-center justify-center">
+                      <Monitor className="w-4 h-4 text-slate-500" />
+                    </div>
+                    <span className="text-sm font-bold">Desktop</span>
                   </div>
-                  <span className="text-sm font-bold">Desktop</span>
+                  <span className="text-lg font-black font-mono text-slate-500">{desktopCvr.toFixed(2)}%</span>
                 </div>
-                <span className="text-lg font-black font-mono text-slate-500">{m.cvr_desktop}%</span>
+              </div>
+              <div className="mt-5 pt-4 border-t border-border/50">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Gap mobile vs desktop (pp)</span>
+                  <span className={cn("text-xs font-black", deviceGapPp < 0 ? "text-red-500" : "text-muted-foreground")}>
+                    {deviceGapPp >= 0 ? "+" : ""}{deviceGapPp.toFixed(2)}pp
+                  </span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-red-500 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.max(4, Math.abs(deviceGapPp) * 20))}%` }}
+                  />
+                </div>
               </div>
             </div>
-            <div className="mt-5 pt-4 border-t border-border/50">
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Gap Mobile vs Desktop</span>
-                <span className="text-xs font-black text-red-500">-1.45pp ⚠️</span>
-              </div>
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-red-500 rounded-full transition-all" style={{ width: "38%" }} />
-              </div>
+          ) : (
+            <div className="bg-card border border-dashed rounded-2xl p-6 text-center text-sm text-muted-foreground">
+              Sem dados de conversão por dispositivo na base atual. Sincronize métricas v3 ou use GA4 no funil principal.
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -837,112 +969,81 @@ export default function Funil() {
         )
       )}
 
-      {/* Histórico CVR vs Benchmark */}
+      {/* Histórico CVR vs meta */}
       <div className="bg-card border rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
           <h3 className="font-black text-base uppercase tracking-tighter flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-primary" /> Histórico CVR vs Benchmark
+            <Calendar className="w-4 h-4 text-primary" /> Histórico CVR vs meta
           </h3>
-          {diagsForChart.length < 2 && (
+          {chartData.length < 2 && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground uppercase tracking-widest">
-              Dados estimados — gere diagnósticos para ver real
+              Gere pelo menos 2 diagnósticos para ver a tendência
             </span>
           )}
         </div>
-        <div className="h-[280px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorCvr" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
-              <XAxis dataKey="data" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} unit="%" />
-              <Tooltip
-                contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "12px", border: "1px solid hsl(var(--border))" }}
-                itemStyle={{ fontSize: "12px", fontWeight: "bold" }}
-              />
-              <Area type="monotone" dataKey="cvr" name="Sua CVR" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorCvr)" strokeWidth={3} />
-              <Line type="monotone" dataKey="bench" name="Benchmark" stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" dot={false} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flex gap-6 mt-4 justify-center">
-          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-            <div className="w-3 h-0.5 bg-primary rounded-full" /> Sua CVR
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-            <div className="w-3 h-0.5 bg-muted-foreground rounded-full" style={{ backgroundImage: "repeating-linear-gradient(90deg,currentColor 0,currentColor 3px,transparent 3px,transparent 6px)" }} /> Benchmark setor
-          </div>
-        </div>
-      </div>
-
-      {/* Canal de Aquisição + Horário — grid 2 colunas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Canal de aquisição */}
-        <div className="bg-card border rounded-2xl p-6">
-          <h3 className="font-black text-sm uppercase tracking-tighter mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-primary" /> Canal de Aquisição
-          </h3>
-          <div className="space-y-3">
-            {[
-              { canal: "Orgânico / SEO", cvr: "2.1%", share: "38%", cor: "bg-emerald-500" },
-              { canal: "Direto",         cvr: "1.9%", share: "24%", cor: "bg-blue-500" },
-              { canal: "Social / Ads",   cvr: "1.1%", share: "22%", cor: "bg-pink-500" },
-              { canal: "Email",          cvr: "3.4%", share: "11%", cor: "bg-violet-500" },
-              { canal: "WhatsApp",       cvr: "4.2%", share: "5%",  cor: "bg-green-500" },
-            ].map(c => (
-              <div key={c.canal} className="flex items-center gap-3">
-                <div className={cn("w-2 h-2 rounded-full shrink-0", c.cor)} />
-                <span className="text-xs font-bold flex-1">{c.canal}</span>
-                <span className="text-xs font-mono text-muted-foreground">{c.share}</span>
-                <span className={cn("text-xs font-mono font-black", parseFloat(c.cvr) >= 3 ? "text-emerald-500" : parseFloat(c.cvr) >= 2 ? "text-amber-500" : "text-red-500")}>
-                  {c.cvr}
-                </span>
-              </div>
-            ))}
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-4 font-medium">
-            📡 Conecte GA4 para dados reais de atribuição
-          </p>
-        </div>
-
-        {/* Funil por Horário */}
-        <div className="bg-card border rounded-2xl p-6">
-          <h3 className="font-black text-sm uppercase tracking-tighter mb-4 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-primary" /> Horários de Maior Conversão
-          </h3>
-          <div className="space-y-2">
-            {[
-              { hora: "19h–21h", cvr: 3.8, peak: true },
-              { hora: "12h–14h", cvr: 2.9, peak: false },
-              { hora: "09h–11h", cvr: 2.1, peak: false },
-              { hora: "22h–00h", cvr: 1.7, peak: false },
-              { hora: "06h–08h", cvr: 0.9, peak: false },
-            ].map(h => (
-              <div key={h.hora} className="flex items-center gap-3">
-                <span className="text-xs font-mono text-muted-foreground w-16 shrink-0">{h.hora}</span>
-                <div className="flex-1 h-5 bg-muted/40 rounded-md overflow-hidden relative">
-                  <div
-                    className={cn("h-full rounded-md transition-all", h.peak ? "bg-primary" : "bg-muted-foreground/30")}
-                    style={{ width: `${(h.cvr / 3.8) * 100}%` }}
+        {chartData.length >= 2 ? (
+          <>
+            <div className="h-[280px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorCvr" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                  <XAxis dataKey="data" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} unit="%" />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "12px", border: "1px solid hsl(var(--border))" }}
+                    itemStyle={{ fontSize: "12px", fontWeight: "bold" }}
                   />
-                </div>
-                <span className={cn("text-xs font-mono font-black w-10 text-right shrink-0", h.peak ? "text-primary" : "text-muted-foreground")}>
-                  {h.cvr}%
-                </span>
-                {h.peak && <span className="text-[10px] font-black text-primary bg-primary/10 px-1.5 py-0.5 rounded-full uppercase">Peak</span>}
+                  <Area type="monotone" dataKey="cvr" name="Sua CVR" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorCvr)" strokeWidth={3} />
+                  <Line type="monotone" dataKey="bench" name="Meta" stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" dot={false} strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex gap-6 mt-4 justify-center">
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                <div className="w-3 h-0.5 bg-primary rounded-full" /> Sua CVR
               </div>
-            ))}
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                <div className="w-3 h-0.5 bg-muted-foreground rounded-full" style={{ backgroundImage: "repeating-linear-gradient(90deg,currentColor 0,currentColor 3px,transparent 3px,transparent 6px)" }} /> Meta ({meta}%)
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="h-[200px] flex flex-col items-center justify-center text-center text-sm text-muted-foreground border border-dashed rounded-xl px-4">
+            Ainda não há histórico suficiente de diagnósticos concluídos para esta loja. Gere dois ou mais diagnósticos com IA para ver a evolução da taxa de conversão face à meta.
           </div>
-          <p className="text-[10px] text-muted-foreground mt-4 font-medium">
-            📡 Conecte GA4 para dados reais por faixa horária
+        )}
+      </div>
+
+      {/* Canal + horário: sem dados granulares nesta versão */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-card border rounded-2xl p-6 md:col-span-2">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <h3 className="font-black text-sm uppercase tracking-tighter flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" /> Canal de aquisição e horários
+            </h3>
+            {hasRecentGa4Layout && (
+              <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/30 text-primary">
+                GA4 sincronizado (funil)
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">
+            {hasRecentGa4Layout
+              ? "O funil acima reflete o GA4. Breakdown por canal de aquisição e por faixa horária ainda não está disponível nesta versão do produto."
+              : "Dados por canal de aquisição e por faixa horária não estão disponíveis sem sincronização recente do GA4 (últimos 3 dias)."}
           </p>
         </div>
       </div>
+
+      <p className="text-[11px] text-muted-foreground border-t pt-6 max-w-3xl leading-relaxed">
+        As métricas de perda, recuperação e conversão apresentadas são estimativas com base nos dados sincronizados ou inseridos por si; não constituem aconselhamento financeiro nem garantia de resultados.
+      </p>
     </div>
   );
 }

@@ -13,20 +13,35 @@ import {
   z,
 } from "../_shared/edge-utils.ts";
 import { uuidSchema, validateRequest } from "../_shared/validation.ts";
-import { metaGraphSendText, metaGraphSendTemplate } from "../_shared/meta-graph-send.ts";
+import {
+  metaGraphFetchPhoneNumber,
+  metaGraphSendTemplate,
+  metaGraphSendText,
+} from "../_shared/meta-graph-send.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const BodySchema = z.object({
-  connectionId: uuidSchema,
-  kind: z.enum(["sendText", "sendTemplate"]),
-  number: z.string().min(10).max(20),
-  text: z.string().max(16_000).optional(),
-  templateName: z.string().max(120).optional(),
-  templateLanguage: z.string().max(20).optional(),
-  templateBodyParameters: z.array(z.string().max(1024)).max(20).optional(),
-});
+const BodySchema = z.discriminatedUnion("kind", [
+  z.object({
+    connectionId: uuidSchema,
+    kind: z.literal("verify"),
+  }),
+  z.object({
+    connectionId: uuidSchema,
+    kind: z.literal("sendText"),
+    number: z.string().min(10).max(20),
+    text: z.string().max(16_000).optional(),
+  }),
+  z.object({
+    connectionId: uuidSchema,
+    kind: z.literal("sendTemplate"),
+    number: z.string().min(10).max(20),
+    templateName: z.string().max(120).optional(),
+    templateLanguage: z.string().max(20).optional(),
+    templateBodyParameters: z.array(z.string().max(1024)).max(20).optional(),
+  }),
+]);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -43,15 +58,8 @@ serve(async (req) => {
     const parsedReq = await validateRequest(req, { method: "POST", maxBytes: 64 * 1024, schema: BodySchema });
     if (!parsedReq.ok) return parsedReq.response;
 
-    const {
-      connectionId,
-      kind,
-      number,
-      text = "",
-      templateName,
-      templateLanguage = "pt_BR",
-      templateBodyParameters = [],
-    } = parsedReq.data;
+    const body = parsedReq.data;
+    const { connectionId, kind } = body;
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -86,20 +94,51 @@ serve(async (req) => {
       return errorResponse("Meta não configurado para esta conexão", 400);
     }
 
+    if (kind === "verify") {
+      const info = await metaGraphFetchPhoneNumber(phoneId, token, apiVer);
+      const { error: upErr } = await admin
+        .from("whatsapp_connections")
+        .update({
+          phone_number: info.display_phone_number ?? null,
+          status: "connected",
+          connected_at: new Date().toISOString(),
+        })
+        .eq("id", connectionId)
+        .eq("user_id", user.id);
+      if (upErr) {
+        return new Response(JSON.stringify({ ok: false as const, error: upErr.message }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ok: true as const,
+          data: {
+            display_phone_number: info.display_phone_number,
+            verified_name: info.verified_name,
+            quality_rating: info.quality_rating,
+          },
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     let data: { messages?: Array<{ id?: string }> };
     if (kind === "sendText") {
+      const text = body.text ?? "";
       if (!text.trim()) return errorResponse("text obrigatório", 400);
-      data = await metaGraphSendText(phoneId, token, number, text, apiVer);
+      data = await metaGraphSendText(phoneId, token, body.number, text, apiVer);
     } else {
-      const name = templateName?.trim();
+      const name = body.templateName?.trim();
       if (!name) return errorResponse("templateName obrigatório", 400);
       data = await metaGraphSendTemplate(
         phoneId,
         token,
-        number,
+        body.number,
         name,
-        templateLanguage,
-        templateBodyParameters,
+        body.templateLanguage ?? "pt_BR",
+        body.templateBodyParameters ?? [],
         apiVer,
       );
     }

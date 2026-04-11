@@ -1,10 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+function corsHeaders(): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": Deno.env.get("INTEGRATIONS_CORS_ORIGIN") ?? "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  };
+}
 
 // Test connectivity for each platform
 async function testShopify(config: Record<string, string>): Promise<{ ok: boolean; detail: string }> {
@@ -161,7 +163,32 @@ async function testTwilio(config: Record<string, string>): Promise<{ ok: boolean
 }
 
 serve(async (req) => {
+  const cors = corsHeaders();
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!jwt) {
+    return new Response(JSON.stringify({ ok: false, detail: "Não autorizado" }), {
+      status: 401, headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !supabaseAnon) {
+    return new Response(JSON.stringify({ ok: false, detail: "Configuração do servidor incompleta" }), {
+      status: 500, headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabaseAuth = createClient(supabaseUrl, supabaseAnon);
+  const { data: { user }, error: authErr } = await supabaseAuth.auth.getUser(jwt);
+  if (authErr || !user) {
+    return new Response(JSON.stringify({ ok: false, detail: "Sessão inválida ou expirada" }), {
+      status: 401, headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
 
   try {
     const { type, config } = await req.json();

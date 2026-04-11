@@ -104,6 +104,17 @@ serve(async (req) => {
         sent_at: new Date().toISOString()
       }).eq("id", msg.id);
 
+      if (msg.journey_id) {
+        const { data: jc } = await supabase.from("journeys_config").select("id, kpi_atual").eq("id", msg.journey_id).maybeSingle();
+        if (jc?.id) {
+          const next = Number((jc as { kpi_atual?: number | null }).kpi_atual ?? 0) + 1;
+          await supabase
+            .from("journeys_config")
+            .update({ kpi_atual: next, updated_at: new Date().toISOString() })
+            .eq("id", jc.id);
+        }
+      }
+
       // Create a conversation/message entry for UI visibility
       const { data: conv } = await supabase.from("conversations").upsert({
         user_id: msg.user_id,

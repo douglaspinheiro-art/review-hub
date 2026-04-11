@@ -117,7 +117,7 @@ const COMPARISON_ROWS = [
   { label: "Flow Engine" },
   { label: "CHS Score" },
   { label: "Agente IA Negociador" },
-  { label: "Revenue Forecast" },
+  { label: "Previsão de receita" },
   { label: "Programa de Fidelidade" },
   { label: "Suporte" },
 ];
@@ -358,7 +358,7 @@ export default function Planos({ embedInDashboard, defaultTab: _defaultTab }: { 
                               label === "Flow Engine"          ? "journeys"     :
                               label === "CHS Score"            ? "chs"          :
                               label === "Agente IA Negociador" ? "aiNegotiator" :
-                              label === "Revenue Forecast"     ? "forecast"     :
+                              label === "Previsão de receita"  ? "forecast"     :
                               label === "Programa de Fidelidade" ? "loyalty"    :
                               "support"
                             ];

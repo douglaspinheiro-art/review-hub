@@ -4,6 +4,14 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 import { corsHeaders } from "../_shared/edge-utils.ts";
 
+/**
+ * `event` === `journeys_config.tipo_jornada` ativo para a loja.
+ * Disparos conhecidos no repo:
+ * - `cart_abandoned` / `payment_pending` — `webhook-cart` (carrinho vs etapa/falha de pagamento)
+ * - `loyalty_points` — `integration-gateway` em pedido novo já pago (`paid_or_processing`)
+ * - Outros tipos seedados: welcome, reactivation, birthday, post_purchase, review_request, winback
+ * - Custom: prefixo `custom_*` (modal / API)
+ */
 const BodySchema = z.object({
   event: z.string().min(1).max(100),
   store_id: z.string().uuid(),

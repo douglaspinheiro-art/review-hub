@@ -134,10 +134,16 @@ export function WhatsAppPendingBanner() {
 interface PrescricoesPendingBannerProps {
   pendingCount: number;
   pendingValue: number;
+  /** Quando há prescrições pendentes na BD, o texto reflete "prescrições"; senão, oportunidades do diagnóstico. */
+  queueKind?: "prescriptions" | "opportunities";
 }
 
-export function PrescricoesPendingBanner({ pendingCount, pendingValue }: PrescricoesPendingBannerProps) {
+export function PrescricoesPendingBanner({ pendingCount, pendingValue, queueKind = "opportunities" }: PrescricoesPendingBannerProps) {
   const navigate = useNavigate();
+  const queueLine =
+    queueKind === "prescriptions"
+      ? `${pendingCount} ${pendingCount === 1 ? "prescrição aguardando aprovação" : "prescrições aguardando aprovação"} na Central.`
+      : `${pendingCount} ${pendingCount === 1 ? "oportunidade detectada" : "oportunidades detectadas"} pela IA.`;
   return (
     <Card className="p-6 border-red-500/20 bg-red-500/5 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
       <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
@@ -151,8 +157,8 @@ export function PrescricoesPendingBanner({ pendingCount, pendingValue }: Prescri
               R$ {pendingValue.toLocaleString("pt-BR")} identificados mas não capturados
             </p>
             <p className="text-sm text-muted-foreground">
-              {pendingCount} {pendingCount === 1 ? "oportunidade detectada" : "oportunidades detectadas"} pela IA.
-              Cada hora sem ação reduz a taxa de recuperação.
+              {queueLine}
+              {" "}Cada hora sem ação reduz a taxa de recuperação.
             </p>
           </div>
         </div>

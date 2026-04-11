@@ -2,19 +2,22 @@ import { useState } from "react";
 import {
   DollarSign, TrendingUp, ShoppingCart, Zap, Target,
   ArrowUpRight, ArrowDownRight, MessageCircle, Mail,
-  Smartphone, RefreshCw, Info, ExternalLink,
+  Smartphone, RefreshCw, Info, ExternalLink, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useROIAttribution } from "@/hooks/useDashboard";
 import { useNavigate } from "react-router-dom";
+import { ATTRIBUTION_WINDOW_DAYS, ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
 import {
   AreaChart, Area,
   PieChart, Pie, Cell,
   BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Legend,
 } from "recharts";
 
 const PERIODS = [
@@ -84,6 +87,42 @@ function EmptyState({ onNavigate }: { onNavigate: () => void }) {
   );
 }
 
+function AttributionPageSkeleton() {
+  return (
+    <div className="space-y-8 pb-10 animate-in fade-in duration-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-64" />
+          <Skeleton className="h-4 w-full max-w-md" />
+        </div>
+        <Skeleton className="h-10 w-56 rounded-xl" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-32 rounded-2xl" />
+        ))}
+      </div>
+      <Skeleton className="h-64 rounded-2xl" />
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <Skeleton className="lg:col-span-3 h-72 rounded-2xl" />
+        <Skeleton className="lg:col-span-2 h-72 rounded-2xl" />
+      </div>
+    </div>
+  );
+}
+
+function DisclaimerCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[11px] text-muted-foreground leading-snug">
+      <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden />
+      <div>
+        <span className="font-bold text-foreground">{title}</span>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function Atribuicao() {
   const [period, setPeriod] = useState(30);
   const [metaCut, setMetaCut] = useState(20);
@@ -102,15 +141,16 @@ export default function Atribuicao() {
       ].filter((d) => d.value > 0)
     : [];
 
+  const windowLabel = data?.attributionWindowLabel ?? ATTRIBUTION_WINDOW_LABEL;
+
   return (
     <div className="space-y-8 pb-10">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Atribuição de ROI</h1>
             <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase tracking-widest">
-              Janela 72h
+              Janela {windowLabel}
             </Badge>
           </div>
           <p className="text-muted-foreground text-sm">
@@ -118,11 +158,18 @@ export default function Atribuicao() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex bg-muted/50 rounded-xl p-1">
+          <div
+            className="flex bg-muted/50 rounded-xl p-1"
+            role="group"
+            aria-label="Período de análise"
+          >
             {PERIODS.map((p) => (
               <button
                 key={p.value}
+                type="button"
                 onClick={() => setPeriod(p.value)}
+                aria-pressed={period === p.value}
+                aria-label={`Período ${p.label}`}
                 className={cn(
                   "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
                   period === p.value
@@ -134,17 +181,19 @@ export default function Atribuicao() {
               </button>
             ))}
           </div>
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => refetch()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-xl"
+            onClick={() => refetch()}
+            aria-label="Atualizar dados de atribuição"
+          >
             <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
           </Button>
         </div>
       </div>
 
-      {isLoading && (
-        <div className="flex items-center justify-center py-24">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
+      {isLoading && <AttributionPageSkeleton />}
 
       {error && (
         <div className="text-center py-16 space-y-3">
@@ -157,39 +206,28 @@ export default function Atribuicao() {
 
       {!isLoading && data && data.totalRevenue > 0 && (
         <>
-          <div className="bg-card border rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+          {data.attributionQueryError && (
+            <div
+              className="flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+              role="alert"
+            >
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" aria-hidden />
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Revisao quinzenal</p>
-                <p className="text-xs text-muted-foreground">
-                  Ritual de 15 dias para manter crescimento previsivel com atribuicao confiavel.
-                </p>
-              </div>
-              <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase tracking-widest">
-                Proxima revisao: {new Date(Date.now() + 15 * 86_400_000).toLocaleDateString("pt-BR")}
-              </Badge>
-            </div>
-            <div className="grid md:grid-cols-4 gap-3 mt-4">
-              <div className="rounded-xl border p-3 bg-muted/20">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Top alavanca</p>
-                <p className="text-sm font-black mt-1">{data.byCampaign[0]?.name ?? "Sem campanha lider"}</p>
-              </div>
-              <div className="rounded-xl border p-3 bg-muted/20">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Receita atribuida</p>
-                <p className="text-sm font-black mt-1">{fmt(data.totalRevenue)}</p>
-              </div>
-              <div className="rounded-xl border p-3 bg-muted/20">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Taxa carrinho</p>
-                <p className="text-sm font-black mt-1">{data.cartStats.recoveryRate}%</p>
-              </div>
-              <div className="rounded-xl border p-3 bg-muted/20">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Risco dominante</p>
-                <p className="text-sm font-black mt-1">
-                  {data.channelRisk.find((r) => r.saturationRisk === "alto")?.channel ?? "Controlado"}
+                <p className="font-bold text-foreground">Não foi possível carregar eventos de atribuição</p>
+                <p className="text-muted-foreground text-xs mt-1">{data.attributionQueryError}</p>
+                <p className="text-muted-foreground text-xs mt-1">
+                  As métricas de receita do gráfico continuam disponíveis; a tabela por campanha pode ficar vazia até o problema ser resolvido.
                 </p>
               </div>
             </div>
-          </div>
+          )}
+
+          {data.usesEstimatedSourceSplit && (
+            <DisclaimerCard title="Distribuição por origem estimada. ">
+              Não há pedidos com <code className="text-[10px] bg-muted px-1 rounded">attribution_events</code> no período.
+              O gráfico &quot;Por origem&quot; usa uma divisão ilustrativa (55% / 30% / 15%) sobre a receita influenciada — não substitui medição por pedido.
+            </DisclaimerCard>
+          )}
 
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -203,8 +241,12 @@ export default function Atribuicao() {
             />
             <KpiCard
               label="ROI / ROAS"
-              value={`${data.roas.toFixed(1)}x`}
-              sub="R$ 1 investido = R$ X em vendas"
+              value={data.roas != null ? `${data.roas.toFixed(1)}x` : "—"}
+              sub={
+                data.roasDenominatorMissing
+                  ? "Informe custo de envio nas campanhas (custo total) para calcular ROAS."
+                  : `Com base em ${fmt(data.totalSpendBrl)} em custo de envio de campanhas.`
+              }
               icon={TrendingUp}
               color="bg-primary/10 text-primary"
             />
@@ -218,7 +260,7 @@ export default function Atribuicao() {
             <KpiCard
               label="Conversões"
               value={data.totalConversions.toLocaleString("pt-BR")}
-              sub={data.hasAttribution ? "atribuídas (last-touch 72h)" : "estimado"}
+              sub={data.hasAttribution ? `atribuídas (last-touch ${windowLabel})` : "estimado (sem eventos no período)"}
               icon={Zap}
               color="bg-violet-500/10 text-violet-600"
             />
@@ -227,7 +269,7 @@ export default function Atribuicao() {
           {/* Revenue time series */}
           <div className="bg-card border rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-black text-sm uppercase tracking-widest">Receita Recuperada por Dia</h2>
+              <h2 className="font-black text-sm uppercase tracking-widest">Receita recuperada por dia</h2>
               <span className="text-[10px] text-muted-foreground bg-muted px-2 py-1 rounded-full font-bold uppercase tracking-widest">
                 últimos {period} dias
               </span>
@@ -261,29 +303,36 @@ export default function Atribuicao() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            <p className="text-[10px] text-muted-foreground">
+              Datas no fuso America/Sao_Paulo a partir do dia gravado em analytics.
+            </p>
           </div>
 
           {/* Per-campaign + Source breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Per-campaign table */}
             <div className="lg:col-span-3 bg-card border rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between">
-                <h2 className="font-black text-sm uppercase tracking-widest">Por Campanha</h2>
+                <h2 className="font-black text-sm uppercase tracking-widest">Por campanha</h2>
                 {!data.hasAttribution && (
                   <div className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1 rounded-full">
-                    <Info className="w-3 h-3" /> Dados insuficientes
+                    <Info className="w-3 h-3" aria-hidden /> Dados insuficientes
                   </div>
                 )}
               </div>
 
               {data.byCampaign.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 px-6 text-center space-y-2">
-                  <Target className="w-8 h-8 text-muted-foreground/40" />
+                  <Target className="w-8 h-8 text-muted-foreground/40" aria-hidden />
                   <p className="text-sm text-muted-foreground font-medium">Nenhuma atribuição por campanha ainda</p>
-                  <p className="text-xs text-muted-foreground">Assim que pedidos forem rastreados, eles aparecerão aqui.</p>
+                  <p className="text-xs text-muted-foreground max-w-sm">
+                    {data.hasAttribution
+                      ? "Assim que pedidos forem atribuídos a campanhas desta loja, eles aparecerão aqui."
+                      : "Há receita em analytics no período, mas sem eventos de pedido rastreados — o detalhe por campanha depende de integrações e webhooks."}
+                  </p>
                 </div>
               ) : (
                 <table className="w-full text-left">
+                  <caption className="sr-only">Receita e conversões atribuídas por campanha</caption>
                   <thead>
                     <tr className="bg-muted/20 border-b border-border/50">
                       <th className="px-5 py-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Campanha</th>
@@ -330,63 +379,72 @@ export default function Atribuicao() {
               )}
             </div>
 
-            {/* Source breakdown donut */}
             <div className="lg:col-span-2 bg-card border rounded-2xl p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-black text-sm uppercase tracking-widest">Por Origem</h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="font-black text-sm uppercase tracking-widest">Por origem</h2>
                 {!data.hasAttribution && (
                   <Badge className="text-[8px] bg-amber-500/10 text-amber-600 border-none font-black">Estimado</Badge>
                 )}
               </div>
 
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <Pie
-                    data={donutData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={48}
-                    outerRadius={72}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {donutData.map((_, i) => (
-                      <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(v: number) => [fmt(v)]}
-                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              {donutData.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-8 text-center">Sem valores para exibir no gráfico neste período.</p>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <PieChart>
+                      <Pie
+                        data={donutData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={48}
+                        outerRadius={72}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {donutData.map((_, i) => (
+                          <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(v: number) => [fmt(v)]}
+                        contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
 
-              <div className="space-y-3">
-                {donutData.map((d, i) => (
-                  <div key={d.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: DONUT_COLORS[i] }} />
-                      <span className="text-xs font-bold">{d.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs font-black">{fmt(d.value)}</span>
-                      <span className="text-[10px] text-muted-foreground ml-1.5">
-                        {data.totalRevenue > 0 ? `${Math.round((d.value / data.totalRevenue) * 100)}%` : "0%"}
-                      </span>
-                    </div>
+                  <div className="space-y-3">
+                    {donutData.map((d, i) => (
+                      <div key={d.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                          <span className="text-xs font-bold">{d.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs font-black">{fmt(d.value)}</span>
+                          <span className="text-[10px] text-muted-foreground ml-1.5">
+                            {data.totalRevenue > 0 ? `${Math.round((d.value / data.totalRevenue) * 100)}%` : "0%"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
+              {data.usesEstimatedSourceSplit && (
+                <p className="text-[10px] text-muted-foreground border-t pt-3">
+                  Proporções ilustrativas até existirem eventos de atribuição por pedido.
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Cart Recovery */}
           {data.cartStats.total > 0 && (
             <div className="bg-card border rounded-2xl p-6 space-y-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ShoppingCart className="w-4 h-4 text-amber-500" />
-                  <h2 className="font-black text-sm uppercase tracking-widest">Recuperação de Carrinho Abandonado</h2>
+                  <ShoppingCart className="w-4 h-4 text-amber-500" aria-hidden />
+                  <h2 className="font-black text-sm uppercase tracking-widest">Recuperação de carrinho abandonado</h2>
                 </div>
                 <Button
                   variant="ghost"
@@ -430,10 +488,14 @@ export default function Atribuicao() {
             </div>
           )}
 
-          {/* Attribution method note */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-card border rounded-2xl p-6 space-y-4">
-              <h3 className="font-black text-sm uppercase tracking-widest">Modelos comparativos de atribuição</h3>
+              <div className="space-y-2">
+                <h3 className="font-black text-sm uppercase tracking-widest">Modelos comparativos de atribuição</h3>
+                <DisclaimerCard title="Ilustrativo. ">
+                  First-touch e linear aqui são aproximações a partir do last-touch — não usam jornada multi-toque real. Use para comparar ordens de grandeza, não para fechar orçamento de mídia.
+                </DisclaimerCard>
+              </div>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart
                   data={[
@@ -447,30 +509,75 @@ export default function Atribuicao() {
                   <XAxis dataKey="modelo" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `R$${Math.round(v / 1000)}k`} />
                   <Tooltip formatter={(v: number) => [fmt(v)]} />
-                  <Bar dataKey="campanhas" stackId="a" fill="#7c3aed" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="automacoes" stackId="a" fill="#10b981" />
-                  <Bar dataKey="direto" stackId="a" fill="#f59e0b" />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="campanhas" name="Campanhas" stackId="a" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="automacoes" name="Automações" stackId="a" fill="#10b981" />
+                  <Bar dataKey="direto" name="Direto" stackId="a" fill="#f59e0b" />
                 </BarChart>
               </ResponsiveContainer>
-              <p className="text-xs text-muted-foreground">
-                Use este comparativo para evitar decisões de orçamento baseadas apenas em um único modelo.
-              </p>
             </div>
 
             <div className="bg-card border rounded-2xl p-6 space-y-4">
-              <h3 className="font-black text-sm uppercase tracking-widest">Cenários de decisão e risco de canal</h3>
+              <div className="space-y-2">
+                <h3 className="font-black text-sm uppercase tracking-widest">Cenários de decisão e risco de canal</h3>
+                <DisclaimerCard title="Simulação interna. ">
+                  Não integra Meta Ads nem Google Ads. Valores derivados do split CRM / direto / campanhas do próprio painel.
+                </DisclaimerCard>
+              </div>
               <div className="space-y-3 rounded-xl border p-3">
                 <div>
-                  <div className="flex justify-between text-[11px]"><span>Corte Meta</span><span>{metaCut}%</span></div>
-                  <input type="range" min={0} max={50} value={metaCut} onChange={(e) => setMetaCut(Number(e.target.value))} className="w-full" />
+                  <div className="flex justify-between text-[11px]">
+                    <span id="meta-cut-label">Corte Meta</span>
+                    <span aria-live="polite">{metaCut}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={50}
+                    value={metaCut}
+                    onChange={(e) => setMetaCut(Number(e.target.value))}
+                    className="w-full"
+                    aria-labelledby="meta-cut-label"
+                    aria-valuemin={0}
+                    aria-valuemax={50}
+                    aria-valuenow={metaCut}
+                  />
                 </div>
                 <div>
-                  <div className="flex justify-between text-[11px]"><span>Corte Google</span><span>{googleCut}%</span></div>
-                  <input type="range" min={0} max={50} value={googleCut} onChange={(e) => setGoogleCut(Number(e.target.value))} className="w-full" />
+                  <div className="flex justify-between text-[11px]">
+                    <span id="google-cut-label">Corte Google</span>
+                    <span aria-live="polite">{googleCut}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={50}
+                    value={googleCut}
+                    onChange={(e) => setGoogleCut(Number(e.target.value))}
+                    className="w-full"
+                    aria-labelledby="google-cut-label"
+                    aria-valuemin={0}
+                    aria-valuemax={50}
+                    aria-valuenow={googleCut}
+                  />
                 </div>
                 <div>
-                  <div className="flex justify-between text-[11px]"><span>Aumento CRM</span><span>{crmIncrease}%</span></div>
-                  <input type="range" min={0} max={50} value={crmIncrease} onChange={(e) => setCrmIncrease(Number(e.target.value))} className="w-full" />
+                  <div className="flex justify-between text-[11px]">
+                    <span id="crm-label">Aumento CRM</span>
+                    <span aria-live="polite">{crmIncrease}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={50}
+                    value={crmIncrease}
+                    onChange={(e) => setCrmIncrease(Number(e.target.value))}
+                    className="w-full"
+                    aria-labelledby="crm-label"
+                    aria-valuemin={0}
+                    aria-valuemax={50}
+                    aria-valuenow={crmIncrease}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
@@ -489,7 +596,7 @@ export default function Atribuicao() {
               </div>
               <div className="space-y-2">
                 {data.channelRisk.map((r) => (
-                  <div key={r.channel} className="flex items-center justify-between text-xs rounded-lg bg-muted/30 p-2">
+                  <div key={r.channel} className="flex items-center justify-between text-xs rounded-lg bg-muted/30 p-2 gap-2 flex-wrap">
                     <span className="font-semibold">{r.channel}</span>
                     <span className="text-muted-foreground">assistido {fmt(r.assistedRevenue)}</span>
                     <span className={cn(
@@ -505,11 +612,13 @@ export default function Atribuicao() {
           </div>
 
           <div className="flex items-start gap-3 bg-muted/30 border border-border/50 rounded-2xl p-4">
-            <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden />
             <p className="text-xs text-muted-foreground leading-relaxed">
-              <strong className="text-foreground">Modelo de atribuição:</strong> Last-touch dentro de uma janela de 72 horas.
-              Uma venda é atribuída ao LTV Boost se o cliente recebeu uma mensagem (campanha ou automação) até 72h antes de comprar.
-              {!data.hasAttribution && " Dados de atribuição por campanha estarão disponíveis assim que os primeiros pedidos forem rastreados."}
+              <strong className="text-foreground">Modelo de atribuição:</strong>{" "}
+              Last-touch dentro de {ATTRIBUTION_WINDOW_DAYS} dia(s) de calendário ({windowLabel}) após envio rastreado,
+              alinhado ao job de conversão e ao campo <code className="text-[10px] bg-muted px-1 rounded">attribution_window_days</code> das campanhas (padrão 3 dias).
+              Uma venda entra em <code className="text-[10px] bg-muted px-1 rounded">attribution_events</code> quando o pedido é associado a envio recente ou a cupom/UTM da loja.
+              {!data.hasAttribution && " Dados por campanha aparecem quando os primeiros eventos forem gravados."}
             </p>
           </div>
         </>

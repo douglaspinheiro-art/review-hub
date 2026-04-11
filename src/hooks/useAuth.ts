@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
@@ -22,6 +22,24 @@ export function useAuth() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
+    if (error && error.code !== "PGRST116") {
+      console.error("fetchProfile error:", error.message);
+    }
+    setProfile(data as Profile | null);
+    setLoading(false);
+  }, []);
+
+  const refetchProfile = useCallback(async () => {
+    if (!user) return;
+    await fetchProfile(user.id);
+  }, [user, fetchProfile]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -38,20 +56,7 @@ export function useAuth() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  async function fetchProfile(userId: string) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
-    if (error && error.code !== "PGRST116") {
-      console.error("fetchProfile error:", error.message);
-    }
-    setProfile(data as Profile | null);
-    setLoading(false);
-  }
+  }, [fetchProfile]);
 
   async function signIn(email: string, password: string) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -78,5 +83,5 @@ export function useAuth() {
   // Fail-safe: only mark as paid when profile is loaded and explicitly non-starter.
   const isPaid = !!profile && profile.plan !== "starter";
 
-  return { user, session, profile, loading, signIn, signUp, signOut, isTrialActive, isPaid };
+  return { user, session, profile, loading, signIn, signUp, signOut, isTrialActive, isPaid, refetchProfile };
 }

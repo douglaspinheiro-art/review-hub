@@ -1,9 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { MessageCircle, Search, Clock, Send, Loader2, WifiOff, Settings, AlertCircle, Sparkles, User, Check, MoreVertical, Plus, Smile, Paperclip, Zap as ZapIcon, Minus } from "lucide-react";
+import { MessageCircle, Search, Clock, Send, Loader2, WifiOff, Settings, AlertCircle, Sparkles, User, Check, Zap as ZapIcon } from "lucide-react";
 import { ConversationListItem, getSlaBucket } from "@/components/dashboard/ConversationListItem";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useConversations, useMessages, useConversationIdsByMessageSearch, useInboxRoutingSettings } from "@/hooks/useDashboard";
+import {
+  useConversations,
+  useMessages,
+  useConversationIdsByMessageSearch,
+  useInboxRoutingSettings,
+  getCurrentUserAndStore,
+  type InboxAssigneeFilter,
+} from "@/hooks/useDashboard";
 import { useWhatsAppSender } from "@/hooks/useWhatsAppSender";
 import { useAuth } from "@/hooks/useAuth";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,12 +27,68 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { TrialGate } from "@/components/dashboard/TrialGate";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
+import type { Database } from "@/integrations/supabase/types";
+
+type DbConversation = Database["public"]["Tables"]["conversations"]["Row"];
+type DbConversationUpdate = Database["public"]["Tables"]["conversations"]["Update"];
+type DbMessage = Database["public"]["Tables"]["messages"]["Row"];
+type DbMessageInsert = Database["public"]["Tables"]["messages"]["Insert"];
+type DbConversationNote = Database["public"]["Tables"]["conversation_notes"]["Row"];
+type DbConversationNoteInsert = Database["public"]["Tables"]["conversation_notes"]["Insert"];
+
+type InboxContactEmbed = {
+  id: string;
+  name: string;
+  phone: string;
+  tags?: string[] | null;
+  total_orders?: number | null;
+  total_spent?: number | null;
+};
+
+/** Linha de `useConversations` (embed + colunas de operação; tipos gerados podem omitir algumas). */
+type InboxConversationRow = Pick<
+  DbConversation,
+  "id" | "status" | "last_message" | "last_message_at" | "unread_count"
+> & {
+  assigned_to?: string | null;
+  assigned_to_name?: string | null;
+  priority?: string | null;
+  sla_due_at?: string | null;
+  contacts?: InboxContactEmbed | null;
+};
+
+type PriorityLevel = "low" | "normal" | "high" | "urgent";
+
+function parsePriorityLevel(value: string | null | undefined): PriorityLevel {
+  if (value === "low" || value === "high" || value === "urgent") return value;
+  return "normal";
+}
+
+function inboxSidebarContact(
+  embed: InboxContactEmbed | null | undefined,
+): { id: string; name: string; phone: string; tags?: string[]; total_orders?: number; total_spent?: number } | null {
+  if (!embed?.id || !embed.phone) return null;
+  return {
+    id: embed.id,
+    name: embed.name,
+    phone: embed.phone,
+    tags: embed.tags ?? undefined,
+    total_orders: embed.total_orders ?? undefined,
+    total_spent: embed.total_spent ?? undefined,
+  };
+}
 
 const STATUS_FILTERS = [
   { label: "Todas", value: "all" },
   { label: "Abertas", value: "open" },
   { label: "Pendentes", value: "pending" },
   { label: "Fechadas", value: "closed" },
+];
+
+const ASSIGNEE_FILTERS: { label: string; value: InboxAssigneeFilter }[] = [
+  { label: "Todas", value: "all" },
+  { label: "Minhas", value: "mine" },
+  { label: "Sem responsável", value: "unassigned" },
 ];
 
 // getSlaBucket, getAvatarColor, and STATUS_COLORS are now in ConversationListItem.tsx
@@ -37,8 +100,13 @@ function formatDateSeparator(date: Date) {
 }
 
 export default function Inbox() {
+  const [searchParams] = useSearchParams();
+  const initialSearchFromUrl = searchParams.get("q") ?? searchParams.get("phone") ?? "";
+
   const [statusFilter, setStatusFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [assigneeFilter, setAssigneeFilter] = useState<InboxAssigneeFilter>("all");
+  const [messageFetchLimit, setMessageFetchLimit] = useState(200);
+  const [search, setSearch] = useState(initialSearchFromUrl);
   const [tagFilter, setTagFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
@@ -53,21 +121,50 @@ export default function Inbox() {
   const [slaDueAt, setSlaDueAt] = useState("");
   const [priority, setPriority] = useState<"low" | "normal" | "high" | "urgent">("normal");
   const [internalNote, setInternalNote] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState(() => initialSearchFromUrl.trim());
   const [agentsDraft, setAgentsDraft] = useState("");
   const agentsFieldTouched = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastOpsSyncedForConversationId = useRef<string | null>(null);
   const queryClient = useQueryClient();
+  const { user, profile } = useAuth();
 
   useEffect(() => {
     const h = window.setTimeout(() => setDebouncedSearch(search.trim()), 320);
     return () => window.clearTimeout(h);
   }, [search]);
 
-  const { data: conversations = [], isLoading } = useConversations(statusFilter);
+  const convQuery = useConversations(statusFilter, {
+    assigneeFilter,
+    mineAssigneeLabel: profile?.full_name ?? null,
+  });
+  const conversations = useMemo(
+    () => (convQuery.data?.pages.flatMap((p) => p) ?? []) as InboxConversationRow[],
+    [convQuery.data],
+  );
+  const selectedConv = conversations.find((c) => c.id === selectedId);
+  const selectedContact = selectedConv?.contacts ?? null;
+
+  const isLoading = convQuery.isLoading;
+  const convListError = convQuery.isError;
+  const refetchConversations = convQuery.refetch;
+  const fetchNextConvPage = convQuery.fetchNextPage;
+  const hasNextConvPage = convQuery.hasNextPage;
+  const fetchingNextConvPage = convQuery.isFetchingNextPage;
+
   const { data: routingSettings } = useInboxRoutingSettings();
-  const { data: messageSearchIds = [], isFetching: searchingHistory } = useConversationIdsByMessageSearch(debouncedSearch);
+  const {
+    data: messageSearchIds = [],
+    isFetching: searchingHistory,
+    isError: messageSearchError,
+    refetch: refetchMessageSearch,
+  } = useConversationIdsByMessageSearch(debouncedSearch);
   const messageSearchSet = useMemo(() => new Set(messageSearchIds), [messageSearchIds]);
+
+  const messagesQueryKey = useMemo(
+    () => ["messages", selectedId, messageFetchLimit] as const,
+    [selectedId, messageFetchLimit],
+  );
 
   useEffect(() => {
     if (!routingSettings || agentsFieldTouched.current) return;
@@ -76,16 +173,15 @@ export default function Inbox() {
 
   const saveRoutingMutation = useMutation({
     mutationFn: async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth.user?.id;
-      if (!uid) throw new Error("no user");
+      const { userId, effectiveUserId } = await getCurrentUserAndStore();
+      if (!userId || !effectiveUserId) throw new Error("no user");
       const names = agentsDraft
         .split(/[,;\n]+/)
         .map((s) => s.trim())
         .filter(Boolean);
-      const { error } = await (supabase as any).from("inbox_routing_settings").upsert(
+      const { error } = await supabase.from("inbox_routing_settings").upsert(
         {
-          user_id: uid,
+          user_id: effectiveUserId,
           agent_names: names,
           updated_at: new Date().toISOString(),
         },
@@ -100,26 +196,41 @@ export default function Inbox() {
     },
     onError: () => toast.error("Não foi possível salvar a fila"),
   });
-  const { data: messages = [], isLoading: loadingMsgs } = useMessages(selectedId);
+  const {
+    data: messages = [],
+    isLoading: loadingMsgs,
+    isError: messagesError,
+    refetch: refetchMessages,
+  } = useMessages(selectedId, messageFetchLimit);
   const sender = useWhatsAppSender();
-  const { user } = useAuth();
-  const { data: conversationNotes = [] } = useQuery({
+  const { data: conversationNotes = [] } = useQuery<DbConversationNote[]>({
     queryKey: ["conversation_notes", selectedId],
     queryFn: async () => {
       if (!selectedId) return [];
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("conversation_notes")
         .select("*")
         .eq("conversation_id", selectedId)
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as DbConversationNote[];
     },
     enabled: !!selectedId,
   });
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+
+  useEffect(() => {
+    setMessageFetchLimit(200);
+  }, [selectedId]);
+
+  const lastInboundSignature = useMemo(() => {
+    const inbound = [...messages].reverse().find((m) => m.direction === "inbound");
+    if (!inbound) return "";
+    const c = String(inbound.content ?? "");
+    return `${inbound.id}:${inbound.created_at}:${c.slice(0, 120)}`;
+  }, [messages]);
 
   // Fetch AI Suggestion
   useEffect(() => {
@@ -127,31 +238,40 @@ export default function Inbox() {
       setAiSuggestion(null);
       return;
     }
-    
+
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.direction === "outbound") {
       setAiSuggestion(null);
       return;
     }
 
+    let cancelled = false;
     async function getSuggestion() {
       setLoadingAi(true);
       try {
         const { data, error } = await supabase.functions.invoke("ai-reply-suggest", {
-          body: { conversation_id: selectedId }
+          body: { conversation_id: selectedId },
         });
         if (error) throw error;
         const suggestion = data?.suggestion ?? data?.suggestions?.[0] ?? null;
-        setAiSuggestion(suggestion);
+        if (!cancelled) setAiSuggestion(suggestion);
       } catch (e) {
-        console.error("AI Error:", e);
+        if (!cancelled) {
+          setAiSuggestion(null);
+          toast.error("Não foi possível gerar sugestão de IA. Tente de novo em instantes.");
+        }
       } finally {
-        setLoadingAi(false);
+        if (!cancelled) setLoadingAi(false);
       }
     }
 
-    getSuggestion();
-  }, [selectedId, messages.length]);
+    void getSuggestion();
+    return () => {
+      cancelled = true;
+    };
+    // `lastInboundSignature` já reflete mudanças relevantes em `messages` (última inbound).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- evita refetch da IA a cada render da lista
+  }, [selectedId, lastInboundSignature]);
 
   // Real-time: messages for selected conversation
   useEffect(() => {
@@ -178,29 +298,40 @@ export default function Inbox() {
     };
   }, [selectedId, queryClient]);
 
-  // Real-time: conversations list
+  // Real-time: conversations list (tenant = loja ou dono)
   useEffect(() => {
-    if (!user?.id) return;
-    const channel = supabase
-      .channel(`conversations-list:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversations",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["conversations", user.id] });
-        }
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
+    void (async () => {
+      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      if (cancelled || !effectiveUserId) return;
+      const filter = storeId
+        ? `store_id=eq.${storeId}`
+        : `user_id=eq.${effectiveUserId}`;
+      const chName = `conversations-list:${storeId ?? effectiveUserId}`;
+      channel = supabase
+        .channel(chName)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "conversations",
+            filter,
+          },
+          () => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          },
+        )
+        .subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
     };
-  }, [queryClient, user?.id]);
+  }, [queryClient]);
 
   // Scroll to bottom when messages load or new message arrives
   useEffect(() => {
@@ -212,11 +343,13 @@ export default function Inbox() {
     if (!selectedId) return;
     const conv = conversations.find((c) => c.id === selectedId);
     if (!conv || conv.unread_count === 0) return;
-    supabase
+    void supabase
       .from("conversations")
       .update({ unread_count: 0 })
       .eq("id", selectedId)
-      .then(() => queryClient.invalidateQueries({ queryKey: ["conversations"] }));
+      .then(({ error }) => {
+        if (!error) queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      });
   }, [selectedId, conversations, queryClient]);
 
   const sendMutation = useMutation({
@@ -247,14 +380,15 @@ export default function Inbox() {
       }
 
       // 2. Always save to DB (local record)
-      const { error } = await supabase.from("messages").insert({
+      const insertRow: DbMessageInsert = {
         conversation_id: selectedId,
         content,
         direction: "outbound",
         status: externalId ? "sent" : "failed",
         type: payload.mode === "template" || payload.mode === "flow" ? "template" : "text",
         external_id: externalId ?? null,
-      });
+      };
+      const { error } = await supabase.from("messages").insert(insertRow);
       if (error) throw error;
 
       await supabase
@@ -263,34 +397,34 @@ export default function Inbox() {
         .eq("id", selectedId);
     },
     onMutate: async (newPayload) => {
-      await queryClient.cancelQueries({ queryKey: ["messages", selectedId] });
-      const previousMessages = queryClient.getQueryData(["messages", selectedId]);
+      await queryClient.cancelQueries({ queryKey: [...messagesQueryKey] });
+      const previousMessages = queryClient.getQueryData<DbMessage[]>([...messagesQueryKey]);
 
       if (selectedId) {
-        queryClient.setQueryData(["messages", selectedId], (old: any[] = []) => [
-          ...old,
-          {
-            id: `temp-${Date.now()}`,
-            content: newPayload.content,
-            direction: "outbound",
-            status: "sending",
-            created_at: new Date().toISOString(),
-            conversation_id: selectedId,
-            type: newPayload.mode === "template" || newPayload.mode === "flow" ? "template" : "text",
-          },
-        ]);
+        const optimistic: DbMessage = {
+          id: `temp-${Date.now()}`,
+          content: newPayload.content,
+          direction: "outbound",
+          status: "sending",
+          created_at: new Date().toISOString(),
+          conversation_id: selectedId,
+          type: newPayload.mode === "template" || newPayload.mode === "flow" ? "template" : "text",
+          external_id: null,
+          user_id: null,
+        };
+        queryClient.setQueryData<DbMessage[]>([...messagesQueryKey], (old = []) => [...old, optimistic]);
       }
 
       return { previousMessages };
     },
     onError: (err, newContent, context) => {
       if (selectedId && context?.previousMessages) {
-        queryClient.setQueryData(["messages", selectedId], context.previousMessages);
+        queryClient.setQueryData([...messagesQueryKey], context.previousMessages);
       }
       setSendError("Erro ao enviar mensagem. Tente novamente.");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["messages", selectedId] });
+      queryClient.invalidateQueries({ queryKey: [...messagesQueryKey] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
     onSuccess: () => {
@@ -323,13 +457,14 @@ export default function Inbox() {
 
   async function saveOpsMeta() {
     if (!selectedId) return;
-    const { error } = await (supabase as any)
+    const opsPatch = {
+      assigned_to_name: assigneeName || null,
+      priority,
+      sla_due_at: slaDueAt ? new Date(slaDueAt).toISOString() : null,
+    };
+    const { error } = await supabase
       .from("conversations")
-      .update({
-        assigned_to_name: assigneeName || null,
-        priority,
-        sla_due_at: slaDueAt ? new Date(slaDueAt).toISOString() : null,
-      })
+      .update(opsPatch as DbConversationUpdate)
       .eq("id", selectedId);
     if (!error) {
       void trackMoatEvent("ops_metadata_saved", {
@@ -344,11 +479,12 @@ export default function Inbox() {
 
   async function addInternalNote() {
     if (!selectedId || !internalNote.trim() || !user?.id) return;
-    const { error } = await (supabase as any).from("conversation_notes").insert({
+    const noteRow: DbConversationNoteInsert = {
       conversation_id: selectedId,
       user_id: user.id,
       note: internalNote.trim(),
-    });
+    };
+    const { error } = await supabase.from("conversation_notes").insert(noteRow);
     if (!error) {
       setInternalNote("");
       queryClient.invalidateQueries({ queryKey: ["conversation_notes", selectedId] });
@@ -356,22 +492,30 @@ export default function Inbox() {
     }
   }
 
-  const selectedConv = conversations.find((c) => c.id === selectedId);
-  const selectedContact = selectedConv?.contacts as { name: string; phone: string; tags: string[] } | null;
-
   useEffect(() => {
-    if (!selectedConv) return;
-    setAssigneeName((selectedConv as any).assigned_to_name ?? "");
-    setSlaDueAt((selectedConv as any).sla_due_at ? new Date((selectedConv as any).sla_due_at).toISOString().slice(0, 16) : "");
-    setPriority(((selectedConv as any).priority ?? "normal") as "low" | "normal" | "high" | "urgent");
-  }, [selectedConv?.id]);
+    if (!selectedId) {
+      setAssigneeName("");
+      setSlaDueAt("");
+      setPriority("normal");
+      lastOpsSyncedForConversationId.current = null;
+      return;
+    }
+    const conv = conversations.find((c) => c.id === selectedId);
+    if (!conv) return;
 
-  const uniqueTags: string[] = Array.from(new Set(
-    conversations.flatMap((c: any) => Array.isArray(c.contacts?.tags) ? c.contacts.tags : [])
-  ));
+    const switchedThread = lastOpsSyncedForConversationId.current !== selectedId;
+    if (!switchedThread) return;
+
+    lastOpsSyncedForConversationId.current = selectedId;
+    setAssigneeName(conv.assigned_to_name ?? "");
+    setSlaDueAt(conv.sla_due_at ? new Date(conv.sla_due_at).toISOString().slice(0, 16) : "");
+    setPriority(parsePriorityLevel(conv.priority));
+  }, [selectedId, conversations]);
+
+  const uniqueTags: string[] = Array.from(new Set(conversations.flatMap((c) => c.contacts?.tags ?? [])));
 
   const filtered = conversations.filter((c) => {
-    const contact = c.contacts as { name: string; phone: string; tags?: string[] } | null;
+    const contact = c.contacts;
     const matchesTag = tagFilter === "all" || !!contact?.tags?.includes(tagFilter);
     const term = search.trim().toLowerCase();
     const matchesSnippet =
@@ -383,18 +527,18 @@ export default function Inbox() {
     const matchesSearch = !term ? true : matchesSnippet || matchesHistory;
     return matchesTag && matchesSearch;
   });
-  const prioritized = [...filtered].sort((a: any, b: any) => {
-    const score = (row: any) => {
+  const prioritized = [...filtered].sort((a, b) => {
+    const score = (row: InboxConversationRow) => {
       const sla = getSlaBucket(row.sla_due_at);
-      const priority = row.priority === "urgent" ? 4 : row.priority === "high" ? 3 : row.priority === "normal" ? 2 : 1;
+      const pr = row.priority === "urgent" ? 4 : row.priority === "high" ? 3 : row.priority === "normal" ? 2 : 1;
       const unread = Number(row.unread_count ?? 0) > 0 ? 1 : 0;
       const slaScore = sla === "breach" ? 3 : sla === "soon" ? 2 : 0;
-      return (slaScore * 100) + (priority * 10) + unread;
+      return slaScore * 100 + pr * 10 + unread;
     };
     return score(b) - score(a);
   });
-  const slaBreaches = prioritized.filter((c: any) => getSlaBucket(c.sla_due_at) === "breach").length;
-  const urgentCount = prioritized.filter((c: any) => c.priority === "urgent" || c.priority === "high").length;
+  const slaBreaches = prioritized.filter((c) => getSlaBucket(c.sla_due_at) === "breach").length;
+  const urgentCount = prioritized.filter((c) => c.priority === "urgent" || c.priority === "high").length;
 
   return (
     <div className="flex h-full -m-4 md:-m-6 overflow-hidden">
@@ -455,6 +599,58 @@ export default function Inbox() {
               </button>
             ))}
           </div>
+          <div className="flex gap-1 flex-wrap items-center">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase shrink-0">Fila</span>
+            {ASSIGNEE_FILTERS.map((f) => {
+              const mineDisabled = f.value === "mine" && !(profile?.full_name ?? "").trim();
+              return (
+                <button
+                  key={f.value}
+                  type="button"
+                  title={mineDisabled ? "Defina seu nome completo no perfil para usar \"Minhas\"." : undefined}
+                  disabled={mineDisabled}
+                  onClick={() => setAssigneeFilter(f.value)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors",
+                    assigneeFilter === f.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:text-foreground",
+                    mineDisabled && "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+          {convListError && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive flex flex-col gap-2">
+              <span>Não foi possível carregar as conversas.</span>
+              <Button type="button" size="sm" variant="outline" className="h-7 w-fit text-xs" onClick={() => void refetchConversations()}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+          {messageSearchError && debouncedSearch.length >= 2 && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive flex flex-col gap-2">
+              <span>Erro ao buscar no histórico de mensagens.</span>
+              <Button type="button" size="sm" variant="outline" className="h-7 w-fit text-xs" onClick={() => void refetchMessageSearch()}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+          {!isLoading && conversations.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border bg-muted/30 px-2 py-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">SLA estourado</p>
+                <p className="text-sm font-black text-red-500">{slaBreaches}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 px-2 py-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Alta prioridade</p>
+                <p className="text-sm font-black text-amber-500">{urgentCount}</p>
+              </div>
+            </div>
+          )}
           {uniqueTags.length > 0 && (
             <div className="flex gap-1 flex-wrap">
               <button
@@ -495,16 +691,6 @@ export default function Inbox() {
                     </div>
                     <Skeleton className="h-3 w-full" />
                   </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-lg border bg-muted/30 px-2 py-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">SLA estourado</p>
-              <p className="text-sm font-black text-red-500">{slaBreaches}</p>
-            </div>
-            <div className="rounded-lg border bg-muted/30 px-2 py-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Alta prioridade</p>
-              <p className="text-sm font-black text-amber-500">{urgentCount}</p>
-            </div>
-          </div>
                 </div>
               ))}
             </div>
@@ -552,13 +738,29 @@ export default function Inbox() {
                 unread_count: conv.unread_count,
                 last_message: conv.last_message,
                 last_message_at: conv.last_message_at,
-                sla_due_at: (conv as { sla_due_at?: string | null }).sla_due_at,
-                contacts: conv.contacts as { name: string; phone: string } | null,
+                sla_due_at: conv.sla_due_at,
+                contacts: conv.contacts
+                  ? { name: conv.contacts.name, phone: conv.contacts.phone }
+                  : null,
               }}
               isSelected={selectedId === conv.id}
               onClick={setSelectedId}
             />
           ))}
+          {!isLoading && hasNextConvPage && (
+            <div className="p-3 border-t">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-full text-xs"
+                disabled={fetchingNextConvPage}
+                onClick={() => void fetchNextConvPage()}
+              >
+                {fetchingNextConvPage ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Carregar mais conversas"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -601,7 +803,9 @@ export default function Inbox() {
             <div className="h-14 border-b bg-card px-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <button
+                  type="button"
                   className="md:hidden text-muted-foreground hover:text-foreground"
+                  aria-label="Voltar à lista de conversas"
                   onClick={() => setSelectedId(null)}
                 >
                   ←
@@ -612,10 +816,10 @@ export default function Inbox() {
                 <div>
                   <p className="font-medium text-sm leading-none flex flex-wrap items-center gap-2">
                     <span>{selectedContact?.name ?? selectedContact?.phone ?? "—"}</span>
-                    {getSlaBucket((selectedConv as { sla_due_at?: string | null })?.sla_due_at) === "breach" && (
+                    {getSlaBucket(selectedConv?.sla_due_at) === "breach" && (
                       <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-5">SLA estourado</Badge>
                     )}
-                    {getSlaBucket((selectedConv as { sla_due_at?: string | null })?.sla_due_at) === "soon" && (
+                    {getSlaBucket(selectedConv?.sla_due_at) === "soon" && (
                       <Badge className="text-[9px] px-1.5 py-0 h-5 bg-amber-500 hover:bg-amber-500 text-white border-0">SLA em até 1h</Badge>
                     )}
                   </p>
@@ -681,7 +885,7 @@ export default function Inbox() {
               />
               <select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as any)}
+                onChange={(e) => setPriority(e.target.value as PriorityLevel)}
                 className="h-8 text-xs rounded-md border bg-background px-2"
               >
                 <option value="low">Prioridade baixa</option>
@@ -698,6 +902,27 @@ export default function Inbox() {
               <div className="flex-1 flex flex-col overflow-hidden relative">
                 {/* Mensagens */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {messagesError && (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive flex flex-col gap-2 mb-2">
+                      <span>Não foi possível carregar as mensagens.</span>
+                      <Button type="button" size="sm" variant="outline" className="h-7 w-fit text-xs" onClick={() => void refetchMessages()}>
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  )}
+                  {!loadingMsgs && messages.length > 0 && messages.length >= messageFetchLimit && messageFetchLimit < 2000 && (
+                    <div className="flex justify-center pb-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => setMessageFetchLimit((n) => Math.min(n + 100, 2000))}
+                      >
+                        Carregar mensagens anteriores
+                      </Button>
+                    </div>
+                  )}
                   {loadingMsgs && (
                     <div className="space-y-4 py-4">
                       {[1, 2, 3, 4].map((i) => (
@@ -813,6 +1038,12 @@ export default function Inbox() {
                   </div>
                 )}
 
+                {sender.connection?.provider === "meta_cloud" && sender.isReady && (
+                  <div className="px-4 py-2 text-[11px] text-muted-foreground border-t bg-muted/15 shrink-0 leading-relaxed">
+                    <strong className="text-foreground">WhatsApp Cloud (Meta):</strong> mensagens de sessão livre só dentro da janela de atendimento de 24h após a última mensagem do cliente. Fora disso, use o modo <strong>Botão CTA</strong> ou <strong>Lista/Flow</strong> com templates aprovados no Gerenciador da Meta.
+                  </div>
+                )}
+
                 {/* Input */}
                 <div className="border-t p-4 bg-card shrink-0 space-y-3">
                   <div className="bg-muted/20 border rounded-lg p-2 space-y-2">
@@ -830,7 +1061,7 @@ export default function Inbox() {
                     </div>
                     {conversationNotes.length > 0 && (
                       <div className="max-h-20 overflow-y-auto space-y-1">
-                        {(conversationNotes as any[]).slice(0, 4).map((n) => (
+                        {conversationNotes.slice(0, 4).map((n) => (
                           <div key={n.id} className="text-[11px] text-muted-foreground bg-background rounded px-2 py-1">
                             {n.note}
                           </div>
@@ -905,12 +1136,19 @@ export default function Inbox() {
                       />
                     </div>
                   )}
-                  {aiSuggestion && !draft && (
+                  {loadingAi && !draft && (
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-2 px-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      Gerando sugestão de resposta…
+                    </p>
+                  )}
+                  {aiSuggestion && !draft && !loadingAi && (
                     <div className="flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2">
                       <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                         <Sparkles className="w-3.5 h-3.5 text-primary" />
                       </div>
                       <button 
+                        type="button"
                         onClick={() => {
                           setDraft(aiSuggestion);
                           if (selectedId) {
@@ -940,21 +1178,10 @@ export default function Inbox() {
                       disabled={sendMutation.isPending}
                     />
 
-                    <div className="flex items-center justify-between px-1 pb-1">
-                      <div className="flex items-center gap-0.5">
-                        <button className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
-                          <Smile className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
-                          <Paperclip className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
-                          <ZapIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-
+                    <div className="flex items-center justify-end px-1 pb-1">
                       <TrialGate action="enviar mensagens">
                         <button
+                          type="button"
                           onClick={handleSend}
                           disabled={!draft.trim() || sendMutation.isPending}
                           className="h-9 px-4 bg-primary text-primary-foreground rounded-xl text-[13px] font-bold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
@@ -973,8 +1200,8 @@ export default function Inbox() {
 
               {/* Sidebar do contato */}
               {showSidebar && (
-                <ContactInfoSidebar 
-                  contact={selectedContact as any} 
+                <ContactInfoSidebar
+                  contact={inboxSidebarContact(selectedContact)}
                   className="hidden lg:flex border-l border-t-0"
                 />
               )}

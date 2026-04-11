@@ -9,6 +9,7 @@ import {
 } from "../_shared/edge-utils.ts";
 import { writeAuditLog } from "../_shared/audit.ts";
 import { validateRequest } from "../_shared/validation.ts";
+import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +28,11 @@ const QueryParamsSchema = z.object({
 const ShopifyOrderSchema = z.object({
   id: z.union([z.string(), z.number()]).optional(),
   total_price: z.string().optional().default("0"),
+  total_discounts: z.string().optional(),
+  total_shipping_price_set: z.object({
+    shop_money: z.object({ amount: z.string().optional() }).optional(),
+  }).optional(),
+  payment_gateway_names: z.array(z.string()).optional(),
   customer: z.object({ email: z.string().email().optional(), phone: z.string().optional() }).optional(),
   financial_status: z.string().optional(),
   line_items: z.array(z.object({
@@ -81,6 +87,9 @@ const VtexOrderSchema = z.object({
 const WooCommerceOrderSchema = z.object({
   id: z.union([z.string(), z.number()]).optional(),
   total: z.string().optional().default("0"),
+  discount_total: z.string().optional(),
+  shipping_lines: z.array(z.object({ total: z.string().optional() })).optional(),
+  payment_method: z.string().optional(),
   billing: z.object({
     email: z.string().optional(),
     phone: z.string().optional(),
@@ -143,9 +152,97 @@ interface NormalizedOrder {
   utm_source?: string | null;
   utm_medium?: string | null;
   utm_campaign?: string | null;
+  valor_desconto?: number | null;
+  valor_frete?: number | null;
+  payment_method?: string | null;
+  payment_installments?: number | null;
+}
+
+/** BR phone digits with country 55 when possible (alinhado ao webhook-cart). */
+function normalizePhoneBr(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length >= 12) return digits;
+  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
+  return digits;
+}
+
+/** Marca carrinhos abertos como recuperados e cancela lembretes pendentes da cadência. */
+async function markAbandonedCartsRecoveredAndCancelSchedule(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    storeId: string;
+    userId: string;
+    clienteId: string | null;
+    phoneNorm: string;
+    orderValue: number;
+    requestId: string;
+  },
+) {
+  const { storeId, userId, clienteId, phoneNorm, orderValue, requestId } = params;
+  const cartIdSet = new Set<string>();
+
+  if (clienteId) {
+    const { data: rows, error } = await supabase
+      .from("abandoned_carts")
+      .select("id")
+      .eq("store_id", storeId)
+      .eq("customer_id", clienteId)
+      .in("status", ["pending", "processing", "message_sent"]);
+    if (error) console.warn(`[${requestId}] abandoned_carts by customer:`, error.message);
+    for (const r of rows ?? []) cartIdSet.add(r.id);
+  }
+
+  if (phoneNorm.length >= 12) {
+    const { data: rows, error } = await supabase
+      .from("abandoned_carts")
+      .select("id")
+      .eq("store_id", storeId)
+      .eq("customer_phone", phoneNorm)
+      .in("status", ["pending", "processing", "message_sent"]);
+    if (error) console.warn(`[${requestId}] abandoned_carts by phone:`, error.message);
+    for (const r of rows ?? []) cartIdSet.add(r.id);
+  }
+
+  const cartIds = [...cartIdSet];
+  if (cartIds.length === 0) return;
+
+  const nowIso = new Date().toISOString();
+  const { error: upErr } = await supabase
+    .from("abandoned_carts")
+    .update({
+      status: "recovered",
+      recovered_at: nowIso,
+      recovered_value: orderValue,
+    })
+    .in("id", cartIds);
+  if (upErr) console.warn(`[${requestId}] abandoned_carts recover:`, upErr.message);
+
+  for (const cid of cartIds) {
+    const { error: cErr } = await supabase
+      .from("scheduled_messages")
+      .update({ status: "cancelled" })
+      .eq("user_id", userId)
+      .eq("store_id", storeId)
+      .eq("status", "pending")
+      .filter("metadata->>cart_id", "eq", cid);
+    if (cErr) console.warn(`[${requestId}] scheduled_messages cancel cart=${cid}:`, cErr.message);
+  }
+}
+
+/** Status canônico interno para alertas e relatórios. */
+function mapInternalStatus(_platform: string, status: string | undefined): string {
+  if (!status) return "unknown";
+  const s = status.toLowerCase();
+  if (["cancelled", "canceled", "voided", "refunded", "failed"].includes(s)) return "cancelled";
+  if (["paid", "completed", "processing", "authorized", "fulfilled", "payment-approved", "invoice"].includes(s)) {
+    return "paid_or_processing";
+  }
+  if (["pending", "pending_payment", "on_hold", "open"].includes(s)) return "pending";
+  return "other";
 }
 
 function normalizeShopify(raw: z.infer<typeof ShopifyOrderSchema>): NormalizedOrder {
+  const freteRaw = raw.total_shipping_price_set?.shop_money?.amount;
   const order: NormalizedOrder = {
     external_id: raw.id?.toString(),
     valor: parseFloat(raw.total_price || "0"),
@@ -158,6 +255,9 @@ function normalizeShopify(raw: z.infer<typeof ShopifyOrderSchema>): NormalizedOr
       qtd: i.quantity || 1,
     })),
     cupom: raw.discount_codes?.[0]?.code,
+    valor_desconto: raw.total_discounts ? parseFloat(raw.total_discounts) || null : null,
+    valor_frete: freteRaw ? parseFloat(freteRaw) || null : null,
+    payment_method: raw.payment_gateway_names?.[0] ?? null,
   };
   if (raw.landing_site) {
     try {
@@ -222,6 +322,7 @@ function normalizeVtex(raw: z.infer<typeof VtexOrderSchema>): NormalizedOrder {
 function normalizeWooCommerce(raw: z.infer<typeof WooCommerceOrderSchema>): NormalizedOrder {
   const utmMeta = (raw.meta_data || []);
   const getUtm = (key: string) => utmMeta.find(m => m.key === key)?.value as string | undefined;
+  const shipTotal = (raw.shipping_lines || []).reduce((s, l) => s + parseFloat(l.total || "0"), 0);
   return {
     external_id: raw.id?.toString(),
     valor: parseFloat(raw.total || "0"),
@@ -237,6 +338,9 @@ function normalizeWooCommerce(raw: z.infer<typeof WooCommerceOrderSchema>): Norm
     utm_source: getUtm("_wc_order_attribution_utm_source"),
     utm_medium: getUtm("_wc_order_attribution_utm_medium"),
     utm_campaign: getUtm("_wc_order_attribution_utm_campaign"),
+    valor_desconto: raw.discount_total ? parseFloat(raw.discount_total) || null : null,
+    valor_frete: shipTotal > 0 ? shipTotal : null,
+    payment_method: raw.payment_method ?? null,
   };
 }
 
@@ -314,10 +418,10 @@ serve(async (req) => {
     );
   }
 
-  const { platform, loja_id: lojaId } = paramsResult.data;
+  const { platform, loja_id: storeId } = paramsResult.data;
 
   const ip = getClientIp(req);
-  const rateKey = `integration-gateway:${lojaId}:${ip}`;
+  const rateKey = `integration-gateway:${storeId}:${ip}`;
   const limit = await checkDistributedRateLimit(
     supabase,
     rateKey,
@@ -330,7 +434,7 @@ serve(async (req) => {
       resource: "integration-gateway",
       result: "failure",
       ip,
-      tenant_id: lojaId,
+      tenant_id: storeId,
       metadata: { request_id: requestId, platform },
     });
     return rateLimitedResponseWithRetry(limit.retryAfterSeconds);
@@ -344,12 +448,21 @@ serve(async (req) => {
   }
 
   try {
+    const { data: store, error: storeErr } = await supabase.from("stores").select("user_id").eq("id", storeId).single();
+    if (storeErr || !store?.user_id) {
+      return new Response(JSON.stringify({ error: "Loja/store não encontrada", store_id: storeId }), { status: 404, headers: { ...cors, "Content-Type": "application/json" } });
+    }
+
     let normalizedOrder: NormalizedOrder | null = null;
 
     // --- LOG ---
     const { data: logEntry } = await supabase.from("webhook_logs").insert({
+      event_type: "ecommerce_order",
+      source: platform,
+      status: "received",
+      store_id: storeId,
+      user_id: store.user_id,
       plataforma: platform,
-      loja_id: lojaId,
       payload_bruto: rawBody,
     }).select().single();
 
@@ -400,17 +513,17 @@ serve(async (req) => {
       case "custom":
         // Custom platform — log only, no normalization
         await supabase.from("webhook_logs").update({ status_processamento: "custom_recebido" }).eq("id", logEntry?.id);
-        console.log(`[${requestId}] integration-gateway custom platform=${platform} loja=${lojaId} elapsed_ms=${Date.now() - startedAt}`);
+        console.log(`[${requestId}] integration-gateway custom platform=${platform} store=${storeId} elapsed_ms=${Date.now() - startedAt}`);
         return new Response(JSON.stringify({ success: true, message: "Custom webhook logged", request_id: requestId }), { headers: { ...cors, "Content-Type": "application/json" } });
     }
 
     if (normalizedOrder) {
       // 1. Idempotency check
       const { data: existing } = await supabase
-        .from("pedidos_v3")
+        .from("orders_v3")
         .select("id")
         .eq("pedido_externo_id", normalizedOrder.external_id)
-        .eq("loja_id", lojaId)
+        .eq("store_id", storeId)
         .maybeSingle();
 
       if (existing) {
@@ -418,64 +531,149 @@ serve(async (req) => {
         return new Response(JSON.stringify({ success: true, message: "Duplicate ignored" }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
 
-      // 2. Upsert customer
-      const { data: loja } = await supabase.from("lojas").select("user_id").eq("id", lojaId).single();
-      const { data: cliente } = await supabase.from("clientes").upsert({
-        loja_id: lojaId,
-        user_id: loja?.user_id,
-        email: normalizedOrder.email,
-        telefone: normalizedOrder.telefone,
-        nome: normalizedOrder.email?.split("@")[0] || "Cliente",
-      }, { onConflict: "loja_id, email" }).select().single();
+      // 2. Upsert customer (customers_v3: conflito store_id+phone ou store_id+email)
+      let clienteId: string | null = null;
+      const phoneNorm = normalizedOrder.telefone ? normalizePhoneBr(normalizedOrder.telefone) : "";
+      const emailTrim = normalizedOrder.email?.trim() || null;
+      const nameBase = emailTrim?.split("@")[0] || (phoneNorm.length >= 12 ? phoneNorm : "Cliente");
 
-      // 3. Insert order with attribution
-      if (cliente) {
-        await supabase.from("pedidos_v3").insert({
-          loja_id: lojaId,
-          user_id: loja?.user_id,
-          cliente_id: cliente.id,
-          pedido_externo_id: normalizedOrder.external_id,
-          valor: normalizedOrder.valor,
-          status: normalizedOrder.status,
-          produtos_json: normalizedOrder.produtos,
-          cupom_utilizado: normalizedOrder.cupom,
-          utm_source: normalizedOrder.utm_source,
-          utm_medium: normalizedOrder.utm_medium,
-          utm_campaign: normalizedOrder.utm_campaign,
-        });
-
-        // 4. AI coupon attribution
-        if (normalizedOrder.cupom) {
-          const { data: aiCoupon } = await supabase
-            .from("ai_generated_coupons")
-            .select("contact_id, user_id")
-            .eq("code", normalizedOrder.cupom)
-            .maybeSingle();
-
-          if (aiCoupon) {
-            await supabase.from("attribution_events").insert({
-              user_id: loja?.user_id,
-              order_id: normalizedOrder.external_id,
-              customer_phone: normalizedOrder.telefone,
-              order_value: normalizedOrder.valor,
-              source_platform: platform,
-              attributed_message_id: null,
-              order_date: new Date().toISOString(),
-            });
-          }
-        }
-
-        await supabase.from("webhook_logs").update({ status_processamento: "sucesso" }).eq("id", logEntry?.id);
+      if (phoneNorm.length >= 12) {
+        const { data: row } = await supabase
+          .from("customers_v3")
+          .upsert(
+            {
+              user_id: store.user_id,
+              store_id: storeId,
+              phone: phoneNorm,
+              email: emailTrim,
+              name: nameBase,
+            },
+            { onConflict: "store_id,phone" },
+          )
+          .select("id")
+          .single();
+        if (row?.id) clienteId = row.id;
+      } else if (emailTrim) {
+        const { data: row } = await supabase
+          .from("customers_v3")
+          .upsert(
+            {
+              user_id: store.user_id,
+              store_id: storeId,
+              phone: null,
+              email: emailTrim,
+              name: nameBase,
+            },
+            { onConflict: "store_id,email" },
+          )
+          .select("id")
+          .single();
+        if (row?.id) clienteId = row.id;
       }
+
+      // 3. Insert order (sempre que idempotente; cliente opcional)
+      const { error: orderInsErr } = await supabase.from("orders_v3").insert({
+        store_id: storeId,
+        user_id: store.user_id,
+        cliente_id: clienteId,
+        pedido_externo_id: normalizedOrder.external_id,
+        valor: normalizedOrder.valor,
+        valor_desconto: normalizedOrder.valor_desconto ?? null,
+        valor_frete: normalizedOrder.valor_frete ?? null,
+        payment_method: normalizedOrder.payment_method ?? null,
+        payment_installments: normalizedOrder.payment_installments ?? null,
+        internal_status: mapInternalStatus(platform, normalizedOrder.status),
+        status: normalizedOrder.status,
+        produtos_json: normalizedOrder.produtos,
+        cupom_utilizado: normalizedOrder.cupom,
+        utm_source: normalizedOrder.utm_source,
+        utm_medium: normalizedOrder.utm_medium,
+        utm_campaign: normalizedOrder.utm_campaign,
+      });
+
+      if (orderInsErr) {
+        throw new Error(orderInsErr.message);
+      }
+
+      const intStatus = mapInternalStatus(platform, normalizedOrder.status);
+      if (intStatus === "paid_or_processing") {
+        await markAbandonedCartsRecoveredAndCancelSchedule(supabase, {
+          storeId,
+          userId: store.user_id,
+          clienteId,
+          phoneNorm,
+          orderValue: normalizedOrder.valor,
+          requestId,
+        });
+      }
+
+      // Jornada «Fidelidade — Pontos»: primeiro registo já pago (transições pending→paid não passam aqui por idempotência)
+      if (clienteId && intStatus === "paid_or_processing") {
+        invokeFlowEngine(new URL(req.url).origin, {
+          event: "loyalty_points",
+          store_id: storeId,
+          customer_id: clienteId,
+          payload: {
+            recovery_url: "",
+            order_id: String(normalizedOrder.external_id ?? ""),
+            order_value: normalizedOrder.valor,
+          },
+        }).catch((e) => console.warn(`[${requestId}] loyalty_points flow-engine:`, e));
+      }
+
+      if (intStatus === "cancelled") {
+        const { error: evErr } = await supabase.from("order_events").insert({
+          store_id: storeId,
+          user_id: store.user_id,
+          pedido_externo_id: String(normalizedOrder.external_id ?? ""),
+          event_type: "cancelled",
+          reason: normalizedOrder.status ?? null,
+          raw_payload: rawBody,
+        });
+        if (evErr) console.warn(`[${requestId}] order_events:`, evErr.message);
+      }
+
+      // 4. Attribution (cupom IA ou UTM) — telefone BR normalizado obrigatório na tabela
+      const phAttr = phoneNorm.length >= 12 ? phoneNorm : "";
+      const hasUtm = !!(normalizedOrder.utm_source || normalizedOrder.utm_campaign);
+      let fromAiCoupon = false;
+      if (normalizedOrder.cupom) {
+        const { data: aiCoupon } = await supabase
+          .from("ai_generated_coupons")
+          .select("code")
+          .eq("code", normalizedOrder.cupom)
+          .maybeSingle();
+        fromAiCoupon = !!aiCoupon;
+      }
+      if (phAttr && (fromAiCoupon || hasUtm)) {
+        const { error: attErr } = await supabase.from("attribution_events").upsert(
+          {
+            user_id: store.user_id,
+            order_id: String(normalizedOrder.external_id),
+            customer_phone: phAttr,
+            order_value: normalizedOrder.valor,
+            source_platform: platform,
+            utm_source: normalizedOrder.utm_source ?? null,
+            utm_medium: normalizedOrder.utm_medium ?? null,
+            utm_campaign: normalizedOrder.utm_campaign ?? null,
+            attributed_message_id: null,
+            order_date: new Date().toISOString(),
+          },
+          { onConflict: "user_id,order_id,source_platform" },
+        );
+        if (attErr) console.warn(`[${requestId}] attribution_events upsert:`, attErr.message);
+      }
+
+      await supabase.from("webhook_logs").update({ status_processamento: "sucesso" }).eq("id", logEntry?.id);
     }
 
-    console.log(`[${requestId}] integration-gateway ok platform=${platform} loja=${lojaId} elapsed_ms=${Date.now() - startedAt}`);
+    console.log(`[${requestId}] integration-gateway ok platform=${platform} store=${storeId} elapsed_ms=${Date.now() - startedAt}`);
     await writeAuditLog(supabase, {
       action: "webhook_ingest",
       resource: "integration-gateway",
       result: "success",
       ip,
-      tenant_id: lojaId,
+      tenant_id: storeId,
       metadata: { request_id: requestId, platform },
     });
     return new Response(JSON.stringify({ success: true, request_id: requestId }), { headers: { ...cors, "Content-Type": "application/json" } });
@@ -486,7 +684,7 @@ serve(async (req) => {
       resource: "integration-gateway",
       result: "failure",
       ip,
-      tenant_id: lojaId,
+      tenant_id: storeId,
       metadata: { request_id: requestId, reason: e?.message ?? "unknown" },
     });
     return new Response(JSON.stringify({ error: "Internal server error", request_id: requestId }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });

@@ -15,6 +15,8 @@ npm run validate:env          # Valida frontend + edge (env exportado)
 npm run validate:env:frontend # Só VITE_* (build / Vercel)
 npm run validate:env:edge     # Secrets das Edge Functions
 npm run supabase:migration-list  # Local vs remoto (migrações); ver docs/supabase-migrations-sync.md
+npm run supabase:db-push         # Aplica migrações pendentes no projeto linkado
+npm run supabase:db-push:include-all  # Idem, com --include-all (ordem fora de linha; ver doc)
 npm run release:check         # Smoke + ProtectedRoute + env opcional (ver docs/production-env-checklist.md)
 ```
 
@@ -97,8 +99,20 @@ LTV Boost is a WhatsApp marketing SaaS for Brazilian e-commerces. The app has tw
 | `send-email` | `send-email` (e.g. `useEmailSender`) |
 | `unsubscribe-contact` | `unsubscribe-contact` |
 | `meta-whatsapp-send` | `meta-whatsapp-send` (envio Cloud API; JWT + `connectionId`) |
+| `sync-funil-ga4` | `sync-funil-ga4` — grava `funil_diario` a partir do GA4 da loja (`stores.ga4_*`); **cron** com `Authorization: Bearer CRON_SECRET` |
+| `data-pipeline-cron` | `data-pipeline-cron` — `data_quality_snapshots`, `customer_cohorts`, `catalog_snapshot`; **cron** com `Authorization: Bearer CRON_SECRET` (body opcional `{ "jobs": ["quality","cohorts","catalog"] }`) |
 
-Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, `whatsapp-webhook` (Evolution), **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, and others present in the repo.
+Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, `whatsapp-webhook` (Evolution), **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, `sync-funil-ga4`, `data-pipeline-cron`, and others present in the repo.
+
+### Dados operacionais (funil GA4 + qualidade)
+
+- **Migração:** `supabase/migrations/20260410140000_operational_data_blueprint.sql` — `funil_diario`, `data_quality_snapshots`, `v_orders_net_revenue`, colunas extras em `orders_v3`, `abandon_step`, etc.
+- **Supabase Secrets:** definir `CRON_SECRET` (e demais secrets já listados em `npm run validate:env:edge`). `CRON_SECRET` aparece como recomendado no validador até todos os ambientes usarem cron.
+- **Deploy das functions:** `npm run supabase:deploy:operational-data` ou `npx supabase functions deploy sync-funil-ga4 data-pipeline-cron` (e manter `integration-gateway`, `webhook-cart`, `calculate-rfm` atualizadas se o pipeline de pedidos mudou).
+- **Aplicar só o SQL no remoto (sem resolver histórico de migrações):** `npm run supabase:sql:operational-blueprint` — executa o ficheiro da migração via `db query --linked` (idempotente na maior parte; use após rever o SQL).
+- **`supabase/config.toml`:** `verify_jwt = false` para `sync-funil-ga4` e `data-pipeline-cron` (autenticação via `CRON_SECRET` no handler).
+- **Agendamento:** no Dashboard Supabase (Scheduled Functions / pg\_cron) ou job externo: POST diário em `.../functions/v1/sync-funil-ga4` e `.../functions/v1/data-pipeline-cron` com header `Authorization: Bearer <CRON_SECRET>`.
+- **Migrações remotas:** se `supabase db push --linked` avisar de ordem divergente, alinhar com `npm run supabase:migration-list` / `docs/supabase-migrations-sync.md` ou aplicar o SQL da migração manualmente no Editor quando apropriado.
 
 **Beta UI scope (channel/stripe-poor environments):** Set `VITE_BETA_LIMITED_SCOPE=true` on the frontend build. This hides WhatsApp, Newsletter, Campanhas, Inbox, Automações, and Carrinho abandonado from the sidebar and redirects direct URLs to `/dashboard`. Routes under `/demo/*` ignore this flag.
 

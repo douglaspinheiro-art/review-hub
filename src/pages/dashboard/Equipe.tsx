@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, UserPlus, Mail, Shield, Eye, Loader2,
@@ -8,9 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { cn } from "@/lib/utils";
 
 type TeamMember = {
@@ -30,14 +42,14 @@ const ROLES = [
     label: "Admin",
     description: "Acesso total exceto faturamento",
     icon: Crown,
-    color: "bg-purple-50 text-purple-700 border-purple-200",
+    color: "bg-primary/10 text-primary border-primary/20",
   },
   {
     value: "operator",
     label: "Operador",
     description: "Envia campanhas e responde conversas",
     icon: Shield,
-    color: "bg-blue-50 text-blue-700 border-blue-200",
+    color: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
   },
   {
     value: "viewer",
@@ -48,28 +60,26 @@ const ROLES = [
   },
 ] as const;
 
-function roleCfg(role: string) {
-  return ROLES.find((r) => r.value === role) ?? ROLES[1];
-}
-
 export default function Equipe() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: teamAccess } = useTeamAccess();
   const isPaid = profile?.plan !== "starter";
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "operator" | "viewer">("operator");
+  const [revokeId, setRevokeId] = useState<string | null>(null);
 
-  const { data: members = [], isLoading } = useQuery({
-    queryKey: ["team_members"],
+  const { data: members = [], isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["team_members", user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error: qErr } = await supabase
         .from("team_members")
         .select("*")
         .eq("account_owner_id", user!.id)
         .order("invited_at", { ascending: false });
-      if (error) return [] as TeamMember[];
+      if (qErr) throw qErr;
       return (data ?? []) as TeamMember[];
     },
     enabled: !!user && isPaid,
@@ -77,23 +87,36 @@ export default function Equipe() {
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("team_members").insert({
-        account_owner_id: user!.id,
-        invited_email: email.trim().toLowerCase(),
-        role,
-        status: "pending",
+      const { data, error: fnErr } = await supabase.functions.invoke("team-invite", {
+        body: { email: email.trim().toLowerCase(), role },
       });
-      if (error) throw error;
+      if (fnErr) throw new Error(fnErr.message);
+      const body = data as { ok?: boolean; error?: string; acceptUrl?: string; alreadyMember?: boolean };
+      if (body?.alreadyMember) {
+        return { alreadyMember: true as const };
+      }
+      if (!body?.ok) throw new Error(body?.error ?? "Falha ao convidar");
+      return { acceptUrl: body.acceptUrl as string | undefined };
     },
-    onSuccess: () => {
-      toast({ title: "Convite enviado!", description: `${email} receberá um e-mail com o link de acesso.` });
+    onSuccess: (res) => {
+      if (res?.alreadyMember) {
+        toast({ title: "Já convidado", description: "Este e-mail já é membro ativo da sua equipa." });
+        return;
+      }
+      const extra = res?.acceptUrl ? ` Link (dev): ${res.acceptUrl}` : "";
+      toast({
+        title: "Convite enviado",
+        description: `Enviámos um e-mail para ${email.trim()} com o link de aceitação.${extra}`,
+      });
       setEmail("");
       queryClient.invalidateQueries({ queryKey: ["team_members"] });
     },
     onError: (err: Error) => {
-      const isDuplicate = err?.message?.includes("unique");
+      const msg = err?.message ?? "";
+      const isDuplicate = msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("duplicate");
       toast({
         title: isDuplicate ? "Usuário já convidado" : "Erro ao enviar convite",
+        description: msg || "Tente novamente.",
         variant: "destructive",
       });
     },
@@ -105,6 +128,9 @@ export default function Equipe() {
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["team_members"] }),
+    onError: (err: Error) => {
+      toast({ title: "Erro ao atualizar função", description: err.message, variant: "destructive" });
+    },
   });
 
   const revokeMutation = useMutation({
@@ -115,8 +141,16 @@ export default function Equipe() {
     onSuccess: () => {
       toast({ title: "Acesso revogado" });
       queryClient.invalidateQueries({ queryKey: ["team_members"] });
+      setRevokeId(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao revogar", description: err.message, variant: "destructive" });
     },
   });
+
+  if (teamAccess?.mode === "collaborator") {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   if (!isPaid) {
     return (
@@ -136,7 +170,7 @@ export default function Equipe() {
             </p>
           </div>
           <Button asChild>
-            <a href="/dashboard/billing">Ver planos</a>
+            <Link to="/dashboard/billing">Ver planos</Link>
           </Button>
         </div>
       </div>
@@ -145,6 +179,7 @@ export default function Equipe() {
 
   const active = members.filter((m) => m.status === "active").length;
   const pending = members.filter((m) => m.status === "pending").length;
+  const seatsUsed = active + pending;
   const limit = profile?.plan === "growth" ? 5 : 999;
 
   return (
@@ -164,7 +199,7 @@ export default function Equipe() {
         </div>
         <div className="bg-card border rounded-xl p-4">
           <p className="text-xs text-muted-foreground">Aguardando</p>
-          <p className="text-2xl font-bold text-yellow-600">{pending}</p>
+          <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{pending}</p>
         </div>
         <div className="bg-card border rounded-xl p-4">
           <p className="text-xs text-muted-foreground">Limite do plano</p>
@@ -186,7 +221,7 @@ export default function Equipe() {
               placeholder="colaborador@empresa.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && email && inviteMutation.mutate()}
+              onKeyDown={(e) => e.key === "Enter" && email.includes("@") && !inviteMutation.isPending && seatsUsed < limit && inviteMutation.mutate()}
             />
           </div>
           <div className="space-y-1.5">
@@ -203,11 +238,11 @@ export default function Equipe() {
           </div>
         </div>
 
-        {/* Role info */}
         <div className="grid grid-cols-3 gap-2">
           {ROLES.map(({ value, label, description, icon: Icon, color }) => (
             <button
               key={value}
+              type="button"
               onClick={() => setRole(value)}
               className={cn(
                 "text-left border rounded-lg p-3 transition-colors space-y-1",
@@ -226,7 +261,7 @@ export default function Equipe() {
         <Button
           className="gap-2"
           onClick={() => inviteMutation.mutate()}
-          disabled={!email.includes("@") || inviteMutation.isPending || active >= limit}
+          disabled={!email.includes("@") || inviteMutation.isPending || seatsUsed >= limit}
         >
           {inviteMutation.isPending
             ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -234,8 +269,10 @@ export default function Equipe() {
           }
           Enviar convite
         </Button>
-        {active >= limit && (
-          <p className="text-xs text-orange-600">Limite de membros atingido. Faça upgrade para adicionar mais.</p>
+        {seatsUsed >= limit && (
+          <p className="text-xs text-orange-600 dark:text-orange-400">
+            Limite de convites/membros atingido (ativos + pendentes). Faça upgrade para adicionar mais.
+          </p>
         )}
       </div>
 
@@ -250,6 +287,13 @@ export default function Equipe() {
           <div className="flex justify-center py-10">
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-3 px-5 text-center">
+            <p className="text-sm text-destructive">{(error as Error)?.message ?? "Erro ao carregar membros."}</p>
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              Tentar novamente
+            </Button>
+          </div>
         ) : members.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
             <Users className="w-8 h-8 opacity-20" />
@@ -257,7 +301,6 @@ export default function Equipe() {
           </div>
         ) : (
           <div className="divide-y">
-            {/* Owner row */}
             <div className="px-5 py-4 flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
                 {(profile?.full_name ?? user?.email ?? "?")[0].toUpperCase()}
@@ -266,14 +309,12 @@ export default function Equipe() {
                 <p className="text-sm font-medium truncate">{profile?.full_name ?? user?.email}</p>
                 <p className="text-xs text-muted-foreground">{user?.email}</p>
               </div>
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">
                 Proprietário
               </Badge>
             </div>
 
             {members.map((m) => {
-              const rc = roleCfg(m.role);
-              const RoleIcon = rc.icon;
               return (
                 <div key={m.id} className="px-5 py-4 flex items-center gap-3">
                   <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-bold text-sm shrink-0">
@@ -283,12 +324,13 @@ export default function Equipe() {
                     <p className="text-sm font-medium truncate">{m.invited_email}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       {m.status === "pending" ? (
-                        <span className="flex items-center gap-1 text-xs text-yellow-600">
+                        <span className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400">
                           <Clock className="w-3 h-3" /> Convite pendente
                         </span>
                       ) : m.status === "active" ? (
-                        <span className="flex items-center gap-1 text-xs text-green-600">
-                          <Check className="w-3 h-3" /> Ativo desde {new Date(m.accepted_at!).toLocaleDateString("pt-BR")}
+                        <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                          <Check className="w-3 h-3" /> Ativo desde{" "}
+                          {m.accepted_at ? new Date(m.accepted_at).toLocaleDateString("pt-BR") : "—"}
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">Acesso revogado</span>
@@ -311,7 +353,8 @@ export default function Equipe() {
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                        onClick={() => revokeMutation.mutate(m.id)}
+                        onClick={() => setRevokeId(m.id)}
+                        aria-label="Revogar acesso"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -324,7 +367,6 @@ export default function Equipe() {
         )}
       </div>
 
-      {/* Permissions table */}
       <div className="bg-card border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b">
           <h2 className="font-semibold text-sm">Tabela de permissões</h2>
@@ -334,8 +376,8 @@ export default function Equipe() {
             <thead>
               <tr className="border-b">
                 <th className="text-left px-5 py-3 text-muted-foreground font-medium">Funcionalidade</th>
-                <th className="px-4 py-3 text-center text-purple-700">Admin</th>
-                <th className="px-4 py-3 text-center text-blue-700">Operador</th>
+                <th className="px-4 py-3 text-center text-primary">Admin</th>
+                <th className="px-4 py-3 text-center text-blue-600 dark:text-blue-400">Operador</th>
                 <th className="px-4 py-3 text-center text-muted-foreground">Visualizador</th>
               </tr>
             </thead>
@@ -354,7 +396,7 @@ export default function Equipe() {
                   {[admin, op, viewer].map((v, i) => (
                     <td key={i} className="px-4 py-2.5 text-center">
                       {v
-                        ? <Check className="w-3.5 h-3.5 text-green-600 mx-auto" />
+                        ? <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-400 mx-auto" />
                         : <span className="text-muted-foreground/40">—</span>
                       }
                     </td>
@@ -365,6 +407,26 @@ export default function Equipe() {
           </table>
         </div>
       </div>
+
+      <AlertDialog open={!!revokeId} onOpenChange={(o) => !o && setRevokeId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revogar acesso?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O colaborador deixa de ver a loja imediatamente. Pode convidar novamente mais tarde.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => revokeId && revokeMutation.mutate(revokeId)}
+            >
+              Revogar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

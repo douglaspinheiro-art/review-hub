@@ -26,6 +26,7 @@ const EDGE_REQUIRED = [
 
 /** Recomendados / integrações — não bloqueiam `edge` (beta pode não usar todos). */
 const EDGE_RECOMMENDED = [
+  "CRON_SECRET",
   "RESEND_DEFAULT_FROM",
   "RESEND_WEBHOOK_SECRET",
   "ANTHROPIC_API_KEY",
@@ -35,6 +36,7 @@ const EDGE_RECOMMENDED = [
   "META_APP_SECRET",
   "SMS_DEV_TOKEN",
   "LOGTAIL_SOURCE_TOKEN",
+  "INTEGRATIONS_CORS_ORIGIN",
 ];
 
 function missing(names) {

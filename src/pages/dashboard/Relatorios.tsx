@@ -1,331 +1,667 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  BarChart3, PieChart, TrendingUp, Calendar,
-  Download, Filter, ArrowUpRight, Users,
-  ShoppingBag, MousePointer2, Smartphone, Monitor,
-  Share2, MessageCircle, Copy, Check, Sparkles
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  Download,
+  ArrowUpRight,
+  Users,
+  ShoppingBag,
+  MousePointer2,
+  Share2,
+  MessageCircle,
+  Copy,
+  Check,
+  Sparkles,
+  Send,
+  Eye,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, LineChart, Line, AreaChart, Area,
-  ScatterChart, Scatter, ZAxis, Cell, Pie
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  ZAxis,
+  Cell,
 } from "recharts";
 import { MetricCard } from "@/components/dashboard/MetricCard";
-import { mockLoja, mockMetricas } from "@/lib/mock-data";
 import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
+import {
+  useAnalytics,
+  useDashboardStats,
+  useROIAttribution,
+  useRfmReportCounts,
+  useCustomerCohorts,
+  useMessageSendHeatmap,
+} from "@/hooks/useDashboard";
+import { useLoja } from "@/hooks/useConvertIQ";
+import { usePrescriptionsV3 } from "@/hooks/useLTVBoost";
 
-const rfmData = [
-  { x: 1, y: 1, z: 432, name: "Perdidos" },
-  { x: 2, y: 2, z: 145, name: "Hibernando" },
-  { x: 3, y: 2, z: 234, name: "Em Risco" },
-  { x: 4, y: 3, z: 56, name: "Promissores" },
-  { x: 5, y: 1, z: 87, name: "Novos" },
-  { x: 4, y: 4, z: 189, name: "Potencial Fiel" },
-  { x: 5, y: 4, z: 234, name: "Fiéis" },
-  { x: 5, y: 5, z: 124, name: "Campeões" },
+const PERIODS: Array<{ label: string; value: 7 | 30 | 90 }> = [
+  { label: "7 dias", value: 7 },
+  { label: "30 dias", value: 30 },
+  { label: "90 dias", value: 90 },
 ];
 
-const heatmapData = [
-  { day: "Seg", hour: "08h", value: 45 }, { day: "Seg", hour: "12h", value: 82 }, { day: "Seg", hour: "18h", value: 65 },
-  { day: "Ter", hour: "08h", value: 52 }, { day: "Ter", hour: "12h", value: 94 }, { day: "Ter", hour: "18h", value: 72 },
-  { day: "Qua", hour: "08h", value: 48 }, { day: "Qua", hour: "12h", value: 88 }, { day: "Qua", hour: "18h", value: 68 },
-  { day: "Qui", hour: "08h", value: 61 }, { day: "Qui", hour: "12h", value: 91 }, { day: "Qui", hour: "18h", value: 75 },
-  { day: "Sex", hour: "08h", value: 55 }, { day: "Sex", hour: "12h", value: 78 }, { day: "Sex", hour: "18h", value: 58 },
-  { day: "Sab", hour: "08h", value: 32 }, { day: "Sab", hour: "12h", value: 45 }, { day: "Sab", hour: "18h", value: 42 },
-  { day: "Dom", hour: "08h", value: 28 }, { day: "Dom", hour: "12h", value: 52 }, { day: "Dom", hour: "18h", value: 61 },
-];
+const DAYS_PT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"] as const;
+const HOUR_BUCKETS = ["08h", "12h", "18h"] as const;
 
-const COLORS = ["#ef4444", "#f59e0b", "#f59e0b", "#10b981", "#3b82f6", "#6366f1", "#8b5cf6", "#10b981"];
-
-const RELATORIO_MENSAL = {
-  mes: "Março 2026",
-  recuperado: 14850,
-  novos_clientes: 847,
-  chs_inicio: 47,
-  chs_fim: 51,
-  prescricoes: 12,
-  roi: "29.8x",
+const RFM_CHART_POSITIONS: Record<
+  string,
+  { x: number; y: number; name: string; color: string }
+> = {
+  champions: { x: 5, y: 5, name: "Campeões", color: "#eab308" },
+  loyal: { x: 5, y: 4, name: "Fiéis", color: "#10b981" },
+  at_risk: { x: 3, y: 2, name: "Em risco", color: "#f97316" },
+  lost: { x: 1, y: 1, name: "Perdidos", color: "#ef4444" },
+  new: { x: 5, y: 1, name: "Novos", color: "#3b82f6" },
+  other: { x: 2, y: 3, name: "Outros / sem segmento", color: "#64748b" },
 };
 
-function gerarTextoWhatsApp(r: typeof RELATORIO_MENSAL) {
-  return `📊 *Relatório LTV Boost — ${r.mes}*\n\n` +
-    `💰 Recuperado: *R$ ${r.recuperado.toLocaleString('pt-BR')}*\n` +
-    `👥 Novos clientes: *${r.novos_clientes}*\n` +
-    `🎯 CHS: *${r.chs_inicio} → ${r.chs_fim} pts (+${r.chs_fim - r.chs_inicio})*\n` +
-    `⚡ Prescrições executadas: *${r.prescricoes}*\n` +
-    `📈 ROI da assinatura: *${r.roi}*\n\n` +
-    `_Gerado pelo LTV Boost — a IA por trás dos e-commerces de elite_`;
+type SharePayload = {
+  periodLabel: string;
+  recuperado: number;
+  novosContatos: number;
+  avgChs: number | null;
+  prescricoesAtivas: number;
+  prescricoesPendentes: number;
+  atribuidoPedidos: number;
+  atribuidoReais: number;
+};
+
+function formatRetentionD30(v: number | null): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  const n = Number(v);
+  const pct = n <= 1 ? Math.round(n * 100) : Math.round(n);
+  return `${pct}%`;
+}
+
+function buildShareText(p: SharePayload) {
+  const chsLine =
+    p.avgChs != null
+      ? `🎯 CHS médio da base: *${p.avgChs} pts*\n`
+      : "";
+  return (
+    `📊 *Relatório LTV Boost — ${p.periodLabel}*\n\n` +
+    `💰 Receita influenciada: *R$ ${p.recuperado.toLocaleString("pt-BR")}*\n` +
+    `👥 Novos contatos (analytics): *${p.novosContatos.toLocaleString("pt-BR")}*\n` +
+    chsLine +
+    `⚡ Prescrições em execução ou concluídas: *${p.prescricoesAtivas}*\n` +
+    `📋 Aguardando aprovação: *${p.prescricoesPendentes}*\n` +
+    `📈 Pedidos com atribuição: *${p.atribuidoPedidos}* (R$ ${p.atribuidoReais.toLocaleString("pt-BR")})\n\n` +
+    `_Resumo gerado a partir dos dados da sua conta no período indicado._`
+  );
+}
+
+function publicSiteBase(): string {
+  const env =
+    (import.meta.env.VITE_APP_URL as string | undefined) ||
+    (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined);
+  if (env && /^https?:\/\//i.test(env.trim())) return env.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
 }
 
 export default function Relatorios() {
+  const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showShare, setShowShare] = useState(false);
-  const textoWA = gerarTextoWhatsApp(RELATORIO_MENSAL);
-  const shareableUrl = `https://ltvboost.com.br/relatorio-anual?from=dashboard&month=${encodeURIComponent(RELATORIO_MENSAL.mes)}`;
-  const retentionNodes = buildRetentionGraph({
-    recoveredRevenue: RELATORIO_MENSAL.recuperado,
-    activeOpportunities: 18,
-    unreadConversations: 46,
-    chs: RELATORIO_MENSAL.chs_fim,
-  });
-  const propensity = getPropensityOutput(retentionNodes);
+
+  const loja = useLoja();
+  const storeId = (loja.data as { id?: string } | null)?.id;
+
+  const { data: analytics, isLoading: analyticsLoading, error: analyticsError, refetch: refetchAnalytics } =
+    useAnalytics(period);
+  const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } =
+    useDashboardStats(period);
+  const { data: roi, isLoading: roiLoading, error: roiError, refetch: refetchRoi } = useROIAttribution(period);
+  const { data: rfm, isLoading: rfmLoading, error: rfmError, refetch: refetchRfm } = useRfmReportCounts();
+  const { data: cohorts = [], isLoading: cohortsLoading, refetch: refetchCohorts } = useCustomerCohorts();
+  const { data: heatmap, isLoading: heatmapLoading, refetch: refetchHeatmap } = useMessageSendHeatmap(period);
+  const { data: prescriptions = [] } = usePrescriptionsV3(storeId);
+
+  const isLoading = analyticsLoading || statsLoading || roiLoading;
+  const error = analyticsError || statsError || roiError;
+
+  const periodPhrase =
+    period === 7 ? "últimos 7 dias" : period === 30 ? "últimos 30 dias" : "últimos 90 dias";
+  const periodLabel = `${periodPhrase} (${new Date().toLocaleDateString("pt-BR")})`;
+
+  const prescricoesAtivas = useMemo(
+    () =>
+      (prescriptions as { status?: string | null }[]).filter((p) =>
+        ["aprovada", "em_execucao", "concluida"].includes(String(p.status ?? "")),
+      ).length,
+    [prescriptions],
+  );
+  const prescricoesPendentes = useMemo(
+    () =>
+      (prescriptions as { status?: string | null }[]).filter(
+        (p) => String(p.status ?? "") === "aguardando_aprovacao",
+      ).length,
+    [prescriptions],
+  );
+
+  const atribuidoReais = useMemo(() => {
+    if (!roi?.hasAttribution || !roi.byCampaign?.length) return 0;
+    return roi.byCampaign.reduce((s, c) => s + Number(c.revenue ?? 0), 0);
+  }, [roi]);
+
+  const atribuidoPedidos = roi?.totalConversions ?? 0;
+
+  const sharePayload: SharePayload = useMemo(
+    () => ({
+      periodLabel,
+      recuperado: stats?.revenueLast30 ?? analytics?.totals.revenue ?? 0,
+      novosContatos: stats?.newContactsLast30 ?? analytics?.totals.newContacts ?? 0,
+      avgChs: rfm?.avgChs ?? null,
+      prescricoesAtivas,
+      prescricoesPendentes,
+      atribuidoPedidos,
+      atribuidoReais: atribuidoReais,
+    }),
+    [
+      periodLabel,
+      stats,
+      analytics,
+      rfm,
+      prescricoesAtivas,
+      prescricoesPendentes,
+      atribuidoPedidos,
+      atribuidoReais,
+    ],
+  );
+
+  const textoWA = useMemo(() => buildShareText(sharePayload), [sharePayload]);
+  const shareableUrl = `${publicSiteBase()}/relatorio-anual?from=dashboard&period=${period}`;
+
+  const retentionNodes = useMemo(
+    () =>
+      buildRetentionGraph({
+        recoveredRevenue: stats?.revenueLast30 ?? 0,
+        activeOpportunities: stats?.activeOpportunities ?? 0,
+        unreadConversations: stats?.totalUnread ?? 0,
+        chs: rfm?.avgChs ?? 0,
+      }),
+    [stats, rfm],
+  );
+  const propensity = useMemo(() => getPropensityOutput(retentionNodes), [retentionNodes]);
+
+  const rfmScatterData = useMemo(() => {
+    if (!rfm) return [];
+    const entries: { key: string; x: number; y: number; z: number; name: string; fill: string }[] = [];
+    (["champions", "loyal", "at_risk", "lost", "new", "other"] as const).forEach((key) => {
+      const count = rfm[key];
+      if (count <= 0) return;
+      const pos = RFM_CHART_POSITIONS[key];
+      entries.push({
+        key,
+        x: pos.x,
+        y: pos.y,
+        z: count,
+        name: pos.name,
+        fill: pos.color,
+      });
+    });
+    return entries;
+  }, [rfm]);
+
+  const refetchAll = () => {
+    void refetchAnalytics();
+    void refetchStats();
+    void refetchRoi();
+    void refetchRfm();
+    void refetchCohorts();
+    void refetchHeatmap();
+  };
 
   const copyTexto = () => {
-    navigator.clipboard.writeText(textoWA);
+    void navigator.clipboard.writeText(textoWA);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const copyLink = () => {
-    navigator.clipboard.writeText(shareableUrl);
+    void navigator.clipboard.writeText(shareableUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
+
+  const hasSparseData =
+    !analyticsLoading &&
+    (analytics?.rows?.length ?? 0) === 0 &&
+    (stats?.revenueLast30 ?? 0) === 0 &&
+    (rfm?.total ?? 0) === 0;
+
+  const revenueFmt =
+    analytics != null
+      ? analytics.totals.revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+      : "—";
 
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Relatórios Avançados</h1>
-          <p className="text-muted-foreground text-sm mt-1">Visão analítica completa para decisões baseadas em dados.</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            Visão consolidada com dados da sua conta (analytics diários, clientes e envios).
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-10 font-bold gap-2 rounded-xl">
-            <Download className="w-4 h-4" /> Exportar PDF
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 mr-2">
+            {PERIODS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setPeriod(p.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  period === p.value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button variant="outline" size="sm" className="h-10 font-bold gap-2 rounded-xl" disabled>
+                    <Download className="w-4 h-4" /> Exportar PDF
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Exportação PDF em breve.</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button
             size="sm"
             className="h-10 font-bold gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
             onClick={() => setShowShare(!showShare)}
           >
-            <Share2 className="w-4 h-4" /> Compartilhar Relatório
+            <Share2 className="w-4 h-4" /> Compartilhar resumo
           </Button>
         </div>
       </div>
 
-      {/* Share Panel */}
-      {showShare && (
-        <div className="bg-[#0A0A0F] border border-primary/20 rounded-2xl p-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-black uppercase tracking-widest text-primary">Relatório Mensal — {RELATORIO_MENSAL.mes}</span>
-          </div>
-          <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-white/80 whitespace-pre-line leading-relaxed border border-white/5">
-            {textoWA}
-          </div>
-          <div className="flex gap-3 flex-wrap">
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(textoWA)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" /> Enviar via WhatsApp
-            </a>
-            <Button variant="outline" size="sm" className="h-10 gap-2 text-xs font-bold rounded-xl" onClick={copyTexto}>
-              {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-              {copied ? "Copiado!" : "Copiar texto"}
-            </Button>
-            <Button variant="outline" size="sm" className="h-10 gap-2 text-xs font-bold rounded-xl" onClick={copyLink}>
-              {copiedLink ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
-              {copiedLink ? "Link copiado!" : "Copiar link público"}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground font-mono break-all">{shareableUrl}</p>
-          <p className="text-[10px] text-muted-foreground italic">
-            Compartilhe com seu sócio, equipe ou mentor. Gerado automaticamente com dados reais do período.
-          </p>
+      {isLoading && (
+        <div className="text-center py-16 text-muted-foreground text-sm">Carregando relatórios…</div>
+      )}
+
+      {error && !isLoading && (
+        <div className="text-center py-12 space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5">
+          <p className="text-muted-foreground text-sm">Não foi possível carregar alguns dados.</p>
+          <Button variant="outline" size="sm" onClick={() => refetchAll()}>
+            Tentar novamente
+          </Button>
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="LTV Médio" value="R$ 1.520" trend={+8} icon={TrendingUp} />
-        <MetricCard label="CAC" value="R$ 42,50" trend={-12} icon={Users} />
-        <MetricCard label="ROAS Médio" value="12.4x" trend={+15} icon={ShoppingBag} />
-        <MetricCard label="Churn Rate" value="4.2%" trend={-2} icon={PieChart} />
-      </div>
+      {!isLoading && !error && hasSparseData && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 text-sm text-muted-foreground">
+          Ainda não há dados de analytics nem clientes sincronizados nesta conta. Conecte integrações e aguarde o
+          primeiro preenchimento de <code className="text-xs">analytics_daily</code> para ver tendências aqui.
+        </div>
+      )}
 
-      <div className="bg-card border rounded-2xl p-6 space-y-4">
-        <h3 className="font-bold text-base flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-primary" /> Retention Graph Proprietário
-        </h3>
-        <div className="grid md:grid-cols-3 gap-3">
-          {retentionNodes.map((node) => (
-            <div key={node.id} className="rounded-xl border p-4 bg-muted/20">
-              <p className="text-xs text-muted-foreground">{node.label}</p>
-              <p className="text-2xl font-black">{node.score}/100</p>
-              <p className="text-xs text-muted-foreground">{node.reason}</p>
+      {!isLoading && !error && analytics && stats && (
+        <>
+          {showShare && (
+            <div className="bg-[#0A0A0F] border border-primary/20 rounded-2xl p-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span className="text-sm font-black uppercase tracking-widest text-primary">
+                  Resumo — {periodPhrase}
+                </span>
+              </div>
+              <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-white/80 whitespace-pre-line leading-relaxed border border-white/5">
+                {textoWA}
+              </div>
+              <div className="flex gap-3 flex-wrap">
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(textoWA)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" /> Enviar via WhatsApp
+                </a>
+                <Button variant="outline" size="sm" className="h-10 gap-2 text-xs font-bold rounded-xl" onClick={copyTexto}>
+                  {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  {copied ? "Copiado!" : "Copiar texto"}
+                </Button>
+                <Button variant="outline" size="sm" className="h-10 gap-2 text-xs font-bold rounded-xl" onClick={copyLink}>
+                  {copiedLink ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+                  {copiedLink ? "Link copiado!" : "Copiar link público"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground font-mono break-all">{shareableUrl}</p>
+              <p className="text-[10px] text-muted-foreground italic">
+                Texto baseado nos totais do período selecionado e na base de clientes atual.
+              </p>
             </div>
-          ))}
-        </div>
-        <p className="text-sm">
-          Propensão dominante do período: <span className="font-bold">{propensity.bestNode.label}</span>{" "}
-          <span className="text-muted-foreground">(confiança {propensity.confidence}% · {propensity.band})</span>
-        </p>
-      </div>
+          )}
 
-      {/* Próximas Ações — CTAs contextuais baseados nos dados */}
-      <div className="bg-card border rounded-2xl p-6 space-y-4">
-        <h3 className="font-bold text-base flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-primary" /> Próximas Ações Recomendadas
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            {
-              label: "Recuperar clientes em risco",
-              sub: "Prescrições de IA aguardando aprovação",
-              href: "/dashboard/prescricoes",
-              icon: BarChart3,
-              color: "text-amber-500 bg-amber-500/10",
-            },
-            {
-              label: "Criar campanha para Campeões",
-              sub: "Segmento de maior ROI histórico",
-              href: "/dashboard/campanhas",
-              icon: TrendingUp,
-              color: "text-emerald-500 bg-emerald-500/10",
-            },
-            {
-              label: "Ativar automação win-back",
-              sub: "Clientes inativos há +60 dias",
-              href: "/dashboard/automacoes",
-              icon: Users,
-              color: "text-blue-500 bg-blue-500/10",
-            },
-          ].map(({ label, sub, href, icon: Icon, color }) => (
-            <a
-              key={label}
-              href={href}
-              className="flex items-center gap-3 p-4 bg-muted/30 border border-border/50 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all group"
-            >
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${color.split(' ')[1]}`}>
-                <Icon className={`w-4 h-4 ${color.split(' ')[0]}`} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold truncate">{label}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{sub}</p>
-              </div>
-              <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary ml-auto shrink-0 transition-colors" />
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Distribuição RFM */}
-        <div className="bg-card border rounded-2xl p-6">
-          <h3 className="font-bold text-base mb-6 flex items-center gap-2">
-            <PieChart className="w-4 h-4 text-primary" /> Matriz RFM (Volume de Clientes)
-          </h3>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
-                <XAxis type="number" dataKey="x" name="Recência" axisLine={false} tick={{fontSize: 10}} label={{ value: 'Recência', position: 'insideBottom', offset: -10, fontSize: 10 }} />
-                <YAxis type="number" dataKey="y" name="Frequência" axisLine={false} tick={{fontSize: 10}} label={{ value: 'Frequência', angle: -90, position: 'insideLeft', fontSize: 10 }} />
-                <ZAxis type="number" dataKey="z" range={[100, 2000]} name="Clientes" />
-                <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }} />
-                <Scatter name="Segmentos" data={rfmData}>
-                  {rfmData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.6} stroke={COLORS[index % COLORS.length]} />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MetricCard
+              label="Receita influenciada"
+              value={revenueFmt}
+              trend={stats.revGrowth !== 0 ? stats.revGrowth : undefined}
+              trendLabel={stats.revGrowth !== 0 ? `vs período anterior (${periodPhrase})` : undefined}
+              icon={TrendingUp}
+              tooltip="Soma de receita influenciada em analytics_daily no período."
+            />
+            <MetricCard
+              label="Novos contatos"
+              value={analytics.totals.newContacts.toLocaleString("pt-BR")}
+              icon={Users}
+              tooltip="Novos contatos agregados no período (analytics diários)."
+            />
+            <MetricCard
+              label="Taxa de entrega"
+              value={`${stats.deliveryRate}%`}
+              icon={Send}
+              tooltip="Mensagens entregues / enviadas no período (analytics diários)."
+            />
+            <MetricCard
+              label="Taxa de leitura"
+              value={`${analytics.readRate}%`}
+              icon={Eye}
+              tooltip="Mensagens lidas / entregues no período."
+            />
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {rfmData.map((d, i) => (
-              <Badge key={i} variant="outline" className="text-[8px] uppercase tracking-tighter" style={{ borderColor: `${COLORS[i]}44`, color: COLORS[i] }}>
-                {d.name}: {d.z}
-              </Badge>
-            ))}
-          </div>
-        </div>
 
-        {/* Heatmap de Engajamento */}
-        <div className="bg-card border rounded-2xl p-6">
-          <h3 className="font-bold text-base mb-6 flex items-center gap-2">
-            <MousePointer2 className="w-4 h-4 text-primary" /> Heatmap: Melhor Horário de Abertura
-          </h3>
-          <div className="grid grid-cols-8 gap-1">
-            <div className="h-8" />
-            {["08h", "12h", "18h"].map(h => <div key={h} className="text-[10px] font-bold text-muted-foreground text-center">{h}</div>)}
-            <div className="col-span-4" />
-            
-            {["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"].map(day => (
-              <>
-                <div key={day} className="text-[10px] font-bold text-muted-foreground flex items-center">{day}</div>
-                {["08h", "12h", "18h"].map(hour => {
-                  const val = heatmapData.find(d => d.day === day && d.hour === hour)?.value || 0;
-                  const opacity = val / 100;
-                  return (
-                    <div 
-                      key={`${day}-${hour}`} 
-                      className="h-8 rounded-md transition-all hover:scale-110 cursor-help"
-                      style={{ backgroundColor: `rgba(16, 185, 129, ${opacity})`, border: `1px solid rgba(16, 185, 129, ${opacity + 0.1})` }}
-                      title={`${val}% de abertura`}
-                    />
-                  );
-                })}
-                <div className="col-span-4" />
-              </>
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MetricCard
+              label="Recuperação de carrinhos"
+              value={roi != null ? `${roi.cartStats.recoveryRate}%` : "—"}
+              icon={ShoppingBag}
+              tooltip="Carrinhos marcados como recuperados / total rastreado no período."
+            />
+            <MetricCard
+              label="Pedidos atribuídos"
+              value={roi != null ? String(roi.totalConversions) : "—"}
+              subValue={
+                roi != null && roi.hasAttribution
+                  ? atribuidoReais.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                  : undefined
+              }
+              icon={BarChart3}
+              tooltip={
+                roi?.hasAttribution ? "Com base em attribution_events." : "Sem eventos de atribuição no período."
+              }
+            />
+            <MetricCard
+              label="Oportunidades abertas"
+              value={String(stats.activeOpportunities)}
+              icon={Sparkles}
+              tooltip="Oportunidades não resolvidas na fila."
+            />
+            <MetricCard
+              label="Mensagens não lidas (inbox)"
+              value={String(stats.totalUnread)}
+              icon={MessageCircle}
+              tooltip="Soma de não lidas nas conversas atuais."
+            />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-6 italic text-center">
-            * Terças e Quintas às 12h apresentam a maior taxa de conversão histórica.
-          </p>
-        </div>
-      </div>
 
-      {/* Cohort de Retenção */}
-      <div className="bg-card border rounded-2xl p-6">
-        <h3 className="font-bold text-base mb-6 flex items-center gap-2">
-          <Users className="w-4 h-4 text-primary" /> Cohort de Retenção (Mensal)
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[10px] font-bold uppercase tracking-widest border-collapse">
-            <thead>
-              <tr className="border-b border-border/50">
-                <th className="p-2 text-left">Mês Início</th>
-                <th className="p-2 text-center bg-muted/20">Novos</th>
-                {[1, 2, 3, 4, 5, 6].map(m => <th key={m} className="p-2 text-center">M{m}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { label: "Out 2025", n: 120, data: [100, 42, 35, 28, 22, 18] },
-                { label: "Nov 2025", n: 145, data: [100, 45, 38, 31, 25] },
-                { label: "Dez 2025", n: 210, data: [100, 52, 41, 34] },
-                { label: "Jan 2026", n: 180, data: [100, 48, 39] },
-                { label: "Fev 2026", n: 165, data: [100, 44] },
-                { label: "Mar 2026", n: 195, data: [100] },
-              ].map((row, i) => (
-                <tr key={i} className="border-b border-border/30">
-                  <td className="p-2 text-muted-foreground">{row.label}</td>
-                  <td className="p-2 text-center bg-muted/10">{row.n}</td>
-                  {row.data.map((val, j) => {
-                    const opacity = val / 100;
-                    return (
-                      <td key={j} className="p-2 text-center">
-                        <div 
-                          className="py-1 rounded" 
-                          style={{ backgroundColor: `rgba(59, 130, 246, ${opacity})`, color: val > 50 ? '#fff' : 'inherit' }}
-                        >
-                          {val}%
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
+          <div className="bg-card border rounded-2xl p-6 space-y-4">
+            <h3 className="font-bold text-base flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" /> Retention graph (sinais da conta)
+            </h3>
+            <div className="grid md:grid-cols-3 gap-3">
+              {retentionNodes.map((node) => (
+                <div key={node.id} className="rounded-xl border p-4 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">{node.label}</p>
+                  <p className="text-2xl font-black">{node.score}/100</p>
+                  <p className="text-xs text-muted-foreground">{node.reason}</p>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+            <p className="text-sm">
+              Propensão dominante: <span className="font-bold">{propensity.bestNode.label}</span>{" "}
+              <span className="text-muted-foreground">
+                (confiança {propensity.confidence}% · {propensity.band})
+              </span>
+            </p>
+          </div>
+
+          <div className="bg-card border rounded-2xl p-6 space-y-4">
+            <h3 className="font-bold text-base flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" /> Próximas ações recomendadas
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                {
+                  label: "Recuperar clientes em risco",
+                  sub: "Prescrições de IA aguardando aprovação",
+                  to: "/dashboard/prescricoes",
+                  icon: BarChart3,
+                  color: "text-amber-500 bg-amber-500/10",
+                },
+                {
+                  label: "Criar campanha para Campeões",
+                  sub: "Segmento com maior engajamento histórico",
+                  to: "/dashboard/campanhas",
+                  icon: TrendingUp,
+                  color: "text-emerald-500 bg-emerald-500/10",
+                },
+                {
+                  label: "Ativar automação win-back",
+                  sub: "Clientes inativos ou em risco",
+                  to: "/dashboard/automacoes",
+                  icon: Users,
+                  color: "text-blue-500 bg-blue-500/10",
+                },
+              ].map(({ label, sub, to, icon: Icon, color }) => (
+                <Link
+                  key={label}
+                  to={to}
+                  className="flex items-center gap-3 p-4 bg-muted/30 border border-border/50 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all group"
+                >
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${color.split(" ")[1]}`}>
+                    <Icon className={`w-4 h-4 ${color.split(" ")[0]}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold truncate">{label}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{sub}</p>
+                  </div>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary ml-auto shrink-0 transition-colors" />
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-card border rounded-2xl p-6">
+              <h3 className="font-bold text-base mb-6 flex items-center gap-2">
+                <PieChart className="w-4 h-4 text-primary" /> Distribuição RFM (clientes na base)
+              </h3>
+              {rfmLoading && <p className="text-sm text-muted-foreground">Carregando segmentos…</p>}
+              {rfmError && !rfmLoading && (
+                <p className="text-sm text-destructive">Não foi possível carregar a distribuição RFM.</p>
+              )}
+              {!rfmLoading && !rfmError && rfm && rfm.total === 0 && (
+                <p className="text-sm text-muted-foreground">Sem clientes em customers_v3 para esta loja.</p>
+              )}
+              {!rfmLoading && !rfmError && rfmScatterData.length > 0 && (
+                <>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                        <XAxis
+                          type="number"
+                          dataKey="x"
+                          name="Recência"
+                          domain={[0, 6]}
+                          axisLine={false}
+                          tick={{ fontSize: 10 }}
+                          label={{ value: "Recência (proxy)", position: "insideBottom", offset: -10, fontSize: 10 }}
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="y"
+                          name="Frequência"
+                          domain={[0, 6]}
+                          axisLine={false}
+                          tick={{ fontSize: 10 }}
+                          label={{ value: "Frequência (proxy)", angle: -90, position: "insideLeft", fontSize: 10 }}
+                        />
+                        <ZAxis type="number" dataKey="z" range={[120, 2000]} name="Clientes" />
+                        <RechartsTooltip
+                          cursor={{ strokeDasharray: "3 3" }}
+                          contentStyle={{
+                            backgroundColor: "hsl(var(--card))",
+                            borderRadius: "12px",
+                            border: "1px solid hsl(var(--border))",
+                          }}
+                          formatter={(value: number, _name: string, props: { payload?: { name: string } }) => [
+                            `${value} clientes`,
+                            props.payload?.name ?? "",
+                          ]}
+                        />
+                        <Scatter name="Segmentos" data={rfmScatterData}>
+                          {rfmScatterData.map((entry) => (
+                            <Cell key={entry.key} fill={entry.fill} fillOpacity={0.65} stroke={entry.fill} />
+                          ))}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {rfmScatterData.map((d) => (
+                      <Badge
+                        key={d.key}
+                        variant="outline"
+                        className="text-[8px] uppercase tracking-tighter"
+                        style={{ borderColor: `${d.fill}44`, color: d.fill }}
+                      >
+                        {d.name}: {d.z}
+                      </Badge>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="bg-card border rounded-2xl p-6">
+              <h3 className="font-bold text-base mb-6 flex items-center gap-2">
+                <MousePointer2 className="w-4 h-4 text-primary" /> Envios por dia e faixa horária
+              </h3>
+              {heatmapLoading && <p className="text-sm text-muted-foreground">Carregando envios…</p>}
+              {!heatmapLoading && heatmap && heatmap.max === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Sem registros em message_sends no período (ou tabela indisponível).
+                </p>
+              )}
+              {!heatmapLoading && heatmap && heatmap.max > 0 && (
+                <>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-4 gap-1">
+                      <div />
+                      {HOUR_BUCKETS.map((h) => (
+                        <div key={h} className="text-[10px] font-bold text-muted-foreground text-center">
+                          {h}
+                        </div>
+                      ))}
+                    </div>
+                    {DAYS_PT.map((day, dayIndex) => (
+                      <div key={day} className="grid grid-cols-4 gap-1">
+                        <div className="text-[10px] font-bold text-muted-foreground flex items-center">{day}</div>
+                        {HOUR_BUCKETS.map((hour) => {
+                          const key = `${dayIndex}-${hour}`;
+                          const count = heatmap.cells[key] ?? 0;
+                          const intensity = heatmap.max > 0 ? count / heatmap.max : 0;
+                          const opacity = Math.max(0.08, intensity);
+                          return (
+                            <div
+                              key={`${day}-${hour}`}
+                              className="h-8 rounded-md transition-all hover:scale-105 cursor-help"
+                              style={{
+                                backgroundColor: `rgba(16, 185, 129, ${opacity})`,
+                                border: `1px solid rgba(16, 185, 129, ${opacity + 0.08})`,
+                              }}
+                              title={`${count} envios`}
+                            />
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-6 italic text-center">
+                    Baseado em até 8000 envios recentes (message_sends.sent_at), agregados por dia da semana e faixa de
+                    horário.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-card border rounded-2xl p-6">
+            <h3 className="font-bold text-base mb-6 flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" /> Cohorts de clientes (pipeline)
+            </h3>
+            {cohortsLoading && <p className="text-sm text-muted-foreground">Carregando cohorts…</p>}
+            {!cohortsLoading && cohorts.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Nenhum snapshot em customer_cohorts. Quando o job de dados popular esta tabela, os valores aparecem
+                aqui.
+              </p>
+            )}
+            {!cohortsLoading && cohorts.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/50">
+                      <th className="p-2 text-left font-semibold">Mês cohort</th>
+                      <th className="p-2 text-center font-semibold bg-muted/20">Tamanho</th>
+                      <th className="p-2 text-center font-semibold">Retenção D30</th>
+                      <th className="p-2 text-right font-semibold text-muted-foreground">Computado em</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cohorts.map((row) => (
+                      <tr key={row.id} className="border-b border-border/30">
+                        <td className="p-2 text-muted-foreground">{row.cohort_month}</td>
+                        <td className="p-2 text-center bg-muted/10">{row.cohort_size}</td>
+                        <td className="p-2 text-center font-mono">{formatRetentionD30(row.retention_d30)}</td>
+                        <td className="p-2 text-right text-muted-foreground text-[10px]">
+                          {row.computed_at
+                            ? new Date(row.computed_at).toLocaleString("pt-BR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

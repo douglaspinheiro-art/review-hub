@@ -5,7 +5,16 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  {
+    ignores: [
+      "dist",
+      // Vitest/Vite geram ficheiros .timestamp-*.mjs efémeros ao carregar este config;
+      // lintar vitest.config.ts pode provocar ENOENT se o ficheiro for apagado em paralelo.
+      "vitest.config.ts",
+      "**/vitest.config.ts.timestamp-*.mjs",
+      "**/*.timestamp-*.mjs",
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Save, Send, Loader2, Users, Tag, Globe,
-  Check, X, Bookmark, Library,
+  Check, X, Bookmark, Library, EyeOff, BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,8 +33,36 @@ import {
   type NewsletterTemplate,
 } from "@/lib/newsletter-renderer";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
+import { useNewsletterCampaignStats } from "@/hooks/useNewsletterAnalytics";
 
-type RecipientMode = "all" | "tag" | "rfm";
+type RecipientMode = "all" | "tag" | "rfm" | "non_openers";
+
+type DispatchNewsletterResult = {
+  sent: number;
+  failed: number;
+  total?: number;
+  scheduled?: boolean;
+};
+
+function parseDispatchNewsletterResponse(data: unknown): DispatchNewsletterResult {
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    if (typeof d.error === "string") {
+      const rid = typeof d.request_id === "string" ? ` Ref: ${d.request_id}` : "";
+      throw new Error(`${d.error}${rid}`.trim());
+    }
+    if (d.scheduled === true) return { sent: 0, failed: 0, scheduled: true };
+    if (typeof d.sent === "number") {
+      return {
+        sent: d.sent,
+        failed: typeof d.failed === "number" ? d.failed : 0,
+        total: typeof d.total === "number" ? d.total : undefined,
+        scheduled: false,
+      };
+    }
+  }
+  throw new Error("Resposta inválida do servidor ao enviar newsletter.");
+}
 
 const RFM_SEGMENTS = [
   { value: "champions", label: "Campeões" },
@@ -76,6 +104,11 @@ export default function Newsletter() {
   const [showTemplateModal, setShowTemplateModal] = useState(!id);
   const [activePanel, setActivePanel] = useState<"blocks" | "settings">("blocks");
   const initialized = useRef(false);
+
+  useEffect(() => {
+    setCampaignId(id ?? null);
+    initialized.current = false;
+  }, [id]);
 
   const { data: storeRow } = useQuery({
     queryKey: ["newsletter-store", user?.id],
@@ -160,7 +193,13 @@ export default function Newsletter() {
   });
 
   // ── Load existing draft ──────────────────────────────────────────────────────
-  const { data: existingCampaign, isLoading } = useQuery({
+  const {
+    data: existingCampaign,
+    isLoading: campaignQueryLoading,
+    isError: campaignQueryError,
+    error: campaignLoadError,
+    isFetched: campaignFetched,
+  } = useQuery({
     queryKey: ["newsletter_draft", campaignId],
     queryFn: async () => {
       if (!campaignId) return null;
@@ -169,7 +208,7 @@ export default function Newsletter() {
         .select("*")
         .eq("id", campaignId)
         .eq("user_id", user!.id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -181,14 +220,16 @@ export default function Newsletter() {
       initialized.current = true;
       setName(existingCampaign.name ?? "Newsletter");
       setSubject(existingCampaign.subject ?? "");
-      setPreheader((existingCampaign as any).preheader ?? "");
-      setSubjectVariantB((existingCampaign as any).subject_variant_b ?? "");
-      setAbSubjectEnabled(!!(existingCampaign as any).ab_subject_enabled);
-      const mode = (existingCampaign as any).email_recipient_mode as RecipientMode | undefined;
-      if (mode === "all" || mode === "tag" || mode === "rfm") setRecipientMode(mode);
-      setRecipientTag((existingCampaign as any).email_recipient_tag ?? "");
-      setRecipientRFM((existingCampaign as any).email_recipient_rfm ?? "champions");
-      const loaded = (existingCampaign as any).blocks as Block[] | null;
+      setPreheader((existingCampaign as { preheader?: string }).preheader ?? "");
+      setSubjectVariantB((existingCampaign as { subject_variant_b?: string }).subject_variant_b ?? "");
+      setAbSubjectEnabled(!!(existingCampaign as { ab_subject_enabled?: boolean }).ab_subject_enabled);
+      const mode = (existingCampaign as { email_recipient_mode?: string }).email_recipient_mode;
+      if (mode === "all" || mode === "tag" || mode === "rfm" || mode === "non_openers") {
+        setRecipientMode(mode as RecipientMode);
+      }
+      setRecipientTag((existingCampaign as { email_recipient_tag?: string }).email_recipient_tag ?? "");
+      setRecipientRFM((existingCampaign as { email_recipient_rfm?: string }).email_recipient_rfm ?? "champions");
+      const loaded = (existingCampaign as { blocks?: Block[] }).blocks ?? null;
       setBlocks(loaded && loaded.length > 0 ? loaded : createDefaultBlocks());
       setShowTemplateModal(false);
     }
@@ -269,6 +310,8 @@ export default function Newsletter() {
   const { data: recipientCount, isFetching: countFetching } = useQuery({
     queryKey: ["newsletter_recipient_count", recipientMode, debouncedTag, recipientRFM, user?.id],
     queryFn: async () => {
+      // customers_v3 pode não estar no tipo gerado do cliente
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let query = (supabase as any)
         .from("customers_v3")
         .select("id", { count: "exact", head: true })
@@ -278,8 +321,8 @@ export default function Newsletter() {
         .is("email_hard_bounce_at", null)
         .is("email_complaint_at", null);
 
-      if (recipientMode === "tag" && debouncedTag) {
-        query = query.contains("tags", [debouncedTag]);
+      if (recipientMode === "tag" && debouncedTag.trim()) {
+        query = query.contains("tags", [debouncedTag.trim()]);
       } else if (recipientMode === "rfm") {
         query = query.eq("rfm_segment", recipientRFM);
       }
@@ -288,12 +331,130 @@ export default function Newsletter() {
       if (error) throw error;
       return count as number ?? 0;
     },
-    enabled: !!user,
+    enabled:
+      !!user &&
+      recipientMode !== "non_openers" &&
+      (recipientMode !== "tag" || debouncedTag.trim().length > 0),
   });
+
+  const { data: nonOpenersCount = 0, isFetching: nonOpenersFetching } = useQuery({
+    queryKey: ["newsletter_non_openers_count", campaignId, user?.id],
+    queryFn: async () => {
+      if (!campaignId || !user) return 0;
+      const { data: sentRows, error: e1 } = await supabase
+        .from("newsletter_send_recipients")
+        .select("customer_id")
+        .eq("campaign_id", campaignId);
+      if (e1) throw e1;
+      const sentIds = [...new Set((sentRows ?? []).map((r: { customer_id: string }) => r.customer_id))];
+      if (sentIds.length === 0) return 0;
+      const { data: openRows, error: e2 } = await supabase
+        .from("email_engagement_events")
+        .select("customer_id")
+        .eq("campaign_id", campaignId)
+        .eq("event_type", "open");
+      if (e2) throw e2;
+      const opened = new Set((openRows ?? []).map((r: { customer_id: string }) => r.customer_id));
+      const nonOpenerIds = sentIds.filter((cid) => !opened.has(cid));
+      if (nonOpenerIds.length === 0) return 0;
+      const chunkSize = 200;
+      let total = 0;
+      for (let i = 0; i < nonOpenerIds.length; i += chunkSize) {
+        const chunk = nonOpenerIds.slice(i, i + chunkSize);
+        const { count, error: e3 } = await supabase
+          .from("customers_v3")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .in("id", chunk)
+          .not("email", "is", null)
+          .is("unsubscribed_at", null)
+          .is("email_hard_bounce_at", null)
+          .is("email_complaint_at", null);
+        if (e3) throw e3;
+        total += count ?? 0;
+      }
+      return total;
+    },
+    enabled: !!user && !!campaignId && recipientMode === "non_openers",
+  });
+
+  const effectiveRecipientCount =
+    recipientMode === "non_openers"
+      ? nonOpenersCount
+      : recipientMode === "tag" && !debouncedTag.trim()
+        ? 0
+        : recipientCount;
+  const effectiveCountFetching =
+    recipientMode === "non_openers" ? nonOpenersFetching : countFetching;
+
+  const statsChannel =
+    existingCampaign == null
+      ? campaignId
+        ? "email"
+        : null
+      : existingCampaign.channel === "email"
+        ? "email"
+        : null;
+
+  const { data: newsletterStats, isFetching: newsletterStatsLoading } = useNewsletterCampaignStats(
+    campaignId ?? undefined,
+    statsChannel,
+  );
+
+  const showNewsletterPerformance =
+    !!campaignId &&
+    statsChannel === "email" &&
+    !!existingCampaign &&
+    (existingCampaign.status === "completed" ||
+      existingCampaign.status === "running" ||
+      (existingCampaign.sent_count ?? 0) > 0);
+
+  const hasUnsavedSyncedChanges = useMemo(() => {
+    try {
+      return (
+        JSON.stringify(blocks) !== JSON.stringify(debouncedBlocks) ||
+        subject !== debouncedSubject ||
+        name !== debouncedName ||
+        preheader !== debouncedPreheader ||
+        subjectVariantB !== debouncedSubjectB
+      );
+    } catch {
+      return false;
+    }
+  }, [
+    blocks, debouncedBlocks, subject, debouncedSubject, name, debouncedName,
+    preheader, debouncedPreheader, subjectVariantB, debouncedSubjectB,
+  ]);
+
+  useEffect(() => {
+    const warn = saveMutation.isPending || hasUnsavedSyncedChanges;
+    if (!warn) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [saveMutation.isPending, hasUnsavedSyncedChanges]);
+
+  const sendBlockedReason = useMemo(() => {
+    if (!subject.trim()) return "Defina um assunto antes de enviar.";
+    if (blocks.length === 0) return "Adicione pelo menos um bloco ao e-mail.";
+    if (recipientMode === "tag" && !recipientTag.trim()) return "Informe a tag de segmentação.";
+    if (recipientMode === "non_openers") {
+      if (!campaignId) return "Salve o rascunho antes de usar o reenvio para quem não abriu.";
+      if (nonOpenersCount === 0) {
+        return "Não há destinatários elegíveis (é preciso ter enviado esta campanha antes e existirem contatos sem abertura).";
+      }
+    }
+    return null;
+  }, [subject, blocks.length, recipientMode, recipientTag, campaignId, nonOpenersCount]);
 
   // ── Send ─────────────────────────────────────────────────────────────────────
   const sendMutation = useMutation({
     mutationFn: async (scheduledAt?: string) => {
+      if (sendBlockedReason) throw new Error(sendBlockedReason);
+
       const id = await saveMutation.mutateAsync();
       if (!id) throw new Error("Erro ao salvar.");
 
@@ -309,7 +470,7 @@ export default function Newsletter() {
           } as never)
           .eq("id", id);
         if (error) throw error;
-        return { scheduled: true };
+        return parseDispatchNewsletterResponse({ scheduled: true });
       }
 
       const { data, error } = await supabase.functions.invoke("dispatch-newsletter", {
@@ -321,20 +482,29 @@ export default function Newsletter() {
         },
       });
       if (error) throw error;
-      return data as { sent: number; failed: number };
+      return parseDispatchNewsletterResponse(data);
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: DispatchNewsletterResult) => {
       void trackMoatEvent("newsletter_sent", {
         mode: recipientMode,
-        scheduled: Boolean(data?.scheduled),
-        recipients: recipientCount ?? 0,
+        scheduled: Boolean(data.scheduled),
+        recipients: effectiveRecipientCount ?? 0,
       });
-      if (data?.scheduled) {
+      if (data.scheduled) {
         toast.success("Newsletter agendada com sucesso!");
       } else {
-        toast.success(`Newsletter enviada! ${data.sent} destinatários.`);
+        const failed = data.failed ?? 0;
+        if (failed > 0) {
+          toast.warning(
+            `Envio concluído com ressalvas: ${data.sent} enviados, ${failed} falharam${data.total != null ? ` (total ${data.total})` : ""}.`,
+          );
+        } else {
+          toast.success(`Newsletter enviada! ${data.sent} destinatários.`);
+        }
       }
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["newsletter-campaign-stats", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["newsletter_non_openers_count", campaignId] });
       navigate("/dashboard/campanhas");
     },
     onError: (err: Error) => {
@@ -344,13 +514,15 @@ export default function Newsletter() {
 
   const testSendMutation = useMutation({
     mutationFn: async (testEmail: string) => {
+      if (!subject.trim()) throw new Error("Defina um assunto para o teste.");
+      if (blocks.length === 0) throw new Error("Adicione blocos antes do teste.");
       const id = await saveMutation.mutateAsync();
       if (!id) throw new Error("Erro ao salvar antes do envio de teste.");
       const { data, error } = await supabase.functions.invoke("dispatch-newsletter", {
         body: { campaign_id: id, recipient_mode: "test", test_email: testEmail },
       });
       if (error) throw error;
-      return data as { sent: number };
+      return parseDispatchNewsletterResponse(data);
     },
     onSuccess: () => {
       void trackMoatEvent("newsletter_sent", { mode: "test" });
@@ -389,10 +561,53 @@ export default function Newsletter() {
     setSelectedId((prev) => (prev === id ? null : prev));
   }, []);
 
-  if (isLoading) {
+  const campaignNotFound =
+    !!campaignId && campaignFetched && !existingCampaign && !campaignQueryError;
+  const wrongChannelEmail =
+    !!existingCampaign && existingCampaign.channel !== "email";
+
+  if (campaignId && campaignQueryLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (campaignId && campaignQueryError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4 px-4 text-center">
+        <p className="text-sm text-destructive max-w-md">
+          Não foi possível carregar esta campanha. {campaignLoadError instanceof Error ? campaignLoadError.message : ""}
+        </p>
+        <Button variant="outline" onClick={() => navigate("/dashboard/campanhas")}>
+          Voltar às campanhas
+        </Button>
+      </div>
+    );
+  }
+
+  if (campaignNotFound) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4 px-4 text-center">
+        <p className="text-sm text-muted-foreground max-w-md">
+          Campanha não encontrada ou não pertence à sua conta.
+        </p>
+        <div className="flex flex-wrap gap-2 justify-center">
+          <Button variant="outline" onClick={() => navigate("/dashboard/campanhas")}>Campanhas</Button>
+          <Button onClick={() => navigate("/dashboard/newsletter")}>Nova newsletter</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (wrongChannelEmail) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4 px-4 text-center">
+        <p className="text-sm text-muted-foreground max-w-md">
+          Este ID é de uma campanha em outro canal (não é e-mail). Abra a campanha correta na lista de campanhas.
+        </p>
+        <Button variant="outline" onClick={() => navigate("/dashboard/campanhas")}>Ir para campanhas</Button>
       </div>
     );
   }
@@ -467,6 +682,8 @@ export default function Newsletter() {
             size="sm"
             className="gap-1.5 h-8"
             onClick={() => setShowSendConfirm(true)}
+            disabled={Boolean(sendBlockedReason)}
+            title={sendBlockedReason ?? undefined}
           >
             <Send className="w-3.5 h-3.5" /> Enviar
           </Button>
@@ -553,8 +770,9 @@ export default function Newsletter() {
                   onMode={setRecipientMode}
                   onTag={setRecipientTag}
                   onRFM={setRecipientRFM}
-                  count={recipientCount}
-                  countFetching={countFetching}
+                  count={effectiveRecipientCount}
+                  countFetching={effectiveCountFetching}
+                  hasCampaignId={Boolean(campaignId)}
                 />
                 <div className="pt-3 border-t space-y-2">
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Identidade do remetente</p>
@@ -614,6 +832,42 @@ export default function Newsletter() {
 
         {/* Painel direito — settings do bloco selecionado + preview */}
         <div className="w-80 shrink-0 border-l bg-background flex flex-col overflow-hidden">
+          {showNewsletterPerformance && (
+            <div className="border-b p-3 shrink-0 space-y-2 bg-muted/20">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <BarChart3 className="w-3 h-3" /> Desempenho
+              </p>
+              {newsletterStatsLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="rounded-lg bg-background/80 border py-1.5">
+                      <p className="text-sm font-bold tabular-nums">{newsletterStats?.uniqueOpeners ?? 0}</p>
+                      <p className="text-[10px] text-muted-foreground">Aberturas únicas</p>
+                    </div>
+                    <div className="rounded-lg bg-background/80 border py-1.5">
+                      <p className="text-sm font-bold tabular-nums">{newsletterStats?.uniqueClickers ?? 0}</p>
+                      <p className="text-[10px] text-muted-foreground">Cliques únicos</p>
+                    </div>
+                  </div>
+                  {(newsletterStats?.topLinks?.length ?? 0) > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-semibold text-muted-foreground">Top links</p>
+                      <ul className="space-y-1 max-h-24 overflow-y-auto text-[10px]">
+                        {(newsletterStats?.topLinks ?? []).slice(0, 5).map((row) => (
+                          <li key={row.url} className="flex justify-between gap-2 border-b border-border/40 pb-0.5">
+                            <span className="truncate text-muted-foreground" title={row.url}>{row.url}</span>
+                            <span className="shrink-0 font-mono">{row.count}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {/* Block settings */}
           {selectedBlock && (
             <div className="border-b p-4 overflow-y-auto max-h-[50%]">
@@ -659,9 +913,11 @@ export default function Newsletter() {
           recipientMode={recipientMode}
           recipientTag={recipientTag}
           recipientRFM={recipientRFM}
-          recipientCount={recipientCount}
+          recipientCount={effectiveRecipientCount}
           isSending={sendMutation.isPending}
           isTestSending={testSendMutation.isPending}
+          sendBlockedReason={sendBlockedReason}
+          fromNotConfigured={!emailFromAddress.trim()}
           onConfirm={(scheduledAt) => sendMutation.mutate(scheduledAt)}
           onTestSend={(email) => testSendMutation.mutate(email)}
           onClose={() => setShowSendConfirm(false)}
@@ -719,7 +975,7 @@ function TemplateModal({
 function RecipientPanel({
   mode, tag, rfm,
   onMode, onTag, onRFM,
-  count, countFetching,
+  count, countFetching, hasCampaignId,
 }: {
   mode: RecipientMode; tag: string; rfm: string;
   onMode: (m: RecipientMode) => void;
@@ -727,6 +983,7 @@ function RecipientPanel({
   onRFM: (r: string) => void;
   count?: number;
   countFetching?: boolean;
+  hasCampaignId: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -735,9 +992,10 @@ function RecipientPanel({
       </p>
 
       {([
-        { value: "all", label: "Toda a base", icon: Globe },
-        { value: "rfm", label: "Segmento RFM", icon: Users },
-        { value: "tag", label: "Por tag", icon: Tag },
+        { value: "all" as const, label: "Toda a base", icon: Globe },
+        { value: "rfm" as const, label: "Segmento RFM", icon: Users },
+        { value: "tag" as const, label: "Por tag", icon: Tag },
+        { value: "non_openers" as const, label: "Não abriram", icon: EyeOff },
       ] as { value: RecipientMode; label: string; icon: React.ElementType }[]).map(({ value, label, icon: Icon }) => (
         <button
           key={value}
@@ -791,6 +1049,13 @@ function RecipientPanel({
         </div>
       )}
 
+      {mode === "non_openers" && (
+        <p className="text-[10px] text-muted-foreground leading-snug rounded-lg bg-muted/50 p-2">
+          Reenvia só para quem já recebeu esta campanha e ainda não registrou abertura.
+          {!hasCampaignId && " Salve o rascunho primeiro."}
+        </p>
+      )}
+
       {/* Contagem estimada */}
       <div className="pt-2 border-t border-border">
         {countFetching ? (
@@ -812,7 +1077,8 @@ function RecipientPanel({
 
 function SendConfirmModal({
   subject, recipientMode, recipientTag, recipientRFM,
-  recipientCount, isSending, isTestSending, onConfirm, onTestSend, onClose,
+  recipientCount, isSending, isTestSending, sendBlockedReason, fromNotConfigured,
+  onConfirm, onTestSend, onClose,
 }: {
   subject: string;
   recipientMode: RecipientMode;
@@ -821,6 +1087,8 @@ function SendConfirmModal({
   recipientCount?: number;
   isSending: boolean;
   isTestSending: boolean;
+  sendBlockedReason: string | null;
+  fromNotConfigured: boolean;
   onConfirm: (scheduledAt?: string) => void;
   onTestSend: (email: string) => void;
   onClose: () => void;
@@ -835,7 +1103,13 @@ function SendConfirmModal({
   const recipientLabel =
     recipientMode === "all" ? "toda a base de contatos" :
     recipientMode === "tag" ? `contatos com tag "${recipientTag}"` :
+    recipientMode === "non_openers" ? "reenvio: quem não abriu o último disparo" :
     `segmento RFM: ${RFM_SEGMENTS.find((s) => s.value === recipientRFM)?.label ?? recipientRFM}`;
+
+  const confirmDisabled =
+    isSending ||
+    Boolean(sendBlockedReason) ||
+    (sendMode === "schedule" && !scheduledAt);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -849,6 +1123,18 @@ function SendConfirmModal({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {sendBlockedReason && (
+          <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+            {sendBlockedReason}
+          </p>
+        )}
+
+        {fromNotConfigured && !sendBlockedReason && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            Nenhum remetente “From” configurado: o envio usará o endereço padrão da plataforma. Configure na aba Envio para melhor entregabilidade (SPF/DKIM no Resend).
+          </p>
+        )}
 
         <div className="bg-muted/40 rounded-xl p-4 space-y-2 text-sm">
           <div className="flex justify-between">
@@ -904,7 +1190,7 @@ function SendConfirmModal({
 
         <div className="flex gap-3">
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={isSending}>Cancelar</Button>
-          <Button className="flex-1 gap-2" disabled={isSending || (sendMode === "schedule" && !scheduledAt)}
+          <Button className="flex-1 gap-2" disabled={confirmDisabled}
             onClick={() => onConfirm(sendMode === "schedule" ? scheduledAt : undefined)}>
             {isSending
               ? <><Loader2 className="w-4 h-4 animate-spin" /> {sendMode === "schedule" ? "Agendando..." : "Enviando..."}</>

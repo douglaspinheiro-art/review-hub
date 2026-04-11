@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Zap, ArrowRight, CheckCircle2, AlertCircle,
@@ -19,12 +19,64 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import Header from "@/components/landing/Header";
 import Footer from "@/components/landing/Footer";
-import { calcDiagnostico } from "@/lib/diagnostico-logic";
+import { calcDiagnostico, recoveryProgressPercent, recoveryPercentLabel, MIN_TICKET_MEDIO } from "@/lib/diagnostico-logic";
 import { PLANS, BUNDLES, CONTACT_PACK, calcPlano } from "@/lib/pricing-constants";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { ECOMMERCE_PLATFORMAS } from "@/lib/ecommerce-platforms";
+import { toast } from "sonner";
+import { fetchStoreMetricsForDiagnostico, StoreMetricsQueryError } from "@/lib/fetch-store-metrics-client";
+import { trackDiagnosticoEvent } from "@/lib/analytics-events";
+
+const WIZARD_STORAGE_KEY = "ltv_diagnostico_wizard_v1";
+
+type WizardFormPersist = {
+  nome: string;
+  segmento: string;
+  plataforma: string;
+  faturamento: number;
+  clientes: number;
+  ticketMedio: number;
+  canais: string[];
+  taxaAbandono: number;
+};
+
+type WizardPersistV1 = {
+  v: 1;
+  step: number;
+  subStep: 1 | 2;
+  formData: WizardFormPersist;
+};
+
+function readWizardState(): WizardPersistV1 | null {
+  try {
+    const raw = sessionStorage.getItem(WIZARD_STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<WizardPersistV1>;
+    if (p?.v !== 1 || typeof p.step !== "number" || typeof p.subStep !== "number") return null;
+    if (!p.formData || typeof p.formData !== "object") return null;
+    return p as WizardPersistV1;
+  } catch {
+    return null;
+  }
+}
+
+function writeWizardState(payload: { step: number; subStep: 1 | 2; formData: WizardFormPersist }) {
+  try {
+    sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({ v: 1, ...payload }));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function clearWizardState() {
+  try {
+    sessionStorage.removeItem(WIZARD_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 const PLATFORM_LABELS: Record<string, string> = {
   shopify: "Shopify", nuvemshop: "Nuvemshop", woocommerce: "WooCommerce",
@@ -49,72 +101,112 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
   const navigate = useNavigate();
   const [savingPlan, setSavingPlan] = useState<string | null>(null);
 
+  const persisted = useMemo(
+    () => (typeof sessionStorage !== "undefined" ? readWizardState() : null),
+    []
+  );
+
   async function handleSelectPlan(key: string, isSuggested: boolean) {
     setSavingPlan(key);
     try {
       if (user) {
-        // Update profile
-        await supabase
+        const { error: profileErr } = await supabase
           .from("profiles")
           .update({ plan: key, onboarding_completed: true })
           .eq("id", user.id);
-          
-        // Create initial store if none exists
-        const { data: existingStore } = await supabase
+        if (profileErr) {
+          toast.error(`Não foi possível salvar o plano: ${profileErr.message}`);
+          return;
+        }
+
+        const { data: existingStore, error: storeSelectErr } = await supabase
           .from("stores")
           .select("id")
           .eq("user_id", user.id)
           .maybeSingle();
-          
+
+        if (storeSelectErr) {
+          toast.error(`Não foi possível verificar sua loja: ${storeSelectErr.message}`);
+          return;
+        }
+
         if (!existingStore) {
-          await supabase.from("stores").insert({
+          const { error: insertErr } = await supabase.from("stores").insert({
             user_id: user.id,
             name: formData.nome || profile?.company_name || "Minha Loja",
             segment: formData.segmento
           });
+          if (insertErr) {
+            toast.error(`Não foi possível criar a loja: ${insertErr.message}`);
+            return;
+          }
         }
       }
+      clearWizardState();
+      trackDiagnosticoEvent("diagnostico_plan_selected", { plan: key });
       navigate(`/dashboard${isSuggested ? "?setup=novo" : ""}`);
     } catch (err) {
       console.error("Error saving plan/store:", err);
-      navigate(`/dashboard${isSuggested ? "?setup=novo" : ""}`);
+      toast.error("Algo deu errado ao salvar. Tente novamente.");
     } finally {
       setSavingPlan(null);
     }
   }
-  const [step, setStep] = useState(1);
-  const [subStep, setSubStep] = useState<1 | 2>(1);
+
+  const [step, setStep] = useState(() =>
+    persisted && persisted.step >= 1 && persisted.step <= 4 ? persisted.step : 1
+  );
+  const [subStep, setSubStep] = useState<1 | 2>(() =>
+    persisted?.subStep === 1 || persisted?.subStep === 2 ? persisted.subStep : 1
+  );
   const [realDataLoaded, setRealDataLoaded] = useState(false);
 
-  // Etapa 1 State
-  const [formData, setFormData] = useState({
-    nome: profile?.company_name || "",
-    segmento: "Moda",
-    plataforma: "Shopify",
-    faturamento: 50000,
-    clientes: 5000,
-    ticketMedio: 150,
-    canais: [] as string[],
-    taxaAbandono: 0.7,
+  const [formData, setFormData] = useState<WizardFormPersist>(() => {
+    const base: WizardFormPersist = {
+      nome: "",
+      segmento: "Moda",
+      plataforma: "Shopify",
+      faturamento: 50000,
+      clientes: 5000,
+      ticketMedio: 150,
+      canais: [] as string[],
+      taxaAbandono: 0.7,
+    };
+    if (persisted?.formData) {
+      return {
+        ...base,
+        ...persisted.formData,
+        canais: Array.isArray(persisted.formData.canais) ? persisted.formData.canais : [],
+      };
+    }
+    return base;
   });
+
+  useEffect(() => {
+    if (!profile?.company_name) return;
+    setFormData(prev => {
+      if (prev.nome.trim()) return prev;
+      return { ...prev, nome: profile.company_name };
+    });
+  }, [profile?.company_name]);
+
+  useEffect(() => {
+    writeWizardState({ step, subStep, formData });
+  }, [step, subStep, formData]);
+
+  useEffect(() => {
+    trackDiagnosticoEvent("diagnostico_step_view", { step });
+  }, [step]);
 
   // Busca dados reais da loja se usuário tem integração ativa
   const { data: storeMetrics, isLoading: isLoadingMetrics, error: metricsError, refetch: refetchMetrics } = useQuery({
     queryKey: ["store-metrics", user?.id],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return null;
-      const res = await supabase.functions.invoke("fetch-store-metrics", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (res.error) throw new Error(res.error.message);
-      return res.data as {
-        plataforma: string;
-        faturamento: number;
-        ticketMedio: number;
-        totalClientes: number;
-        taxaAbandono: number;
-      };
+      if (!session?.access_token) {
+        throw new StoreMetricsQueryError("Sessão não disponível.", "unauthorized");
+      }
+      return fetchStoreMetricsForDiagnostico(supabase, session.access_token);
     },
     enabled: !!user,
     retry: false,
@@ -140,11 +232,9 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
   // Etapa 2 Loading items
   const [loadingStep, setLoadingStep] = useState(0);
   const loadingItems = [
-    "🔍 Analisando faturamento e volume de pedidos...",
-    "📊 Calculando receita perdida no funil...",
-    "👥 Estimando base de contatos necessária...",
-    "📱 Projetando volume de mensagens por canal...",
-    "💡 Gerando recomendação personalizada..."
+    "📊 Calculando perdas estimadas a partir dos seus números…",
+    "📱 Estimando volume de mensagens por canal…",
+    "💡 Montando a recomendação de plano…",
   ];
 
   // Etapa 4 Simulation state
@@ -165,17 +255,18 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
 
   useEffect(() => {
     if (step === 2) {
+      setLoadingStep(0);
       const interval = setInterval(() => {
         setLoadingStep(prev => {
-          if (prev < loadingItems.length) return prev + 1;
+          if (prev < loadingItems.length - 1) return prev + 1;
           clearInterval(interval);
-          setTimeout(() => setStep(3), 600);
+          setTimeout(() => setStep(3), 500);
           return prev;
         });
-      }, 900);
+      }, 700);
       return () => clearInterval(interval);
     }
-  }, [step]);
+  }, [step, loadingItems.length]);
 
   useEffect(() => {
     if (step === 3) {
@@ -193,40 +284,115 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
     <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
       {/* Banner: dados reais da loja */}
-      {user && (
-        <div className={cn(
-          "rounded-2xl border px-5 py-3 flex items-center gap-3 text-sm transition-all",
-          isLoadingMetrics
-            ? "bg-muted/30 border-border/40 text-muted-foreground"
-            : realDataLoaded
+      {user && (() => {
+        const bannerTone = isLoadingMetrics
+          ? "bg-muted/30 border-border/40 text-muted-foreground"
+          : storeMetrics
             ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
             : metricsError
             ? "bg-amber-500/5 border-amber-500/20 text-amber-700 dark:text-amber-400"
-            : "bg-muted/30 border-border/40 text-muted-foreground"
-        )}>
-          {isLoadingMetrics ? (
-            <><Loader2 className="w-4 h-4 animate-spin shrink-0" /> Buscando dados reais da sua loja...</>
-          ) : realDataLoaded ? (
+            : "bg-muted/30 border-border/40 text-muted-foreground";
+
+        let inner: ReactNode = null;
+        if (isLoadingMetrics) {
+          inner = (
             <>
-              <Link2 className="w-4 h-4 shrink-0" />
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden />
+              <span role="status" aria-live="polite">Buscando dados reais da sua loja…</span>
+            </>
+          );
+        } else if (storeMetrics) {
+          inner = (
+            <>
+              <Link2 className="w-4 h-4 shrink-0" aria-hidden />
               <span>
-                <strong>Pré-preenchido com dados reais</strong> de {PLATFORM_LABELS[storeMetrics!.plataforma] || storeMetrics?.plataforma} — últimos 30 dias. Ajuste se necessário.
+                <strong>Pré-preenchido com dados reais</strong> de {PLATFORM_LABELS[storeMetrics.plataforma] || storeMetrics.plataforma} — últimos 30 dias. Ajuste se necessário.
               </span>
-              <button onClick={() => refetchMetrics()} className="ml-auto shrink-0 hover:opacity-70 transition-opacity">
+              <button
+                type="button"
+                onClick={() => refetchMetrics()}
+                className="ml-auto shrink-0 hover:opacity-70 transition-opacity"
+                aria-label="Atualizar dados da loja"
+              >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
             </>
-          ) : metricsError ? (
-            <>
-              <Info className="w-4 h-4 shrink-0" />
-              <span>Sem integração de loja ativa — preencha os dados manualmente.</span>
-              <a href="/dashboard/integracoes" className="ml-auto shrink-0 text-xs font-bold underline underline-offset-2 hover:no-underline">
-                Conectar loja →
-              </a>
-            </>
-          ) : null}
-        </div>
-      )}
+          );
+        } else if (metricsError) {
+          const err = metricsError as Error;
+          if (err instanceof StoreMetricsQueryError) {
+            if (err.kind === "no_integration") {
+              inner = (
+                <>
+                  <Info className="w-4 h-4 shrink-0" aria-hidden />
+                  <span>Sem integração de loja ativa — preencha os dados manualmente.</span>
+                  <a href="/dashboard/integracoes" className="ml-auto shrink-0 text-xs font-bold underline underline-offset-2 hover:no-underline">
+                    Conectar loja →
+                  </a>
+                </>
+              );
+            } else if (err.kind === "unauthorized") {
+              inner = (
+                <>
+                  <Info className="w-4 h-4 shrink-0" aria-hidden />
+                  <span>{err.message}</span>
+                </>
+              );
+            } else if (err.kind === "empty_response") {
+              inner = (
+                <>
+                  <Info className="w-4 h-4 shrink-0" aria-hidden />
+                  <span>{err.message}</span>
+                </>
+              );
+            } else if (err.kind === "unsupported") {
+              inner = (
+                <>
+                  <Info className="w-4 h-4 shrink-0" aria-hidden />
+                  <span>{err.message}</span>
+                </>
+              );
+            } else if (err.kind === "network") {
+              inner = (
+                <>
+                  <Info className="w-4 h-4 shrink-0" aria-hidden />
+                  <span>{err.message}</span>
+                  <button type="button" onClick={() => refetchMetrics()} className="ml-auto shrink-0 text-xs font-bold underline" aria-label="Tentar buscar métricas novamente">
+                    Tentar de novo
+                  </button>
+                </>
+              );
+            } else {
+              inner = (
+                <>
+                  <Info className="w-4 h-4 shrink-0" aria-hidden />
+                  <span>{err.message}</span>
+                  <button type="button" onClick={() => refetchMetrics()} className="ml-auto shrink-0 text-xs font-bold underline" aria-label="Tentar buscar métricas novamente">
+                    Tentar de novo
+                  </button>
+                </>
+              );
+            }
+          } else {
+            inner = (
+              <>
+                <Info className="w-4 h-4 shrink-0" aria-hidden />
+                <span>Não foi possível carregar métricas da loja. Preencha os dados manualmente.</span>
+                <button type="button" onClick={() => refetchMetrics()} className="ml-auto shrink-0 text-xs font-bold underline" aria-label="Tentar buscar métricas novamente">
+                  Tentar de novo
+                </button>
+              </>
+            );
+          }
+        }
+
+        if (!inner) return null;
+        return (
+          <div className={cn("rounded-2xl border px-5 py-3 flex items-center gap-3 text-sm transition-all", bannerTone)}>
+            {inner}
+          </div>
+        );
+      })()}
 
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -244,7 +410,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
             Etapa 1{subStep === 2 ? "b" : "a"} de 4
           </span>
         </div>
-        <Progress value={subStep === 1 ? 12 : 25} className="h-2" />
+        <Progress value={subStep === 1 ? 12 : 25} className="h-2" aria-label={`Progresso do assistente, etapa 1${subStep === 2 ? "b" : "a"} de 4`} />
       </div>
 
       {subStep === 1 ? (
@@ -292,8 +458,12 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
               <Input
                 id="ticket"
                 type="number"
+                min={MIN_TICKET_MEDIO}
                 value={formData.ticketMedio}
-                onChange={e => setFormData(prev => ({ ...prev, ticketMedio: Number(e.target.value) }))}
+                onChange={e => setFormData(prev => ({
+                  ...prev,
+                  ticketMedio: Math.max(MIN_TICKET_MEDIO, Number(e.target.value) || MIN_TICKET_MEDIO),
+                }))}
               />
             </div>
           </div>
@@ -325,6 +495,8 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
           </div>
 
           <Button
+            type="button"
+            data-testid="diagnostico-continuar-numeros"
             className="w-full h-14 text-lg font-black rounded-2xl gap-2"
             onClick={() => setSubStep(2)}
             disabled={!formData.nome}
@@ -424,14 +596,17 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
 
   const renderStep2 = () => (
     <div className="max-w-xl mx-auto py-20 text-center space-y-12 animate-in fade-in duration-500">
-      <div className="relative inline-flex items-center justify-center">
+      <div className="relative inline-flex items-center justify-center" aria-hidden>
         <div className="w-24 h-24 border-4 border-primary/20 rounded-full animate-spin border-t-primary" />
         <Search className="w-10 h-10 text-primary absolute" />
       </div>
       
       <div className="space-y-4">
-        <h2 className="text-2xl font-bold tracking-tight">Criando seu diagnóstico...</h2>
-        <div className="space-y-3 text-left max-w-sm mx-auto">
+        <h2 className="text-2xl font-bold tracking-tight">Calculando estimativas…</h2>
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          Com base nos números que você informou, calculamos perdas e recuperação possível <strong>no seu navegador</strong> — nenhum dado é enviado a um servidor nesta etapa.
+        </p>
+        <div className="space-y-3 text-left max-w-sm mx-auto" role="status" aria-live="polite" aria-label="Progresso do cálculo local">
           {loadingItems.map((item, i) => (
             <div 
               key={i} 
@@ -462,6 +637,10 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
         <h1 className="text-3xl md:text-5xl font-black font-syne tracking-tighter uppercase italic">Diagnóstico Concluído</h1>
         <p className="text-muted-foreground text-lg">Descubra quanto sua loja está perdendo e quanto podemos recuperar</p>
       </div>
+
+      <p className="text-xs text-muted-foreground border border-border/60 rounded-xl p-4 bg-muted/20 leading-relaxed max-w-3xl mx-auto">
+        Os valores abaixo são <strong>projeções e simulações</strong>, não medições auditadas da sua operação. Não constituem garantia de resultado nem aconselhamento jurídico ou fiscal. Resultados reais dependem da sua execução, do mercado e de fatores fora do nosso controle.
+      </p>
 
       <div className="grid md:grid-cols-2 gap-8">
         {/* O que está perdendo */}
@@ -526,9 +705,13 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-bold uppercase">
                 <span>Recuperado vs Perdido</span>
-                <span className="text-emerald-500">+{Math.round((diagnostico.receitaRecuperadaTotal / diagnostico.receitaPerdida) * 100)}%</span>
+                <span className="text-emerald-500">+{recoveryPercentLabel(diagnostico.receitaPerdida, diagnostico.receitaRecuperadaTotal)}%</span>
               </div>
-              <Progress value={(diagnostico.receitaRecuperadaTotal / diagnostico.receitaPerdida) * 100} className="h-2 bg-emerald-500/20" />
+              <Progress
+                value={recoveryProgressPercent(diagnostico.receitaPerdida, diagnostico.receitaRecuperadaTotal)}
+                className="h-2 bg-emerald-500/20"
+                aria-label="Proporção estimada de recuperação em relação à perda mensal"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-emerald-500/10">
@@ -748,7 +931,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
               <Slider 
                 value={[simRecuperada]} 
                 min={0} 
-                max={diagnostico.receitaPerdida} 
+                max={Math.max(1000, diagnostico.receitaPerdida || 0)} 
                 step={1000}
                 onValueChange={([v]) => setSimRecuperada(v)}
               />
@@ -820,6 +1003,9 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
         </Card>
 
         <div className="text-center max-w-2xl mx-auto space-y-4">
+          <p className="text-xs text-muted-foreground border border-border/60 rounded-xl p-4 bg-muted/20 leading-relaxed text-left">
+            Reforço: as simulações desta página são <strong>estimativas ilustrativas</strong>. Não substituem análise contábil, jurídica ou de due diligence. A contratação de planos e o uso da plataforma ficam sujeitos aos <a href="/termos" className="underline font-medium hover:text-foreground">Termos</a> e à <a href="/privacidade" className="underline font-medium hover:text-foreground">Política de Privacidade</a>.
+          </p>
           <p className="text-xs text-muted-foreground italic">
             Projeções baseadas em benchmarks reais do mercado brasileiro. Usamos estimativa conservadora para não criar expectativas acima do que entregamos. Comece a recuperar vendas hoje — sem contrato de fidelidade.
           </p>

@@ -35,6 +35,20 @@ Não substitua placeholders pelo SQL “real” antigo se você não tiver o scr
 
 Reexecute `npm run supabase:migration-list` após qualquer `push`/`pull`.
 
+## Corrigir: “inserted before the last migration on remote”
+
+Quando existe um ficheiro local com timestamp **anterior** a migrações **já aplicadas** no remoto, o `db push` normal recusa.
+
+1. Ver o gap: `npm run supabase:migration-list` (coluna **Local** preenchida e **Remoto** vazio numa linha **acima** de linhas já alinhadas).
+2. Rever o SQL das migrações pendentes (são idempotentes? `IF NOT EXISTS` / `OR REPLACE`?).
+3. Aplicar com confirmação explícita:
+
+```bash
+npx supabase db push --linked --include-all
+```
+
+O `--include-all` aplica migrações pendentes mesmo fora da ordem cronológica estrita. **Só** usar depois de ler o SQL (evitar DDL que conflite com o que já está no remoto).
+
 ## Corrigir: aplicar o que falta no remoto
 
 ```bash

@@ -107,6 +107,7 @@ const PlanosPage = lazy(() => import("./pages/Planos.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe.tsx"));
+const AceitarConviteEquipe = lazy(() => import("./pages/AceitarConviteEquipe.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Lazily loaded dashboard pages
@@ -140,6 +141,7 @@ const AgenteIA = lazy(() => import("./pages/dashboard/AgenteIA.tsx"));
 const BenchmarkScore = lazy(() => import("./pages/dashboard/BenchmarkScore.tsx"));
 const ConvertIQDiagnostico = lazy(() => import("./pages/dashboard/ConvertIQDiagnostico.tsx"));
 const ConvertIQPlano = lazy(() => import("./pages/dashboard/ConvertIQPlano.tsx"));
+const ConvertIQSetup = lazy(() => import("./pages/dashboard/ConvertIQSetup.tsx"));
 const Newsletter = lazy(() => import("./pages/dashboard/Newsletter.tsx"));
 const Atribuicao = lazy(() => import("./pages/dashboard/Atribuicao.tsx"));
 const Operacoes = lazy(() => import("./pages/dashboard/Operacoes.tsx"));
@@ -184,6 +186,7 @@ const App = () => (
           <Route path="/pontos/:slug" element={<Pontos />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
+          <Route path="/aceitar-convite" element={<AceitarConviteEquipe />} />
 
           {/* Demo dashboard */}
           <Route path="/demo" element={<DemoRoute><Dashboard /></DemoRoute>} />
@@ -198,6 +201,8 @@ const App = () => (
           <Route path="/demo/automacoes" element={<DemoRoute><Automacoes /></DemoRoute>} />
           <Route path="/demo/analytics" element={<DemoRoute><Analytics /></DemoRoute>} />
           <Route path="/demo/relatorios" element={<DemoRoute><Relatorios /></DemoRoute>} />
+          <Route path="/demo/em-execucao" element={<DemoRoute><EmExecucao /></DemoRoute>} />
+          <Route path="/demo/chatbot" element={<DemoRoute><Chatbot /></DemoRoute>} />
 
           {/* Protected dashboard */}
           <Route path="/dashboard" element={<DashboardRoute><Dashboard /></DashboardRoute>} />
@@ -205,6 +210,10 @@ const App = () => (
           <Route path="/dashboard/funil" element={<DashboardRoute><Funil /></DashboardRoute>} />
           <Route path="/dashboard/funil/diagnostico" element={<DashboardRoute><ConvertIQDiagnostico /></DashboardRoute>} />
           <Route path="/dashboard/funil/plano" element={<DashboardRoute><ConvertIQPlano /></DashboardRoute>} />
+          <Route path="/dashboard/convertiq" element={<Navigate to="/dashboard/funil" replace />} />
+          <Route path="/dashboard/convertiq/diagnostico" element={<Navigate to="/dashboard/funil/diagnostico" replace />} />
+          <Route path="/dashboard/convertiq/plano" element={<Navigate to="/dashboard/funil/plano" replace />} />
+          <Route path="/dashboard/convertiq/setup" element={<DashboardRoute><ConvertIQSetup /></DashboardRoute>} />
           <Route path="/dashboard/produtos" element={<DashboardRoute><Produtos /></DashboardRoute>} />
           <Route path="/dashboard/canais" element={<DashboardRoute><Canais /></DashboardRoute>} />
           <Route path="/dashboard/forecast" element={<DashboardRoute requiredPlan="growth"><Forecast /></DashboardRoute>} />

@@ -14,6 +14,7 @@ import {
 } from "../_shared/edge-utils.ts";
 import { writeAuditLog } from "../_shared/audit.ts";
 import { uuidSchema, validateRequest } from "../_shared/validation.ts";
+import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -117,7 +118,8 @@ Deno.serve(async (req) => {
     shipping_value: normalized.shipping_value,
     shipping_zip_code: normalized.shipping_zip_code,
     payment_failure_reason: normalized.payment_failure_reason,
-    inventory_status: normalized.inventory_status
+    inventory_status: normalized.inventory_status,
+    abandon_step: normalized.abandon_step ?? null,
   }, { onConflict: "store_id, external_id" });
 
   if (cartError) {
@@ -125,16 +127,24 @@ Deno.serve(async (req) => {
     return errorResponse("Internal server error", 500);
   }
 
-  // 5. Trigger Flow Engine (Async)
-  fetch(`${url.origin}/functions/v1/flow-engine`, {
-    method: 'POST',
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
-      "x-internal-secret": Deno.env.get("FLOW_ENGINE_SECRET") ?? "",
-    },
-    body: JSON.stringify({ event: 'cart_abandoned', store_id: storeId, customer_id: customer?.id })
-  }).catch(console.error);
+  // 5. Trigger Flow Engine (async) — payment_pending na etapa/falha de pagamento; senão carrinho clássico
+  if (customer?.id) {
+    const paymentLike =
+      normalized.abandon_step === "payment" ||
+      (typeof normalized.payment_failure_reason === "string" &&
+        normalized.payment_failure_reason.trim().length > 0);
+    const event = paymentLike ? "payment_pending" : "cart_abandoned";
+    invokeFlowEngine(url.origin, {
+      event,
+      store_id: storeId,
+      customer_id: customer.id,
+      payload: {
+        recovery_url: normalized.recovery_url ?? "",
+        cart_value: normalized.cart_value,
+        shipping_value: normalized.shipping_value,
+      },
+    }).catch((e) => console.error(`[${requestId}] flow-engine`, e));
+  }
 
   console.log(
     `[${requestId}] webhook-cart ok source=${source} store=${storeId} elapsed_ms=${Date.now() - startedAt}`,
@@ -152,9 +162,27 @@ Deno.serve(async (req) => {
 
 function detectSource(req: Request, payload: any): string {
   const ua = req.headers.get("user-agent") ?? "";
-  if (ua.toLowerCase().includes("shopify")) return "shopify";
+  const ual = ua.toLowerCase();
+  if (ual.includes("shopify")) return "shopify";
   if (payload.checkout && payload.store_id) return "nuvemshop";
+  if (ual.includes("woocommerce") || payload.cart_hash != null) return "woocommerce";
   return "custom";
+}
+
+/** Heurística de etapa do checkout abandonado (Shopify / genérico). */
+function inferAbandonStepFromCheckout(ch: any, source: string): string | null {
+  const explicit = ch?.abandon_step ?? ch?.step ?? ch?.checkout_step;
+  if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  if (source === "shopify") {
+    if (ch?.last_payment_error_message) return "payment";
+    if (ch?.shipping_address?.zip || ch?.shipping_lines?.length) return "shipping_or_delivery";
+    if (ch?.email || ch?.customer?.email) return "contact_information";
+    return "unknown";
+  }
+  if (ch?.payment_error_message) return "payment";
+  if (ch?.shipping_address || ch?.shipping_zip_code) return "shipping_or_delivery";
+  if (ch?.customer_email || ch?.contact?.email) return "contact_information";
+  return "unknown";
 }
 
 function normalizePayload(source: string, p: any) {
@@ -189,7 +217,38 @@ function normalizePayload(source: string, p: any) {
       shipping_zip_code: ch.shipping_address?.zip || null,
       payment_failure_reason: ch.last_payment_error_message || null,
       // Inventory Status JSON
-      inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity }))
+      inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity })),
+      abandon_step: inferAbandonStepFromCheckout(ch, "shopify"),
+    };
+  }
+
+  if (source === "woocommerce") {
+    const ch = p.checkout ?? p;
+    const items = (ch.line_items || []).map((item: any) => ({
+      id: item.product_id,
+      name: item.name || item.product_name,
+      quantity: item.quantity,
+      price: parseFloat(item.price || item.subtotal || 0),
+      sku: item.sku,
+      inventory_quantity: null,
+      category: null,
+    }));
+    return {
+      external_id: String(ch.id || ch.checkout_id || ""),
+      customer_name: `${ch.billing?.first_name || ""} ${ch.billing?.last_name || ""}`.trim() || ch.customer_name || "",
+      customer_phone: normalizePhone(ch.billing?.phone || ch.phone || ""),
+      customer_email: ch.billing?.email || ch.customer_email,
+      cart_value: parseFloat(ch.total || ch.cart_total || 0),
+      cart_items: items,
+      recovery_url: ch.checkout_url || ch.payment_url || null,
+      utm_source: ch.utm_source || null,
+      utm_medium: ch.utm_medium || null,
+      utm_campaign: ch.utm_campaign || null,
+      shipping_value: parseFloat(ch.shipping_total || 0),
+      shipping_zip_code: ch.shipping?.postcode || null,
+      payment_failure_reason: ch.payment_error_message || null,
+      inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity })),
+      abandon_step: inferAbandonStepFromCheckout(ch, "woocommerce"),
     };
   }
   
@@ -219,7 +278,8 @@ function normalizePayload(source: string, p: any) {
     shipping_value: parseFloat(ch.shipping_cost || 0),
     shipping_zip_code: ch.shipping_zip_code || ch.shipping_address?.zip_code || null,
     payment_failure_reason: ch.payment_error_message || null,
-    inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity }))
+    inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity })),
+    abandon_step: inferAbandonStepFromCheckout(ch, source === "nuvemshop" ? "nuvemshop" : "custom"),
   };
 }
 

@@ -36,12 +36,12 @@ export default function Login() {
   const rawFrom = (location.state as { from?: string } | null)?.from;
   const from = rawFrom?.startsWith("/") && !rawFrom.startsWith("//") ? rawFrom : "/dashboard";
 
-  // Fix 4: redirect already-authenticated users
+  // Utilizador já autenticado: respeitar `from` (ex.: /aceitar-convite?token=…)
   useEffect(() => {
     if (!authLoading && user) {
-      navigate("/dashboard", { replace: true });
+      navigate(from, { replace: true });
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, from]);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),

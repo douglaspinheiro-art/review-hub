@@ -7,6 +7,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/edge-utils.ts";
+import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
 function isAuthorized(req: Request): boolean {
   // Only the dedicated TRIGGER_AUTOMATIONS_SECRET is accepted.
@@ -70,19 +71,17 @@ serve(async (req) => {
         continue;
       }
 
-      // 2. Call Flow Engine for this cart
-      const flowRes = await fetch(`${new URL(req.url).origin}/functions/v1/flow-engine`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
+      // 2. Flow engine (cart_abandoned) — FLOW_ENGINE_SECRET via invokeFlowEngine
+      const origin = new URL(req.url).origin;
+      const flowRes = await invokeFlowEngine(origin, {
+        event: "cart_abandoned",
+        store_id: cart.store_id,
+        customer_id: cart.customer_id,
+        payload: {
+          recovery_url: cart.recovery_url ?? "",
+          cart_value: cart.cart_value,
+          shipping_value: (cart as { shipping_value?: number | null }).shipping_value ?? 0,
         },
-        body: JSON.stringify({ 
-          event: 'cart_abandoned', 
-          store_id: cart.store_id, 
-          customer_id: cart.customer_id,
-          payload: { recovery_url: cart.recovery_url, value: cart.cart_value }
-        })
       });
 
       if (flowRes.ok) {

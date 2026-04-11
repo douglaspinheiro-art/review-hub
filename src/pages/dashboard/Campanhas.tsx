@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   Megaphone, Plus, CalendarDays, Play, Loader2, FlaskConical, Trophy,
-  Trash2, Copy, Search, Clock, MessageCircle, Mail, Smartphone,
+  Trash2, Copy, Search, Clock, MessageCircle, Mail, Smartphone, Pencil, ExternalLink,
 } from "lucide-react";
 import { useCampaigns } from "@/hooks/useDashboard";
+import { useNewsletterCampaignStats } from "@/hooks/useNewsletterAnalytics";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,13 +70,25 @@ export default function Campanhas() {
       navigate("/dashboard/campanhas", { replace: true });
     }
   }, [location.search, navigate]);
+
   const [filter, setFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
+  const [listLimit, setListLimit] = useState(50);
 
-  const { data: campaigns = [], isLoading, error, refetch } = useCampaigns();
+  const { data: campaigns = [], isLoading, error, refetch, isFetching } = useCampaigns({ limit: listLimit });
+  const hasMore = campaigns.length === listLimit && listLimit < 200;
+
+  useEffect(() => {
+    const id = location.hash?.replace(/^#/, "");
+    if (!id?.startsWith("campaign-row-")) return;
+    const el = document.getElementById(id);
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [location.hash, isLoading, campaigns.length]);
+
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -104,13 +117,32 @@ export default function Campanhas() {
         body: { campaign_id: campaignId },
       });
       if (error) throw error;
-      return data as { sent: number; failed: number };
+      return data as {
+        sent: number;
+        failed: number;
+        partial?: boolean;
+        remaining?: number;
+        dispatch_reason?: string;
+        message?: string;
+      };
     },
     onSuccess: (data) => {
-      toast({
-        title: "Campanha disparada!",
-        description: `${data.sent} mensagens enviadas${data.failed > 0 ? `, ${data.failed} falharam` : ""}.`,
-      });
+      if (data.dispatch_reason === "outside_send_window") {
+        toast({
+          title: "Fora da janela de envio",
+          description: data.message ?? "Ajuste o horário no segmento ou tente mais tarde.",
+        });
+      } else if (data.partial) {
+        toast({
+          title: "Lote enviado",
+          description: `${data.sent} mensagens neste lote. ${(data.remaining ?? 0) > 0 ? `Restam ${data.remaining}. Clique em «Continuar envio» para o próximo lote.` : "Clique em «Continuar envio» se ainda houver destinatários."}`,
+        });
+      } else {
+        toast({
+          title: "Campanha disparada!",
+          description: `${data.sent} mensagens enviadas${data.failed > 0 ? `, ${data.failed} falharam` : ""}.`,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (err: Error) => {
@@ -139,6 +171,7 @@ export default function Campanhas() {
       const isEmail = campaign.channel === "email";
       const payload: Record<string, unknown> = {
         user_id: user!.id,
+        store_id: (campaign as { store_id?: string | null }).store_id ?? null,
         name: `(cópia) ${campaign.name}`,
         message: campaign.message,
         channel: campaign.channel,
@@ -175,8 +208,14 @@ export default function Campanhas() {
     <div className="space-y-6">
       {showModal && (
         <CampaignModal
+          whatsappOnly
+          editingCampaignId={editingCampaignId ?? undefined}
           prefill={modalPrefill}
-          onClose={() => { setShowModal(false); setModalPrefill(undefined); }}
+          onClose={() => {
+            setShowModal(false);
+            setModalPrefill(undefined);
+            setEditingCampaignId(null);
+          }}
         />
       )}
 
@@ -186,7 +225,7 @@ export default function Campanhas() {
           <h1 className="text-2xl font-bold">Campanhas</h1>
           <p className="text-muted-foreground text-sm mt-1">Gerencie seus disparos e campanhas de mensagens</p>
         </div>
-        <Button className="gap-2" onClick={() => setShowModal(true)}>
+        <Button className="gap-2" onClick={() => { setEditingCampaignId(null); setShowModal(true); }}>
           <Plus className="w-4 h-4" />
           Nova Campanha
         </Button>
@@ -195,8 +234,10 @@ export default function Campanhas() {
       {/* Busca + Filtros */}
       <div className="space-y-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <label htmlFor="campanhas-busca" className="sr-only">Buscar campanha</label>
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" aria-hidden />
           <input
+            id="campanhas-busca"
             type="text"
             placeholder="Buscar campanha..."
             value={search}
@@ -213,6 +254,9 @@ export default function Campanhas() {
             return (
               <button
                 key={tab.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === tab.value}
                 onClick={() => setFilter(tab.value)}
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5",
@@ -240,6 +284,9 @@ export default function Campanhas() {
             return (
               <button
                 key={ch.value}
+                type="button"
+                role="tab"
+                aria-selected={channelFilter === ch.value}
                 onClick={() => setChannelFilter(ch.value)}
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5",
@@ -254,6 +301,20 @@ export default function Campanhas() {
             );
           })}
         </div>
+
+        {hasMore && !isLoading && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={isFetching}
+            onClick={() => setListLimit((n) => Math.min(200, n + 50))}
+          >
+            {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Carregar mais (até 200)
+          </Button>
+        )}
       </div>
 
       {/* Loading skeleton */}
@@ -342,6 +403,8 @@ export default function Campanhas() {
       {!isLoading && filtered.length > 0 && (
         <div className="space-y-3">
           {filtered.map((c) => {
+            const channelKey = (c.channel ?? "whatsapp") as keyof typeof CHANNEL_CONFIG;
+            const isWa = channelKey === "whatsapp";
             const isEmail = c.channel === "email";
             const clickCount = (c as any).click_count ?? 0;
             const readRate = c.sent_count > 0 ? Math.round((c.read_count / c.sent_count) * 100) : 0;
@@ -352,7 +415,7 @@ export default function Campanhas() {
             const st = STATUS_LABEL[c.status] ?? STATUS_LABEL.draft;
 
             return (
-              <div key={c.id} className="bg-card border rounded-xl p-5 space-y-4">
+              <div key={c.id} id={`campaign-row-${c.id}`} className="bg-card border rounded-xl p-5 space-y-4 scroll-mt-24">
                 {/* Cabeçalho do card */}
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -360,7 +423,7 @@ export default function Campanhas() {
                       <h3 className="font-semibold truncate">{c.name}</h3>
                       <Badge variant="outline" className={cn("text-xs", st.className)}>{st.label}</Badge>
                       {(() => {
-                        const ch = CHANNEL_CONFIG[c.channel as keyof typeof CHANNEL_CONFIG] ?? CHANNEL_CONFIG.whatsapp;
+                        const ch = CHANNEL_CONFIG[channelKey] ?? CHANNEL_CONFIG.whatsapp;
                         const Icon = ch.icon;
                         return (
                           <Badge variant="outline" className={cn("text-xs flex items-center gap-1", ch.className)}>
@@ -409,6 +472,21 @@ export default function Campanhas() {
                       <Copy className="w-3.5 h-3.5" />
                     </Button>
 
+                    {c.status === "draft" && isWa && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1.5 text-muted-foreground h-8 px-2"
+                        onClick={() => {
+                          setEditingCampaignId(c.id);
+                          setShowModal(true);
+                        }}
+                        title="Editar rascunho"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+
                     {/* Deletar (só rascunhos) */}
                     {c.status === "draft" && (
                       confirmDeleteId === c.id ? (
@@ -445,8 +523,30 @@ export default function Campanhas() {
                       )
                     )}
 
-                    {/* Disparar */}
-                    {(c.status === "draft" || c.status === "scheduled") && (
+                    {c.channel === "email" &&
+                      (c.status === "draft" ||
+                        c.status === "scheduled" ||
+                        c.status === "running" ||
+                        c.status === "completed" ||
+                        c.status === "paused") && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="gap-1.5"
+                        onClick={() => navigate(`/dashboard/newsletter/${c.id}`)}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        {c.status === "draft" ? "Newsletter" : "Editor / métricas"}
+                      </Button>
+                    )}
+
+                    {c.status === "draft" && c.channel === "sms" && (
+                      <Button size="sm" variant="outline" disabled title="SMS em breve">
+                        SMS em breve
+                      </Button>
+                    )}
+
+                    {isWa && (c.status === "draft" || c.status === "scheduled") && (
                       <TrialGate action="disparar campanhas">
                         <Button
                           size="sm"
@@ -461,6 +561,23 @@ export default function Campanhas() {
                         </Button>
                       </TrialGate>
                     )}
+
+                    {isWa && c.status === "running" && (
+                      <TrialGate action="disparar campanhas">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="gap-1.5"
+                          disabled={dispatchingId === c.id}
+                          onClick={() => dispatchMutation.mutate(c.id)}
+                        >
+                          {dispatchingId === c.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Play className="w-3.5 h-3.5" />}
+                          {dispatchingId === c.id ? "Enviando..." : "Continuar envio"}
+                        </Button>
+                      </TrialGate>
+                    )}
                   </div>
                 </div>
 
@@ -472,6 +589,25 @@ export default function Campanhas() {
                     )}
                     <p className="text-sm text-muted-foreground line-clamp-2">{c.message}</p>
                   </div>
+                )}
+
+                {isWa && (c.status === "draft" || c.status === "scheduled") && (
+                  <p className="text-[11px] text-muted-foreground">
+                    O servidor envia até <strong className="text-foreground">35</strong> mensagens por lote. Se o público for maior, use <strong className="text-foreground">Continuar envio</strong> até finalizar.
+                  </p>
+                )}
+
+                {(c as { next_best_action?: string }).next_best_action && c.sent_count > 0 && (
+                  <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-3 py-0.5">
+                    <span className="font-semibold text-foreground">Próximo passo sugerido:</span>{" "}
+                    {(c as { next_best_action?: string }).next_best_action}
+                  </p>
+                )}
+
+                {Number((c as { incremental_revenue?: number }).incremental_revenue ?? 0) > 0 && (
+                  <p className="text-xs text-emerald-600/90 font-medium">
+                    Receita atribuída (estimativa incremental): R$ {Number((c as { incremental_revenue?: number }).incremental_revenue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
                 )}
 
                 {/* Métricas */}
@@ -494,6 +630,10 @@ export default function Campanhas() {
                   ))}
                 </div>
 
+                {isEmail && c.sent_count > 0 && (
+                  <EmailCampaignStatsSnippet campaignId={c.id} />
+                )}
+
                 {/* Barra de progresso */}
                 {c.total_contacts > 0 && (
                   <div className="space-y-1">
@@ -515,5 +655,24 @@ export default function Campanhas() {
         </div>
       )}
     </div>
+  );
+}
+
+function EmailCampaignStatsSnippet({ campaignId }: { campaignId: string }) {
+  const { data, isFetching } = useNewsletterCampaignStats(campaignId, "email");
+  if (isFetching && !data) {
+    return (
+      <p className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+        <Loader2 className="w-3 h-3 animate-spin shrink-0" /> Métricas de engajamento (pixel)…
+      </p>
+    );
+  }
+  if (!data) return null;
+  if (data.uniqueOpeners === 0 && data.uniqueClickers === 0) return null;
+  return (
+    <p className="text-[11px] text-muted-foreground border-l-2 border-primary/25 pl-3">
+      <span className="font-semibold text-foreground">{data.uniqueOpeners}</span> aberturas únicas (pixel) e{" "}
+      <span className="font-semibold text-foreground">{data.uniqueClickers}</span> cliques únicos rastreados.
+    </p>
   );
 }

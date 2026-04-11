@@ -53,7 +53,7 @@ export default function ContactModal({ onClose }: Props) {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts", user?.id ?? null] });
       toast({ title: "Contato adicionado!" });
       onClose();
     },

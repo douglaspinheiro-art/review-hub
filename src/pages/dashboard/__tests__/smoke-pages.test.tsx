@@ -85,8 +85,14 @@ describe("Dashboard smoke suite", () => {
       import("../WhatsApp"),
       import("../ConvertIQDiagnostico"),
       import("../ConvertIQPlano"),
+      import("../Atribuicao"),
     ]);
     pages.forEach((m) => expect(typeof m.default).toBe("function"));
   }, 60000);
+
+  it("exporta a página Produtos", async () => {
+    const m = await import("../Produtos");
+    expect(typeof m.default).toBe("function");
+  }, 30000);
 });
 

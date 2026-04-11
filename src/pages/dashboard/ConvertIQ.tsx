@@ -7,15 +7,18 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  useLoja, useConvertIQConfig, useMetricasFunil, useLatestDiagnostico,
+  useLoja, useConvertIQConfig, useFunilPageMetricas, useLatestDiagnostico,
   useSaveMetricas, useGerarDiagnostico,
   MOCK_METRICAS, MOCK_CONFIG, calcFunil, MetricasFunil,
 } from "@/hooks/useConvertIQ";
+import type { Database } from "@/lib/database.types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 // ─── Period toggle ────────────────────────────────────────────────────────────
 type Periodo = "7d" | "30d" | "90d";
+
+type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
 
 // ─── Loading overlay (5 steps) ───────────────────────────────────────────────
 const DIAG_STEPS = [
@@ -174,7 +177,7 @@ export default function ConvertIQ() {
 
   const loja    = useLoja();
   const config  = useConvertIQConfig();
-  const metrics = useMetricasFunil(loja.data?.id ?? null, periodo);
+  const funilPage = useFunilPageMetricas(loja.data?.id ?? null, periodo);
   const lastDiag = useLatestDiagnostico(loja.data?.id ?? null);
   const saveMet  = useSaveMetricas();
   const gerarDiag = useGerarDiagnostico();
@@ -186,21 +189,22 @@ export default function ConvertIQ() {
     }
   }, [loja.isLoading, loja.data, navigate]);
 
-  const isMock = !metrics.data;
-  const raw: MetricasFunil = metrics.data
+  const isMock = funilPage.data?.source === "none";
+  const raw: MetricasFunil = funilPage.data?.metricas
     ? {
-        visitantes:            metrics.data.visitantes,
-        visualizacoes_produto: metrics.data.visualizacoes_produto,
-        adicionou_carrinho:    metrics.data.adicionou_carrinho,
-        iniciou_checkout:      metrics.data.iniciou_checkout,
-        compras:               metrics.data.compras,
-        receita:               metrics.data.receita,
-        fonte:                 "real",
+        visitantes:            funilPage.data.metricas.visitantes,
+        visualizacoes_produto: funilPage.data.metricas.visualizacoes_produto,
+        adicionou_carrinho:    funilPage.data.metricas.adicionou_carrinho,
+        iniciou_checkout:      funilPage.data.metricas.iniciou_checkout,
+        compras:               funilPage.data.metricas.compras,
+        receita:               funilPage.data.metricas.receita,
+        fonte:                 funilPage.data.source === "ga4" ? "ga4" : "real",
       }
     : MOCK_METRICAS;
 
   const meta    = Number(config.data?.meta_conversao  ?? MOCK_CONFIG.meta_conversao);
-  const ticket  = Number((loja.data as any)?.ticket_medio ?? MOCK_CONFIG.ticket_medio);
+  const storeRow = loja.data as (StoreRow & { ticket_medio?: number }) | undefined;
+  const ticket  = Number(storeRow?.ticket_medio ?? MOCK_CONFIG.ticket_medio);
   const { taxaConversao, perdaMensal, etapas, maiorGargalo } = calcFunil(raw, meta, ticket);
 
   // Biggest drop index (0-based among steps 1-4)
@@ -210,13 +214,13 @@ export default function ConvertIQ() {
     if (!loja.data) return;
     setGenerating(true);
     try {
-      const id = await gerarDiag.mutateAsync({
+      await gerarDiag.mutateAsync({
         lojaId: loja.data.id,
         metricas: raw,
         metaConversao: meta,
       });
       toast.success("Diagnóstico gerado com sucesso!");
-      navigate(`/dashboard/convertiq/diagnostico`);
+      navigate(`/dashboard/funil/diagnostico`);
     } catch { /* error toast already shown in hook */ } finally {
       setGenerating(false);
     }
@@ -226,7 +230,7 @@ export default function ConvertIQ() {
     if (!loja.data) return;
     await saveMet.mutateAsync({ lojaId: loja.data.id, metricas: m });
     setShowManual(false);
-    metrics.refetch();
+    funilPage.refetch();
   }
 
   if (loja.isLoading) {
@@ -259,7 +263,9 @@ export default function ConvertIQ() {
           <div>
             <h1 className="text-xl font-bold">ConvertIQ</h1>
             {loja.data && (
-              <p className="text-xs text-muted-foreground">{(loja.data as any)?.nome ?? loja.data?.name} · {(loja.data as any)?.plataforma ?? (loja.data as any)?.segment}</p>
+              <p className="text-xs text-muted-foreground">
+                {(loja.data as StoreRow).name} · {(loja.data as StoreRow).segment ?? "—"}
+              </p>
             )}
           </div>
         </div>
@@ -393,7 +399,7 @@ export default function ConvertIQ() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Score {lastDiag.data.score}/100</span>
             </div>
-            <Link to="/dashboard/convertiq/diagnostico" className="flex items-center gap-1 text-xs text-primary font-medium hover:underline ml-auto">
+            <Link to="/dashboard/funil/diagnostico" className="flex items-center gap-1 text-xs text-primary font-medium hover:underline ml-auto">
               Ver diagnóstico completo <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>

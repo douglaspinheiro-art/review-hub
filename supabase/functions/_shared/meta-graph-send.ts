@@ -82,6 +82,35 @@ export async function metaGraphSendTemplate(
   return json as { messages?: Array<{ id?: string }> };
 }
 
+/** GET phone number metadata — valida token + phone number ID (sem enviar mensagem). */
+export async function metaGraphFetchPhoneNumber(
+  phoneNumberId: string,
+  accessToken: string,
+  apiVersion = "v21.0",
+): Promise<{
+  verified_name?: string;
+  display_phone_number?: string;
+  quality_rating?: string;
+  id?: string;
+}> {
+  const v = apiVersion.replace(/^v/, "v");
+  const url =
+    `${GRAPH_HOST}/${v}/${phoneNumberId}?fields=verified_name,display_phone_number,quality_rating`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`Meta Graph phone error ${res.status}: ${JSON.stringify(json)}`);
+  }
+  return json as {
+    verified_name?: string;
+    display_phone_number?: string;
+    quality_rating?: string;
+    id?: string;
+  };
+}
+
 export async function metaGraphSendImageLink(
   phoneNumberId: string,
   accessToken: string,
