@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import type { Database } from "@/integrations/supabase/types";
 import { UI_NICHE_TO_SECTOR_DB, type BenchmarkNicheKey } from "@/lib/benchmark-niches";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -404,17 +405,15 @@ export function useSaveLoja() {
       if (!uid) throw new Error("Não autenticado");
 
       // Upsert store (only columns that exist in the stores table)
+      const storeRow: Database["public"]["Tables"]["stores"]["Insert"] = {
+        user_id: uid,
+        name: payload.nome,
+        segment: payload.plataforma.toLowerCase(),
+        pix_key: payload.pix_key ?? null,
+      };
       const { data: store, error: storeErr } = await supabase
         .from("stores")
-        .upsert(
-          {
-            user_id: uid,
-            name: payload.nome,
-            segment: payload.plataforma.toLowerCase(),
-            pix_key: payload.pix_key ?? null,
-          } as any,
-          { onConflict: "user_id" }
-        )
+        .upsert(storeRow, { onConflict: "user_id" })
         .select()
         .single();
 
@@ -544,6 +543,8 @@ export function useExecutionPlaybooks(lojaId: string | null) {
     queryFn: async (): Promise<ExecutionPlaybookItem[]> => {
       const uid = await getUid();
       if (!uid) return [];
+      // Tabela ainda não incluída no `Database` gerado
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
         .from("convertiq_execution_playbooks")
         .select("id,action_key,action_title,owner,status,planned_week,expected_lift_pp,expected_impact_reais,observed_result,observed_lift_pp,observed_impact_reais,updated_at")
@@ -578,6 +579,7 @@ export function useUpsertExecutionPlaybook() {
       const uid = await getUid();
       if (!uid) throw new Error("Não autenticado");
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- convertiq_execution_playbooks fora do types gerado
       const { error } = await (supabase as any)
         .from("convertiq_execution_playbooks")
         .upsert(
@@ -643,7 +645,8 @@ export function useMetricasEnriquecidas(lojaId: string | null, periodo: "7d" | "
       let receitaPagamento = 0;
       let totalPagamento = 0;
 
-      (data ?? []).forEach((cart: any) => {
+      type CartRow = Database["public"]["Tables"]["abandoned_carts"]["Row"];
+      (data ?? []).forEach((cart: CartRow) => {
         const val = Number(cart.cart_value || 0);
         // Simple heuristic: count all pending carts as potential frete/payment drops
         if (val > 0 && cart.status === "pending") {

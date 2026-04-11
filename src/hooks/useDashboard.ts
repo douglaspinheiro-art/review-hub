@@ -707,9 +707,13 @@ export function useConversionBaseline(days = 30) {
         status?: string;
         id?: string;
       }[];
+      type AttributionScopeRow = Pick<
+        Database["public"]["Tables"]["attribution_events"]["Row"],
+        "order_value" | "order_date" | "attributed_campaign_id"
+      >;
       const storeCampaignIds = (campaignsScopeRes.data ?? []).map((r: { id: string }) => r.id);
       const attribution = scopeAttributionEventsForStore(
-        attributionRes.data ?? [],
+        (attributionRes.data ?? []) as AttributionScopeRow[],
         storeId,
         storeCampaignIds,
       );
@@ -723,7 +727,7 @@ export function useConversionBaseline(days = 30) {
       const deliveryRate = sent > 0 ? (delivered / sent) * 100 : 0;
       const readRate = sent > 0 ? (read / sent) * 100 : 0;
 
-      const revenue = attribution.reduce((sum: number, row: any) => sum + Number(row.order_value ?? 0), 0);
+      const revenue = attribution.reduce((sum, row) => sum + Number(row.order_value ?? 0), 0);
       const conversions = attribution.length;
       const conversionRate = sent > 0 ? (conversions / sent) * 100 : 0;
       const revenuePerMessage = sent > 0 ? revenue / sent : 0;
@@ -734,15 +738,15 @@ export function useConversionBaseline(days = 30) {
       const replyRateDelta = prevReplyRate > 0 ? ((replyRate - prevReplyRate) / prevReplyRate) * 100 : 0;
 
       const now = Date.now();
-      const withSla = conversations.filter((c) => Boolean((c as any).sla_due_at));
+      const withSla = conversations.filter((c) => Boolean(c.sla_due_at));
       const breachedSla = withSla.filter((c) => {
-        const t = new Date((c as any).sla_due_at).getTime();
+        const t = new Date(c.sla_due_at ?? "").getTime();
         return Number.isFinite(t) && t < now;
       }).length;
       const slaCompliance = withSla.length > 0 ? ((withSla.length - breachedSla) / withSla.length) * 100 : 100;
 
       const priorityMix = conversations.reduce(
-        (acc, c: any) => {
+        (acc, c) => {
           const p = c.priority ?? "normal";
           if (p === "urgent") acc.urgent += 1;
           else if (p === "high") acc.high += 1;

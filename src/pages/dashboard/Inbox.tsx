@@ -264,7 +264,7 @@ export default function Inbox() {
     }
     void getSuggestion();
     return () => { cancelled = true; };
-  }, [selectedId, lastInboundSignature]);
+  }, [selectedId, lastInboundSignature, messages]);
 
   useEffect(() => {
     setLiveMessagesRt("unknown");

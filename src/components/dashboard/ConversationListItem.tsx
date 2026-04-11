@@ -46,7 +46,7 @@ export function getSlaBucket(slaDueAt: string | null | undefined): SlaBucket {
 export interface ConversationRow {
   id: string;
   status: string;
-  unread_count: number;
+  unread_count?: number | null;
   last_message?: string | null;
   last_message_at?: string | null;
   sla_due_at?: string | null;
@@ -98,7 +98,7 @@ export function ConversationListItem({ conv, isSelected, onClick }: Conversation
             <span
               className={cn(
                 "font-semibold text-sm truncate",
-                conv.unread_count > 0 ? "text-foreground" : "text-foreground/90",
+                (conv.unread_count ?? 0) > 0 ? "text-foreground" : "text-foreground/90",
               )}
             >
               {contact?.name ?? contact?.phone ?? "—"}
@@ -116,7 +116,7 @@ export function ConversationListItem({ conv, isSelected, onClick }: Conversation
           <p
             className={cn(
               "text-xs truncate",
-              conv.unread_count > 0 ? "text-foreground font-medium" : "text-muted-foreground",
+              (conv.unread_count ?? 0) > 0 ? "text-foreground font-medium" : "text-muted-foreground",
             )}
           >
             {conv.last_message ?? "Sem mensagens"}
@@ -141,9 +141,9 @@ export function ConversationListItem({ conv, isSelected, onClick }: Conversation
                 </Badge>
               )}
             </div>
-            {conv.unread_count > 0 && (
+            {(conv.unread_count ?? 0) > 0 && (
               <span className="bg-primary text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center shadow-sm animate-pulse">
-                {conv.unread_count}
+                {conv.unread_count ?? 0}
               </span>
             )}
           </div>

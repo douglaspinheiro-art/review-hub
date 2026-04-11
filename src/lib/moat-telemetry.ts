@@ -55,6 +55,8 @@ export async function trackMoatEvent(event: MoatEventName, payload: MoatEventPay
     const userId = auth.user?.id;
     if (!userId) return;
 
+    // `moat_events` é opcional e pode não constar no `Database` gerado
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any).from("moat_events").insert({
       user_id: userId,
       event_name: event,

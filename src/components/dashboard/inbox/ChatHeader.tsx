@@ -7,12 +7,13 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ConversationRow } from "@/components/dashboard/ConversationListItem";
 
 interface ChatHeaderProps {
   selectedId: string;
   setSelectedId: (id: string | null) => void;
-  selectedContact: any;
-  selectedConv: any;
+  selectedContact: ConversationRow["contacts"];
+  selectedConv: ConversationRow | undefined;
   inboxReadOnly: boolean;
   showSidebar: boolean;
   setShowSidebar: (v: boolean) => void;
@@ -21,7 +22,7 @@ interface ChatHeaderProps {
   slaDueAt: string;
   setSlaDueAt: (v: string) => void;
   priority: string;
-  setPriority: (v: any) => void;
+  setPriority: (v: string) => void;
   saveOpsMeta: () => void;
 }
 

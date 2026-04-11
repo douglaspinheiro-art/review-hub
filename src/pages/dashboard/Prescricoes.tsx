@@ -146,9 +146,11 @@ export default function Prescricoes() {
       
       // 3. Navigate to campaigns with the new ID to open edit modal
       navigate(`/dashboard/campanhas?edit=${campaign.id}`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Erro ao aprovar prescrição:", e);
-      toast.error("Não foi possível persistir a campanha: " + e.message);
+      toast.error(
+        "Não foi possível persistir a campanha: " + (e instanceof Error ? e.message : String(e)),
+      );
     }
   };
 

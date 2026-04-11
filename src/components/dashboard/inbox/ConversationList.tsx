@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { ConversationListItem } from "@/components/dashboard/ConversationListItem";
+import { ConversationListItem, type ConversationRow } from "@/components/dashboard/ConversationListItem";
+import type { InboxAssigneeFilter } from "@/hooks/useDashboard";
+import type { UseMutationResult } from "@tanstack/react-query";
 
 interface ConversationListProps {
-  conversations: any[];
+  conversations: ConversationRow[];
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   isLoading: boolean;
@@ -16,7 +18,7 @@ interface ConversationListProps {
   statusFilter: string;
   setStatusFilter: (v: string) => void;
   assigneeFilter: string;
-  setAssigneeFilter: (v: any) => void;
+  setAssigneeFilter: (v: InboxAssigneeFilter) => void;
   tagFilter: string;
   setTagFilter: (v: string) => void;
   uniqueTags: string[];
@@ -26,7 +28,7 @@ interface ConversationListProps {
   agentsDraft: string;
   setAgentsDraft: (v: string) => void;
   inboxRoutingReadOnly: boolean;
-  saveRoutingMutation: any;
+  saveRoutingMutation: UseMutationResult<void, Error, void, unknown>;
   slaBreaches: number;
   urgentCount: number;
   searchingHistory: boolean;
@@ -41,7 +43,7 @@ const STATUS_FILTERS = [
   { label: "Fechadas", value: "closed" },
 ];
 
-const ASSIGNEE_FILTERS = [
+const ASSIGNEE_FILTERS: { label: string; value: InboxAssigneeFilter }[] = [
   { label: "Todas", value: "all" },
   { label: "Minhas", value: "mine" },
   { label: "Sem responsável", value: "unassigned" },
