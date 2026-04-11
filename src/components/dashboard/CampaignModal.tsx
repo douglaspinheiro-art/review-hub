@@ -231,7 +231,7 @@ export default function CampaignModal({
   const { user, profile } = useAuth();
   const loja = useLoja();
   const lojaData = (loja.data as LojaExtended | null) ?? null;
-  const produtos = useProdutosV3(loja.data?.id ?? undefined);
+  const produtosQuery = useProdutosV3(loja.data?.id ?? undefined, { pageSize: 150 });
   const editHydratedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -819,11 +819,11 @@ export default function CampaignModal({
                 )}
 
                 {/* Grid de produtos */}
-                {produtos.isLoading ? (
+                {produtosQuery.isLoading ? (
                   <div className="flex items-center justify-center h-40">
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
                   </div>
-                ) : !produtos.data?.length ? (
+                ) : !(produtosQuery.data?.rows ?? []).length ? (
                   <div className="border-2 border-dashed border-border/50 rounded-[2rem] p-10 text-center">
                     <Package className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-30" />
                     <p className="text-sm font-bold text-muted-foreground">Nenhum produto encontrado</p>
@@ -831,7 +831,7 @@ export default function CampaignModal({
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
-                    {(produtos.data as any[]).map((p) => {
+                    {((produtosQuery.data?.rows ?? []) as any[]).map((p) => {
                       const isSelected = selectedProducts.some(s => s.id === p.id);
                       return (
                         <button

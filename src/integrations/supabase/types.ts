@@ -4490,6 +4490,29 @@ export type Database = {
         Args: { p_contact_id: string; p_nicho?: string }
         Returns: number
       }
+      get_abandoned_cart_kpis: {
+        Args: { p_since: string; p_store_id: string }
+        Returns: Json
+      }
+      get_channel_order_stats: {
+        Args: { p_since: string; p_store_id: string }
+        Returns: {
+          canal_id: string
+          pedidos: number
+          receita: number
+        }[]
+      }
+      get_journey_sent_counts: {
+        Args: { p_journey_ids: string[]; p_store_id: string }
+        Returns: {
+          journey_id: string
+          sent_count: number
+        }[]
+      }
+      get_loyalty_dashboard_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

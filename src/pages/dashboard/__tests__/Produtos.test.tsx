@@ -52,7 +52,7 @@ describe("Produtos", () => {
       refetch: vi.fn(),
     });
     useProductsV3Mock.mockReturnValue({
-      data: [],
+      data: { rows: [], total: 0 },
       isLoading: false,
       isError: false,
       isFetching: false,
@@ -101,7 +101,7 @@ describe("Produtos", () => {
       refetch: vi.fn(),
     });
     useProductsV3Mock.mockReturnValue({
-      data: [row],
+      data: { rows: [row], total: 1 },
       isLoading: false,
       isError: false,
       isFetching: false,

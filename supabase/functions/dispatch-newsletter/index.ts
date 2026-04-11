@@ -13,7 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { z, errorResponse, validateBrowserOrigin } from "../_shared/edge-utils.ts";
+import { z, errorResponse, validateBrowserOrigin, checkRateLimit } from "../_shared/edge-utils.ts";
 import { emailSchema, rejectIfBodyTooLarge, uuidSchema } from "../_shared/validation.ts";
 import {
   type Block,
@@ -156,6 +156,7 @@ async function resolveContacts(
   tag?: string,
   rfm?: string,
   testEmail?: string,
+  campaignStoreId?: string | null,
 ): Promise<ContactRow[]> {
   if (mode === "test" && testEmail) {
     return [{ id: "test", name: null, email: testEmail }];
@@ -169,6 +170,10 @@ async function resolveContacts(
     .is("unsubscribed_at", null);
 
   query = query.is("email_hard_bounce_at", null).is("email_complaint_at", null) as typeof query;
+
+  if (campaignStoreId) {
+    query = query.eq("store_id", campaignStoreId) as typeof query;
+  }
 
   if (mode === "tag" && tag) {
     query = query.contains("tags", [tag]);
@@ -349,6 +354,13 @@ serve(async (req) => {
       userId = user.id;
     }
 
+    if (!checkRateLimit(`dispatch-newsletter:${userId}`, 20, 60_000)) {
+      return new Response(JSON.stringify({ error: "Muitas solicitações. Tente novamente em um minuto." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: campaign, error: campErr } = await sb
       .from("campaigns")
       .select("*")
@@ -376,12 +388,15 @@ serve(async (req) => {
 
     const preheader = (campaign as { preheader?: string }).preheader ?? "";
 
-    const { data: store } = await sb
+    const campaignStoreId = (campaign as { store_id?: string | null }).store_id ?? null;
+
+    const storeQuery = sb
       .from("stores")
       .select("id,name,email_from_address,email_reply_to,brand_primary_color")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
+      .eq("user_id", userId);
+    const { data: store } = campaignStoreId
+      ? await storeQuery.eq("id", campaignStoreId).maybeSingle()
+      : await storeQuery.limit(1).maybeSingle();
 
     const storeName = store?.name ?? "nossa loja";
     const fromName = store?.name ?? "LTV Boost";
@@ -390,7 +405,16 @@ serve(async (req) => {
     const brandHex = (store as { brand_primary_color?: string } | null)?.brand_primary_color ?? null;
     const fromHeader = `${fromName} <${fromEmail}>`;
 
-    const contacts = await resolveContacts(sb, userId, recipient_mode, campaign_id, recipient_tag, recipient_rfm, test_email);
+    const contacts = await resolveContacts(
+      sb,
+      userId,
+      recipient_mode,
+      campaign_id,
+      recipient_tag,
+      recipient_rfm,
+      test_email,
+      campaignStoreId,
+    );
     if (contacts.length === 0) throw new Error("Nenhum contato com e-mail encontrado para o segmento selecionado.");
 
     const isTest = recipient_mode === "test";
@@ -436,10 +460,11 @@ serve(async (req) => {
         sent_count: 0
       }).eq("id", campaign_id);
 
-      return jsonResponse({ 
-        success: true, 
+      return jsonResponse({
+        success: true,
+        queued: true,
         message: "Newsletter enfileirada para envio processado em segundo plano.",
-        total: realContacts.length 
+        total: realContacts.length,
       });
     }
 

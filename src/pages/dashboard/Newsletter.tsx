@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,10 +20,18 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { BlockCanvas } from "@/components/dashboard/newsletter/BlockCanvas";
-import { BlockPalette } from "@/components/dashboard/newsletter/BlockPalette";
-import { BlockSettings } from "@/components/dashboard/newsletter/BlockSettings";
-import { EmailPreview } from "@/components/dashboard/newsletter/EmailPreview";
+const BlockCanvas = lazy(() =>
+  import("@/components/dashboard/newsletter/BlockCanvas").then((m) => ({ default: m.BlockCanvas })),
+);
+const BlockPalette = lazy(() =>
+  import("@/components/dashboard/newsletter/BlockPalette").then((m) => ({ default: m.BlockPalette })),
+);
+const BlockSettings = lazy(() =>
+  import("@/components/dashboard/newsletter/BlockSettings").then((m) => ({ default: m.BlockSettings })),
+);
+const EmailPreview = lazy(() =>
+  import("@/components/dashboard/newsletter/EmailPreview").then((m) => ({ default: m.EmailPreview })),
+);
 import {
   type Block,
   type BlockType,
@@ -34,35 +42,14 @@ import {
 } from "@/lib/newsletter-renderer";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import { useNewsletterCampaignStats } from "@/hooks/useNewsletterAnalytics";
+import {
+  parseDispatchNewsletterResponse,
+  type DispatchNewsletterResult,
+} from "@/lib/dispatch-newsletter-client";
 
 type RecipientMode = "all" | "tag" | "rfm" | "non_openers";
 
-type DispatchNewsletterResult = {
-  sent: number;
-  failed: number;
-  total?: number;
-  scheduled?: boolean;
-};
-
-function parseDispatchNewsletterResponse(data: unknown): DispatchNewsletterResult {
-  if (data && typeof data === "object") {
-    const d = data as Record<string, unknown>;
-    if (typeof d.error === "string") {
-      const rid = typeof d.request_id === "string" ? ` Ref: ${d.request_id}` : "";
-      throw new Error(`${d.error}${rid}`.trim());
-    }
-    if (d.scheduled === true) return { sent: 0, failed: 0, scheduled: true };
-    if (typeof d.sent === "number") {
-      return {
-        sent: d.sent,
-        failed: typeof d.failed === "number" ? d.failed : 0,
-        total: typeof d.total === "number" ? d.total : undefined,
-        scheduled: false,
-      };
-    }
-  }
-  throw new Error("Resposta inválida do servidor ao enviar newsletter.");
-}
+const NEWSLETTER_STORE_STORAGE = "newsletter-editor-store-id";
 
 const RFM_SEGMENTS = [
   { value: "champions", label: "Campeões" },
@@ -110,21 +97,41 @@ export default function Newsletter() {
     initialized.current = false;
   }, [id]);
 
-  const { data: storeRow } = useQuery({
-    queryKey: ["newsletter-store", user?.id],
+  const { data: newsletterStores = [] } = useQuery({
+    queryKey: ["newsletter-stores", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stores")
-        .select("id,email_from_address,email_reply_to,brand_primary_color")
+        .select("id,name,email_from_address,email_reply_to,brand_primary_color")
         .eq("user_id", user!.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: true });
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: !!user,
   });
+
+  const [selectedNewsletterStoreId, setSelectedNewsletterStoreId] = useState("");
+
+  useEffect(() => {
+    if (!newsletterStores.length) return;
+    const saved =
+      typeof window !== "undefined" ? window.sessionStorage.getItem(NEWSLETTER_STORE_STORAGE) : null;
+    const fallback = newsletterStores[0]?.id ?? "";
+    const pick = saved && newsletterStores.some((s) => s.id === saved) ? saved : fallback;
+    setSelectedNewsletterStoreId((prev) =>
+      prev && newsletterStores.some((s) => s.id === prev) ? prev : pick,
+    );
+  }, [newsletterStores]);
+
+  useEffect(() => {
+    if (selectedNewsletterStoreId && typeof window !== "undefined") {
+      window.sessionStorage.setItem(NEWSLETTER_STORE_STORAGE, selectedNewsletterStoreId);
+    }
+  }, [selectedNewsletterStoreId]);
+
+  const storeRow =
+    newsletterStores.find((s) => s.id === selectedNewsletterStoreId) ?? newsletterStores[0] ?? null;
 
   const [emailFromAddress, setEmailFromAddress] = useState("");
   const [emailReplyTo, setEmailReplyTo] = useState("");
@@ -154,7 +161,7 @@ export default function Newsletter() {
     },
     onSuccess: () => {
       toast.success("Identidade de e-mail salva.");
-      queryClient.invalidateQueries({ queryKey: ["newsletter-store"] });
+      queryClient.invalidateQueries({ queryKey: ["newsletter-stores", user?.id] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -308,14 +315,23 @@ export default function Newsletter() {
   const debouncedTag = useDebounce(recipientTag, 600);
 
   const { data: recipientCount, isFetching: countFetching } = useQuery({
-    queryKey: ["newsletter_recipient_count", recipientMode, debouncedTag, recipientRFM, user?.id],
+    queryKey: [
+      "newsletter_recipient_count",
+      recipientMode,
+      debouncedTag,
+      recipientRFM,
+      user?.id,
+      storeRow?.id,
+    ],
     queryFn: async () => {
+      if (!storeRow?.id) return 0;
       // customers_v3 pode não estar no tipo gerado do cliente
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let query = (supabase as any)
         .from("customers_v3")
         .select("id", { count: "exact", head: true })
         .eq("user_id", user!.id)
+        .eq("store_id", storeRow.id)
         .not("email", "is", null)
         .is("unsubscribed_at", null)
         .is("email_hard_bounce_at", null)
@@ -333,12 +349,13 @@ export default function Newsletter() {
     },
     enabled:
       !!user &&
+      !!storeRow?.id &&
       recipientMode !== "non_openers" &&
       (recipientMode !== "tag" || debouncedTag.trim().length > 0),
   });
 
   const { data: nonOpenersCount = 0, isFetching: nonOpenersFetching } = useQuery({
-    queryKey: ["newsletter_non_openers_count", campaignId, user?.id],
+    queryKey: ["newsletter_non_openers_count", campaignId, user?.id, storeRow?.id],
     queryFn: async () => {
       if (!campaignId || !user) return 0;
       const { data: sentRows, error: e1 } = await supabase
@@ -361,11 +378,13 @@ export default function Newsletter() {
       let total = 0;
       for (let i = 0; i < nonOpenerIds.length; i += chunkSize) {
         const chunk = nonOpenerIds.slice(i, i + chunkSize);
-        const { count, error: e3 } = await supabase
+        let qNon = supabase
           .from("customers_v3")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
-          .in("id", chunk)
+          .in("id", chunk);
+        if (storeRow?.id) qNon = qNon.eq("store_id", storeRow.id);
+        const { count, error: e3 } = await qNon
           .not("email", "is", null)
           .is("unsubscribed_at", null)
           .is("email_hard_bounce_at", null)
@@ -375,7 +394,7 @@ export default function Newsletter() {
       }
       return total;
     },
-    enabled: !!user && !!campaignId && recipientMode === "non_openers",
+    enabled: !!user && !!campaignId && !!storeRow?.id && recipientMode === "non_openers",
   });
 
   const effectiveRecipientCount =
@@ -617,6 +636,21 @@ export default function Newsletter() {
           <ArrowLeft className="w-4 h-4" /> Voltar
         </Button>
 
+        {newsletterStores.length > 1 && (
+          <Select value={selectedNewsletterStoreId} onValueChange={setSelectedNewsletterStoreId}>
+            <SelectTrigger className="h-8 w-[200px] text-xs font-semibold shrink-0" aria-label="Loja da newsletter">
+              <SelectValue placeholder="Loja" />
+            </SelectTrigger>
+            <SelectContent>
+              {newsletterStores.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <div className="flex-1 min-w-0 flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Input
@@ -686,7 +720,14 @@ export default function Newsletter() {
         </div>
       </div>
 
-      {/* ── 3-column layout ── */}
+      {/* ── 3-column layout (canvas/palette lazy para reduzir bundle inicial) ── */}
+      <Suspense
+        fallback={
+          <div className="flex flex-1 items-center justify-center bg-muted/10">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" aria-label="A carregar editor" />
+          </div>
+        }
+      >
       <div className="flex flex-1 overflow-hidden">
 
         {/* Painel esquerdo — paleta + configurações de envio */}
@@ -888,6 +929,7 @@ export default function Newsletter() {
           </div>
         </div>
       </div>
+      </Suspense>
 
       {/* ── Template picker modal ── */}
       {showTemplateModal && (

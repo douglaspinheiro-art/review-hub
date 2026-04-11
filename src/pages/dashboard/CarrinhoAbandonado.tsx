@@ -65,10 +65,26 @@ const STATUS_CONFIG: Record<
   CartStatus,
   { label: string; icon: typeof Clock; color: string }
 > = {
-  pending: { label: "Pendente", icon: Clock, color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
-  processing: { label: "Processando", icon: Loader2, color: "bg-slate-50 text-slate-700 border-slate-200" },
-  message_sent: { label: "Msg enviada", icon: Send, color: "bg-blue-50 text-blue-700 border-blue-200" },
-  recovered: { label: "Recuperado", icon: CheckCircle, color: "bg-green-50 text-green-700 border-green-200" },
+  pending: {
+    label: "Pendente",
+    icon: Clock,
+    color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25",
+  },
+  processing: {
+    label: "Processando",
+    icon: Loader2,
+    color: "bg-muted text-foreground border-border",
+  },
+  message_sent: {
+    label: "Msg enviada",
+    icon: Send,
+    color: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/25",
+  },
+  recovered: {
+    label: "Recuperado",
+    icon: CheckCircle,
+    color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
+  },
   expired: { label: "Expirado", icon: XCircle, color: "bg-muted text-muted-foreground border-border" },
 };
 
@@ -182,7 +198,7 @@ export default function CarrinhoAbandonado() {
         .eq("user_id", effectiveUserId)
         .eq("status", "pending");
       if (sid) q = q.eq("store_id", sid);
-      const { data, error } = await q;
+      const { data, error } = await q.limit(3000);
       if (error) throw error;
       return extractCartIdsFromScheduledMetadata(data ?? []);
     },
@@ -196,13 +212,53 @@ export default function CarrinhoAbandonado() {
       if (!effectiveUserId) throw new Error("Não autenticado");
       const effectiveStoreId = selectedStoreId || defaultStoreId || null;
 
-      const kpiBuilder = supabase.from("abandoned_carts").select("status,cart_value").gte("created_at", sinceIso);
-      const kpiQ = effectiveStoreId
-        ? kpiBuilder.eq("store_id", effectiveStoreId)
-        : kpiBuilder.eq("user_id", effectiveUserId);
-
-      const { data: kpiRows, error: kpiErr } = await kpiQ;
-      if (kpiErr) throw kpiErr;
+      let kpi = {
+        total: 0,
+        recovered: 0,
+        pending: 0,
+        totalValue: 0,
+        recoveredValue: 0,
+      };
+      if (effectiveStoreId) {
+        const rpc = await supabase.rpc("get_abandoned_cart_kpis", {
+          p_store_id: effectiveStoreId,
+          p_since: sinceIso,
+        });
+        if (!rpc.error && rpc.data && typeof rpc.data === "object" && !Array.isArray(rpc.data)) {
+          const o = rpc.data as Record<string, unknown>;
+          kpi = {
+            total: Number(o.total ?? 0),
+            recovered: Number(o.recovered ?? 0),
+            pending: Number(o.pending ?? 0),
+            totalValue: Number(o.total_value ?? 0),
+            recoveredValue: Number(o.recovered_value ?? 0),
+          };
+        } else {
+          const kpiBuilder = supabase.from("abandoned_carts").select("status,cart_value").gte("created_at", sinceIso);
+          const { data: kpiRows, error: kpiErr } = await kpiBuilder.eq("store_id", effectiveStoreId);
+          if (kpiErr) throw kpiErr;
+          const kr = kpiRows ?? [];
+          kpi = {
+            total: kr.length,
+            recovered: kr.filter((r) => r.status === "recovered").length,
+            pending: kr.filter((r) => r.status === "pending").length,
+            totalValue: kr.reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
+            recoveredValue: kr.filter((r) => r.status === "recovered").reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
+          };
+        }
+      } else {
+        const kpiBuilder = supabase.from("abandoned_carts").select("status,cart_value").gte("created_at", sinceIso);
+        const { data: kpiRows, error: kpiErr } = await kpiBuilder.eq("user_id", effectiveUserId);
+        if (kpiErr) throw kpiErr;
+        const kr = kpiRows ?? [];
+        kpi = {
+          total: kr.length,
+          recovered: kr.filter((r) => r.status === "recovered").length,
+          pending: kr.filter((r) => r.status === "pending").length,
+          totalValue: kr.reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
+          recoveredValue: kr.filter((r) => r.status === "recovered").reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
+        };
+      }
 
       let listQ = supabase
         .from("abandoned_carts")
@@ -219,14 +275,6 @@ export default function CarrinhoAbandonado() {
       if (error) throw error;
 
       const rows = (data ?? []).map((r) => parseCartRow(r as Record<string, unknown>));
-      const kr = kpiRows ?? [];
-      const kpi = {
-        total: kr.length,
-        recovered: kr.filter((r) => r.status === "recovered").length,
-        pending: kr.filter((r) => r.status === "pending").length,
-        totalValue: kr.reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
-        recoveredValue: kr.filter((r) => r.status === "recovered").reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
-      };
 
       return { carts: rows, totalCount: count ?? 0, kpi };
     },
@@ -263,6 +311,9 @@ export default function CarrinhoAbandonado() {
         .limit(1)
         .maybeSingle();
       if (!e1 && byStore) return byStore as ConnRow;
+      throw new Error(
+        "Nenhuma conexão WhatsApp Meta Cloud ativa para esta loja. Conecte o número em Dashboard → WhatsApp para a mesma loja do carrinho.",
+      );
     }
     const { data: loose, error: e2 } = await supabase
       .from("whatsapp_connections")
@@ -366,10 +417,12 @@ export default function CarrinhoAbandonado() {
         buttons: [{ type: "url", displayText: "Retomar carrinho", content: safeUrl! }],
       });
 
-      const { error: updateErr } = await supabase
+      let upd = supabase
         .from("abandoned_carts")
         .update({ status: "message_sent", message_sent_at: new Date().toISOString() })
         .eq("id", cart.id);
+      if (storeId) upd = upd.eq("store_id", storeId);
+      const { error: updateErr } = await upd;
       if (updateErr) throw updateErr;
     },
     onSuccess: () => {

@@ -2,13 +2,25 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import type { Database } from "@/integrations/supabase/types";
+import { logQueryTiming } from "@/lib/query-page-telemetry";
 
 export const LOYALTY_TX_PAGE_SIZE = 25;
 
 type LoyaltyRewardRow = Database["public"]["Tables"]["loyalty_rewards"]["Row"];
 
+type RpcLoyaltySummary = {
+  members_with_balance?: number;
+  total_points_balance?: number;
+  total_earned_sum?: number;
+  total_redeemed_sum?: number;
+  tier_counts?: Record<string, number> | null;
+};
+
 export interface LoyaltyDashboardData {
   storeId: string | null;
+  /** Lojas do tenant (para seletor de recompensas). */
+  storeIds: string[];
+  storesBrief: { id: string; name: string }[];
   membersWithBalance: number;
   totalPointsBalance: number;
   totalEarnedSum: number;
@@ -36,44 +48,90 @@ export interface LoyaltyTxRow {
   contactPhone: string;
 }
 
-async function fetchLoyaltyDashboard(userId: string): Promise<LoyaltyDashboardData> {
-  const [storeRes, lpRes, profileRes] = await Promise.all([
-    supabase.from("stores").select("id").eq("user_id", userId).order("created_at", { ascending: true }).limit(1).maybeSingle(),
-    supabase.from("loyalty_points").select("points, total_earned, total_redeemed, tier").eq("user_id", userId),
+async function fetchLoyaltyAggregatesLegacy(userId: string): Promise<Omit<RpcLoyaltySummary, "tier_counts"> & { tier_counts: Record<string, number> }> {
+  const { data: rows, error } = await supabase
+    .from("loyalty_points")
+    .select("points, total_earned, total_redeemed, tier")
+    .eq("user_id", userId);
+  if (error) throw error;
+  const list = rows ?? [];
+  const membersWithBalance = list.filter((r) => (r.points ?? 0) > 0).length;
+  const totalPointsBalance = list.reduce((s, r) => s + (r.points ?? 0), 0);
+  const totalEarnedSum = list.reduce((s, r) => s + (r.total_earned ?? 0), 0);
+  const totalRedeemedSum = list.reduce((s, r) => s + (r.total_redeemed ?? 0), 0);
+  const tierCounts: Record<string, number> = {};
+  for (const r of list) {
+    const t = (r.tier ?? "bronze").toLowerCase();
+    tierCounts[t] = (tierCounts[t] ?? 0) + 1;
+  }
+  return {
+    members_with_balance: membersWithBalance,
+    total_points_balance: totalPointsBalance,
+    total_earned_sum: totalEarnedSum,
+    total_redeemed_sum: totalRedeemedSum,
+    tier_counts: tierCounts,
+  };
+}
+
+async function fetchLoyaltyDashboard(
+  userId: string,
+  rewardsStoreIdHint: string | null,
+): Promise<LoyaltyDashboardData> {
+  const t0 = performance.now();
+  const [storesRes, profileRes] = await Promise.all([
+    supabase.from("stores").select("id,name").eq("user_id", userId).order("created_at", { ascending: true }),
     supabase
       .from("profiles")
       .select("loyalty_program_name, loyalty_slug, points_per_real, loyalty_program_enabled, loyalty_points_ttl_days")
       .eq("id", userId)
       .single(),
   ]);
-
-  if (lpRes.error) throw lpRes.error;
   if (profileRes.error) throw profileRes.error;
 
-  const rows = lpRes.data ?? [];
-  const membersWithBalance = rows.filter((r) => (r.points ?? 0) > 0).length;
-  const totalPointsBalance = rows.reduce((s, r) => s + (r.points ?? 0), 0);
-  const totalEarnedSum = rows.reduce((s, r) => s + (r.total_earned ?? 0), 0);
-  const totalRedeemedSum = rows.reduce((s, r) => s + (r.total_redeemed ?? 0), 0);
-  const tierCounts: Record<string, number> = {};
-  for (const r of rows) {
-    const t = (r.tier ?? "bronze").toLowerCase();
-    tierCounts[t] = (tierCounts[t] ?? 0) + 1;
+  const storesBrief = (storesRes.data ?? []) as { id: string; name: string }[];
+  const storeIds = storesBrief.map((r) => r.id);
+  const rewardStoreId =
+    rewardsStoreIdHint && storeIds.includes(rewardsStoreIdHint) ? rewardsStoreIdHint : storeIds[0] ?? null;
+
+  let membersWithBalance = 0;
+  let totalPointsBalance = 0;
+  let totalEarnedSum = 0;
+  let totalRedeemedSum = 0;
+  let tierCounts: Record<string, number> = {};
+
+  const { data: rpcRaw, error: rpcErr } = await supabase.rpc("get_loyalty_dashboard_summary");
+  if (!rpcErr && rpcRaw != null && typeof rpcRaw === "object") {
+    const rpc = rpcRaw as RpcLoyaltySummary;
+    membersWithBalance = Number(rpc.members_with_balance ?? 0);
+    totalPointsBalance = Number(rpc.total_points_balance ?? 0);
+    totalEarnedSum = Number(rpc.total_earned_sum ?? 0);
+    totalRedeemedSum = Number(rpc.total_redeemed_sum ?? 0);
+    tierCounts = { ...(rpc.tier_counts ?? {}) };
+  } else {
+    const leg = await fetchLoyaltyAggregatesLegacy(userId);
+    membersWithBalance = Number(leg.members_with_balance ?? 0);
+    totalPointsBalance = Number(leg.total_points_balance ?? 0);
+    totalEarnedSum = Number(leg.total_earned_sum ?? 0);
+    totalRedeemedSum = Number(leg.total_redeemed_sum ?? 0);
+    tierCounts = leg.tier_counts;
   }
 
-  const storeId = storeRes.data?.id ?? null;
   let rewards: LoyaltyRewardRow[] = [];
-  if (storeId) {
-    const rw = await supabase.from("loyalty_rewards").select("*").eq("store_id", storeId).order("custo_pontos", { ascending: true });
-    if (rw.error) {
-      console.warn("loyalty_rewards:", rw.error.message);
-    } else if (rw.data) {
-      rewards = rw.data;
-    }
+  if (rewardStoreId) {
+    const rw = await supabase
+      .from("loyalty_rewards")
+      .select("*")
+      .eq("store_id", rewardStoreId)
+      .order("custo_pontos", { ascending: true });
+    if (rw.error) console.warn("loyalty_rewards:", rw.error.message);
+    else if (rw.data) rewards = rw.data;
   }
 
+  logQueryTiming("loyalty-dashboard", t0);
   return {
-    storeId,
+    storeId: rewardStoreId,
+    storeIds,
+    storesBrief,
     membersWithBalance,
     totalPointsBalance,
     totalEarnedSum,
@@ -84,12 +142,15 @@ async function fetchLoyaltyDashboard(userId: string): Promise<LoyaltyDashboardDa
   };
 }
 
-export function useLoyaltyDashboard() {
+/**
+ * @param rewardsStoreId Loja cujo catálogo de `loyalty_rewards` mostrar (multi-loja). Null = primeira loja do tenant.
+ */
+export function useLoyaltyDashboard(rewardsStoreId: string | null = null) {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["loyalty-dashboard", user?.id ?? null],
+    queryKey: ["loyalty-dashboard", user?.id ?? null, rewardsStoreId],
     enabled: !!user?.id,
-    queryFn: () => fetchLoyaltyDashboard(user!.id),
+    queryFn: () => fetchLoyaltyDashboard(user!.id, rewardsStoreId),
     staleTime: 30_000,
   });
 }
@@ -149,10 +210,13 @@ export function useUpdateLoyaltyProfile() {
     },
     onSuccess: async () => {
       const uid = user?.id ?? null;
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["loyalty-dashboard", uid] }),
-        qc.invalidateQueries({ queryKey: ["loyalty-tx", uid] }),
-      ]);
+      await qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === "loyalty-dashboard" &&
+          (uid == null || q.queryKey[1] === uid),
+      });
+      await qc.invalidateQueries({ queryKey: ["loyalty-tx", uid] });
     },
   });
 }

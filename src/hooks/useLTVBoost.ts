@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { logQueryTiming } from "@/lib/query-page-telemetry";
 
 export type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 
@@ -119,18 +120,62 @@ export function usePrescriptionsPendingStats(storeId?: string) {
   return { ...q, pendingCount, pendingValue };
 }
 
-export function useProductsV3(storeId?: string, filter = "todos") {
+const PRODUCT_LIST_COLUMNS =
+  "id,store_id,user_id,nome,sku,preco,estoque,categoria,imagem_url,media_avaliacao,taxa_conversao_produto,receita_30d,num_visualizacoes,num_vendas,num_adicionados_carrinho,num_avaliacoes,produto_externo_id,created_at,updated_at";
+
+export type UseProductsV3Options = {
+  filter?: string;
+  page?: number;
+  pageSize?: number;
+  /** Mínimo 2 caracteres para filtrar no servidor (ilike nome/sku). */
+  search?: string;
+};
+
+export type ProductsV3Page = { rows: ProductRow[]; total: number };
+
+function normalizeProductsV3Options(optionsOrFilter?: string | UseProductsV3Options): Required<UseProductsV3Options> {
+  if (typeof optionsOrFilter === "string" || optionsOrFilter == null) {
+    return {
+      filter: typeof optionsOrFilter === "string" ? optionsOrFilter : "todos",
+      page: 0,
+      pageSize: 60,
+      search: "",
+    };
+  }
+  return {
+    filter: optionsOrFilter.filter ?? "todos",
+    page: optionsOrFilter.page ?? 0,
+    pageSize: Math.min(200, Math.max(12, optionsOrFilter.pageSize ?? 48)),
+    search: (optionsOrFilter.search ?? "").trim(),
+  };
+}
+
+/**
+ * Lista paginada de produtos (sem `select('*')`). O 2º argumento pode ser `filter` string (legado) ou opções.
+ */
+export function useProductsV3(storeId?: string, optionsOrFilter?: string | UseProductsV3Options) {
+  const o = normalizeProductsV3Options(optionsOrFilter);
   return useQuery({
-    queryKey: ["products_v3", storeId, filter],
-    queryFn: async () => {
-      let query = supabase.from("products").select("*").eq("store_id", storeId);
+    queryKey: ["products_v3", storeId, o.filter, o.page, o.pageSize, o.search],
+    queryFn: async (): Promise<ProductsV3Page> => {
+      const t0 = performance.now();
+      let query = supabase
+        .from("products")
+        .select(PRODUCT_LIST_COLUMNS, { count: "exact" })
+        .eq("store_id", storeId as string);
 
-      if (filter === "estoque_critico") query = query.lt("estoque", 5);
-      if (filter === "baixa_cvr") query = query.lt("taxa_conversao_produto", 10);
-
-      const { data, error } = await query.order("receita_30d", { ascending: false });
+      if (o.filter === "estoque_critico") query = query.lt("estoque", 5);
+      if (o.filter === "baixa_cvr") query = query.lt("taxa_conversao_produto", 10);
+      if (o.search.length >= 2) {
+        const esc = o.search.replace(/%/g, "\\%").replace(/_/g, "\\_");
+        query = query.or(`nome.ilike.%${esc}%,sku.ilike.%${esc}%`);
+      }
+      const from = o.page * o.pageSize;
+      const to = from + o.pageSize - 1;
+      const { data, error, count } = await query.order("receita_30d", { ascending: false }).range(from, to);
       if (error) throw error;
-      return data as ProductRow[];
+      logQueryTiming("products_v3", t0);
+      return { rows: (data ?? []) as ProductRow[], total: count ?? 0 };
     },
     enabled: !!storeId,
   });
@@ -157,25 +202,48 @@ export function useCanaisPageData(fetchEnabled: boolean) {
     queryKey: ["canais-page-data", user?.id],
     enabled: fetchEnabled && !!user?.id,
     queryFn: async (): Promise<CanaisPageData> => {
+      const t0 = performance.now();
       const { storeId } = await getCurrentUserAndStore();
       if (!storeId) {
         return { storeId: null, channels: [], statsByChannelId: {} };
       }
       const since = new Date(Date.now() - CANAIS_ORDER_STATS_DAYS * 86_400_000).toISOString();
-      const [chRes, ordRes] = await Promise.all([
-        supabase.from("channels").select("*").eq("store_id", storeId).order("created_at", { ascending: false }),
-        supabase.from("orders_v3").select("canal_id, valor").eq("store_id", storeId).gte("created_at", since),
-      ]);
+      const chRes = await supabase
+        .from("channels")
+        .select("*")
+        .eq("store_id", storeId)
+        .order("created_at", { ascending: false });
       if (chRes.error) throw chRes.error;
-      if (ordRes.error) throw ordRes.error;
+
       const statsByChannelId: Record<string, { pedidos: number; receita: number }> = {};
-      for (const row of ordRes.data ?? []) {
-        const cid = row.canal_id;
-        if (!cid) continue;
-        if (!statsByChannelId[cid]) statsByChannelId[cid] = { pedidos: 0, receita: 0 };
-        statsByChannelId[cid].pedidos += 1;
-        statsByChannelId[cid].receita += Number(row.valor ?? 0);
+      const rpc = await supabase.rpc("get_channel_order_stats", {
+        p_store_id: storeId,
+        p_since: since,
+      });
+      if (!rpc.error && Array.isArray(rpc.data)) {
+        for (const row of rpc.data) {
+          if (!row.canal_id) continue;
+          statsByChannelId[row.canal_id] = {
+            pedidos: Number(row.pedidos ?? 0),
+            receita: Number(row.receita ?? 0),
+          };
+        }
+      } else {
+        const ordRes = await supabase
+          .from("orders_v3")
+          .select("canal_id, valor")
+          .eq("store_id", storeId)
+          .gte("created_at", since);
+        if (ordRes.error) throw ordRes.error;
+        for (const row of ordRes.data ?? []) {
+          const cid = row.canal_id;
+          if (!cid) continue;
+          if (!statsByChannelId[cid]) statsByChannelId[cid] = { pedidos: 0, receita: 0 };
+          statsByChannelId[cid].pedidos += 1;
+          statsByChannelId[cid].receita += Number(row.valor ?? 0);
+        }
       }
+      logQueryTiming("canais-page-data", t0);
       return {
         storeId,
         channels: (chRes.data ?? []) as ChannelRow[],

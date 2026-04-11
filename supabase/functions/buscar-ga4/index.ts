@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { verifyJwt } from "../_shared/edge-utils.ts";
+import { verifyJwt, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -19,6 +19,9 @@ serve(async (req: Request) => {
 
   const auth = await verifyJwt(req);
   if (!auth.ok) return auth.response;
+  if (!checkRateLimit(`buscar-ga4:${auth.userId}`, 40, 60_000)) {
+    return rateLimitedResponse();
+  }
 
   try {
     const body = await req.json();

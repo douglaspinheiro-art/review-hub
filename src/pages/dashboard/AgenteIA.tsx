@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   Zap,
@@ -48,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useAiAgentConfig, aiAgentConfigQueryKey } from "@/hooks/useAiAgentConfig";
 import { toast } from "sonner";
 import { isBetaLimitedScope } from "@/lib/beta-scope";
 import {
@@ -55,6 +57,7 @@ import {
   buildNewStoreAiConfig,
   defaultPromptForPersonality,
 } from "@/lib/ai-agent-personalities";
+import { AI_AGENT_EDGE_MODEL } from "@/lib/ai-edge-model";
 import type { Database } from "@/integrations/supabase/types";
 
 type AiConfigInsert = Database["public"]["Tables"]["ai_agent_config"]["Insert"];
@@ -68,16 +71,11 @@ const PERSONA_ICONS: Record<string, LucideIcon> = {
   formal: UserCheck,
 };
 
-const DEFAULT_MODEL_LABEL = "claude-3-5-sonnet-20241022 (edge)";
-
 export default function AgenteIA() {
   const { user, profile } = useAuth();
-  const [storeListLoading, setStoreListLoading] = useState(true);
-  const [configLoading, setConfigLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const [storesLoadError, setStoresLoadError] = useState(false);
-  const [lojas, setLojas] = useState<{ id: string; name: string }[]>([]);
   const [selectedLoja, setSelectedLoja] = useState<string>("");
 
   const [config, setConfig] = useState<EditableAiConfig>(() => ({
@@ -99,63 +97,57 @@ export default function AgenteIA() {
     [],
   );
 
-  const fetchLojas = useCallback(async () => {
-    setStoreListLoading(true);
-    setStoresLoadError(false);
-    const { data, error } = await supabase.from("stores").select("id, name").order("name");
-    if (error) {
-      setStoresLoadError(true);
-      toast.error("Não foi possível carregar as lojas.");
-      setLojas([]);
-      setSelectedLoja("");
-    } else if (data?.length) {
-      setLojas(data);
-      setSelectedLoja((prev) => (prev && data.some((s) => s.id === prev) ? prev : data[0].id));
-    } else {
-      setLojas([]);
-      setSelectedLoja("");
-    }
-    setStoreListLoading(false);
-  }, []);
+  const storesQuery = useQuery({
+    queryKey: ["agente-ia-stores", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { effectiveUserId } = await getCurrentUserAndStore();
+      if (!effectiveUserId) return [] as { id: string; name: string }[];
+      const { data, error } = await supabase
+        .from("stores")
+        .select("id, name")
+        .eq("user_id", effectiveUserId)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 60_000,
+  });
 
-  const fetchConfig = useCallback(async () => {
-    if (!selectedLoja) return;
-    setConfigLoading(true);
-    const { effectiveUserId } = await getCurrentUserAndStore();
-    const ownerId = effectiveUserId ?? user?.id ?? "";
+  const lojas = useMemo(() => storesQuery.data ?? [], [storesQuery.data]);
+  const storeListLoading = storesQuery.isLoading;
+  const storesLoadError = storesQuery.isError;
 
-    const { data: aiData, error: aiErr } = await supabase
-      .from("ai_agent_config")
-      .select("*")
-      .eq("store_id", selectedLoja)
-      .maybeSingle();
+  useEffect(() => {
+    if (!lojas.length) return;
+    setSelectedLoja((prev) => (prev && lojas.some((s) => s.id === prev) ? prev : lojas[0].id));
+  }, [lojas]);
 
-    if (aiErr) {
-      toast.error("Erro ao carregar configuração do agente.");
-      setConfigLoading(false);
-      return;
-    }
+  useEffect(() => {
+    if (storesQuery.isError) toast.error("Não foi possível carregar as lojas.");
+  }, [storesQuery.isError]);
 
-    if (aiData) {
-      setConfig({ ...aiData });
+  const aiConfigQuery = useAiAgentConfig(selectedLoja || undefined, user?.id);
+
+  useEffect(() => {
+    if (aiConfigQuery.isError) toast.error("Erro ao carregar configuração do agente.");
+  }, [aiConfigQuery.isError]);
+
+  useEffect(() => {
+    if (!selectedLoja || !aiConfigQuery.isSuccess || !aiConfigQuery.data) return;
+    if (aiConfigQuery.data.storeId !== selectedLoja) return;
+    if (isDirty) return;
+    const { row, ownerId } = aiConfigQuery.data;
+    if (row) {
+      setConfig({ ...row });
     } else {
       setConfig({
         ...buildNewStoreAiConfig(selectedLoja),
         user_id: ownerId,
       });
     }
-
     setIsDirty(false);
-    setConfigLoading(false);
-  }, [selectedLoja, user?.id]);
-
-  useEffect(() => {
-    if (user) void fetchLojas();
-  }, [user, fetchLojas]);
-
-  useEffect(() => {
-    if (selectedLoja) void fetchConfig();
-  }, [selectedLoja, fetchConfig]);
+  }, [selectedLoja, aiConfigQuery.isSuccess, aiConfigQuery.data, isDirty]);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -241,6 +233,9 @@ export default function AgenteIA() {
     }
 
     setIsDirty(false);
+    await queryClient.invalidateQueries({
+      queryKey: aiAgentConfigQueryKey(user.id, selectedLoja),
+    });
     toast.success(
       tenantOwnerId === user.id
         ? "Configuração atualizada."
@@ -260,6 +255,7 @@ export default function AgenteIA() {
         "Existem alterações não guardadas. Trocar de loja descarta o que não foi guardado na sessão atual. Continuar?",
       );
       if (!ok) return;
+      setIsDirty(false);
     }
     setSelectedLoja(id);
   };
@@ -281,7 +277,7 @@ export default function AgenteIA() {
         <p className="text-sm text-muted-foreground max-w-md">
           Verifique a ligação e as permissões da conta. Se o problema continuar, tente mais tarde.
         </p>
-        <Button type="button" onClick={() => void fetchLojas()}>
+        <Button type="button" onClick={() => void storesQuery.refetch()}>
           Tentar novamente
         </Button>
       </div>
@@ -361,7 +357,7 @@ export default function AgenteIA() {
         </div>
       </div>
 
-      {configLoading ? (
+      {aiConfigQuery.isPending && selectedLoja ? (
         <div className="space-y-4">
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-64 w-full" />
@@ -392,7 +388,7 @@ export default function AgenteIA() {
                   </h3>
                   <p className="text-xs text-muted-foreground">
                     Regras aplicadas nas sugestões e no piloto automático (via servidor, modelo{" "}
-                    {DEFAULT_MODEL_LABEL}).
+                    <span className="font-mono text-[10px]">{AI_AGENT_EDGE_MODEL}</span>).
                   </p>
                 </div>
 
@@ -671,7 +667,7 @@ export default function AgenteIA() {
                         As respostas são geradas no servidor (Anthropic). O modelo configurado na
                         edge é{" "}
                         <span className="font-mono text-foreground text-[10px]">
-                          {DEFAULT_MODEL_LABEL}
+                          {AI_AGENT_EDGE_MODEL}
                         </span>
                         .
                       </span>

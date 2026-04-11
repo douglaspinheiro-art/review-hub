@@ -1,17 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-import { corsHeaders } from "../_shared/edge-utils.ts";
-
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-function checkRL(key: string, max = 15, windowMs = 60_000): boolean {
-  const now = Date.now();
-  const e = rateLimitMap.get(key);
-  if (!e || now > e.resetAt) { rateLimitMap.set(key, { count: 1, resetAt: now + windowMs }); return true; }
-  if (e.count >= max) return false;
-  e.count++;
-  return true;
-}
+import { corsHeaders, checkRateLimit, rateLimitedResponse, getClientIp } from "../_shared/edge-utils.ts";
 
 const BodySchema = z.object({
   type: z.enum(["whatsapp", "email"]),
@@ -34,9 +24,9 @@ serve(async (req) => {
     }
     const { type, objective, customer_name, product_name, discount_value, tone, brand_context } = parsed.data;
 
-    const clientIp = req.headers.get("x-forwarded-for") || "unknown";
-    if (!checkRL(clientIp)) {
-      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: corsHeaders });
+    const clientIp = getClientIp(req);
+    if (!checkRateLimit(`ai-copy:${clientIp}`, 15, 60_000)) {
+      return rateLimitedResponse();
     }
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");

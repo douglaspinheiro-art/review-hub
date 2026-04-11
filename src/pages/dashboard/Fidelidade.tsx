@@ -19,6 +19,13 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -88,7 +95,15 @@ export default function Fidelidade() {
   const { toast } = useToast();
   const canEdit = hasFullLoyaltyPlan(profile?.plan);
 
-  const dashboard = useLoyaltyDashboard();
+  const [rewardsStoreId, setRewardsStoreId] = useState<string | null>(null);
+  const dashboard = useLoyaltyDashboard(rewardsStoreId);
+
+  useEffect(() => {
+    const ids = dashboard.data?.storeIds ?? [];
+    if (!ids.length) return;
+    if (rewardsStoreId && ids.includes(rewardsStoreId)) return;
+    setRewardsStoreId(ids[0] ?? null);
+  }, [dashboard.data?.storeIds, rewardsStoreId]);
   const [txPage, setTxPage] = useState(0);
   const txQuery = useLoyaltyTransactions(txPage);
   const updateProfile = useUpdateLoyaltyProfile();
@@ -332,6 +347,23 @@ export default function Fidelidade() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {(dashboard.data?.storesBrief?.length ?? 0) > 1 && (
+            <Select
+              value={rewardsStoreId ?? dashboard.data?.storesBrief?.[0]?.id ?? ""}
+              onValueChange={(v) => setRewardsStoreId(v)}
+            >
+              <SelectTrigger className="w-[220px] h-10 rounded-xl font-semibold text-xs" aria-label="Loja do catálogo de recompensas">
+                <SelectValue placeholder="Loja" />
+              </SelectTrigger>
+              <SelectContent>
+                {(dashboard.data?.storesBrief ?? []).map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name?.trim() || s.id.slice(0, 8)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant="outline"
             className="font-bold gap-2 rounded-xl border-2"

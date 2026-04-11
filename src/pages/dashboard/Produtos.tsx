@@ -10,6 +10,8 @@ import {
   Eye,
   Zap,
   Megaphone,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -74,9 +76,11 @@ function toProdutoCampanha(p: ProductRow): ProdutoParaCampanha {
 
 function ProductThumb({
   url,
+  alt,
   className,
 }: {
   url: string | null | undefined;
+  alt: string;
   className?: string;
 }) {
   const [broken, setBroken] = useState(false);
@@ -84,7 +88,7 @@ function ProductThumb({
     return (
       <img
         src={url}
-        alt=""
+        alt={alt}
         className={cn("object-cover rounded-xl bg-muted", className)}
         onError={() => setBroken(true)}
       />
@@ -156,7 +160,7 @@ const ProductCard = ({
         <div className="p-5 space-y-4 hover:bg-muted/10 transition-colors">
           <div className="flex items-start justify-between gap-4">
             <div className="flex gap-3 min-w-0">
-              <ProductThumb url={p.imagem_url} className="w-12 h-12 shrink-0" />
+              <ProductThumb url={p.imagem_url} alt={p.nome ? `Foto: ${p.nome}` : "Produto"} className="w-12 h-12 shrink-0" />
               <div className="min-w-0">
                 <h4 className="font-bold text-sm leading-tight truncate">{p.nome}</h4>
                 <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mt-1 truncate">
@@ -262,6 +266,8 @@ const ProductCard = ({
   );
 };
 
+const PAGE_SIZE = 48;
+
 const emptyListMessage = (
   <div className="p-10 text-center text-muted-foreground text-sm font-bold italic">
     Nenhum produto encontrado com este filtro.
@@ -273,8 +279,29 @@ export default function Produtos() {
   const loja = useLoja();
   const storeId = loja.data?.id;
   const [filter, setFilter] = useState("todos");
-  const { data: produtos = [], isLoading, isError, refetch, isFetching } = useProdutosV3(storeId, filter);
+  const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+  useEffect(() => {
+    setPage(0);
+  }, [filter, debouncedSearch, storeId]);
+
+  const serverSearch = debouncedSearch.length >= 2 ? debouncedSearch : "";
+  const {
+    data: productsPage,
+    isLoading,
+    isError,
+    refetch,
+    isFetching,
+  } = useProdutosV3(storeId, { filter, page, pageSize: PAGE_SIZE, search: serverSearch });
+  const produtos = productsPage?.rows ?? [];
+  const totalCatalog = productsPage?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCatalog / PAGE_SIZE));
+
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [campaignModal, setCampaignModal] = useState<{
     open: boolean;
@@ -298,16 +325,18 @@ export default function Produtos() {
     if (categoryFilter) {
       rows = rows.filter((p) => (p.categoria || "").trim() === categoryFilter);
     }
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter(
-        (p) =>
-          (p.nome || "").toLowerCase().includes(q) ||
-          (p.sku || "").toLowerCase().includes(q)
-      );
+    if (!serverSearch) {
+      const q = searchQuery.trim().toLowerCase();
+      if (q) {
+        rows = rows.filter(
+          (p) =>
+            (p.nome || "").toLowerCase().includes(q) ||
+            (p.sku || "").toLowerCase().includes(q),
+        );
+      }
     }
     return rows;
-  }, [produtos, categoryFilter, searchQuery]);
+  }, [produtos, categoryFilter, searchQuery, serverSearch]);
 
   const abrirCampanhaProduto = useCallback((p: ProdutoParaCampanha) => {
     if (campanhasBlocked) return;
@@ -339,7 +368,7 @@ export default function Produtos() {
   const criticoCount = useMemo(() => produtos.filter((p) => estoqueN(p) < 5).length, [produtos]);
   const baixaAvalCount = useMemo(
     () => produtos.filter((p) => mediaAval(p) > 0 && mediaAval(p) < 3.5).length,
-    [produtos]
+    [produtos],
   );
 
   const topReceitaLabel = useMemo(() => {
@@ -382,7 +411,7 @@ export default function Produtos() {
   }
 
   const showFilteredEmpty = !isLoading && displayed.length === 0 && produtos.length > 0;
-  const showApiEmpty = !isLoading && produtos.length === 0;
+  const showApiEmpty = !isLoading && totalCatalog === 0;
 
   return (
     <div className="space-y-8 pb-10">
@@ -479,8 +508,14 @@ export default function Produtos() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Monitorados" value={produtos.length} icon={Package} />
-        <MetricCard label="Estoque Crítico" value={criticoCount} icon={AlertCircle} className="border-red-500/20" />
+        <MetricCard label="No catálogo" value={totalCatalog} icon={Package} tooltip="Total de SKUs com os filtros atuais (servidor)" />
+        <MetricCard
+          label="Estoque crítico (página)"
+          value={criticoCount}
+          icon={AlertCircle}
+          className="border-red-500/20"
+          tooltip="Contagem apenas entre os produtos desta página"
+        />
         <MetricCard label="Avaliação Baixa" value={baixaAvalCount} icon={Star} />
         <MetricCard label="Top Receita" value={topReceitaLabel} icon={TrendingUp} />
       </div>
@@ -492,9 +527,9 @@ export default function Produtos() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold">
-              {criticoCount} produtos com estoque {"<"} 5 unidades
+              {criticoCount} produtos nesta página com estoque {"<"} 5 unidades
             </p>
-            <p className="text-xs text-muted-foreground">Risco de perda iminente em vendas.</p>
+            <p className="text-xs text-muted-foreground">Use filtros e páginas para rever todo o catálogo.</p>
           </div>
           <Button
             type="button"
@@ -508,31 +543,37 @@ export default function Produtos() {
       </div>
 
       <div ref={listaRef} id="lista-produtos" className="bg-card border rounded-2xl overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-border/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="relative max-w-sm w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por SKU ou Nome..."
-              className="pl-9 h-10 rounded-xl bg-muted/20"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="bg-muted p-1 rounded-xl flex overflow-x-auto">
-              {["todos", "estoque_critico", "baixa_cvr"].map((f) => (
-                <Button
-                  key={f}
-                  variant={filter === f ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-8 text-[10px] font-black px-3 rounded-lg uppercase tracking-wider whitespace-nowrap"
-                  onClick={() => setFilter(f)}
-                >
-                  {FILTER_LABELS[f] ?? f}
-                </Button>
-              ))}
+        <div className="p-4 border-b border-border/50 flex flex-col gap-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="relative max-w-sm w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por SKU ou Nome..."
+                className="pl-9 h-10 rounded-xl bg-muted/20"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Buscar produtos por nome ou SKU"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="bg-muted p-1 rounded-xl flex overflow-x-auto">
+                {["todos", "estoque_critico", "baixa_cvr"].map((f) => (
+                  <Button
+                    key={f}
+                    variant={filter === f ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-8 text-[10px] font-black px-3 rounded-lg uppercase tracking-wider whitespace-nowrap"
+                    onClick={() => setFilter(f)}
+                  >
+                    {FILTER_LABELS[f] ?? f}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
+          <p className="text-[10px] text-muted-foreground px-1">
+            Com 2+ caracteres a busca abrange todo o catálogo no servidor; abaixo disso filtra só a página atual.
+          </p>
         </div>
 
         <div className="md:hidden divide-y divide-border/40">
@@ -626,7 +667,11 @@ export default function Produtos() {
                     <tr key={p.id} className="border-b border-border/40 hover:bg-muted/10 transition-colors group">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3 min-w-0">
-                          <ProductThumb url={p.imagem_url} className="w-10 h-10 shrink-0 rounded-lg" />
+                          <ProductThumb
+                            url={p.imagem_url}
+                            alt={p.nome ? `Foto: ${p.nome}` : "Produto"}
+                            className="w-10 h-10 shrink-0 rounded-lg"
+                          />
                           <div className="min-w-0">
                             <div className="font-bold text-sm leading-none mb-1 truncate">{p.nome}</div>
                             <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider truncate">
@@ -711,6 +756,33 @@ export default function Produtos() {
             </tbody>
           </table>
         </div>
+        {totalCatalog > PAGE_SIZE && (
+          <div className="flex flex-wrap items-center justify-center gap-3 px-4 py-3 border-t border-border/40">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page <= 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className="gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" /> Anterior
+            </Button>
+            <span className="text-xs text-muted-foreground font-mono">
+              Página {page + 1} / {totalPages} · {totalCatalog} SKUs
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page + 1 >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              className="gap-1"
+            >
+              Seguinte <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
         {isFetching && !isLoading ? (
           <div className="px-4 py-2 text-[10px] text-muted-foreground font-bold uppercase tracking-wider border-t border-border/40">
             Atualizando…

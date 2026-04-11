@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Zap,
   Plus,
@@ -47,7 +47,6 @@ export default function Automacoes() {
   const [lojas, setLojas] = useState<{ id: string; name: string }[]>([]);
   const [storeListLoading, setStoreListLoading] = useState(true);
   const [selectedStoreId, setSelectedStoreId] = useState<string>("");
-  const seedAttemptedForStore = useRef<string | null>(null);
 
   const fetchLojas = useCallback(async () => {
     if (!user?.id) return;
@@ -91,17 +90,27 @@ export default function Automacoes() {
       const ids = jList.map((j) => j.id).filter(Boolean);
       const sentByJourneyId: Record<string, number> = {};
       if (ids.length) {
-        const { data: sentRows, error: sErr } = await supabase
-          .from("scheduled_messages")
-          .select("journey_id")
-          .eq("store_id", selectedStoreId)
-          .eq("status", "sent")
-          .in("journey_id", ids);
-        if (sErr) throw sErr;
-        for (const row of sentRows ?? []) {
-          const jid = row.journey_id as string | null;
-          if (!jid) continue;
-          sentByJourneyId[jid] = (sentByJourneyId[jid] ?? 0) + 1;
+        const rpc = await supabase.rpc("get_journey_sent_counts", {
+          p_store_id: selectedStoreId,
+          p_journey_ids: ids,
+        });
+        if (!rpc.error && Array.isArray(rpc.data)) {
+          for (const row of rpc.data) {
+            if (row.journey_id) sentByJourneyId[row.journey_id] = Number(row.sent_count ?? 0);
+          }
+        } else {
+          const { data: sentRows, error: sErr } = await supabase
+            .from("scheduled_messages")
+            .select("journey_id")
+            .eq("store_id", selectedStoreId)
+            .eq("status", "sent")
+            .in("journey_id", ids);
+          if (sErr) throw sErr;
+          for (const row of sentRows ?? []) {
+            const jid = row.journey_id as string | null;
+            if (!jid) continue;
+            sentByJourneyId[jid] = (sentByJourneyId[jid] ?? 0) + 1;
+          }
         }
       }
       return { journeys: jList, sentByJourneyId };
@@ -145,18 +154,8 @@ export default function Automacoes() {
     },
     onError: (e: Error) => {
       toast.error(e.message || "Não foi possível criar as jornadas padrão.");
-      seedAttemptedForStore.current = null;
     },
   });
-
-  useEffect(() => {
-    if (!selectedStoreId || journeysLoading || journeysError) return;
-    if (journeys.length > 0) return;
-    if (seedJourneysMutation.isPending) return;
-    if (seedAttemptedForStore.current === selectedStoreId) return;
-    seedAttemptedForStore.current = selectedStoreId;
-    seedJourneysMutation.mutate(selectedStoreId);
-  }, [selectedStoreId, journeys.length, journeysLoading, journeysError, seedJourneysMutation]);
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, ativa }: { id: string; ativa: boolean }) => {
@@ -177,14 +176,12 @@ export default function Automacoes() {
   const activateCoreFlowsMutation = useMutation({
     mutationFn: async () => {
       if (!selectedStoreId) throw new Error("Selecione uma loja");
-      for (const tipo of CORE_FLOW_TIPOS) {
-        const { error } = await supabase
-          .from("journeys_config")
-          .update({ ativa: true, updated_at: new Date().toISOString() })
-          .eq("store_id", selectedStoreId)
-          .eq("tipo_jornada", tipo);
-        if (error) throw error;
-      }
+      const { error } = await supabase
+        .from("journeys_config")
+        .update({ ativa: true, updated_at: new Date().toISOString() })
+        .eq("store_id", selectedStoreId)
+        .in("tipo_jornada", [...CORE_FLOW_TIPOS]);
+      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Fluxos core ativados: carrinho, pós-compra e reativação");
@@ -215,7 +212,7 @@ export default function Automacoes() {
 
   const activeCount = jornadas.filter((j) => j.is_active).length;
 
-  const pageLoading = storeListLoading || (selectedStoreId && (journeysLoading || seedJourneysMutation.isPending));
+  const pageLoading = storeListLoading || (selectedStoreId && journeysLoading);
 
   if (storeListLoading && !selectedStoreId) {
     return (
@@ -339,14 +336,34 @@ export default function Automacoes() {
       {pageLoading && !journeysError && (
         <div className="flex flex-col items-center justify-center h-64 gap-4">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
-          {seedJourneysMutation.isPending && (
-            <p className="text-sm text-muted-foreground font-medium animate-pulse">A preparar jornadas padrão…</p>
-          )}
         </div>
       )}
 
       {!pageLoading && !journeysError && (
         <>
+          {journeys.length === 0 && (
+            <Alert className="rounded-2xl border-primary/30 bg-primary/5">
+              <AlertTitle className="text-sm font-bold">Nenhuma jornada nesta loja</AlertTitle>
+              <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-muted-foreground">
+                <span>
+                  Instale os modelos padrão (carrinho, pós-compra, etc.) ou crie uma jornada customizada. O onboarding
+                  também pode incluir este passo com a sua equipa.
+                </span>
+                <TrialGate action="ativar automações">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="shrink-0 font-bold gap-2 rounded-xl"
+                    disabled={!selectedStoreId || seedJourneysMutation.isPending}
+                    onClick={() => seedJourneysMutation.mutate(selectedStoreId)}
+                  >
+                    {seedJourneysMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                    Instalar jornadas padrão
+                  </Button>
+                </TrialGate>
+              </AlertDescription>
+            </Alert>
+          )}
           {activeCount === 0 && (
             <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between gap-3 animate-in fade-in duration-300">
               <div className="flex items-center gap-3">

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders as cors } from "../_shared/edge-utils.ts";
+import { corsHeaders as cors, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
 
 const DAYS = 30;
 
@@ -186,6 +186,10 @@ serve(async (req) => {
     const jwt = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
     const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
     if (authErr || !user) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: cors });
+
+    if (!checkRateLimit(`fetch-store-metrics:${user.id}`, 24, 60_000)) {
+      return rateLimitedResponse();
+    }
 
     // Busca integração ativa de e-commerce
     const ECOMMERCE_TYPES = ["shopify", "nuvemshop", "woocommerce", "tray", "vtex"];

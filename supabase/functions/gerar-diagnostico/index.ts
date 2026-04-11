@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyJwt } from "../_shared/edge-utils.ts";
+import { verifyJwt, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -30,6 +30,9 @@ serve(async (req) => {
 
   const auth = await verifyJwt(req);
   if (!auth.ok) return auth.response;
+  if (!checkRateLimit(`gerar-diagnostico:${auth.userId}`, 8, 60_000)) {
+    return rateLimitedResponse();
+  }
 
   try {
     const supabase = createClient(

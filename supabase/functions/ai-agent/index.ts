@@ -1,22 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { verifyJwt } from "../_shared/edge-utils.ts";
+import { verifyJwt, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-function checkRL(key: string, max = 10, windowMs = 60_000): boolean {
-  const now = Date.now();
-  const e = rateLimitMap.get(key);
-  if (!e || now > e.resetAt) { rateLimitMap.set(key, { count: 1, resetAt: now + windowMs }); return true; }
-  if (e.count >= max) return false;
-  e.count++;
-  return true;
-}
 
 const BodySchema = z.object({
   conversation_id: z.string().uuid(),
@@ -38,8 +28,8 @@ serve(async (req) => {
     }
     const { conversation_id, message_content, store_id } = parsed.data;
 
-    if (!checkRL(store_id, 20)) {
-      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: corsHeaders });
+    if (!checkRateLimit(`ai-agent:${auth.userId}:${store_id}`, 20, 60_000)) {
+      return rateLimitedResponse();
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");

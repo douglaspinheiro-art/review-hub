@@ -1,8 +1,15 @@
 /**
  * LTV Boost v4 — Worker: Process Queued Messages (WhatsApp & Email)
- * Runs periodically to send pending messages from:
- * 1. scheduled_messages (WhatsApp - Campaigns & Journeys)
- * 2. newsletter_send_recipients (Email - Newsletter campaigns)
+ * Invocado por cron com `x-internal-secret` / Bearer = PROCESS_SCHEDULED_MESSAGES_SECRET.
+ *
+ * Filas (cada uma até BATCH_SIZE por execução):
+ * 1. webhook_queue — ingestão de carrinho / webhooks
+ * 2. scheduled_messages — WhatsApp (campanhas/jornadas); claim atómico pending→processing
+ * 3. newsletter_send_recipients — e-mail em massa; claim atómico pending→processing
+ *
+ * Observabilidade: resposta JSON inclui `request_id`, `elapsed_ms`, contagens agregadas.
+ * Retries: falhas marcam `failed` + `error_message` na linha; reprocessar exige job manual ou nova fila.
+ * Throughput newsletter: ~ BATCH_SIZE e-mails por invocação; espaçar crons ou aumentar BATCH_SIZE com cuidado ao rate limit do Resend.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -243,10 +250,25 @@ serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ 
-    ok: true, 
-    processed: totalProcessed, 
-    errors: totalErrors, 
-    elapsed: Date.now() - startedAt 
-  }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  const elapsedMs = Date.now() - startedAt;
+  console.log(
+    JSON.stringify({
+      tag: "process-scheduled-messages",
+      request_id: requestId,
+      processed: totalProcessed,
+      errors: totalErrors,
+      elapsed_ms: elapsedMs,
+    }),
+  );
+
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      request_id: requestId,
+      processed: totalProcessed,
+      errors: totalErrors,
+      elapsed_ms: elapsedMs,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
 });

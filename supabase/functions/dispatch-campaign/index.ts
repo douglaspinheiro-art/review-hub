@@ -10,7 +10,13 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { z, errorResponse, validateBrowserOrigin } from "../_shared/edge-utils.ts";
+import {
+  z,
+  errorResponse,
+  validateBrowserOrigin,
+  checkRateLimit,
+  rateLimitedResponse,
+} from "../_shared/edge-utils.ts";
 import { uuidSchema, validateRequest } from "../_shared/validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -302,6 +308,9 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
       }
       requesterUserId = user.id;
+      if (!checkRateLimit(`dispatch-campaign:${requesterUserId}`, 12, 60_000)) {
+        return rateLimitedResponse();
+      }
     }
 
     const { data: campaign, error: campError } = await supabase

@@ -318,7 +318,7 @@ export default function Funil() {
   const dataHealth = useDataHealth(loja.data?.id ?? null, periodo);
   const lastDiag  = useLatestDiagnostico(loja.data?.id ?? null);
   const allDiags  = useDiagnosticos(loja.data?.id ?? null);
-  const produtos  = useProdutosV3(loja.data?.id);
+  const produtosQuery = useProdutosV3(loja.data?.id, { pageSize: 400 });
   const metricsV3 = useMetricsV3(loja.data?.id);
   const saveMet   = useSaveMetricas();
   const gerarDiag = useGerarDiagnostico();
@@ -330,7 +330,7 @@ export default function Funil() {
     funilMetricas.refetch();
     enriched.refetch();
     dataHealth.refetch();
-    produtos.refetch();
+    produtosQuery.refetch();
     metricsV3.refetch();
     lastDiag.refetch();
     allDiags.refetch();
@@ -340,7 +340,7 @@ export default function Funil() {
     funilMetricas.isError && "funil",
     enriched.isError && "métricas enriquecidas",
     dataHealth.isError && "saúde dos dados",
-    produtos.isError && "produtos",
+    produtosQuery.isError && "produtos",
     metricsV3.isError && "métricas dispositivo",
     lastDiag.isError && "último diagnóstico",
     allDiags.isError && "histórico de diagnósticos",
@@ -419,7 +419,7 @@ export default function Funil() {
   const showCvrAlert = cvrDrop < 0 && Math.abs(cvrDrop) / Number(allDiags.data![1]?.taxa_conversao ?? 1) > 0.15;
 
   // Top 5 products with worst conversion and best revenue
-  const produtosList = (produtos.data ?? []) as Array<{
+  const produtosList = (produtosQuery.data?.rows ?? []) as Array<{
     id: string; nome: string; sku?: string; preco?: number;
     estoque?: number; taxa_conversao_produto?: number; receita_30d?: number;
   }>;
