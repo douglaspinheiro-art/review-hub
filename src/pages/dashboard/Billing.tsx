@@ -1,9 +1,12 @@
 import { useEffect, useState, useRef } from "react";
-import { CreditCard, Zap, Check, ArrowRight, TrendingUp, Sparkles, X, Loader2 } from "lucide-react";
+import {
+  CreditCard, Zap, Check, ArrowRight, TrendingUp, Sparkles, X, Loader2, AlertCircle,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -51,6 +54,8 @@ export default function Billing() {
             .eq("store_id", storeId)
             .gte("created_at", monthStart),
         ]);
+
+        let messagesSource: "store" | "user" | "unavailable" = "store";
         let msgCount = msgRes.count ?? 0;
         if (msgRes.error) {
           const fb = await supabase
@@ -58,11 +63,37 @@ export default function Billing() {
             .select("id", { count: "exact", head: true })
             .eq("user_id", effectiveUserId)
             .gte("created_at", monthStart);
-          msgCount = fb.count ?? 0;
+          if (fb.error) {
+            msgCount = 0;
+            messagesSource = "unavailable";
+          } else {
+            msgCount = fb.count ?? 0;
+            messagesSource = "user";
+          }
         }
+
+        let contactsSource: "store" | "user" | "unavailable" = "store";
+        let contactCount = custRes.count ?? 0;
+        if (custRes.error) {
+          const cfb = await supabase
+            .from("customers_v3")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", effectiveUserId);
+          if (cfb.error) {
+            contactCount = 0;
+            contactsSource = "unavailable";
+          } else {
+            contactCount = cfb.count ?? 0;
+            contactsSource = "user";
+          }
+        }
+
         return {
-          contacts: custRes.count ?? 0,
+          contacts: contactCount,
           messages: msgCount,
+          scope: "store" as const,
+          contactsSource,
+          messagesSource,
         };
       }
 
@@ -77,6 +108,9 @@ export default function Billing() {
       return {
         contacts: contactsRes.count ?? 0,
         messages: messagesRes.count ?? 0,
+        scope: "legacy" as const,
+        contactsSource: "legacy" as const,
+        messagesSource: "legacy" as const,
       };
     },
     enabled: !!user,
@@ -147,9 +181,48 @@ export default function Billing() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold">Billing</h1>
-        <p className="text-muted-foreground text-sm mt-1">Gerencie seu plano e pagamentos</p>
+        <h1 className="text-2xl font-bold">Faturação e plano</h1>
+        <p className="text-muted-foreground text-sm mt-1">Gerencie o seu plano e os pagamentos</p>
       </div>
+
+      {usage?.scope === "store" &&
+        (usage.contactsSource !== "store" || usage.messagesSource !== "store") && (
+        <Alert className="border-amber-500/40 bg-amber-500/[0.07]">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertTitle>Uso do mês — leitura alternativa</AlertTitle>
+          <AlertDescription className="text-sm text-muted-foreground space-y-2">
+            <p>
+              Os totais abaixo podem agregar várias lojas da sua conta ou estar incompletos se a API
+              não respondeu à contagem por loja.
+            </p>
+            <ul className="list-disc pl-4 space-y-1">
+              {usage.contactsSource === "user" && (
+                <li><strong>Contactos:</strong> total por conta (todas as lojas).</li>
+              )}
+              {usage.contactsSource === "unavailable" && (
+                <li><strong>Contactos:</strong> indisponível neste momento (tente atualizar).</li>
+              )}
+              {usage.messagesSource === "user" && (
+                <li><strong>Mensagens enviadas:</strong> total por conta no mês corrente.</li>
+              )}
+              {usage.messagesSource === "unavailable" && (
+                <li><strong>Mensagens enviadas:</strong> indisponível neste momento.</li>
+              )}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {usage?.scope === "legacy" && (
+        <Alert className="border-border bg-muted/30">
+          <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          <AlertTitle className="text-sm">Contagens no modelo clássico</AlertTitle>
+          <AlertDescription className="text-sm text-muted-foreground">
+            Sem loja ativa no contexto: os números vêm das tabelas <code className="text-xs">contacts</code> e{" "}
+            <code className="text-xs">messages</code> associadas à sua conta.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Trial banner */}
       {isTrialActive && (
@@ -189,7 +262,7 @@ export default function Billing() {
             <div className="flex flex-col gap-2 shrink-0">
               <Button
                 className="gap-1.5 font-black h-11 px-6 rounded-xl"
-                onClick={() => navigate("/planos")}
+                onClick={() => navigate("/dashboard/planos")}
               >
                 Fazer upgrade agora <ArrowRight className="w-3.5 h-3.5" />
               </Button>
@@ -329,7 +402,7 @@ export default function Billing() {
                     </Button>
                   </a>
                 ) : (
-                  <Button size="sm" className="w-full gap-1 font-bold" variant="outline" onClick={() => navigate("/planos")}>
+                  <Button size="sm" className="w-full gap-1 font-bold" variant="outline" onClick={() => navigate("/dashboard/planos")}>
                     Ver planos <ArrowRight className="w-3 h-3" />
                   </Button>
                 )}
@@ -365,7 +438,7 @@ export default function Billing() {
           <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
           <p className="text-xs text-emerald-400 font-medium">Você só paga a comissão de sucesso sobre as vendas que nós recuperarmos para você (Carrinho, Boleto, PIX).</p>
         </div>
-        <Button className="gap-2" onClick={() => navigate("/planos")}>
+        <Button className="gap-2" onClick={() => navigate("/dashboard/planos")}>
           Ver detalhes dos planos <ArrowRight className="w-3.5 h-3.5" />
         </Button>
       </div>
@@ -431,7 +504,7 @@ export default function Billing() {
               <p className="text-xs text-muted-foreground">vs. {PLAN_LIMITS[currentPlan].contacts.toLocaleString("pt-BR")} no seu plano atual</p>
             </div>
             <div className="flex gap-3">
-              <Button className="flex-1 font-black" onClick={() => { setShowLimitModal(false); navigate("/planos"); }}>
+              <Button className="flex-1 font-black" onClick={() => { setShowLimitModal(false); navigate("/dashboard/planos"); }}>
                 Fazer Upgrade <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
               <Button variant="ghost" className="flex-1" onClick={() => setShowLimitModal(false)}>Agora não</Button>

@@ -11,5 +11,8 @@ verify_jwt = false
 [functions.validate-integration]
 verify_jwt = true
 
+[functions.post-integration-setup]
+verify_jwt = true
+
 [functions.stripe-billing-portal]
 verify_jwt = true

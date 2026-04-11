@@ -86,8 +86,6 @@ export default function WhatsApp() {
   const [metaAccessToken, setMetaAccessToken] = useState("");
   const [metaDefaultTemplate, setMetaDefaultTemplate] = useState("");
   const [selectedApiConnectionId, setSelectedApiConnectionId] = useState<string | null>(null);
-  const [lojas, setLojas] = useState<{ id: string; name: string }[]>([]);
-  const [storeListLoading, setStoreListLoading] = useState(true);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
@@ -105,27 +103,38 @@ export default function WhatsApp() {
   const connectionSelect =
     "id, instance_name, phone_number, status, provider, meta_phone_number_id, meta_waba_id, meta_default_template_name, connected_at, created_at, store_id";
 
-  const fetchLojas = useCallback(async () => {
-    if (!user?.id) return;
-    setStoreListLoading(true);
-    const { data, error } = await supabase.from("stores").select("id, name").eq("user_id", user.id).order("name");
-    if (error) {
-      toast({ title: "Não foi possível carregar as lojas", variant: "destructive" });
-      setLojas([]);
-      setSelectedStoreId("");
-    } else if (data?.length) {
-      setLojas(data);
-      setSelectedStoreId((prev) => (prev && data.some((s) => s.id === prev) ? prev : data[0].id));
-    } else {
-      setLojas([]);
-      setSelectedStoreId("");
-    }
-    setStoreListLoading(false);
-  }, [user?.id, toast]);
+  const {
+    data: lojas = [],
+    isLoading: storeListLoading,
+    isError: storesListError,
+  } = useQuery({
+    queryKey: ["whatsapp_page_stores", user?.id ?? ""],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("id, name")
+        .eq("user_id", user!.id)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string }[];
+    },
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
-    void fetchLojas();
-  }, [fetchLojas]);
+    if (storesListError) {
+      toast({ title: "Não foi possível carregar as lojas", variant: "destructive" });
+    }
+  }, [storesListError, toast]);
+
+  useEffect(() => {
+    if (!lojas.length) {
+      setSelectedStoreId("");
+      return;
+    }
+    setSelectedStoreId((prev) => (prev && lojas.some((s) => s.id === prev) ? prev : lojas[0].id));
+  }, [lojas]);
 
   const copyMetaWebhookUrl = useCallback(() => {
     if (!metaWebhookUrl) {
@@ -629,17 +638,9 @@ export default function WhatsApp() {
                         <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-muted border">
                           Meta Cloud
                         </span>
-                        {conn.health_status && conn.health_status !== "unknown" && (
-                          <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border uppercase tracking-wider", HEALTH_CONFIG[conn.health_status].className)}>
-                            {HEALTH_CONFIG[conn.health_status].label}
-                          </span>
-                        )}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {conn.phone_number ?? "Cloud API"}
-                        {conn.health_details?.verified_name && (
-                          <span className="ml-2 text-xs opacity-70">({conn.health_details.verified_name})</span>
-                        )}
                       </p>
                     </div>
                   </div>
@@ -647,14 +648,6 @@ export default function WhatsApp() {
                     <span className={cn("text-xs px-2 py-1 rounded-full border font-medium shrink-0", cfg.color)}>
                       {cfg.label}
                     </span>
-                    {conn.health_details?.quality_rating && (
-                      <span className="text-[10px] text-muted-foreground font-medium">
-                        Qualidade: <span className={cn(
-                          conn.health_details.quality_rating === "GREEN" ? "text-emerald-600" :
-                          conn.health_details.quality_rating === "YELLOW" ? "text-amber-600" : "text-red-600"
-                        )}>{conn.health_details.quality_rating}</span>
-                      </span>
-                    )}
                   </div>
                 </div>
 

@@ -95,7 +95,7 @@ const nav: { section: string; items: NavItem[] }[] = [
   {
     section: "CONTA",
     items: [
-      { label: "Planos",         icon: CreditCard,      href: "/planos" },
+      { label: "Planos",         icon: CreditCard,      href: "/dashboard/planos" },
       { label: "Billing",        icon: CreditCard,      href: "/dashboard/billing" },
       { label: "Configurações",  icon: Settings,        href: "/dashboard/configuracoes" },
       { label: "Integrações",    icon: Wifi,            href: "/dashboard/integracoes" },

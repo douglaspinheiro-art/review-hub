@@ -5,6 +5,7 @@ type JourneyInsert = Database["public"]["Tables"]["journeys_config"]["Insert"];
 /**
  * Defaults para seed por loja (flow-engine: `event` === `tipo_jornada`; mensagens com {{nome}} / {{link}}).
  * Inclui `winback` e `review_request` genéricos (API) e tipos dedicados aos cards Boleto/PIX e Fidelidade.
+ * Manter alinhado a `supabase/functions/post-integration-setup/index.ts` (JOURNEY_SEED).
  */
 export const DEFAULT_JOURNEYS_FOR_STORE: Omit<JourneyInsert, "store_id">[] = [
   {

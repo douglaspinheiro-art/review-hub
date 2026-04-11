@@ -1,3 +1,30 @@
+/** Níveis para comparação de plano (UI, gating de rotas). Manter alinhado a `ProtectedRoute`. */
+export const PLAN_LEVELS = { starter: 0, growth: 1, scale: 2, enterprise: 3 } as const;
+export type PlanTier = keyof typeof PLAN_LEVELS;
+
+export function planTierAtLeast(plan: string | undefined | null, min: PlanTier): boolean {
+  const key = (plan ?? "starter").toLowerCase();
+  const cur = key in PLAN_LEVELS ? PLAN_LEVELS[key as PlanTier] : 0;
+  return cur >= PLAN_LEVELS[min];
+}
+
+/** Textos e flags só da página de planos — limites numéricos vêm sempre de `base`, `maxContacts`, etc. */
+export type PlanPageCopy = {
+  feeExamples: readonly number[];
+  instances: string;
+  users: string;
+  journeys: string;
+  rfm: string;
+  chs: boolean | string;
+  aiNegotiator: string;
+  loyalty: boolean | string;
+  support: string;
+  revenueForecast: boolean;
+  abPrescriptions: boolean;
+  invoiceSuccessFeeSample: number;
+  invoiceTotalExample: number;
+};
+
 export const PLANS = {
   starter: {
     name: "Starter",
@@ -11,6 +38,21 @@ export const PLANS = {
     audience: "Lojas R$30k–80k/mês",
     cogsFixed: 165,
     color: "slate",
+    planPage: {
+      feeExamples: [10_000, 30_000, 50_000] as const,
+      instances: "1 loja",
+      users: "2 usuários",
+      journeys: "Até 3 automações",
+      rfm: "Básico",
+      chs: false,
+      aiNegotiator: "30 conv./mês",
+      loyalty: false,
+      support: "WhatsApp",
+      revenueForecast: false,
+      abPrescriptions: false,
+      invoiceSuccessFeeSample: 300,
+      invoiceTotalExample: 797,
+    } satisfies PlanPageCopy,
     landingDescription: "Para e-commerces em crescimento",
     landingFeatures: [
       "1.000 contatos",
@@ -34,6 +76,21 @@ export const PLANS = {
     audience: "Lojas R$80k–500k/mês",
     cogsFixed: 355,
     color: "indigo",
+    planPage: {
+      feeExamples: [50_000, 100_000, 200_000] as const,
+      instances: "2 lojas",
+      users: "Até 5 usuários",
+      journeys: "Ilimitadas",
+      rfm: "Completo",
+      chs: "✓",
+      aiNegotiator: "300 conv./mês",
+      loyalty: "✓",
+      support: "Prioritário",
+      revenueForecast: true,
+      abPrescriptions: true,
+      invoiceSuccessFeeSample: 1000,
+      invoiceTotalExample: 1997,
+    } satisfies PlanPageCopy,
     landingDescription: "Para operações de alto volume",
     landingFeatures: [
       "5.000 contatos",
@@ -58,6 +115,21 @@ export const PLANS = {
     audience: "Lojas R$500k–3M/mês",
     cogsFixed: 1025,
     color: "emerald",
+    planPage: {
+      feeExamples: [200_000, 500_000, 1_000_000] as const,
+      instances: "Até 5 lojas",
+      users: "Ilimitado",
+      journeys: "Ilimitadas",
+      rfm: "Completo + IA",
+      chs: "Multi-loja",
+      aiNegotiator: "Fair Use",
+      loyalty: "✓",
+      support: "White-label + API",
+      revenueForecast: true,
+      abPrescriptions: true,
+      invoiceSuccessFeeSample: 3000,
+      invoiceTotalExample: 5497,
+    } satisfies PlanPageCopy,
     landingDescription: "Para operações em escala",
     landingFeatures: [
       "20.000 contatos",

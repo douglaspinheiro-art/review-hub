@@ -333,7 +333,7 @@ export default function Fidelidade() {
           <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-1">
             <span>Programa de fidelidade completo está nos planos Growth e Scale.</span>
             <Button asChild size="sm" variant="secondary" className="font-bold rounded-lg">
-              <Link to="/planos">Ver planos</Link>
+              <Link to="/dashboard/planos">Ver planos</Link>
             </Button>
           </AlertDescription>
         </Alert>

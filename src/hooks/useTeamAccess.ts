@@ -46,7 +46,7 @@ export function teamNavItemHidden(href: string, access: TeamAccessState | undefi
 
   const hideForAllCollaborators = [
     "/dashboard/billing",
-    "/planos",
+    "/dashboard/planos",
     "/dashboard/equipe",
     "/dashboard/api-keys",
     "/dashboard/white-label",

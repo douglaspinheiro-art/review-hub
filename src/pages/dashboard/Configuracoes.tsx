@@ -138,7 +138,7 @@ export default function Configuracoes() {
       };
     },
     enabled: !!user,
-    staleTime: 30_000,
+    staleTime: 60_000,
   });
 
   // Sincroniza só quando o objeto `profile` vindo do servidor muda — não incluir `isDirty`

@@ -280,7 +280,7 @@ export default function Prescricoes() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Button size="sm" className="h-8 font-black text-[10px] uppercase tracking-widest gap-1.5 rounded-xl" onClick={() => navigate("/planos")}>
+              <Button size="sm" className="h-8 font-black text-[10px] uppercase tracking-widest gap-1.5 rounded-xl" onClick={() => navigate("/dashboard/planos")}>
                 Ver Escala <ArrowRight className="w-3 h-3" />
               </Button>
               <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setShowUpsellBanner(false)}>
@@ -399,7 +399,7 @@ export default function Prescricoes() {
                             size="sm"
                             variant="default"
                             className="h-8 font-bold text-[10px] uppercase tracking-widest px-4 rounded-lg bg-primary text-primary-foreground"
-                            onClick={() => navigate("/planos")}
+                            onClick={() => navigate("/dashboard/planos")}
                           >
                             Fazer Upgrade
                           </Button>

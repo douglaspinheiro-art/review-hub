@@ -182,9 +182,9 @@ const App = () => (
           <Route path="/termos" element={<Termos />} />
           <Route path="/lgpd" element={<LGPD />} />
           <Route path="/api" element={<API />} />
-          <Route path="/planos" element={<DashboardRoute><PlanosPage embedInDashboard /></DashboardRoute>} />
+          <Route path="/planos" element={<PlanosPage />} />
+          <Route path="/planos/simulador" element={<PlanosPage defaultTab="simulador" />} />
           <Route path="/upgrade" element={<Upgrade />} />
-          <Route path="/planos/simulador" element={<DashboardRoute><PlanosPage embedInDashboard defaultTab="simulador" /></DashboardRoute>} />
           <Route path="/diagnostico" element={<Navigate to="/dashboard/diagnostico" replace />} />
           <Route path="/dashboard/diagnostico" element={<DashboardRoute routeLabel="Simulador de receita"><Diagnostico embedInDashboard /></DashboardRoute>} />
           <Route path="/calculadora-abandono-carrinho" element={<Calculadora />} />
@@ -239,6 +239,8 @@ const App = () => (
           <Route path="/dashboard/analytics" element={<DashboardRoute routeLabel="Analytics e Insights"><Analytics /></DashboardRoute>} />
           <Route path="/dashboard/whatsapp" element={<DashboardRoute routeLabel="Integração WhatsApp"><BetaLimitedPageGuard><WhatsApp /></BetaLimitedPageGuard></DashboardRoute>} />
           <Route path="/dashboard/configuracoes" element={<DashboardRoute routeLabel="Configurações da Conta"><Configuracoes /></DashboardRoute>} />
+          <Route path="/dashboard/planos" element={<DashboardRoute routeLabel="Planos e preços"><PlanosPage embedInDashboard /></DashboardRoute>} />
+          <Route path="/dashboard/planos/simulador" element={<DashboardRoute routeLabel="Simulador de impacto"><PlanosPage embedInDashboard defaultTab="simulador" /></DashboardRoute>} />
           <Route path="/dashboard/billing" element={<DashboardRoute routeLabel="Fatura e Assinatura"><Billing /></DashboardRoute>} />
           <Route path="/dashboard/api-keys" element={<DashboardRoute routeLabel="Chaves de API" requiredPlan="scale"><ApiKeys /></DashboardRoute>} />
           <Route path="/dashboard/white-label" element={<DashboardRoute routeLabel="Painel White Label" requiredPlan="scale"><WhiteLabel /></DashboardRoute>} />

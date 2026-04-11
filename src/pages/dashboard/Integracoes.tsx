@@ -24,11 +24,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { JORNADAS_META } from "@/lib/automations-meta";
-import { DEFAULT_JOURNEYS_FOR_STORE } from "@/lib/journey-defaults";
-
 type Integration = {
   id: string;
   type: string;
@@ -141,7 +138,6 @@ function formatConnectedSubtitle(integration: Integration): string | null {
 
 export default function Integracoes() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [connecting, setConnecting] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -178,10 +174,10 @@ export default function Integracoes() {
       if (insErr) throw insErr;
     },
     onSuccess: () => {
-      toast({ title: "Interesse registado", description: "Avisaremos quando a integração estiver disponível." });
+      toast.success("Interesse registado", { description: "Avisaremos quando a integração estiver disponível." });
     },
     onError: (e: Error) => {
-      toast({ title: "Não foi possível registar", description: e.message, variant: "destructive" });
+      toast.error("Não foi possível registar", { description: e.message });
     },
   });
 
@@ -200,15 +196,13 @@ export default function Integracoes() {
 
       setValidationState({ status: "success", detail: (valResult as { detail?: string }).detail ?? "" });
 
-      const { data: firstStore } = await supabase
+      const { data: allStores } = await supabase
         .from("stores")
         .select("id")
         .eq("user_id", user!.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: true });
 
-      const storeId = firstStore?.id ?? null;
+      const storeId = allStores?.[0]?.id ?? null;
 
       const { data: existingRow } = await supabase
         .from("integrations")
@@ -236,45 +230,24 @@ export default function Integracoes() {
         if (insErr) throw insErr;
       }
 
-      const { count } = await supabase
-        .from("automations")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user!.id);
+      const { data: setupData, error: setupErr } = await supabase.functions.invoke<{
+        ok?: boolean;
+        detail?: string;
+        automationsSeeded?: boolean;
+        journeysStoresSeeded?: number;
+      }>("post-integration-setup", { body: {} });
 
-      if (count === 0) {
-        const rows = JORNADAS_META.map((j) => ({
-          user_id: user!.id,
-          name: j.titulo,
-          trigger: j.trigger,
-          message_template: j.message_template,
-          delay_minutes: j.delay_minutes,
-          is_active: j.defaultActive,
-        }));
-        await supabase.from("automations").insert(rows);
-      }
-
-      const { data: lojas } = await supabase.from("stores").select("id").eq("user_id", user!.id);
-      for (const loja of lojas ?? []) {
-        const { count: jc } = await supabase
-          .from("journeys_config")
-          .select("id", { count: "exact", head: true })
-          .eq("store_id", loja.id);
-        if ((jc ?? 0) === 0) {
-          const jrows = DEFAULT_JOURNEYS_FOR_STORE.map((j) => ({
-            ...j,
-            store_id: loja.id,
-            kpi_atual: 0,
-            updated_at: new Date().toISOString(),
-          }));
-          await supabase.from("journeys_config").upsert(jrows, { onConflict: "store_id,tipo_jornada" });
-        }
+      if (setupErr || !setupData?.ok) {
+        const detail = setupData?.detail ?? setupErr?.message ?? "Falha ao preparar automações/jornadas";
+        toast.warning("Integração guardada", {
+          description: `${detail}. Pode tentar guardar de novo ou contactar o suporte.`,
+        });
       }
 
       return { name, replaced: !!existingRow?.id };
     },
     onSuccess: ({ name, replaced }) => {
-      toast({
-        title: replaced ? `${name} atualizado` : `${name} conectado`,
+      toast.success(replaced ? `${name} atualizado` : `${name} conectado`, {
         description: replaced
           ? "Credenciais validadas e substituídas na sua conta."
           : "Credenciais validadas. Jornadas padrão ativadas quando aplicável.",
@@ -288,7 +261,7 @@ export default function Integracoes() {
       queryClient.invalidateQueries({ queryKey: ["activation_journeys"] });
     },
     onError: (err: Error) => {
-      toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
+      toast.error("Erro ao conectar", { description: err.message });
     },
   });
 
@@ -298,12 +271,12 @@ export default function Integracoes() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Integração removida" });
+      toast.success("Integração removida");
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       setDisconnectTarget(null);
     },
     onError: (err: Error) => {
-      toast({ title: "Erro ao remover", description: err.message, variant: "destructive" });
+      toast.error("Erro ao remover", { description: err.message });
     },
   });
 
@@ -595,7 +568,8 @@ export default function Integracoes() {
       </AlertDialog>
 
       <p className="text-[10px] text-muted-foreground">
-        Em produção, confirme o deploy da edge <code className="rounded bg-muted px-1">validate-integration</code> (JWT ativo no dashboard).
+        Em produção, faça deploy das edges <code className="rounded bg-muted px-1">validate-integration</code> e{" "}
+        <code className="rounded bg-muted px-1">post-integration-setup</code> (JWT ativo no dashboard).
       </p>
     </div>
   );

@@ -7,17 +7,11 @@ import { useEffect, useState } from "react";
 import { hasValidStepUp } from "@/lib/security-stepup";
 import { logSecurityEvent } from "@/lib/security-logger";
 import { supabase } from "@/lib/supabase";
-
-const planLevels = {
-  starter: 0,
-  growth: 1,
-  scale: 2,
-  enterprise: 3,
-};
+import { PLAN_LEVELS, type PlanTier } from "@/lib/pricing-constants";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredPlan?: keyof typeof planLevels;
+  requiredPlan?: PlanTier;
   requireStepUp?: boolean;
 }
 
@@ -32,8 +26,8 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp }
 
   useEffect(() => {
     if (!loading && user && profile && requiredPlan) {
-      const currentLevel = planLevels[profile.plan] || 0;
-      const neededLevel = planLevels[requiredPlan];
+      const currentLevel = profile.plan in PLAN_LEVELS ? PLAN_LEVELS[profile.plan as PlanTier] : 0;
+      const neededLevel = PLAN_LEVELS[requiredPlan];
       if (currentLevel < neededLevel) {
         toast.error(`O recurso solicitado exige o plano ${requiredPlan.toUpperCase()} ou superior.`, {
           description: "Faça o upgrade para desbloquear o potencial total da sua loja.",
@@ -130,8 +124,8 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp }
     if (!profile) {
       return <Navigate to="/planos" replace />;
     }
-    const currentLevel = planLevels[profile.plan] || 0;
-    const neededLevel = planLevels[requiredPlan];
+    const currentLevel = profile.plan in PLAN_LEVELS ? PLAN_LEVELS[profile.plan as PlanTier] : 0;
+    const neededLevel = PLAN_LEVELS[requiredPlan];
     if (currentLevel < neededLevel) {
       return <Navigate to="/planos" replace />;
     }

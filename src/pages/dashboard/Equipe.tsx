@@ -24,6 +24,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { cn } from "@/lib/utils";
+import { planTierAtLeast } from "@/lib/pricing-constants";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 type TeamMember = {
   id: string;
@@ -65,7 +68,7 @@ export default function Equipe() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: teamAccess } = useTeamAccess();
-  const isPaid = profile?.plan !== "starter";
+  const hasTeamPlan = planTierAtLeast(profile?.plan, "growth");
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "operator" | "viewer">("operator");
@@ -82,7 +85,7 @@ export default function Equipe() {
       if (qErr) throw qErr;
       return (data ?? []) as TeamMember[];
     },
-    enabled: !!user && isPaid,
+    enabled: !!user && hasTeamPlan,
   });
 
   const inviteMutation = useMutation({
@@ -103,7 +106,7 @@ export default function Equipe() {
         toast({ title: "Já convidado", description: "Este e-mail já é membro ativo da sua equipa." });
         return;
       }
-      const extra = res?.acceptUrl ? ` Link (dev): ${res.acceptUrl}` : "";
+      const extra = import.meta.env.DEV && res?.acceptUrl ? ` Link (dev): ${res.acceptUrl}` : "";
       toast({
         title: "Convite enviado",
         description: `Enviámos um e-mail para ${email.trim()} com o link de aceitação.${extra}`,
@@ -152,7 +155,7 @@ export default function Equipe() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  if (!isPaid) {
+  if (!hasTeamPlan) {
     return (
       <div className="max-w-2xl space-y-6">
         <div>
@@ -221,7 +224,7 @@ export default function Equipe() {
               placeholder="colaborador@empresa.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && email.includes("@") && !inviteMutation.isPending && seatsUsed < limit && inviteMutation.mutate()}
+              onKeyDown={(e) => e.key === "Enter" && EMAIL_RE.test(email.trim()) && !inviteMutation.isPending && seatsUsed < limit && inviteMutation.mutate()}
             />
           </div>
           <div className="space-y-1.5">
@@ -261,7 +264,7 @@ export default function Equipe() {
         <Button
           className="gap-2"
           onClick={() => inviteMutation.mutate()}
-          disabled={!email.includes("@") || inviteMutation.isPending || seatsUsed >= limit}
+          disabled={!EMAIL_RE.test(email.trim()) || inviteMutation.isPending || seatsUsed >= limit}
         >
           {inviteMutation.isPending
             ? <Loader2 className="w-4 h-4 animate-spin" />

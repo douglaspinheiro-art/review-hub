@@ -24,6 +24,7 @@ export type JornadaMeta = {
   templateVars?: string;
 };
 
+/** Seed inicial de `automations` na edge `post-integration-setup` (AUTOMATION_SEED) deve refletir estes itens. */
 export const JORNADAS_META: JornadaMeta[] = [
   {
     slug: "novo-cliente",
