@@ -405,7 +405,7 @@ serve(async (req) => {
 
     const storeId = (store as { id?: string } | null)?.id ?? null;
     const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeId, contacts.map((c) => c.id));
-    let sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
+    const sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
     if (!isTest) {
       // 1. Clear existing recipients for this campaign to avoid duplicates if re-dispatched
       await sb.from("newsletter_send_recipients").delete().eq("campaign_id", campaign_id);
@@ -451,7 +451,7 @@ serve(async (req) => {
         const subject = subjectA;
         const cartContext = cartContextByCustomer.get(contact.id);
         
-        let html = renderBlocksToHTML(blocksHydrated, {
+        const html = renderBlocksToHTML(blocksHydrated, {
           unsubscribeUrl,
           preheader,
           mergeVars: {
