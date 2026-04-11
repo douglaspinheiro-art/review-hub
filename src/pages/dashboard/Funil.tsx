@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   TrendingUp, Monitor, Smartphone, AlertTriangle,
-  RefreshCw, Calendar, Pencil, Sparkles, CheckCircle2,
-  Loader2, ChevronRight, Package, TrendingDown,
+  RefreshCw, Calendar, Pencil, Sparkles,
+  Loader2, ChevronRight, Package, TrendingDown, BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,8 +19,8 @@ import {
   useLoja, useConvertIQConfig, useFunilPageMetricas, useLatestDiagnostico,
   useDiagnosticos, useSaveLoja, useSaveMetricas, useGerarDiagnostico,
   useMetricasEnriquecidas, useDataHealth,
-  calcFunil, MOCK_METRICAS, MOCK_CONFIG, MetricasFunil,
-  recoveryPctOfRevenue, isFunilGa4SnapshotRecent,
+  calcFunil, MOCK_METRICAS, EMPTY_FUNIL_METRICAS, MOCK_CONFIG, MetricasFunil,
+  recoveryPctOfRevenue, isFunilGa4SnapshotRecent, funilGa4StaleHint,
 } from "@/hooks/useConvertIQ";
 import { useProductsV3 as useProdutosV3, useMetricsV3 } from "@/hooks/useLTVBoost";
 import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
@@ -32,60 +32,58 @@ type Periodo = "7d" | "30d" | "90d";
 
 type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
 
-const DIAG_STEPS = [
-  { label: "Calculando taxas de conversão",       ms: 2000 },
-  { label: "Identificando gargalos críticos",      ms: 3000 },
-  { label: "Consultando benchmarks do setor",      ms: 2000 },
-  { label: "Gerando recomendações personalizadas", ms: 5000 },
-  { label: "Finalizando diagnóstico",              ms: 1500 },
+const DIAG_STEP_LABELS = [
+  "Calculando taxas de conversão",
+  "Identificando gargalos críticos",
+  "Consultando benchmarks do setor",
+  "Gerando recomendações personalizadas",
+  "A aguardar resposta da IA…",
 ];
 
-
-// ─── Loading overlay ──────────────────────────────────────────────────────────
-function DiagLoadingOverlay() {
+/** Overlay enquanto a mutation `gerar-diagnostico` está ativa — passos só orientam; barra é indeterminada. */
+function DiagLoadingOverlayPending() {
   const [step, setStep] = useState(0);
 
   useEffect(() => {
-    let t = 0;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    DIAG_STEPS.forEach((s, i) => {
-      t += i === 0 ? 0 : DIAG_STEPS[i - 1].ms;
-      timers.push(setTimeout(() => setStep(i), t));
-    });
-    return () => timers.forEach(clearTimeout);
+    const id = window.setInterval(() => {
+      setStep((s) => (s + 1) % DIAG_STEP_LABELS.length);
+    }, 2800);
+    return () => window.clearInterval(id);
   }, []);
 
-  const total = DIAG_STEPS.reduce((s, x) => s + x.ms, 0);
-  const elapsed = DIAG_STEPS.slice(0, step + 1).reduce((s, x) => s + x.ms, 0);
-  const pct = Math.min(100, Math.round((elapsed / total) * 100));
-
   return (
-    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
+      role="alertdialog"
+      aria-busy="true"
+      aria-labelledby="diag-loading-title"
+    >
       <div className="bg-card border rounded-2xl p-8 w-full max-w-sm text-center shadow-2xl">
         <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
           <Sparkles className="w-7 h-7 text-primary animate-pulse" />
         </div>
-        <h3 className="font-bold text-lg mb-1">Analisando seu funil...</h3>
-        <p className="text-xs text-muted-foreground mb-5">~15 segundos</p>
+        <h3 id="diag-loading-title" className="font-bold text-lg mb-1">A gerar o diagnóstico…</h3>
+        <p className="text-xs text-muted-foreground mb-5">Isto pode levar alguns segundos. Não feche o separador.</p>
         <div className="space-y-2 mb-5 text-left">
-          {DIAG_STEPS.map((s, i) => (
-            <div key={i} className={cn("flex items-center gap-2 text-sm transition-colors",
-              i < step   ? "text-primary" :
-              i === step ? "text-foreground font-medium" :
-              "text-muted-foreground"
-            )}>
-              {i < step
-                ? <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                : i === step
-                  ? <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                  : <div className="w-4 h-4 rounded-full border border-muted-foreground/40 shrink-0" />
-              }
-              {s.label}
+          {DIAG_STEP_LABELS.map((label, i) => (
+            <div
+              key={label}
+              className={cn(
+                "flex items-center gap-2 text-sm transition-colors",
+                i === step ? "text-foreground font-medium" : "text-muted-foreground",
+              )}
+            >
+              {i === step ? (
+                <Loader2 className="w-4 h-4 animate-spin shrink-0 text-primary" />
+              ) : (
+                <div className="w-4 h-4 rounded-full border border-muted-foreground/40 shrink-0" />
+              )}
+              {label}
             </div>
           ))}
         </div>
         <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-          <div className="h-full bg-primary rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
+          <div className="h-full w-2/5 max-w-[45%] rounded-full bg-primary animate-pulse" />
         </div>
       </div>
     </div>
@@ -154,7 +152,7 @@ function SetupCard({ onDone }: { onDone: () => void }) {
   async function handleSubmit() {
     if (!nome || !plataforma) { toast.error("Nome e plataforma são obrigatórios"); return; }
     const loja = await saveLoja.mutateAsync({ nome, plataforma, url: url || undefined, ticket_medio: Number(ticket), meta_conversao: Number(meta), pix_key: pixKey || undefined });
-    await saveMetricas.mutateAsync({ lojaId: loja.id, metricas: MOCK_METRICAS });
+    await saveMetricas.mutateAsync({ lojaId: loja.id, metricas: EMPTY_FUNIL_METRICAS });
     onDone();
   }
 
@@ -251,10 +249,17 @@ function FunnelBar({ label, valor, barPct, dropPct, cor, isCritical }: {
   );
 }
 
-function FunilQueryErrorBar({ onRetry }: { onRetry: () => void }) {
+function FunilQueryErrorBar({ failedParts, onRetry }: { failedParts: string[]; onRetry: () => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-sm">
-      <span className="text-destructive font-medium">Não foi possível carregar alguns dados. Verifique a ligação e tente outra vez.</span>
+      <div className="min-w-0 flex-1 space-y-1">
+        <span className="text-destructive font-medium">Não foi possível carregar alguns dados. Verifique a ligação e tente outra vez.</span>
+        {failedParts.length > 0 && (
+          <p className="text-xs text-muted-foreground break-words">
+            Falhou: {failedParts.join(" · ")}
+          </p>
+        )}
+      </div>
       <Button type="button" size="sm" variant="outline" className="shrink-0 border-destructive/50" onClick={onRetry}>
         Tentar novamente
       </Button>
@@ -281,8 +286,8 @@ export default function Funil() {
   const navigate = useNavigate();
   const [periodo, setPeriodo] = useState<Periodo>("30d");
   const [showManual, setShowManual] = useState(false);
-  const [generating, setGenerating] = useState(false);
 
+  // Várias queries em paralelo; em lojas muito grandes considerar lazy-load de secções abaixo da dobra.
   const loja      = useLoja();
   const config    = useConvertIQConfig();
   const funilMetricas = useFunilPageMetricas(loja.data?.id ?? null, periodo);
@@ -308,9 +313,17 @@ export default function Funil() {
     allDiags.refetch();
   };
 
-  const hasQueryError =
-    funilMetricas.isError || enriched.isError || dataHealth.isError || produtos.isError || metricsV3.isError
-    || lastDiag.isError || allDiags.isError;
+  const queryErrorParts = [
+    funilMetricas.isError && "funil",
+    enriched.isError && "métricas enriquecidas",
+    dataHealth.isError && "saúde dos dados",
+    produtos.isError && "produtos",
+    metricsV3.isError && "métricas dispositivo",
+    lastDiag.isError && "último diagnóstico",
+    allDiags.isError && "histórico de diagnósticos",
+  ].filter(Boolean) as string[];
+
+  const hasQueryError = queryErrorParts.length > 0;
 
   // Enriched data handling
   const recFrete = enriched.data?.receita_travada_frete ?? MOCK_METRICAS.receita_travada_frete ?? 0;
@@ -393,14 +406,11 @@ export default function Funil() {
 
   async function handleGerar() {
     if (!loja.data) return;
-    setGenerating(true);
     try {
       await gerarDiag.mutateAsync({ lojaId: loja.data.id, metricas: raw, metaConversao: meta });
       toast.success("Diagnóstico gerado com sucesso!");
       navigate("/dashboard/funil/diagnostico");
-    } catch { /* error already toasted in hook */ } finally {
-      setGenerating(false);
-    }
+    } catch { /* error already toasted in hook */ }
   }
 
   async function handleSaveManual(m: MetricasFunil) {
@@ -435,7 +445,7 @@ export default function Funil() {
 
   return (
     <div className="space-y-8 pb-10">
-      {generating && <DiagLoadingOverlay />}
+      {gerarDiag.isPending && <DiagLoadingOverlayPending />}
 
       {showManual && (
         <ManualModal
@@ -446,7 +456,7 @@ export default function Funil() {
         />
       )}
 
-      {hasQueryError && <FunilQueryErrorBar onRetry={refetchQueries} />}
+      {hasQueryError && <FunilQueryErrorBar failedParts={queryErrorParts} onRetry={refetchQueries} />}
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -484,7 +494,7 @@ export default function Funil() {
               <Pencil className="w-3.5 h-3.5" /> Editar dados
             </Button>
           )}
-          <Button size="sm" className="h-9 font-bold gap-1.5 rounded-xl shadow-lg shadow-primary/20" onClick={handleGerar} disabled={generating || !loja.data}>
+          <Button size="sm" className="h-9 font-bold gap-1.5 rounded-xl shadow-lg shadow-primary/20" onClick={handleGerar} disabled={gerarDiag.isPending || !loja.data}>
             <Sparkles className="w-3.5 h-3.5" /> Diagnóstico IA
           </Button>
         </div>
@@ -498,7 +508,10 @@ export default function Funil() {
       {/* Mock data banner */}
       {loja.data && isMock && (
         <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-sm">
-          <span className="text-amber-500 font-bold shrink-0">📊 Dados demonstrativos</span>
+          <span className="flex items-center gap-2 text-amber-600 font-bold shrink-0" role="status">
+            <BarChart3 className="w-4 h-4 shrink-0" aria-hidden />
+            Dados demonstrativos
+          </span>
           <span className="text-muted-foreground">—</span>
           <button className="text-amber-600 underline font-medium hover:no-underline" onClick={() => setShowManual(true)}>
             Inserir seus dados reais
@@ -516,7 +529,7 @@ export default function Funil() {
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">Gere um novo diagnóstico com IA para identificar a causa</p>
           </div>
-          <Button size="sm" variant="outline" className="shrink-0 font-bold rounded-xl border-red-500/40 text-red-500 hover:bg-red-500/10" onClick={handleGerar} disabled={generating}>
+          <Button size="sm" variant="outline" className="shrink-0 font-bold rounded-xl border-red-500/40 text-red-500 hover:bg-red-500/10" onClick={handleGerar} disabled={gerarDiag.isPending}>
             <Sparkles className="w-3.5 h-3.5 mr-1" /> Diagnosticar
           </Button>
         </div>
@@ -962,7 +975,7 @@ export default function Funil() {
             <Sparkles className="w-8 h-8 text-primary mx-auto mb-3" />
             <h3 className="font-black text-sm uppercase tracking-tighter mb-1">Nenhum diagnóstico ainda</h3>
             <p className="text-sm text-muted-foreground mb-4">Gere um diagnóstico com IA para identificar os gargalos com severidade e impacto em R$</p>
-            <Button onClick={handleGerar} disabled={generating} className="gap-2 font-black rounded-xl">
+            <Button onClick={handleGerar} disabled={gerarDiag.isPending} className="gap-2 font-black rounded-xl">
               <Sparkles className="w-4 h-4" /> Gerar diagnóstico com IA
             </Button>
           </div>
@@ -1036,7 +1049,7 @@ export default function Funil() {
           <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">
             {hasRecentGa4Layout
               ? "O funil acima reflete o GA4. Breakdown por canal de aquisição e por faixa horária ainda não está disponível nesta versão do produto."
-              : "Dados por canal de aquisição e por faixa horária não estão disponíveis sem sincronização recente do GA4 (últimos 3 dias)."}
+              : funilGa4StaleHint()}
           </p>
         </div>
       </div>

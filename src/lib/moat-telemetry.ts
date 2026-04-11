@@ -6,7 +6,9 @@ export type MoatEventName =
   | "newsletter_sent"
   | "review_ai_generated"
   | "inbox_ai_used"
-  | "ops_metadata_saved";
+  | "ops_metadata_saved"
+  | "campaign_dispatch_result"
+  | "contacts_csv_export";
 
 type MoatEventPayload = Record<string, string | number | boolean | null | undefined>;
 

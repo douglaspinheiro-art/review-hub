@@ -9,6 +9,24 @@ import {
 } from "@/lib/rfm-segments";
 import { scopeAttributionEventsForStore } from "@/lib/attribution-scope";
 import { ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
+import type { Database } from "@/integrations/supabase/types";
+
+/** Linha de campanha na listagem (tabela + métricas agregadas na query). */
+export type CampaignListItem = Database["public"]["Tables"]["campaigns"]["Row"] & {
+  /** Máximo entre `sent_count` da linha e envios agregados em `message_sends` (melhor para progresso na UI). */
+  aggregated_sent_count: number;
+  ab_test_id?: string | null;
+  ab_variant?: string | null;
+  holdout_count: number;
+  holdout_rate: number;
+  attributed_revenue: number;
+  incremental_revenue: number;
+  incremental_lift_pct: number;
+  suppressed_opt_out: number;
+  suppressed_cooldown: number;
+  winner_variant: string | null;
+  next_best_action: string;
+};
 
 /**
  * Resolve sessão + loja do tenant.
@@ -177,23 +195,28 @@ export function useRecentConversations() {
   });
 }
 
-export type UseCampaignsOptions = { limit?: number };
+export type UseCampaignsOptions = { limit?: number; createdSince?: string | null };
 
 export function useCampaigns(opts?: UseCampaignsOptions) {
   const { user } = useAuth();
-  const limit = Math.min(200, Math.max(1, opts?.limit ?? 50));
+  const limit = Math.min(500, Math.max(1, opts?.limit ?? 50));
+  const createdSince = opts?.createdSince?.trim() || null;
   return useQuery({
-    queryKey: ["campaigns", user?.id ?? null, limit],
-    queryFn: async () => {
+    queryKey: ["campaigns", user?.id ?? null, limit, createdSince ?? ""],
+    queryFn: async (): Promise<CampaignListItem[]> => {
       const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
       if (!userId || !effectiveUserId) return [];
 
       // Each Promise.all entry needs its own builder instance to avoid shared mutable state.
+      const baseCampaignsQuery = storeId
+        ? supabase.from("campaigns").select("*").eq("store_id", storeId)
+        : supabase.from("campaigns").select("*").eq("user_id", effectiveUserId);
+      const campaignsQuery = createdSince
+        ? baseCampaignsQuery.gte("created_at", createdSince)
+        : baseCampaignsQuery;
+
       const [campaignsRes, sendsRes, attributionRes] = await Promise.all([
-        (storeId
-          ? supabase.from("campaigns").select("*").eq("store_id", storeId)
-          : supabase.from("campaigns").select("*").eq("user_id", effectiveUserId)
-        ).order("created_at", { ascending: false }).limit(limit),
+        campaignsQuery.order("created_at", { ascending: false }).limit(limit),
 
         storeId
           ? supabase.from("message_sends").select("campaign_id,status").eq("store_id", storeId)
@@ -205,7 +228,9 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
       const { data, error } = campaignsRes;
 
       if (error) throw error;
-      const campaigns = (data ?? []) as any[];
+      const campaigns = (data ?? []) as Array<
+        Database["public"]["Tables"]["campaigns"]["Row"] & { ab_test_id?: string | null; ab_variant?: string | null }
+      >;
       const sends = (sendsRes.data ?? []) as Array<{ campaign_id: string | null; status: string | null }>;
       const attributionRaw = (attributionRes.data ?? []) as Array<{ order_value: number; attributed_campaign_id: string | null }>;
       const attribution = scopeAttributionEventsForStore(
@@ -254,14 +279,17 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
       const abTestIds = campaigns.map((c) => c.ab_test_id).filter(Boolean);
       let winnersByTestId = new Map<string, string | null>();
       if (abTestIds.length > 0) {
-        const { data: abTests } = await (supabase as any)
+        const { data: abTests } = await supabase
           .from("ab_tests")
           .select("id,winner_variant,status")
           .in("id", abTestIds);
-        winnersByTestId = new Map((abTests ?? []).map((t: any) => [t.id, t.winner_variant ?? null]));
+        type AbTestRow = { id: string; winner_variant: string | null };
+        winnersByTestId = new Map(
+          ((abTests ?? []) as AbTestRow[]).map((t) => [t.id, t.winner_variant ?? null]),
+        );
       }
 
-      return campaigns.map((campaign) => {
+      return campaigns.map((campaign): CampaignListItem => {
         const stats = byCampaignStats.get(campaign.id) ?? {
           holdout: 0,
           sent: 0,
@@ -275,10 +303,11 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
           : stats.revenue;
         const incrementalLiftPct = holdoutRate > 0 ? Math.round((1 - holdoutRate) * 100) : 100;
         const winnerVariant = campaign.ab_test_id ? winnersByTestId.get(campaign.ab_test_id) : null;
-        const sentBase = Math.max(1, Number(campaign.sent_count ?? 0));
+        const aggregatedSent = Math.max(Number(campaign.sent_count ?? 0), stats.sent);
+        const sentBase = Math.max(1, aggregatedSent);
         const readRate = Number(campaign.read_count ?? 0) / sentBase;
-        const clickRate = Number((campaign as any).click_count ?? 0) / sentBase;
-        const suppressionBase = Number(campaign.sent_count ?? 0) + stats.suppressedCooldown + stats.suppressedOptOut;
+        const clickRate = Number(campaign.click_count ?? 0) / sentBase;
+        const suppressionBase = aggregatedSent + stats.suppressedCooldown + stats.suppressedOptOut;
         const suppressionRate = suppressionBase > 0
           ? (stats.suppressedCooldown + stats.suppressedOptOut) / suppressionBase
           : 0;
@@ -296,6 +325,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
         }
         return {
           ...campaign,
+          aggregated_sent_count: aggregatedSent,
           holdout_count: stats.holdout,
           holdout_rate: holdoutRate,
           attributed_revenue: stats.revenue,
@@ -415,14 +445,26 @@ export type InboxAssigneeFilter = "all" | "mine" | "unassigned";
 
 export function useConversations(
   statusFilter = "all",
-  opts?: { assigneeFilter?: InboxAssigneeFilter; mineAssigneeLabel?: string | null },
+  opts?: {
+    assigneeFilter?: InboxAssigneeFilter;
+    mineAssigneeLabel?: string | null;
+    /** Quando o Realtime falha, acelera o refetch automático. */
+    realtimeDegraded?: boolean;
+  },
 ) {
   const { user } = useAuth();
   const assigneeFilter = opts?.assigneeFilter ?? "all";
   const mineLabel = (opts?.mineAssigneeLabel ?? "").trim();
 
   return useInfiniteQuery({
-    queryKey: ["conversations", user?.id ?? null, statusFilter, assigneeFilter, mineLabel],
+    queryKey: [
+      "conversations",
+      user?.id ?? null,
+      statusFilter,
+      assigneeFilter,
+      mineLabel,
+      opts?.realtimeDegraded ? 1 : 0,
+    ],
     initialPageParam: 0,
     queryFn: async ({ pageParam }: { pageParam: number }) => {
       const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
@@ -457,14 +499,18 @@ export function useConversations(
       return lastPageParam + 1;
     },
     staleTime: 20_000,
-    refetchInterval: 45_000,
+    refetchInterval: opts?.realtimeDegraded ? 12_000 : 45_000,
     enabled: !!user,
   });
 }
 
-export function useMessages(conversationId: string | null, limit = 200) {
+export function useMessages(
+  conversationId: string | null,
+  limit = 200,
+  opts?: { realtimeDegraded?: boolean },
+) {
   return useQuery({
-    queryKey: ["messages", conversationId, limit],
+    queryKey: ["messages", conversationId, limit, opts?.realtimeDegraded ? 1 : 0],
     queryFn: async () => {
       if (!conversationId) return [];
       const { data, error } = await supabase
@@ -478,6 +524,7 @@ export function useMessages(conversationId: string | null, limit = 200) {
     },
     enabled: !!conversationId,
     staleTime: 10_000,
+    refetchInterval: opts?.realtimeDegraded ? 10_000 : false,
   });
 }
 

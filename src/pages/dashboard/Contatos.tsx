@@ -25,7 +25,22 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { trackMoatEvent } from "@/lib/moat-telemetry";
 
+/**
+ * Exportação CSV: só a página actual (PAGE_SIZE). Export assíncrono da base completa = edge dedicada
+ * (fila, rate limit); ver `docs/production-env-checklist.md` secção Contatos — não ligado por defeito.
+ */
 const RFM_COUNT_LABEL: Record<RfmEnglishSegment, string> = {
   champions: "Campeões",
   loyal: "Fiéis",
@@ -91,6 +106,7 @@ export default function Contatos() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [lgpdExportOpen, setLgpdExportOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const rfmParam = searchParams.get("rfm");
   const rfmFilter: RfmEnglishSegment | null =
@@ -134,6 +150,7 @@ export default function Contatos() {
   const contacts = (contactsResult?.contacts ?? EMPTY_CONTACTS) as CustomerV3Row[];
   const totalCount = contactsResult?.totalCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const hasListFilters = Boolean(debouncedSearch) || Boolean(rfmFilter);
 
   const rfmCtx = useMemo(() => computeRfmSampleContext(contacts), [contacts]);
 
@@ -145,16 +162,23 @@ export default function Contatos() {
     toast.success("Atualizando lista…");
   }, [queryClient, refetch, refetchRfmReport, user?.id]);
 
-  const exportCsv = useCallback(() => {
+  const runExportCsv = useCallback(() => {
     if (contacts.length === 0) {
       toast.error("Nada para exportar nesta página.");
       return;
     }
     downloadContactsCsv(contacts, (c) => rfmCtx.segmentOf(c));
-    toast.success("CSV exportado", {
-      description: `${contacts.length} linha(s) — página ${page} (filtros atuais).`,
+    void trackMoatEvent("contacts_csv_export", {
+      rows: contacts.length,
+      page,
+      has_search: Boolean(debouncedSearch),
+      has_rfm_filter: Boolean(rfmFilter),
     });
-  }, [contacts, rfmCtx, page]);
+    toast.success("CSV exportado", {
+      description: `${contacts.length} linha(s) — só esta página (${PAGE_SIZE}/pág.). Use os filtros e exporte outras páginas se precisar.`,
+    });
+    setLgpdExportOpen(false);
+  }, [contacts, rfmCtx, page, debouncedSearch, rfmFilter]);
 
   const clearFilters = useCallback(() => {
     setSearch("");
@@ -227,13 +251,52 @@ export default function Contatos() {
 
   return (
     <div className="space-y-6">
+      <AlertDialog open={lgpdExportOpen} onOpenChange={setLgpdExportOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Exportar dados pessoais (CSV)</AlertDialogTitle>
+            <AlertDialogDescription className="text-left space-y-2">
+              <span className="block">
+                O ficheiro pode incluir <strong>nome, e-mail e telefone</strong>. Trate o ficheiro como informação confidencial,
+                em conformidade com a LGPD e a política interna da sua loja.
+              </span>
+              <span className="block text-foreground/90">
+                {totalCount === 0 && hasListFilters ? (
+                  <>
+                    Não há contactos nesta consulta com os filtros atuais — não é possível exportar até existirem linhas na
+                    tabela.
+                  </>
+                ) : (
+                  <>
+                    Só entram na exportação os <strong>{PAGE_SIZE}</strong> contactos desta página (página {page} de{" "}
+                    {totalPages}), com os filtros atuais — não é exportação da base completa.
+                  </>
+                )}
+              </span>
+              <span className="block text-muted-foreground text-xs">
+                Exportação assíncrona da base completa (com rate limit) pode ser disponibilizada via API ou função dedicada
+                em planos enterprise — contacte o suporte se for requisito operacional.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Cancelar</AlertDialogCancel>
+            <AlertDialogAction type="button" onClick={() => runExportCsv()}>
+              Concordo, exportar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Contatos</h1>
           <p className="text-sm text-muted-foreground">Base de clientes com busca e paginação no servidor.</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            Os cartões de segmento abaixo refletem o campo de segmento salvo em toda a base (mesma lógica da Matriz RFM). A
-            tabela lista uma página por vez com os filtros aplicados.
+            Os cartões de segmento mostram <strong className="text-foreground">contagens da base completa</strong> (campo
+            RFM persistido por contacto, alinhado à Matriz RFM). A tabela mostra <strong className="text-foreground">só a
+            página atual</strong> com busca e filtro de segmento no servidor — por isso os números dos cartões podem não
+            coincidir com o número de linhas visíveis.
           </p>
           {rfmFilter && (
             <p className="text-xs text-muted-foreground mt-1">
@@ -244,6 +307,10 @@ export default function Contatos() {
               </button>
             </p>
           )}
+          <p className="text-[11px] text-muted-foreground max-w-2xl mt-2">
+            O CSV cobre apenas a página listada (até {PAGE_SIZE} linhas). Não há exportação automática da base inteira nesta
+            versão da app.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-xs">
@@ -253,7 +320,7 @@ export default function Contatos() {
             <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
             Atualizar
           </Button>
-          <Button type="button" variant="secondary" size="sm" className="gap-1" onClick={exportCsv}>
+          <Button type="button" variant="secondary" size="sm" className="gap-1" onClick={() => setLgpdExportOpen(true)}>
             <Download className="w-3.5 h-3.5" />
             Exportar CSV
           </Button>
@@ -317,8 +384,14 @@ export default function Contatos() {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Página {page} de {totalPages} · {PAGE_SIZE} por página
-            {isFetching && !isLoading ? " · atualizando…" : ""}
+            {totalCount === 0 && hasListFilters ? (
+              <>Sem linhas nesta consulta · {PAGE_SIZE} por página{isFetching && !isLoading ? " · atualizando…" : ""}</>
+            ) : (
+              <>
+                Página {page} de {totalPages} · {PAGE_SIZE} por página
+                {isFetching && !isLoading ? " · atualizando…" : ""}
+              </>
+            )}
           </p>
         </div>
         <div className="divide-y">

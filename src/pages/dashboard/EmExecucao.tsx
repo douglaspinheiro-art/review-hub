@@ -18,12 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { usePrescriptionsV3 } from "@/hooks/useLTVBoost";
 import { useCampaigns } from "@/hooks/useDashboard";
@@ -32,7 +26,7 @@ import {
   isPrescriptionInExecution,
   type PrescriptionRow,
 } from "@/lib/prescription-map";
-import { mockPrescricoes } from "@/lib/mock-data";
+import { mockPrescricoes, mockLinkedCampaignsForExec } from "@/lib/mock-data";
 import { toast } from "sonner";
 
 type CampaignRow = {
@@ -40,6 +34,8 @@ type CampaignRow = {
   name?: string;
   status?: string;
   channel?: string;
+  /** Preferir quando existir (agregado `message_sends` + linha da campanha). */
+  aggregated_sent_count?: number;
   sent_count?: number;
   delivered_count?: number;
   read_count?: number;
@@ -122,7 +118,7 @@ export default function EmExecucao() {
     isError: campError,
     error: campErr,
     refetch: refetchCamp,
-  } = useCampaigns({ limit: 200 });
+  } = useCampaigns({ limit: 500 });
 
   const rows: PrescriptionRow[] = useMemo(() => {
     if (isDemo) return mockPrescricoes.map(mockPrescricaoToRow);
@@ -135,7 +131,7 @@ export default function EmExecucao() {
   );
 
   const campaigns: CampaignRow[] = useMemo(() => {
-    if (isDemo) return [];
+    if (isDemo) return mockLinkedCampaignsForExec as CampaignRow[];
     return (campaignsRaw ?? []) as CampaignRow[];
   }, [isDemo, campaignsRaw]);
 
@@ -172,7 +168,6 @@ export default function EmExecucao() {
   };
 
   return (
-    <TooltipProvider>
       <div className="space-y-8 pb-10">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -180,8 +175,9 @@ export default function EmExecucao() {
               Em execução
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Acompanhe prescrições aprovadas e campanhas vinculadas (atualize para ver os últimos
-              números).
+              Acompanhe prescrições aprovadas e campanhas vinculadas por{" "}
+              <code className="text-[11px] bg-muted px-1 rounded">source_prescription_id</code> (atualize para ver os
+              últimos números).
             </p>
           </div>
           <Button
@@ -239,7 +235,10 @@ export default function EmExecucao() {
           <div className="space-y-6">
             {cards.map(({ rx, campaign: c }) => {
               const CanalIcon = channelIcon(rx.execution_channel ?? c?.channel);
-              const sent = Math.max(0, Number(c?.sent_count ?? 0));
+              const sent = Math.max(
+                0,
+                Number(c?.aggregated_sent_count ?? c?.sent_count ?? 0),
+              );
               const total = Math.max(0, Number(c?.total_contacts ?? 0));
               const progressPct =
                 total > 0 ? Math.min(100, Math.round((sent / total) * 100)) : sent > 0 ? 100 : 0;
@@ -277,22 +276,6 @@ export default function EmExecucao() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="inline-flex">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 rounded-lg font-bold gap-2"
-                                type="button"
-                                disabled
-                              >
-                                Pausar
-                              </Button>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>Pausa global de campanha ainda não está disponível.</TooltipContent>
-                        </Tooltip>
                         <Button
                           variant="outline"
                           size="sm"
@@ -328,6 +311,12 @@ export default function EmExecucao() {
                             ? `${sent.toLocaleString("pt-BR")} enviados${total > 0 ? ` de ${total.toLocaleString("pt-BR")} contatos` : ""}.`
                             : "Nenhuma campanha vinculada a esta prescrição ainda. Crie ou dispare a campanha em Campanhas."}
                         </p>
+                        {c ? (
+                          <p className="text-[10px] text-muted-foreground/80 mt-1 italic">
+                            A percentagem é aproximada quando há envios parciais, vários canais ou métricas ainda a
+                            consolidar.
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
@@ -459,6 +448,5 @@ export default function EmExecucao() {
           </div>
         )}
       </div>
-    </TooltipProvider>
   );
 }

@@ -98,7 +98,7 @@ export const mockPrescricoes = [
     num_clientes: 320,
     desconto_tipo: "percentual",
     desconto_valor: 12,
-    desconto_justificativa: "Demonstração: prescrição já aprovada, sem campanha vinculada no mock.",
+    desconto_justificativa: "Demonstração: prescrição aprovada com campanha de exemplo vinculada (Em execução).",
     melhor_horario: "Quarta às 15h",
     custo_estimado: 45,
     potencial_estimado: 5200,
@@ -106,7 +106,26 @@ export const mockPrescricoes = [
     ab_teste_ativo: false,
     status: "aprovada",
     preview_msg: "Oi [Nome]! Sentimos sua falta — volte com 12% OFF..."
-  }
+  },
+];
+
+/** Campanhas de demonstração ligadas a `mockPrescricoes` (id `p-demo-exec`) para a página Em execução em /demo. */
+export const mockLinkedCampaignsForExec = [
+  {
+    id: "demo-campaign-exec",
+    name: "Reativação (demonstração)",
+    status: "running",
+    channel: "whatsapp",
+    sent_count: 120,
+    aggregated_sent_count: 120,
+    delivered_count: 115,
+    read_count: 48,
+    reply_count: 9,
+    total_contacts: 320,
+    source_prescription_id: "p-demo-exec",
+    attributed_revenue: 0,
+    incremental_revenue: 0,
+  },
 ];
 
 export const mockEventosSazonais = [

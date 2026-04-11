@@ -1,62 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
-import { Session, User } from "@supabase/supabase-js";
+import { useAuthContext, type Profile } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
-interface Profile {
-  id: string;
-  full_name: string | null;
-  company_name: string | null;
-  plan: "starter" | "growth" | "scale" | "enterprise";
-  role: "user" | "admin";
-  trial_ends_at: string | null;
-  onboarding_completed: boolean;
-  ia_negotiation_enabled: boolean | null;
-  ia_max_discount_pct: number | null;
-  social_proof_enabled: boolean | null;
-  pix_key: string | null;
-}
-
+/**
+ * Hook to access authentication state. 
+ * Now uses a centralized AuthContext to prevent redundant listeners and fetches.
+ */
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
-    if (error && error.code !== "PGRST116") {
-      console.error("fetchProfile error:", error.message);
-    }
-    setProfile(data as Profile | null);
-    setLoading(false);
-  }, []);
-
-  const refetchProfile = useCallback(async () => {
-    if (!user) return;
-    await fetchProfile(user.id);
-  }, [user, fetchProfile]);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else { setProfile(null); setLoading(false); }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [fetchProfile]);
+  const context = useAuthContext();
 
   async function signIn(email: string, password: string) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -72,16 +22,11 @@ export function useAuth() {
     return { data, error };
   }
 
-  async function signOut() {
-    await supabase.auth.signOut();
-  }
-
-  const isTrialActive = profile?.trial_ends_at
-    ? new Date(profile.trial_ends_at) > new Date()
-    : false;
-
-  // Fail-safe: only mark as paid when profile is loaded and explicitly non-starter.
-  const isPaid = !!profile && profile.plan !== "starter";
-
-  return { user, session, profile, loading, signIn, signUp, signOut, isTrialActive, isPaid, refetchProfile };
+  return { 
+    ...context,
+    signIn,
+    signUp,
+  };
 }
+
+export type { Profile };

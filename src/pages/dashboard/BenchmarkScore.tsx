@@ -32,6 +32,7 @@ import {
   useDiagnosticos,
   useSectorBenchmark,
   isFunilGa4SnapshotRecent,
+  funilGa4StaleSnapshotBadgeLabel,
 } from "@/hooks/useConvertIQ";
 import type { Database } from "@/lib/database.types";
 import {
@@ -292,7 +293,7 @@ export default function BenchmarkScore() {
             )}
             {ga4Stale && (
               <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-600">
-                Snapshot GA4 com mais de 3 dias
+                {funilGa4StaleSnapshotBadgeLabel()}
               </Badge>
             )}
           </div>

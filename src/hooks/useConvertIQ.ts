@@ -108,6 +108,21 @@ export const MOCK_METRICAS: MetricasFunil = {
   total_abandonos_pagamento: 28,
 };
 
+/** Snapshot inicial após criar loja — evita gravar números de demonstração como se fossem reais. */
+export const EMPTY_FUNIL_METRICAS: MetricasFunil = {
+  visitantes: 0,
+  visualizacoes_produto: 0,
+  adicionou_carrinho: 0,
+  iniciou_checkout: 0,
+  compras: 0,
+  receita: 0,
+  fonte: "manual",
+  receita_travada_frete: 0,
+  receita_travada_pagamento: 0,
+  total_abandonos_frete: 0,
+  total_abandonos_pagamento: 0,
+};
+
 export const MOCK_CONFIG = {
   meta_conversao: 2.5,
   ticket_medio: 250,
@@ -248,8 +263,6 @@ function funilDiarioRowToMetricas(row: {
   };
 }
 
-const GA4_SNAPSHOT_MAX_AGE_MS = 3 * 86400_000;
-
 /** Prefer funil_diario (cron GA4) for the period, else latest funnel_metrics in window, else none (UI uses mock). */
 export function useFunilPageMetricas(lojaId: string | null, periodo: "7d" | "30d" | "90d" = "30d") {
   return useQuery({
@@ -301,14 +314,6 @@ export function useFunilPageMetricas(lojaId: string | null, periodo: "7d" | "30d
       return { metricas: null, source: "none", lastIngestedAt: null, lastManualUpdatedAt: null };
     },
   });
-}
-
-/** True when GA4 snapshot exists and was ingested within the freshness window (for optional UI blocks). */
-export function isFunilGa4SnapshotRecent(lastIngestedAt: string | null): boolean {
-  if (!lastIngestedAt) return false;
-  const t = Date.parse(lastIngestedAt);
-  if (Number.isNaN(t)) return false;
-  return Date.now() - t <= GA4_SNAPSHOT_MAX_AGE_MS;
 }
 
 /** Percent of current revenue represented by recovery estimates; safe when receita is 0. */
@@ -500,7 +505,19 @@ export function useGerarDiagnostico() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      if (fnRes.error) throw fnRes.error;
+      if (fnRes.error) {
+        const name = (fnRes.error as { name?: string }).name;
+        const hint =
+          name === "FunctionsFetchError" || /fetch/i.test(fnRes.error.message)
+            ? " Verifique rede, CORS e se a edge `gerar-diagnostico` está deployada."
+            : "";
+        throw new Error(`${fnRes.error.message}${hint}`);
+      }
+
+      const body = fnRes.data as { success?: boolean; error?: string } | null;
+      if (body && typeof body === "object" && body.success === false && body.error) {
+        throw new Error(body.error);
+      }
 
       return diagRow.id as string;
     },
@@ -508,7 +525,15 @@ export function useGerarDiagnostico() {
       qc.invalidateQueries({ queryKey: ["convertiq-last-diag", vars.lojaId] });
       qc.invalidateQueries({ queryKey: ["convertiq-diags", vars.lojaId] });
     },
-    onError: (e) => toast.error(`Erro ao gerar diagnóstico: ${(e as Error).message}`),
+    onError: (e) => {
+      const msg = (e as Error).message;
+      const isTimeout = /timed out|timeout|aborted/i.test(msg);
+      toast.error(
+        isTimeout
+          ? "O diagnóstico IA demorou demais. Tente de novo; se repetir, confira logs da edge e ANTHROPIC_API_KEY no Supabase."
+          : `Erro ao gerar diagnóstico: ${msg}`,
+      );
+    },
   });
 }
 
@@ -815,3 +840,10 @@ export function useDataHealth(lojaId: string | null, periodo: "7d" | "30d" | "90
     staleTime: 60_000,
   });
 }
+
+export {
+  GA4_SNAPSHOT_MAX_AGE_MS,
+  funilGa4StaleHint,
+  funilGa4StaleSnapshotBadgeLabel,
+  isFunilGa4SnapshotRecent,
+} from "@/lib/funil-ga4-freshness";

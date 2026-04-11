@@ -53,7 +53,7 @@ const nav: { section: string; items: NavItem[] }[] = [
   {
     section: "INÍCIO",
     items: [
-      { label: "Simulador de receita", icon: Sparkles, href: "/diagnostico", highlight: true },
+      { label: "Simulador de receita", icon: Sparkles, href: "/dashboard/diagnostico", highlight: true },
       { label: "Radar de Lucro", icon: LayoutDashboard, href: "/dashboard" },
       { label: "Prescrições",    icon: Zap,             href: "/dashboard/prescricoes", dot: true },
     ],

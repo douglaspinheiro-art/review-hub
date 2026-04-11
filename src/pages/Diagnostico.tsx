@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Zap, ArrowRight, CheckCircle2, AlertCircle,
@@ -96,9 +96,18 @@ const CANAIS = [
   { id: "none", label: "Nenhum", icon: BarChart3 },
 ];
 
+const LOADING_STEP_ITEMS = [
+  { text: "Calculando perdas estimadas a partir dos seus números…", Icon: BarChart3 },
+  { text: "Estimando volume de mensagens por canal…", Icon: Smartphone },
+  { text: "Montando a recomendação de plano…", Icon: Zap },
+] as const;
+
+const LOADING_STEPS_COUNT = LOADING_STEP_ITEMS.length;
+
 export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: boolean } = {}) {
   const { profile, user } = useAuth();
   const navigate = useNavigate();
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const [savingPlan, setSavingPlan] = useState<string | null>(null);
 
   const persisted = useMemo(
@@ -110,11 +119,13 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
     setSavingPlan(key);
     try {
       if (user) {
+        // Escolha persistida no perfil para onboarding; com faturação Stripe ativa, limites e produto efetivo devem seguir o webhook de subscrição.
         const { error: profileErr } = await supabase
           .from("profiles")
           .update({ plan: key, onboarding_completed: true })
           .eq("id", user.id);
         if (profileErr) {
+          trackDiagnosticoEvent("diagnostico_plan_save_failed", { reason: "profile", plan: key });
           toast.error(`Não foi possível salvar o plano: ${profileErr.message}`);
           return;
         }
@@ -126,6 +137,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
           .maybeSingle();
 
         if (storeSelectErr) {
+          trackDiagnosticoEvent("diagnostico_plan_save_failed", { reason: "store_select", plan: key });
           toast.error(`Não foi possível verificar sua loja: ${storeSelectErr.message}`);
           return;
         }
@@ -137,6 +149,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
             segment: formData.segmento
           });
           if (insertErr) {
+            trackDiagnosticoEvent("diagnostico_plan_save_failed", { reason: "store_insert", plan: key });
             toast.error(`Não foi possível criar a loja: ${insertErr.message}`);
             return;
           }
@@ -198,6 +211,25 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
     trackDiagnosticoEvent("diagnostico_step_view", { step });
   }, [step]);
 
+  useEffect(() => {
+    const suffix = embedInDashboard ? "Simulador · LTV Boost" : "Simulador de receita · LTV Boost";
+    const stepPart =
+      step === 1
+        ? subStep === 1
+          ? "Passo 1 — Sobre a loja"
+          : "Passo 1 — Números"
+        : step === 2
+          ? "Passo 2 — A calcular"
+          : step === 3
+            ? "Passo 3 — Resultado"
+            : "Passo 4 — Planos";
+    document.title = `${stepPart} | ${suffix}`;
+    const id = window.requestAnimationFrame(() => {
+      stepHeadingRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [step, subStep, embedInDashboard]);
+
   // Busca dados reais da loja se usuário tem integração ativa
   const { data: storeMetrics, isLoading: isLoadingMetrics, error: metricsError, refetch: refetchMetrics } = useQuery({
     queryKey: ["store-metrics", user?.id],
@@ -209,7 +241,14 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
       return fetchStoreMetricsForDiagnostico(supabase, session.access_token);
     },
     enabled: !!user,
-    retry: false,
+    retry: (failureCount, err) => {
+      if (err instanceof StoreMetricsQueryError) {
+        if (err.kind === "unauthorized" || err.kind === "no_integration" || err.kind === "unsupported") {
+          return false;
+        }
+      }
+      return failureCount < 2;
+    },
     staleTime: 5 * 60_000,
   });
 
@@ -231,11 +270,6 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
 
   // Etapa 2 Loading items
   const [loadingStep, setLoadingStep] = useState(0);
-  const loadingItems = [
-    "📊 Calculando perdas estimadas a partir dos seus números…",
-    "📱 Estimando volume de mensagens por canal…",
-    "💡 Montando a recomendação de plano…",
-  ];
 
   // Etapa 4 Simulation state
   const [simRecuperada, setSimRecuperada] = useState(0);
@@ -258,7 +292,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
       setLoadingStep(0);
       const interval = setInterval(() => {
         setLoadingStep(prev => {
-          if (prev < loadingItems.length - 1) return prev + 1;
+          if (prev < LOADING_STEPS_COUNT - 1) return prev + 1;
           clearInterval(interval);
           setTimeout(() => setStep(3), 500);
           return prev;
@@ -266,7 +300,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
       }, 700);
       return () => clearInterval(interval);
     }
-  }, [step, loadingItems.length]);
+  }, [step]);
 
   useEffect(() => {
     if (step === 3) {
@@ -397,7 +431,11 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold">
+            <h2
+              ref={stepHeadingRef}
+              tabIndex={-1}
+              className="text-2xl font-bold outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+            >
               {subStep === 1 ? "Sobre a sua loja" : "Seus números"}
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
@@ -602,30 +640,41 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
       </div>
       
       <div className="space-y-4">
-        <h2 className="text-2xl font-bold tracking-tight">Calculando estimativas…</h2>
+        <h2
+          ref={stepHeadingRef}
+          tabIndex={-1}
+          className="text-2xl font-bold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+        >
+          Calculando estimativas…
+        </h2>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
           Com base nos números que você informou, calculamos perdas e recuperação possível <strong>no seu navegador</strong> — nenhum dado é enviado a um servidor nesta etapa.
         </p>
         <div className="space-y-3 text-left max-w-sm mx-auto" role="status" aria-live="polite" aria-label="Progresso do cálculo local">
-          {loadingItems.map((item, i) => (
-            <div 
-              key={i} 
-              className={cn(
-                "flex items-center gap-3 text-sm transition-all duration-300",
-                i < loadingStep ? "text-primary font-medium" : 
-                i === loadingStep ? "text-foreground opacity-100" : "text-muted-foreground opacity-40"
-              )}
-            >
-              {i < loadingStep ? (
-                <CheckCircle2 className="w-4 h-4" />
-              ) : i === loadingStep ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <div className="w-4 h-4 rounded-full border-2 border-muted" />
-              )}
-              {item}
-            </div>
-          ))}
+          {LOADING_STEP_ITEMS.map((item, i) => {
+            const RowIcon = item.Icon;
+            const done = i < loadingStep;
+            const active = i === loadingStep;
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "flex items-center gap-3 text-sm transition-all duration-300",
+                  done ? "text-primary font-medium" :
+                  active ? "text-foreground opacity-100" : "text-muted-foreground opacity-40"
+                )}
+              >
+                {done ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden />
+                ) : active ? (
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden />
+                ) : (
+                  <RowIcon className="w-4 h-4 shrink-0 opacity-50" aria-hidden />
+                )}
+                <span>{item.text}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -634,7 +683,13 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
   const renderStep3 = () => (
     <div className="max-w-5xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="text-center space-y-4">
-        <h1 className="text-3xl md:text-5xl font-black font-syne tracking-tighter uppercase italic">Diagnóstico Concluído</h1>
+        <h1
+          ref={stepHeadingRef}
+          tabIndex={-1}
+          className="text-3xl md:text-5xl font-black font-syne tracking-tighter uppercase italic outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+        >
+          Diagnóstico Concluído
+        </h1>
         <p className="text-muted-foreground text-lg">Descubra quanto sua loja está perdendo e quanto podemos recuperar</p>
       </div>
 
@@ -776,7 +831,11 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
           <Badge variant="outline" className="border-primary/30 text-primary uppercase tracking-widest text-[10px] font-bold px-4 py-1">
             Recomendação Final
           </Badge>
-          <h2 className="text-3xl md:text-5xl font-black font-syne tracking-tighter uppercase italic">
+          <h2
+            ref={stepHeadingRef}
+            tabIndex={-1}
+            className="text-3xl md:text-5xl font-black font-syne tracking-tighter uppercase italic outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+          >
             Plano {PLANS[suggestedKey].name}
           </h2>
           <p className="text-muted-foreground text-lg">

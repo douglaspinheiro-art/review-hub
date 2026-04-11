@@ -93,6 +93,28 @@ Ajuste em **Authentication → URL configuration** do projeto:
 
 Se **não** estiver em beta limitado, execute também os fluxos estendidos em `docs/staging-go-no-go.md` (inbox, webhook-cart, multi-tenant).
 
+## Billing, plano e RLS (simulador e prescrições)
+
+1. **`profiles` e RLS**
+   - Em instalações com `phase1-migration` / `profiles_own`, o utilizador só acede a `profiles` onde `auth.uid() = id` (select/update). Confirmar no **SQL Editor** que não existem policies permissivas extra em produção.
+   - O simulador em `/dashboard/diagnostico` pode fazer `update` de `plan` e `onboarding_completed` no cliente: isso é adequado para **onboarding**, mas não deve substituir o **plano de subscrição** pago.
+
+2. **Stripe (ou outro PSP) como fonte de verdade**
+   - Limites de produto (Growth, Scale, etc.) devem refletir o estado da subscrição no webhook (ex.: `customer.subscription.updated`). O campo `profiles.plan` pode ficar desalinhado se o utilizador escolher um plano no wizard sem concluir pagamento; tratar no backend ou reconciliar no login.
+
+3. **`stores`**
+   - Inserção no simulador usa `user_id = auth.uid()`. Garantir policy `stores` alinhada ao modelo actual (`store_id` multi-tenant vs `user_id` dono).
+
+4. **`prescriptions`**
+   - Estados (`aguardando_aprovacao`, `aprovada`, `em_execucao`, `concluida`) dependem de escrita pela app e/ou jobs. Validar triggers ou edge que avançam estados após `dispatch-campaign`, para evitar listas vazias ou prescrições “presas”.
+   - **Checklist SQL (read-only no Editor, com `limit`)**
+     - `select id, status, store_id, updated_at from prescriptions where store_id = '<uuid>' order by updated_at desc limit 50;` — confirmar transições coerentes após aprovar e disparar campanha.
+     - Políticas RLS em `prescriptions`: o colaborador só vê linhas da loja (`store_id` / `user_id` do dono) conforme o modelo actual; o proprietário consegue `select/update` nas linhas esperadas.
+     - Se existir job/cron que fecha prescrições: confirmar logs da função e que `status = concluida` quando `campaigns.status` passa a `completed` (ou regra equivalente documentada no vosso backend).
+
+5. **Contatos — export CSV**
+   - A app exporta só a página (50 linhas) com consentimento no diálogo. Exportação assíncrona da base completa exige função dedicada (fila, rate limit, URL assinada) — não está ligada por defeito; tratar como roadmap B2B se for requisito comercial.
+
 ## Go/No-Go mínimo
 
 - CI verde (`lint`, `test`, `build`, `release:check`).

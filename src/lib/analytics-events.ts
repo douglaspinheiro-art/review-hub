@@ -1,10 +1,10 @@
 /**
- * Eventos sem PII para o wizard /diagnostico.
+ * Eventos sem PII para o wizard do simulador (`/dashboard/diagnostico`).
  * Ative com VITE_ENABLE_DIAGNOSTICO_ANALYTICS=true e, se usar GTM, publique no dataLayer.
  * Ao adicionar GA/Pixel ou outros trackers neste fluxo, alinhar política de cookies/LGPD e opt-out.
  */
 export function trackDiagnosticoEvent(
-  name: "diagnostico_step_view" | "diagnostico_plan_selected",
+  name: "diagnostico_step_view" | "diagnostico_plan_selected" | "diagnostico_plan_save_failed",
   props?: Record<string, string | number | boolean>
 ): void {
   if (import.meta.env.VITE_ENABLE_DIAGNOSTICO_ANALYTICS !== "true") return;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Sparkles, Filter, Settings, Zap, RefreshCw, ChevronRight, Lock, TrendingUp, ArrowRight, X,
 } from "lucide-react";
@@ -31,14 +31,28 @@ import {
 } from "@/lib/prescription-map";
 import { mockPrescricoes } from "@/lib/mock-data";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 
 const UPSELL_POTENTIAL_CAP = 25_000;
+const PRESCRICOES_ONBOARDING_KEY = "ltv_prescricoes_visto";
+
+function readPrescricoesOnboardingDismissed(): boolean {
+  try {
+    return localStorage.getItem(PRESCRICOES_ONBOARDING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 type ChannelFilter = "all" | "whatsapp" | "email" | "sms";
 
 export default function Prescricoes() {
   const location = useLocation();
   const isDemo = location.pathname.startsWith("/demo");
+  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(true);
+  useEffect(() => {
+    setOnboardingBannerDismissed(readPrescricoesOnboardingDismissed());
+  }, []);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showUpsellBanner, setShowUpsellBanner] = useState(true);
   const [showTrialGate, setShowTrialGate] = useState(false);
@@ -88,16 +102,54 @@ export default function Prescricoes() {
   const isStarter = profile?.plan === "starter";
   const isNotScale = profile?.plan !== "scale" && profile?.plan !== "enterprise";
 
-  const handleAprovar = (row: PrescriptionRow) => {
+  const handleAprovar = async (row: PrescriptionRow) => {
     if (isTrialActive) {
       setShowTrialGate(true);
       return;
     }
+
+    if (isDemo) {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 2000);
+      toast.info("Modo demonstração: rascunho de campanha não persistido.");
+      navigate("/dashboard/campanhas?new=true");
+      return;
+    }
+
     const prefill = prescriptionToCampaignPrefill(row);
-    sessionStorage.setItem("campaign_prefill", JSON.stringify(prefill));
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 2000);
-    navigate("/dashboard/campanhas?new=true");
+    
+    try {
+      // 1. Create a DRAFT campaign in the database
+      const { data: campaign, error: campError } = await supabase
+        .from("campaigns")
+        .insert({
+          user_id: profile?.id,
+          store_id: storeId,
+          name: prefill.name || "Campanha da Prescrição",
+          message: prefill.message || "",
+          channel: prefill.channel || "whatsapp",
+          status: "draft",
+          source_prescription_id: row.id,
+          email_recipient_rfm: prefill.rfmSegment || null,
+          email_recipient_mode: prefill.segment || null,
+        })
+        .select("id")
+        .single();
+
+      if (campError) throw campError;
+
+      // 2. Mark prescription as "em_execucao"
+      await updateStatus.mutateAsync({ id: row.id, status: "em_execucao" });
+
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 2000);
+      
+      // 3. Navigate to campaigns with the new ID to open edit modal
+      navigate(`/dashboard/campanhas?edit=${campaign.id}`);
+    } catch (e: any) {
+      console.error("Erro ao aprovar prescrição:", e);
+      toast.error("Não foi possível persistir a campanha: " + e.message);
+    }
   };
 
   const handleRejeitar = async (row: PrescriptionRow) => {
@@ -157,7 +209,7 @@ export default function Prescricoes() {
           </Button>
         </div>
 
-        {!localStorage.getItem("ltv_prescricoes_visto") && (
+        {!onboardingBannerDismissed && (
           <div className="bg-card border border-primary/20 rounded-2xl p-5 flex flex-col sm:flex-row gap-4 items-start animate-in fade-in slide-in-from-top-2 duration-500">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
               <Sparkles className="w-5 h-5 text-primary" />
@@ -176,7 +228,12 @@ export default function Prescricoes() {
               type="button"
               className="text-muted-foreground hover:text-foreground shrink-0"
               onClick={() => {
-                localStorage.setItem("ltv_prescricoes_visto", "1");
+                try {
+                  localStorage.setItem(PRESCRICOES_ONBOARDING_KEY, "1");
+                } catch {
+                  /* ignore */
+                }
+                setOnboardingBannerDismissed(true);
               }}
               id="prescricoes-banner-close"
             >
@@ -250,6 +307,13 @@ export default function Prescricoes() {
         {isError && !isDemo && (
           <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center space-y-3">
             <p className="text-sm font-medium text-destructive">{error instanceof Error ? error.message : "Erro ao carregar prescrições"}</p>
+            <p className="text-xs text-muted-foreground max-w-lg mx-auto leading-relaxed">
+              Se o erro persistir após repetir, confirme no Supabase as políticas RLS em{" "}
+              <code className="text-[11px] bg-muted px-1 rounded">prescriptions</code> e que as transições de estado
+              (aprovada, em execução, concluída) estão alinhadas com a vossa lógica de campanhas. Equipa técnica: ver
+              ficheiro <code className="text-[11px] bg-muted px-1 rounded">docs/production-env-checklist.md</code> no
+              repositório (secção prescrições).
+            </p>
             <Button variant="outline" size="sm" onClick={() => void refetch()}>
               Tentar novamente
             </Button>
