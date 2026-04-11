@@ -156,19 +156,24 @@ export default function RFM() {
       if (!userId) throw new Error("Sessão inválida");
       if (!storeId) throw new Error("Nenhuma loja vinculada à conta.");
 
-      const { data, error } = await supabase.functions.invoke<{ ok?: boolean; updated?: number; error?: string }>(
-        "calculate-rfm",
-        { body: { store_id: storeId } },
-      );
+      const { data, error } = await supabase.functions.invoke<{
+        ok?: boolean;
+        updated?: number;
+        capped?: boolean;
+        message?: string;
+        enqueued?: boolean;
+        error?: string;
+      }>("calculate-rfm", { body: { store_id: storeId } });
       if (error) throw error;
       if (data && typeof data === "object" && "error" in data && data.error) {
         throw new Error(String(data.error));
       }
-      return data as { ok?: boolean; updated?: number };
+      return data as { ok?: boolean; updated?: number; capped?: boolean; message?: string; enqueued?: boolean };
     },
     onSuccess: (data) => {
+      const extra = data?.capped && data?.message ? ` ${data.message}` : "";
       toast.success("Segmentos RFM atualizados", {
-        description: `Registros recalculados com base em pedidos: ${data?.updated ?? 0}.`,
+        description: `Clientes com segmento atualizado: ${data?.updated ?? 0}.${extra}`,
       });
       void queryClient.invalidateQueries({ queryKey: ["contacts", user?.id ?? null] });
       void queryClient.invalidateQueries({ queryKey: ["rfm-report-counts"] });
@@ -480,7 +485,7 @@ export default function RFM() {
                       variant="outline"
                       className="w-full font-bold text-xs border-white/40 bg-white/20"
                       disabled={group.length === 0}
-                      onClick={() => navigate("/dashboard/benchmark-score")}
+                      onClick={() => navigate("/dashboard/benchmark")}
                     >
                       {group.length === 0
                         ? "Nenhum cliente neste segmento"

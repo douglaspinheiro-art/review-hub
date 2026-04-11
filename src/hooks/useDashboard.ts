@@ -826,15 +826,36 @@ export function useConversionBaseline(days = 30) {
         return { data: [] as { status: string | null }[], error: null as null };
       };
 
+      const CONVERSATIONS_BASELINE_CAP = 5000;
       const fetchConversationsBaseline = async () => {
         const full = storeId
-          ? supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("store_id", storeId)
-          : supabase.from("conversations").select("id,sla_due_at,last_message_at,priority,status").eq("user_id", effectiveUserId);
+          ? supabase
+              .from("conversations")
+              .select("id,sla_due_at,last_message_at,priority,status")
+              .eq("store_id", storeId)
+              .order("last_message_at", { ascending: false, nullsFirst: false })
+              .limit(CONVERSATIONS_BASELINE_CAP)
+          : supabase
+              .from("conversations")
+              .select("id,sla_due_at,last_message_at,priority,status")
+              .eq("user_id", effectiveUserId)
+              .order("last_message_at", { ascending: false, nullsFirst: false })
+              .limit(CONVERSATIONS_BASELINE_CAP);
         const fullRes = await full;
         if (!fullRes.error) return fullRes;
         const minimal = storeId
-          ? supabase.from("conversations").select("id,last_message_at,status").eq("store_id", storeId)
-          : supabase.from("conversations").select("id,last_message_at,status").eq("user_id", effectiveUserId);
+          ? supabase
+              .from("conversations")
+              .select("id,last_message_at,status")
+              .eq("store_id", storeId)
+              .order("last_message_at", { ascending: false, nullsFirst: false })
+              .limit(CONVERSATIONS_BASELINE_CAP)
+          : supabase
+              .from("conversations")
+              .select("id,last_message_at,status")
+              .eq("user_id", effectiveUserId)
+              .order("last_message_at", { ascending: false, nullsFirst: false })
+              .limit(CONVERSATIONS_BASELINE_CAP);
         const minRes = await minimal;
         if (!minRes.error) return minRes;
         console.warn("conversations (baseline):", fullRes.error.message, minRes.error.message);
@@ -956,7 +977,10 @@ export function useROIAttribution(days = 30) {
           ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
           : supabase.from("analytics_daily").select("*").eq("user_id", effectiveUserId);
 
-      const [analyticsRes, analyticsPrevRes, cartsRes, campaignsRes, attributionRes] = await Promise.all([
+      const MAX_SCOPE_CAMPAIGN_IDS = 20_000;
+      const MAX_ATTRIBUTED_CAMPAIGN_DETAIL = 500;
+
+      const [analyticsRes, analyticsPrevRes, cartsRes, attributionRes] = await Promise.all([
         buildAnalyticsROI().gte("date", since).order("date", { ascending: true }),
         buildAnalyticsROI().select("revenue_influenced").gte("date", prevSince).lt("date", since),
 
@@ -964,10 +988,6 @@ export function useROIAttribution(days = 30) {
           ? supabase.from("abandoned_carts").select("status,cart_value,recovered_at,campaign_id,automation_id").eq("store_id", storeId)
           : supabase.from("abandoned_carts").select("status,cart_value,recovered_at,campaign_id,automation_id").eq("user_id", effectiveUserId)
         ).gte("created_at", sinceIso),
-
-        storeId
-          ? supabase.from("campaigns").select("id,name,channel,sent_count,custo_total_envio").eq("store_id", storeId)
-          : supabase.from("campaigns").select("id,name,channel,sent_count,custo_total_envio").eq("user_id", effectiveUserId),
 
         supabase
           .from("attribution_events")
@@ -977,24 +997,63 @@ export function useROIAttribution(days = 30) {
       ]);
 
       if (analyticsRes.error) throw new Error(analyticsRes.error.message);
-      if (campaignsRes.error) throw new Error(campaignsRes.error.message);
 
       const analytics = analyticsRes.data ?? [];
       const carts = cartsRes.data ?? [];
-      const campaigns = (campaignsRes.data ?? []) as Array<{
+      const attributionQueryError = attributionRes.error?.message ?? null;
+      const attributionRowsRaw = attributionRes.error ? [] : (attributionRes.data ?? []);
+
+      const idsMentionedInAttribution = Array.from(
+        new Set(
+          attributionRowsRaw
+            .map((r: { attributed_campaign_id?: string | null }) => r.attributed_campaign_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+
+      const scopeIdsQuery = storeId
+        ? supabase.from("campaigns").select("id").eq("store_id", storeId).limit(MAX_SCOPE_CAMPAIGN_IDS)
+        : supabase.from("campaigns").select("id").eq("user_id", effectiveUserId).limit(MAX_SCOPE_CAMPAIGN_IDS);
+      const { data: scopeIdRows, error: scopeIdsErr } = await scopeIdsQuery;
+      if (scopeIdsErr) throw new Error(scopeIdsErr.message);
+      const idsFromTable = (scopeIdRows ?? []).map((r: { id: string }) => r.id);
+      const scopeUnion = Array.from(new Set([...idsFromTable, ...idsMentionedInAttribution]));
+      const SCOPE_CAP = MAX_SCOPE_CAMPAIGN_IDS + 500;
+      const storeCampaignIdsForScope = scopeUnion.slice(0, SCOPE_CAP);
+      const scopeTruncated =
+        idsFromTable.length >= MAX_SCOPE_CAMPAIGN_IDS || scopeUnion.length > storeCampaignIdsForScope.length;
+
+      const attribution = scopeAttributionEventsForStore(
+        attributionRowsRaw,
+        storeId,
+        storeCampaignIdsForScope,
+      );
+
+      const attributedCampaignIdsUniq = Array.from(
+        new Set(
+          attribution
+            .map((e) => e.attributed_campaign_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const detailFetchTruncated = attributedCampaignIdsUniq.length > MAX_ATTRIBUTED_CAMPAIGN_DETAIL;
+      const attributedCampaignIds = attributedCampaignIdsUniq.slice(0, MAX_ATTRIBUTED_CAMPAIGN_DETAIL);
+
+      let campaigns = [] as Array<{
         id: string;
         name: string;
         channel: string;
         sent_count: number | null;
         custo_total_envio?: number | null;
       }>;
-      const attributionQueryError = attributionRes.error?.message ?? null;
-      const attributionRowsRaw = attributionRes.error ? [] : (attributionRes.data ?? []);
-      const attribution = scopeAttributionEventsForStore(
-        attributionRowsRaw,
-        storeId,
-        campaigns.map((c) => c.id),
-      );
+      if (attributedCampaignIds.length > 0) {
+        const { data: campRows, error: campErr } = await supabase
+          .from("campaigns")
+          .select("id,name,channel,sent_count,custo_total_envio")
+          .in("id", attributedCampaignIds);
+        if (campErr) throw new Error(campErr.message);
+        campaigns = (campRows ?? []) as typeof campaigns;
+      }
 
       // ── Revenue totals ──────────────────────────────────────────────
       const totalRevenue = analytics.reduce((s, d) => s + Number(d.revenue_influenced), 0);
@@ -1098,6 +1157,7 @@ export function useROIAttribution(days = 30) {
       const totalSpendBrl = campaigns.reduce((s, c) => s + Number(c.custo_total_envio ?? 0), 0);
       const roas = totalSpendBrl > 0 && totalRevenue > 0 ? totalRevenue / totalSpendBrl : null;
       const roasDenominatorMissing = totalSpendBrl <= 0;
+      const roasSpendPartial = detailFetchTruncated || scopeTruncated;
 
       return {
         totalRevenue,
@@ -1105,6 +1165,9 @@ export function useROIAttribution(days = 30) {
         roas,
         totalSpendBrl,
         roasDenominatorMissing,
+        roasSpendPartial,
+        scopeTruncated,
+        detailFetchTruncated,
         attributionWindowLabel: ATTRIBUTION_WINDOW_LABEL,
         attributionQueryError,
         usesEstimatedSourceSplit: !hasAttribution,

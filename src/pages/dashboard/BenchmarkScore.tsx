@@ -328,6 +328,21 @@ export default function BenchmarkScore() {
         </div>
       </div>
 
+      <div className="rounded-2xl border border-border/60 bg-muted/25 p-4 text-xs text-muted-foreground space-y-2 leading-relaxed">
+        <p>
+          <strong className="text-foreground">Fontes no painel:</strong> o funil exibido prioriza{" "}
+          <span className="font-medium text-foreground">funil_diario</span> (ingestão GA4 agendada), depois a última linha
+          manual em <span className="font-medium text-foreground">funnel_metrics</span>. O histórico de CVR no gráfico
+          abaixo usa datas de <span className="font-medium text-foreground">diagnostics</span> concluídos quando existem;
+          caso contrário, mostramos uma <strong className="text-foreground">ilustração mensal aproximada</strong> derivada
+          do CVR atual — não use como série contábil ou fechamento de mês.
+        </p>
+        <p>
+          Referências de mercado combinam <span className="font-medium text-foreground">sector_benchmarks</span> (quando
+          houver linha no projeto) com tabela interna de fallback por nicho.
+        </p>
+      </div>
+
       {!hasFunnelData && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
           <Info className="w-5 h-5 text-amber-600 shrink-0" />
@@ -465,7 +480,9 @@ export default function BenchmarkScore() {
           </p>
         ) : (
           <p className="text-[11px] text-muted-foreground mb-2">
-            Ilustração mensal aproximada a partir do CVR atual (sem diagnósticos anteriores).
+            <strong className="text-amber-700 dark:text-amber-400">Atenção:</strong> ilustração mensal aproximada a partir
+            do CVR atual (sem diagnósticos anteriores) — não representa histórico real mês a mês nem serve como base
+            para decisões financeiras formais.
           </p>
         )}
         <div className="h-[220px]">

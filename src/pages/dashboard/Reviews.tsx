@@ -249,7 +249,7 @@ export default function Reviews() {
         description: "A resposta foi salva na avaliação. Publique também na plataforma (Google, etc.) se ainda não fez.",
       });
       void queryClient.invalidateQueries({ queryKey: ["reviews"] });
-      void queryClient.invalidateQueries({ queryKey: ["reviews-metrics"] });
+      void queryClient.invalidateQueries({ queryKey: ["reviews-stats"] });
     },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
@@ -266,7 +266,7 @@ export default function Reviews() {
     onSuccess: () => {
       toast({ title: "Avaliação ignorada" });
       void queryClient.invalidateQueries({ queryKey: ["reviews"] });
-      void queryClient.invalidateQueries({ queryKey: ["reviews-metrics"] });
+      void queryClient.invalidateQueries({ queryKey: ["reviews-stats"] });
     },
     onError: () => toast({ title: "Erro ao ignorar", variant: "destructive" }),
   });

@@ -229,6 +229,17 @@ export default function Atribuicao() {
             </DisclaimerCard>
           )}
 
+          {(data.scopeTruncated || data.detailFetchTruncated || data.roasSpendPartial) && (
+            <DisclaimerCard title="Consulta otimizada. ">
+              {data.scopeTruncated &&
+                "Listamos até 20 mil IDs de campanhas da loja para filtrar eventos multi-tenant; acima disso, a atribuição por campanha pode ficar incompleta. "}
+              {data.detailFetchTruncated &&
+                "Há mais de 500 campanhas distintas com pedidos atribuídos no período; detalhe e custo de envio usados no ROAS consideram apenas um subconjunto para manter a página rápida. "}
+              {data.roasSpendPartial &&
+                "O denominador do ROAS reflete só o custo das campanhas carregadas nesta consulta — pode subestimar ou superestimar o total real da loja."}
+            </DisclaimerCard>
+          )}
+
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
@@ -245,7 +256,7 @@ export default function Atribuicao() {
               sub={
                 data.roasDenominatorMissing
                   ? "Informe custo de envio nas campanhas (custo total) para calcular ROAS."
-                  : `Com base em ${fmt(data.totalSpendBrl)} em custo de envio de campanhas.`
+                  : `${data.roasSpendPartial ? "Custo considerado nas campanhas carregadas para esta página. " : ""}Base: ${fmt(data.totalSpendBrl)} em custo de envio.`
               }
               icon={TrendingUp}
               color="bg-primary/10 text-primary"

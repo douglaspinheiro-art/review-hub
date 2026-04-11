@@ -1,16 +1,25 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, Send, Eye, DollarSign, Users, RefreshCw, BarChart3 } from "lucide-react";
+import { TrendingUp, Send, Eye, DollarSign, Users, RefreshCw, BarChart3, AlertCircle } from "lucide-react";
 import { useConversionBaseline, useDashboardSnapshot } from "@/hooks/useDashboard";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { WHATSAPP_CAMPAIGN_BENCHMARKS_BR } from "@/lib/industry-benchmarks";
 import { cn } from "@/lib/utils";
 import {
-  AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
 } from "recharts";
 
 const PERIODS = [
@@ -19,36 +28,38 @@ const PERIODS = [
   { label: "90 dias", value: 90 as const },
 ];
 
-function AnalyticsSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-card border rounded-xl p-4 space-y-2">
-            <Skeleton className="h-8 w-8 rounded-lg" />
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="h-3 w-20" />
-          </div>
-        ))}
-      </div>
-      <div className="bg-card border rounded-xl p-5 space-y-4">
-        <Skeleton className="h-5 w-48" />
-        <Skeleton className="h-[260px] w-full rounded-lg" />
-      </div>
-      <div className="bg-card border rounded-xl p-5 space-y-4">
-        <Skeleton className="h-5 w-56" />
-        <Skeleton className="h-[220px] w-full rounded-lg" />
-      </div>
-      <div className="bg-card border rounded-xl p-5 space-y-4">
-        <Skeleton className="h-5 w-64" />
-        <div className="grid sm:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-lg" />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+type SnapshotChartPoint = {
+  dateKey: string;
+  label: string;
+  messages_sent: number;
+  messages_delivered: number;
+  messages_read: number;
+  revenue_influenced: number;
+};
+
+function parseSnapshotChartSeries(raw: unknown): SnapshotChartPoint[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SnapshotChartPoint[] = [];
+  for (const item of raw) {
+    if (item == null || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const dateRaw = o.date;
+    if (dateRaw == null) continue;
+    const dateKey = String(dateRaw);
+    const d = new Date(`${dateKey}T12:00:00`);
+    const label = Number.isFinite(d.getTime())
+      ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" })
+      : dateKey;
+    out.push({
+      dateKey,
+      label,
+      messages_sent: Number(o.messages_sent ?? 0),
+      messages_delivered: Number(o.messages_delivered ?? 0),
+      messages_read: Number(o.messages_read ?? 0),
+      revenue_influenced: Number(o.revenue_influenced ?? 0),
+    });
+  }
+  return out.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 }
 
 function BenchmarkBar({
@@ -105,16 +116,20 @@ function BenchmarkBar({
   );
 }
 
+function fmtBrl(n: number) {
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+
 export default function Analytics() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const { loading: authLoading } = useAuth();
-  
-  // BFF hook integration (Priority 3)
+
   const {
     data: snapshot,
     isLoading: snapshotLoading,
     isFetching: snapshotFetching,
-    isError: snapshotError,
+    isError: snapshotIsError,
+    error: snapshotQueryError,
     refetch: refetchSnapshot,
   } = useDashboardSnapshot(period);
 
@@ -126,46 +141,53 @@ export default function Analytics() {
     refetch: refetchBaseline,
   } = useConversionBaseline(period);
 
+  const chartSeries = useMemo(() => parseSnapshotChartSeries(snapshot?.chart_series), [snapshot?.chart_series]);
+
   const showSkeleton = authLoading || snapshotLoading;
   const refreshing = snapshotFetching || isBaselineFetching;
+  const snapshotError = snapshotIsError;
+  const snapshotErrorMessage =
+    snapshotQueryError instanceof Error ? snapshotQueryError.message : "Não foi possível carregar as métricas.";
 
-  const kpis = snapshot ? [
-    {
-      label: "Mensagens Enviadas",
-      value: snapshot.analytics.total_sent.toLocaleString("pt-BR"),
-      icon: Send,
-      color: "text-blue-500",
-      bg: "bg-blue-500/10",
-    },
-    {
-      label: "Taxa de Entrega",
-      value: `${Math.round((snapshot.analytics.total_delivered / Math.max(1, snapshot.analytics.total_sent)) * 100)}%`,
-      icon: TrendingUp,
-      color: "text-green-500",
-      bg: "bg-green-500/10",
-    },
-    {
-      label: "Taxa de Leitura",
-      value: `${Math.round((snapshot.analytics.total_read / Math.max(1, snapshot.analytics.total_delivered)) * 100)}%`,
-      icon: Eye,
-      color: "text-purple-500",
-      bg: "bg-purple-500/10",
-    },
-    {
-      label: "Receita Influenciada",
-      value: snapshot.analytics.total_revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-      icon: DollarSign,
-      color: "text-emerald-500",
-      bg: "bg-emerald-500/10",
-    },
-    {
-      label: "Novos Contatos",
-      value: snapshot.analytics.total_new_contacts.toLocaleString("pt-BR"),
-      icon: Users,
-      color: "text-orange-500",
-      bg: "bg-orange-500/10",
-    },
-  ] : [];
+  const kpis = snapshot
+    ? [
+        {
+          label: "Mensagens Enviadas",
+          value: snapshot.analytics.total_sent.toLocaleString("pt-BR"),
+          icon: Send,
+          color: "text-blue-500",
+          bg: "bg-blue-500/10",
+        },
+        {
+          label: "Taxa de Entrega",
+          value: `${Math.round((snapshot.analytics.total_delivered / Math.max(1, snapshot.analytics.total_sent)) * 100)}%`,
+          icon: TrendingUp,
+          color: "text-green-500",
+          bg: "bg-green-500/10",
+        },
+        {
+          label: "Taxa de Leitura",
+          value: `${Math.round((snapshot.analytics.total_read / Math.max(1, snapshot.analytics.total_delivered)) * 100)}%`,
+          icon: Eye,
+          color: "text-purple-500",
+          bg: "bg-purple-500/10",
+        },
+        {
+          label: "Receita Influenciada",
+          value: snapshot.analytics.total_revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+          icon: DollarSign,
+          color: "text-emerald-500",
+          bg: "bg-emerald-500/10",
+        },
+        {
+          label: "Novos Contatos",
+          value: snapshot.analytics.total_new_contacts.toLocaleString("pt-BR"),
+          icon: Users,
+          color: "text-orange-500",
+          bg: "bg-orange-500/10",
+        },
+      ]
+    : [];
 
   const handleRefresh = () => {
     void refetchSnapshot();
@@ -173,6 +195,7 @@ export default function Analytics() {
   };
 
   const hasRows = Boolean(snapshot && snapshot.analytics.total_sent > 0);
+  const hasChartSeries = chartSeries.length > 0;
 
   return (
     <div className="space-y-6">
@@ -188,7 +211,7 @@ export default function Analytics() {
             size="sm"
             className="gap-2"
             onClick={handleRefresh}
-            disabled={showSkeleton || Boolean(snapshotError)}
+            disabled={showSkeleton}
             aria-busy={refreshing}
           >
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} aria-hidden />
@@ -202,6 +225,7 @@ export default function Analytics() {
             }}
             className="justify-end bg-muted/50 p-1 rounded-lg"
             aria-label="Período dos gráficos"
+            disabled={showSkeleton}
           >
             {PERIODS.map((p) => (
               <ToggleGroupItem
@@ -216,11 +240,26 @@ export default function Analytics() {
         </div>
       </div>
 
+      {!showSkeleton && snapshotError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Não foi possível carregar o painel</AlertTitle>
+          <AlertDescription className="flex flex-col sm:flex-row sm:items-center gap-3 mt-2">
+            <span className="text-sm">{snapshotErrorMessage}</span>
+            <Button type="button" variant="outline" size="sm" className="w-fit shrink-0" onClick={() => void refetchSnapshot()}>
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {showSkeleton ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-28 rounded-xl" />
+          ))}
         </div>
-      ) : (
+      ) : !snapshotError ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {kpis.map(({ label, value, icon: Icon, color, bg }) => (
             <div key={label} className="bg-card border rounded-xl p-4 space-y-2">
@@ -232,7 +271,7 @@ export default function Analytics() {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {!showSkeleton && !snapshotError && snapshot && !hasRows && (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-xl border bg-card space-y-4">
@@ -260,17 +299,84 @@ export default function Analytics() {
         <>
           <div className="bg-card border rounded-xl p-5 space-y-4">
             <h2 className="font-semibold">Mensagens — últimos {period} dias</h2>
-            <div className="h-[260px] w-full bg-muted/10 rounded-lg flex items-center justify-center italic text-xs text-muted-foreground border border-dashed">
-              Gráfico histórico consolidado disponível no relatório avançado.
-            </div>
+            <p className="text-xs text-muted-foreground">Série diária a partir de analytics da loja (mesma base do snapshot).</p>
+            {hasChartSeries ? (
+              <div className="h-[260px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderRadius: "8px",
+                        border: "1px solid hsl(var(--border))",
+                        fontSize: 12,
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="messages_sent" name="Enviadas" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="messages_delivered" name="Entregues" stroke="#22c55e" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="messages_read" name="Lidas" stroke="#a855f7" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[200px] w-full rounded-lg border border-dashed flex items-center justify-center text-xs text-muted-foreground px-4 text-center">
+                Série diária indisponível. Atualize o app Supabase (função{" "}
+                <code className="text-[10px] bg-muted px-1 rounded">get_dashboard_snapshot</code> com{" "}
+                <code className="text-[10px] bg-muted px-1 rounded">chart_series</code>) ou aguarde o próximo deploy das migrações.
+              </div>
+            )}
           </div>
 
           <div className="bg-card border rounded-xl p-5 space-y-4">
             <h2 className="font-semibold">Receita influenciada — últimos {period} dias</h2>
             <p className="text-xs text-muted-foreground">Um ponto por dia no período selecionado.</p>
-            <div className="h-[220px] w-full bg-muted/10 rounded-lg flex items-center justify-center italic text-xs text-muted-foreground border border-dashed">
-              Distribuição diária disponível no relatório avançado.
-            </div>
+            {hasChartSeries ? (
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="analyticsRevFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => fmtBrl(Number(v))}
+                    />
+                    <Tooltip
+                      formatter={(v: number) => fmtBrl(v)}
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderRadius: "8px",
+                        border: "1px solid hsl(var(--border))",
+                        fontSize: 12,
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="revenue_influenced"
+                      name="Receita"
+                      stroke="hsl(var(--primary))"
+                      fill="url(#analyticsRevFill)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[180px] w-full rounded-lg border border-dashed flex items-center justify-center text-xs text-muted-foreground px-4 text-center">
+                Mesma condição da série de mensagens acima.
+              </div>
+            )}
           </div>
 
           <div className="bg-card border rounded-xl p-5 space-y-4">

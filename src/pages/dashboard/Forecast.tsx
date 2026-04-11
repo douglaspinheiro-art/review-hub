@@ -3,13 +3,14 @@ import {
   TrendingUp, Sparkles, ArrowUpRight, Info, ShieldCheck, Loader2, RefreshCw, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useAnalytics, useForecastSnapshot } from "@/hooks/useDashboard";
+import { useAnalytics, useForecastSnapshot, useForecastProjection } from "@/hooks/useDashboard";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,7 @@ export default function Forecast() {
   const {
     data: projectionData,
     isLoading: loadingProjection,
+    isError: projectionRpcError,
     refetch: refetchProjection,
   } = useForecastProjection(storeId, FORECAST_ANALYTICS_DAYS);
 
@@ -165,6 +167,20 @@ export default function Forecast() {
           Atualizar dados
         </Button>
       </div>
+
+      {projectionRpcError && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-950 dark:text-sky-100">
+          <Badge variant="outline" className="border-sky-500/50 text-[10px] font-bold uppercase">
+            Estimativa local
+          </Badge>
+          <span>
+            A projeção estatística no servidor não respondeu; os valores &quot;Próximos 30 dias&quot; usam só o cálculo no app.
+          </span>
+          <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void refetchProjection()}>
+            Tentar RPC
+          </Button>
+        </div>
+      )}
 
       {snapshotError && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
