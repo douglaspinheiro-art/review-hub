@@ -615,8 +615,8 @@ BEGIN
     DROP POLICY IF EXISTS orders_tenant ON public.orders;
     CREATE POLICY orders_tenant ON public.orders
       FOR ALL TO authenticated
-      USING (public.auth_row_read_user_store(user_id, store_id))
-      WITH CHECK (public.auth_row_write_user_store(user_id, store_id));
+      USING (public.auth_row_read_user_store(user_id, NULL::uuid))
+      WITH CHECK (public.auth_row_write_user_store(user_id, NULL::uuid));
   END IF;
 END $$;
 
