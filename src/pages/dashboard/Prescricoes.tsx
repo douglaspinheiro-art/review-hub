@@ -117,35 +117,28 @@ export default function Prescricoes() {
     }
 
     const prefill = prescriptionToCampaignPrefill(row);
-    
+
     try {
-      // 1. Create a DRAFT campaign in the database
-      const { data: campaign, error: campError } = await supabase
-        .from("campaigns")
-        .insert({
-          user_id: profile?.id,
-          store_id: storeId,
-          name: prefill.name || "Campanha da Prescrição",
-          message: prefill.message || "",
-          channel: prefill.channel || "whatsapp",
-          status: "draft",
-          source_prescription_id: row.id,
-          email_recipient_rfm: prefill.rfmSegment || null,
-          email_recipient_mode: prefill.segment || null,
-        })
-        .select("id")
-        .single();
+      const { data: campaignId, error: rpcError } = await supabase.rpc("approve_prescription_campaign_draft", {
+        p_prescription_id: row.id,
+        p_campaign_name: prefill.name || "Campanha da Prescrição",
+        p_message: prefill.message || "",
+        p_channel: prefill.channel || "whatsapp",
+        p_email_rfm: prefill.rfmSegment || "",
+        p_email_mode: prefill.segment || "",
+      });
 
-      if (campError) throw campError;
+      if (rpcError) throw rpcError;
+      if (!campaignId || typeof campaignId !== "string") {
+        throw new Error("Resposta inválida ao criar campanha.");
+      }
 
-      // 2. Mark prescription as "em_execucao"
-      await updateStatus.mutateAsync({ id: row.id, status: "em_execucao" });
+      await queryClient.invalidateQueries({ queryKey: ["prescriptions_v3", storeId] });
 
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 2000);
-      
-      // 3. Navigate to campaigns with the new ID to open edit modal
-      navigate(`/dashboard/campanhas?edit=${campaign.id}`);
+
+      navigate(`/dashboard/campanhas?edit=${campaignId}`);
     } catch (e: unknown) {
       console.error("Erro ao aprovar prescrição:", e);
       toast.error(
@@ -310,11 +303,7 @@ export default function Prescricoes() {
           <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center space-y-3">
             <p className="text-sm font-medium text-destructive">{error instanceof Error ? error.message : "Erro ao carregar prescrições"}</p>
             <p className="text-xs text-muted-foreground max-w-lg mx-auto leading-relaxed">
-              Se o erro persistir após repetir, confirme no Supabase as políticas RLS em{" "}
-              <code className="text-[11px] bg-muted px-1 rounded">prescriptions</code> e que as transições de estado
-              (aprovada, em execução, concluída) estão alinhadas com a vossa lógica de campanhas. Equipa técnica: ver
-              ficheiro <code className="text-[11px] bg-muted px-1 rounded">docs/production-env-checklist.md</code> no
-              repositório (secção prescrições).
+              Não foi possível carregar as prescrições. Tente novamente; se continuar, contacte o suporte com o horário do erro.
             </p>
             <Button variant="outline" size="sm" onClick={() => void refetch()}>
               Tentar novamente

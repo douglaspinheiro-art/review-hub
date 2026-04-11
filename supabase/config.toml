@@ -10,3 +10,6 @@ verify_jwt = false
 # Validação de credenciais chamada só com sessão do cliente (invoke com JWT).
 [functions.validate-integration]
 verify_jwt = true
+
+[functions.stripe-billing-portal]
+verify_jwt = true

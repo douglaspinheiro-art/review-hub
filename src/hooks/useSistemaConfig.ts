@@ -12,7 +12,7 @@ export function useSistemaConfig() {
   return useQuery({
     queryKey: ["system_config"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("system_config")
         .select("*")
         .eq("id", "config_geral")

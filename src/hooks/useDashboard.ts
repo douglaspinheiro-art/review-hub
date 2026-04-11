@@ -10,6 +10,13 @@ import {
 import { scopeAttributionEventsForStore } from "@/lib/attribution-scope";
 import { ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
 import type { Database } from "@/integrations/supabase/types";
+import {
+  extendLegacyDashboardStats,
+  mapDashboardSnapshotRpcToHomeStats,
+  type DashboardHomeStats,
+} from "@/lib/dashboard-home-stats";
+
+export type OpportunityRow = Database["public"]["Tables"]["opportunities"]["Row"];
 
 /** Linha de campanha na listagem (tabela + métricas agregadas na query). */
 export type CampaignListItem = Database["public"]["Tables"]["campaigns"]["Row"] & {
@@ -78,95 +85,122 @@ export async function getCurrentUserAndStore(): Promise<{
   return { userId, storeId: store?.id ?? null, effectiveUserId: userId };
 }
 
+/** Agregação legada (várias queries) — usada sem `store_id` ou como fallback se o RPC falhar. */
+export async function fetchDashboardStatsLegacyData(days: number) {
+  const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
+  if (!userId || !effectiveUserId) throw new Error("Não autenticado");
+
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const prevSince = new Date(Date.now() - days * 2 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  const customersQuery = storeId
+    ? supabase.from("customers_v3").select("id", { count: "exact", head: true }).eq("store_id", storeId)
+    : supabase.from("contacts").select("id", { count: "exact", head: true }).eq("user_id", effectiveUserId);
+
+  const conversationsQuery = storeId
+    ? supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("store_id", storeId)
+    : supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("user_id", effectiveUserId);
+
+  const campaignsQuery = storeId
+    ? supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("store_id", storeId)
+    : supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("user_id", effectiveUserId);
+
+  const buildAnalytics = () =>
+    storeId
+      ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
+      : supabase.from("analytics_daily").select("*").eq("user_id", effectiveUserId);
+
+  const buildOpportunities = () =>
+    storeId
+      ? supabase.from("opportunities").select("id", { count: "exact", head: true }).eq("store_id", storeId)
+      : supabase.from("opportunities").select("id", { count: "exact", head: true }).eq("user_id", effectiveUserId);
+
+  const [customersRes, conversationsRes, campaignsRes, analyticsRes, analyticsPrevRes, opportunitiesRes] = await Promise.all([
+    customersQuery,
+    conversationsQuery,
+    campaignsQuery,
+    buildAnalytics().gte("date", since).order("date", { ascending: true }),
+    buildAnalytics().select("revenue_influenced").gte("date", prevSince).lt("date", since),
+    buildOpportunities().neq("status", "resolvido").neq("status", "ignorado"),
+  ]);
+
+  const analytics = analyticsRes.data ?? [];
+  const campaigns = campaignsRes.data ?? [];
+
+  const totalContacts = customersRes.count ?? 0;
+  const openConversations = (conversationsRes.data ?? []).filter((c) => c.status === "open").length;
+  const totalUnread = (conversationsRes.data ?? []).reduce((sum, c) => sum + (c.unread_count ?? 0), 0);
+
+  const completedCampaigns = campaigns.filter((c) => c.status === "completed" || c.status === "running");
+  const totalSent = completedCampaigns.reduce((s, c) => s + c.sent_count, 0);
+  const totalRead = completedCampaigns.reduce((s, c) => s + c.read_count, 0);
+  const avgReadRate = totalSent > 0 ? Math.round((totalRead / totalSent) * 100) : 0;
+
+  const revenueLast30 = analytics.reduce((s, d) => s + Number(d.revenue_influenced), 0);
+  const newContactsLast30 = analytics.reduce((s, d) => s + d.new_contacts, 0);
+
+  const revenuePrev = (analyticsPrevRes.data ?? []).reduce((s, d) => s + Number(d.revenue_influenced), 0);
+  const revGrowth = revenuePrev > 0 ? Math.round(((revenueLast30 - revenuePrev) / revenuePrev) * 100) : 0;
+
+  const totalDelivered = analytics.reduce((s, d) => s + d.messages_delivered, 0);
+  const totalSentAll = analytics.reduce((s, d) => s + d.messages_sent, 0);
+  const deliveryRate = totalSentAll > 0 ? Math.round((totalDelivered / totalSentAll) * 100) : 0;
+
+  return {
+    totalContacts,
+    activeContacts: totalContacts,
+    openConversations,
+    totalUnread,
+    avgReadRate,
+    revenueLast30,
+    newContactsLast30,
+    revGrowth,
+    deliveryRate,
+    activeOpportunities: opportunitiesRes.count ?? 0,
+    chartData: analytics.map((d) => ({
+      date: new Date(d.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+      enviadas: d.messages_sent,
+      entregues: d.messages_delivered,
+      lidas: d.messages_read,
+      receita: Number(d.revenue_influenced),
+    })),
+  };
+}
+
 export function useDashboardStats(days = 30) {
   const { user } = useAuth();
   return useQuery({
     queryKey: ["dashboard-stats", user?.id ?? null, days],
-    queryFn: async () => {
-      const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
-      if (!userId || !effectiveUserId) throw new Error("Não autenticado");
-
-      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-      const prevSince = new Date(Date.now() - days * 2 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-
-      const customersQuery = storeId
-        ? supabase.from("customers_v3").select("id", { count: "exact" }).eq("store_id", storeId)
-        : supabase.from("contacts").select("id", { count: "exact" }).eq("user_id", effectiveUserId);
-
-      const conversationsQuery = storeId
-        ? supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("store_id", storeId)
-        : supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("user_id", effectiveUserId);
-
-      const campaignsQuery = storeId
-        ? supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("store_id", storeId)
-        : supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("user_id", effectiveUserId);
-
-      // Each query in Promise.all must use an independently constructed builder.
-      // Reusing the same Postgrest builder instance across parallel chains is unsafe
-      // because the builder is mutated in-place and shared state causes incorrect filters.
-      const buildAnalytics = () =>
-        storeId
-          ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
-          : supabase.from("analytics_daily").select("*").eq("user_id", effectiveUserId);
-
-      const buildOpportunities = () =>
-        storeId
-          ? supabase.from("opportunities").select("id", { count: "exact" }).eq("store_id", storeId)
-          : supabase.from("opportunities").select("id", { count: "exact" }).eq("user_id", effectiveUserId);
-
-      const [customersRes, conversationsRes, campaignsRes, analyticsRes, analyticsPrevRes, opportunitiesRes] = await Promise.all([
-        customersQuery,
-        conversationsQuery,
-        campaignsQuery,
-        buildAnalytics().gte("date", since).order("date", { ascending: true }),
-        buildAnalytics().select("revenue_influenced").gte("date", prevSince).lt("date", since),
-        buildOpportunities().neq("status", "resolvido"),
-      ]);
-
-      const analytics = analyticsRes.data ?? [];
-      const campaigns = campaignsRes.data ?? [];
-
-      const totalContacts = customersRes.count ?? 0;
-      const openConversations = (conversationsRes.data ?? []).filter((c) => c.status === "open").length;
-      const totalUnread = (conversationsRes.data ?? []).reduce((sum, c) => sum + (c.unread_count ?? 0), 0);
-
-      const completedCampaigns = campaigns.filter((c) => c.status === "completed" || c.status === "running");
-      const totalSent = completedCampaigns.reduce((s, c) => s + c.sent_count, 0);
-      const totalRead = completedCampaigns.reduce((s, c) => s + c.read_count, 0);
-      const avgReadRate = totalSent > 0 ? Math.round((totalRead / totalSent) * 100) : 0;
-
-      const revenueLast30 = analytics.reduce((s, d) => s + Number(d.revenue_influenced), 0);
-      const newContactsLast30 = analytics.reduce((s, d) => s + d.new_contacts, 0);
-
-      const revenuePrev = (analyticsPrevRes.data ?? []).reduce((s, d) => s + Number(d.revenue_influenced), 0);
-      const revGrowth = revenuePrev > 0 ? Math.round(((revenueLast30 - revenuePrev) / revenuePrev) * 100) : 0;
-
-      const totalDelivered = analytics.reduce((s, d) => s + d.messages_delivered, 0);
-      const totalSentAll = analytics.reduce((s, d) => s + d.messages_sent, 0);
-      const deliveryRate = totalSentAll > 0 ? Math.round((totalDelivered / totalSentAll) * 100) : 0;
-
-      return {
-        totalContacts,
-        activeContacts: totalContacts,
-        openConversations,
-        totalUnread,
-        avgReadRate,
-        revenueLast30,
-        newContactsLast30,
-        revGrowth,
-        deliveryRate,
-        activeOpportunities: opportunitiesRes.count ?? 0,
-        chartData: analytics.map((d) => ({
-          date: new Date(d.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-          enviadas: d.messages_sent,
-          entregues: d.messages_delivered,
-          lidas: d.messages_read,
-          receita: Number(d.revenue_influenced),
-        })),
-      };
-    },
+    queryFn: () => fetchDashboardStatsLegacyData(days),
     staleTime: 60_000,
     enabled: !!user,
+  });
+}
+
+/** Métricas unificadas da home: RPC `get_dashboard_snapshot` com fallback legado. */
+export function useDashboardHomeStats(period: 7 | 30 | 90) {
+  const { user, loading: authLoading } = useAuth();
+  return useQuery({
+    queryKey: ["dashboard-home-stats", user?.id ?? null, period],
+    queryFn: async (): Promise<DashboardHomeStats> => {
+      const { storeId } = await getCurrentUserAndStore();
+      if (storeId) {
+        try {
+          const { data, error } = await supabase.rpc("get_dashboard_snapshot", {
+            p_store_id: storeId,
+            p_period_days: period,
+          });
+          if (error) throw error;
+          if (data != null) return mapDashboardSnapshotRpcToHomeStats(data);
+        } catch (e) {
+          console.warn("[useDashboardHomeStats] RPC get_dashboard_snapshot indisponível ou erro — fallback legado", e);
+        }
+      }
+      const legacy = await fetchDashboardStatsLegacyData(period);
+      return extendLegacyDashboardStats(legacy);
+    },
+    staleTime: 60_000,
+    enabled: !authLoading && !!user,
   });
 }
 
@@ -629,6 +663,63 @@ export function useConversionBaseline(days = 30) {
     queryFn: async () => {
       const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
       if (!userId || !effectiveUserId) throw new Error("Não autenticado");
+
+      if (storeId) {
+        try {
+          const { data, error } = await supabase.rpc("get_conversion_baseline_summary", {
+            p_store_id: storeId,
+            p_period_days: days,
+          });
+          if (error) throw error;
+          const row = (data ?? {}) as Record<string, unknown>;
+          const sent = Number(row.sent ?? 0);
+          const replied = Number(row.replied ?? 0);
+          const delivered = Number(row.delivered ?? 0);
+          const read = Number(row.read ?? 0);
+          const conversions = Number(row.conversions ?? 0);
+          const revenue = Number(row.revenue ?? 0);
+          const prevSent = Number(row.prev_sent ?? 0);
+          const prevReply = Number(row.prev_replied ?? 0);
+          const replyRate = sent > 0 ? (replied / sent) * 100 : 0;
+          const deliveryRate = sent > 0 ? (delivered / sent) * 100 : 0;
+          const readRate = sent > 0 ? (read / sent) * 100 : 0;
+          const conversionRate = sent > 0 ? (conversions / sent) * 100 : 0;
+          const revenuePerMessage = sent > 0 ? revenue / sent : 0;
+          const prevReplyRate = prevSent > 0 ? (prevReply / prevSent) * 100 : 0;
+          const replyRateDelta = prevReplyRate > 0 ? ((replyRate - prevReplyRate) / prevReplyRate) * 100 : 0;
+          const tracked = Number(row.sla_tracked ?? 0);
+          const breached = Number(row.sla_breached ?? 0);
+          const slaCompliance = tracked > 0 ? ((tracked - breached) / tracked) * 100 : 100;
+          const priorityMix = {
+            urgent: Number(row.priority_urgent ?? 0),
+            high: Number(row.priority_high ?? 0),
+            normal: Number(row.priority_normal ?? 0),
+            low: Number(row.priority_low ?? 0),
+          };
+          return {
+            sent,
+            replied,
+            delivered,
+            read,
+            conversions,
+            revenue,
+            replyRate,
+            conversionRate,
+            deliveryRate,
+            readRate,
+            revenuePerMessage,
+            replyRateDelta,
+            sla: {
+              totalTracked: tracked,
+              breached,
+              compliance: slaCompliance,
+            },
+            priorityMix,
+          };
+        } catch (e) {
+          console.warn("[useConversionBaseline] RPC falhou — fallback cliente", e);
+        }
+      }
 
       const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
       const prevSinceIso = new Date(Date.now() - days * 2 * 86_400_000).toISOString();
@@ -1141,7 +1232,7 @@ export function useProblems() {
   const { user } = useAuth();
   return useQuery({
     queryKey: ["problems", user?.id ?? null],
-    queryFn: async () => {
+    queryFn: async (): Promise<OpportunityRow[]> => {
       const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
       if (!userId || !effectiveUserId) return [];
 
@@ -1152,10 +1243,11 @@ export function useProblems() {
       const { data, error } = await query
         .neq("status", "resolvido")
         .neq("status", "ignorado")
-        .order("detected_at", { ascending: false });
+        .order("detected_at", { ascending: false })
+        .limit(500);
 
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as OpportunityRow[];
     },
     staleTime: 60_000,
     enabled: !!user,
@@ -1235,6 +1327,14 @@ export function useDashboardSnapshot(days = 30) {
           cells: Record<string, number>;
           max_val: number;
         };
+        open_conversations?: number;
+        rev_growth_pct?: number;
+        avg_read_rate_pct?: number;
+        messaging_order_conversion_pct?: number;
+        ideal_purchase_count?: number;
+        estimated_opportunity_revenue?: number;
+        chs_breakdown?: Record<string, number>;
+        chart_series?: unknown[];
         timestamp: string;
       };
     },

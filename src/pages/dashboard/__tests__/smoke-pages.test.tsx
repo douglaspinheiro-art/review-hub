@@ -9,6 +9,9 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: [], isLoading: false }),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(),
+  }),
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -23,7 +26,31 @@ vi.mock("@/hooks/useAuth", () => ({
 
 vi.mock("@/hooks/useDashboard", () => ({
   useProblems: () => ({ data: [] }),
-  useDashboardStats: () => ({ data: { revenueLast30: 0, revGrowth: 0 } }),
+  useDashboardHomeStats: () => ({
+    data: {
+      revenueLast30: 0,
+      revGrowth: 0,
+      newContactsLast30: 0,
+      conversionRate: 0,
+      openConversations: 0,
+      totalUnread: 0,
+      activeOpportunities: 0,
+      avgReadRate: 0,
+      totalContacts: 0,
+      deliveryRate: 0,
+      activeContacts: 0,
+      chartData: [],
+      chs: 0,
+      chsLabel: "Sem dados",
+      atRiskCount: 0,
+      idealPurchaseCount: 0,
+      estimatedRevenue: 0,
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   useConversionBaseline: () => ({ data: null }),
 }));
 
@@ -34,6 +61,7 @@ vi.mock("@/lib/supabase", () => ({
         eq: () => [],
       }),
     }),
+    functions: { invoke: vi.fn() },
   },
 }));
 

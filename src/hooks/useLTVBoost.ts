@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import type { Database } from "@/integrations/supabase/types";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 
@@ -13,7 +13,7 @@ export interface StoreV3 {
   id: string;
   name: string;
   conversion_health_score: number;
-  chs_history: any;
+  chs_history: Json | null;
   segment: string;
   pix_key: string;
   user_id: string;
@@ -68,6 +68,8 @@ export function useOpportunitiesV3(storeId?: string) {
   });
 }
 
+const PRESCRIPTIONS_PAGE_SIZE = 500;
+
 export function usePrescriptionsV3(storeId?: string) {
   return useQuery({
     queryKey: ["prescriptions_v3", storeId],
@@ -76,7 +78,8 @@ export function usePrescriptionsV3(storeId?: string) {
         .from("prescriptions")
         .select("*, opportunities(*)")
         .eq("store_id", storeId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(PRESCRIPTIONS_PAGE_SIZE);
       if (error) throw error;
       return data;
     },
@@ -93,7 +96,9 @@ export function useUpdatePrescriptionStatus(storeId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }: PrescriptionStatusUpdate) => {
-      const { error } = await supabase.from("prescriptions").update({ status }).eq("id", id);
+      let q = supabase.from("prescriptions").update({ status }).eq("id", id);
+      if (storeId) q = q.eq("store_id", storeId);
+      const { error } = await q;
       if (error) throw error;
     },
     onSuccess: () => {

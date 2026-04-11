@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2, Globe, ShoppingBag, Smartphone,
   ArrowRight, Shield, AlertTriangle, Loader2,
@@ -18,9 +18,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { OBJECTIVES, VERTICALS, saveStrategyProfile, type EcommerceVertical, type PrimaryObjective } from "@/lib/strategy-profile";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const perda = searchParams.get("perda");
 
@@ -49,8 +52,6 @@ export default function Onboarding() {
     { id: "tiktok", label: "TikTok Shop", icon: Smartphone, color: "bg-black", badge: "BETA", help: "Integração com a nova frente de vendas do TikTok." },
   ];
 
-  // NOTE: real OAuth integration should be implemented via Supabase edge functions
-  // This page redirects immediately (see useEffect above), so this code is not executed
   const toggleChannel = (id: string) => {
     if (channels.includes(id)) {
       setChannels(channels.filter(c => c !== id));
@@ -58,10 +59,6 @@ export default function Onboarding() {
     setChannels((prev) => [...prev, id]);
       toast.info(`Integração com ${id.toUpperCase()} em breve. Configure via Configurações > Integrações.`);
     }
-  };
-
-  const getWebhookUrl = (platform: string) => {
-    return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/integration-gateway?platform=${platform}&loja_id=SUA_LOJA_ID`;
   };
 
   const handleNextStep = () => {
@@ -73,19 +70,33 @@ export default function Onboarding() {
     else if (step === 2) setStep(3);
   };
 
-  const handleLaunch = () => {
+  const handleLaunch = async () => {
     setIsLaunching(true);
-    if (objective && vertical) {
-      saveStrategyProfile({ objective, vertical });
-    }
-    if (pulseNum) {
-      toast.success(`Pulse semanal ativado para ${pulseNum}!`);
-    }
-    sessionStorage.removeItem("ltv_show_community");
-    sessionStorage.removeItem("ltv_company");
-    setTimeout(() => {
+    try {
+      if (objective && vertical) {
+        saveStrategyProfile({ objective, vertical });
+        if (user?.id) {
+          const { error: storeErr } = await supabase
+            .from("stores")
+            .update({ segment: vertical })
+            .eq("user_id", user.id);
+          if (storeErr) {
+            console.warn("Onboarding: segmento não persistido na loja:", storeErr.message);
+          }
+        }
+      }
+      if (pulseNum) {
+        toast.success(`Pulse semanal ativado para ${pulseNum}!`);
+      }
+      sessionStorage.removeItem("ltv_show_community");
+      sessionStorage.removeItem("ltv_company");
       navigate(`/dashboard?setup=complete&firstweek=true`);
-    }, 1200);
+    } catch (e) {
+      console.error(e);
+      toast.error("Não foi possível concluir. Tente novamente.");
+    } finally {
+      setIsLaunching(false);
+    }
   };
 
   const handleDemoMode = () => {
@@ -223,16 +234,15 @@ export default function Onboarding() {
                   </button>
 
                   {channels.length > 0 && (
-                    <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2">
-                      <p className="text-[10px] font-black uppercase text-primary">Webhook de Integração</p>
-                      <div className="flex gap-2">
-                        <Input readOnly value={getWebhookUrl(channels[0])} className="h-9 text-[10px] font-mono bg-black/50 border-[#1E1E2E]" />
-                        <Button variant="outline" size="sm" className="h-9 text-[10px] font-bold" onClick={() => {
-                          navigator.clipboard.writeText(getWebhookUrl(channels[0]));
-                          toast.success("URL copiada!");
-                        }}>Copiar</Button>
-                      </div>
-                      <p className="text-[9px] text-muted-foreground italic">Cole esta URL nas configurações de Webhook da sua loja.</p>
+                    <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                      <p className="text-[10px] font-black uppercase text-primary">Próximo passo</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        O URL de webhook e as credenciais são gerados por loja após o cadastro. Em{" "}
+                        <Link to="/dashboard/integracoes" className="text-primary font-bold underline underline-offset-2">
+                          Integrações
+                        </Link>{" "}
+                        você copia o endpoint seguro e conclui OAuth ou chaves conforme a plataforma.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -513,7 +523,7 @@ export default function Onboarding() {
               ) : (
                 <Button
                   size="lg"
-                  onClick={handleLaunch}
+                  onClick={() => void handleLaunch()}
                   disabled={isLaunching}
                   className="h-14 px-12 text-lg font-black bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/20 hover:scale-105 transition-all gap-2 group"
                 >

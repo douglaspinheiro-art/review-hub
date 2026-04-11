@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
-import { CreditCard, Zap, Check, ArrowRight, TrendingUp, Sparkles, X, AlertCircle } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { CreditCard, Zap, Check, ArrowRight, TrendingUp, Sparkles, X, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { useDashboardStats, useProblems } from "@/hooks/useDashboard";
+import { getCurrentUserAndStore, useDashboardHomeStats, useProblems } from "@/hooks/useDashboard";
 import { CancellationModal } from "@/components/dashboard/CancellationModal";
 import { toast } from "sonner";
 import { PLAN_LIMITS, PLANS as PRICING_PLANS } from "@/lib/pricing-constants";
@@ -19,23 +19,60 @@ const BILLING_PLANS = [
   { key: "enterprise", name: "Enterprise", price: null, contacts: -1, messages: -1 },
 ] as const;
 
+const supportWaE164 = (import.meta.env.VITE_SUPPORT_WHATSAPP_E164 as string | undefined)?.replace(/\D/g, "") ?? "";
+const supportWaHref = supportWaE164
+  ? `https://wa.me/${supportWaE164}?text=${encodeURIComponent("Olá! Preciso de ajuda com planos / LTV Boost.")}`
+  : null;
+
 export default function Billing() {
   const { profile, user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const currentPlan = profile?.plan ?? "starter";
   const [showLimitModal, setShowLimitModal] = useState(false);
-  const limits = PLAN_LIMITS[currentPlan];
+  const limitModalScheduledRef = useRef(false);
+  const limits = PLAN_LIMITS[currentPlan] ?? PLAN_LIMITS.starter;
 
-  // Fix BUG-005: fetch real usage counts
+  const [portalLoading, setPortalLoading] = useState(false);
+
   const { data: usage } = useQuery({
     queryKey: ["billing_usage", user?.id],
     queryFn: async () => {
+      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      if (!effectiveUserId) throw new Error("Sessão inválida");
+      const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+
+      if (storeId) {
+        const [custRes, msgRes] = await Promise.all([
+          supabase.from("customers_v3").select("id", { count: "exact", head: true }).eq("store_id", storeId),
+          supabase
+            .from("message_sends")
+            .select("id", { count: "exact", head: true })
+            .eq("store_id", storeId)
+            .gte("created_at", monthStart),
+        ]);
+        let msgCount = msgRes.count ?? 0;
+        if (msgRes.error) {
+          const fb = await supabase
+            .from("message_sends")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", effectiveUserId)
+            .gte("created_at", monthStart);
+          msgCount = fb.count ?? 0;
+        }
+        return {
+          contacts: custRes.count ?? 0,
+          messages: msgCount,
+        };
+      }
+
       const [contactsRes, messagesRes] = await Promise.all([
-        supabase.from("contacts").select("id", { count: "exact", head: true }).eq("user_id", user!.id),
-        supabase.from("messages")
+        supabase.from("contacts").select("id", { count: "exact", head: true }).eq("user_id", effectiveUserId),
+        supabase
+          .from("messages")
           .select("id, conversations!inner(user_id)", { count: "exact", head: true })
-          .eq("conversations.user_id", user!.id)
-          .gte("created_at", new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
+          .eq("conversations.user_id", effectiveUserId)
+          .gte("created_at", monthStart),
       ]);
       return {
         contacts: contactsRes.count ?? 0,
@@ -46,26 +83,59 @@ export default function Billing() {
     staleTime: 60_000,
   });
 
-  const { data: stats } = useDashboardStats();
+  const { data: stats } = useDashboardHomeStats(30);
   const { data: problems = [] } = useProblems();
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
 
   useEffect(() => {
     if (limits.contacts < 0) return;
     const usedContacts = usage?.contacts ?? 0;
     const pct = Math.round((usedContacts / limits.contacts) * 100);
-    if (pct >= 80 && !showLimitModal) {
+    if (pct >= 80 && !limitModalScheduledRef.current) {
+      limitModalScheduledRef.current = true;
       const t = window.setTimeout(() => setShowLimitModal(true), 500);
       return () => window.clearTimeout(t);
     }
-  }, [usage?.contacts, limits.contacts, showLimitModal]);
+  }, [usage?.contacts, limits.contacts]);
 
   const revenueAtRisk = problems.reduce((acc, p) => acc + Number(p.estimated_impact || 0), 0);
   const totalRecovered = stats?.revenueLast30 ?? 0;
 
-  const handleConfirmCancel = () => {
-    setShowCancelModal(false);
-    toast.error("Pedido de cancelamento enviado. Entraremos em contato em até 24h.");
+  const openStripePortal = async () => {
+    setPortalLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ url?: string }>("stripe-billing-portal", {
+        body: {},
+      });
+      if (error) throw new Error(error.message);
+      const url = data?.url;
+      if (!url) throw new Error("URL do portal não retornada. Confirme STRIPE_SECRET_KEY e stripe_customer_id.");
+      window.location.href = url;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível abrir o portal de faturação.");
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!user?.id) return;
+    setCancelSubmitting(true);
+    try {
+      const { error } = await supabase.from("billing_cancellation_requests").insert({
+        user_id: user.id,
+        note: null,
+      });
+      if (error) throw error;
+      setShowCancelModal(false);
+      toast.success("Pedido de cancelamento registado. A equipa irá contactá-lo em breve.");
+      void queryClient.invalidateQueries({ queryKey: ["billing_usage"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível registar o pedido.");
+    } finally {
+      setCancelSubmitting(false);
+    }
   };
 
   const trialDaysLeft = profile?.trial_ends_at
@@ -123,14 +193,20 @@ export default function Billing() {
               >
                 Fazer upgrade agora <ArrowRight className="w-3.5 h-3.5" />
               </Button>
-              <a
-                href="https://wa.me/5511999999999?text=Quero%20fazer%20upgrade%20do%20LTV%20Boost"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-center text-xs text-muted-foreground hover:text-primary font-bold underline underline-offset-2 transition-colors"
-              >
-                Falar com especialista via WhatsApp
-              </a>
+              {supportWaHref ? (
+                <a
+                  href={supportWaHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-center text-xs text-muted-foreground hover:text-primary font-bold underline underline-offset-2 transition-colors"
+                >
+                  Falar com especialista via WhatsApp
+                </a>
+              ) : (
+                <p className="text-center text-[10px] text-muted-foreground">
+                  Defina <code className="text-[10px]">VITE_SUPPORT_WHATSAPP_E164</code> no ambiente para mostrar o link de suporte.
+                </p>
+              )}
             </div>
           </div>
           {/* Urgency bar */}
@@ -242,9 +318,9 @@ export default function Billing() {
                   <Button variant="outline" size="sm" className="w-full" disabled>
                     Plano atual
                   </Button>
-                ) : (
+                ) : supportWaE164 ? (
                   <a
-                    href={`https://wa.me/5511999999999?text=Quero%20fazer%20upgrade%20para%20o%20plano%20${plan.name}%20do%20LTV%20Boost`}
+                    href={`https://wa.me/${supportWaE164}?text=${encodeURIComponent(`Quero fazer upgrade para o plano ${plan.name} do LTV Boost`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -252,6 +328,10 @@ export default function Billing() {
                       Assinar {plan.name} <ArrowRight className="w-3 h-3" />
                     </Button>
                   </a>
+                ) : (
+                  <Button size="sm" className="w-full gap-1 font-bold" variant="outline" onClick={() => navigate("/planos")}>
+                    Ver planos <ArrowRight className="w-3 h-3" />
+                  </Button>
                 )}
               </div>
             );
@@ -296,10 +376,13 @@ export default function Billing() {
           <CreditCard className="w-4 h-4 text-primary" />
           <h2 className="font-semibold">Método de pagamento</h2>
         </div>
-        <p className="text-sm text-muted-foreground">Gerenciamento de pagamentos via Stripe em breve.</p>
-        <Button variant="outline" disabled className="gap-2">
-          <CreditCard className="w-4 h-4" />
-          Adicionar cartão
+        <p className="text-sm text-muted-foreground">
+          Abra o portal seguro da Stripe para atualizar cartão, faturas e dados de faturação (requer{" "}
+          <code className="text-xs">stripe_customer_id</code> no perfil e a edge <code className="text-xs">stripe-billing-portal</code>).
+        </p>
+        <Button variant="outline" className="gap-2" onClick={() => void openStripePortal()} disabled={portalLoading}>
+          {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+          Abrir portal de faturação
         </Button>
       </div>
 
@@ -316,9 +399,9 @@ export default function Billing() {
       </div>
 
       {showCancelModal && (
-        <CancellationModal 
-          onClose={() => setShowCancelModal(false)}
-          onConfirm={handleConfirmCancel}
+        <CancellationModal
+          onClose={() => !cancelSubmitting && setShowCancelModal(false)}
+          onConfirm={() => void handleConfirmCancel()}
           revenueAtRisk={revenueAtRisk}
           totalRecovered={totalRecovered}
         />

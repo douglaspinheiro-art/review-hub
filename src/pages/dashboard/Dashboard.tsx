@@ -24,14 +24,14 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CHSGauge } from "@/components/dashboard/CHSGauge";
 import { QuickStartPlaybooks } from "@/components/dashboard/QuickStartPlaybooks";
-import { ProblemCard } from "@/components/dashboard/ProblemCard";
+import { ProblemCard, type ProblemProps } from "@/components/dashboard/ProblemCard";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { ROIAttribution } from "@/components/dashboard/ROIAttribution";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { useProblems, useDashboardStats, useConversionBaseline } from "@/hooks/useDashboard";
+import { useProblems, useDashboardHomeStats, useConversionBaseline, type OpportunityRow } from "@/hooks/useDashboard";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { usePrescriptionsPendingStats } from "@/hooks/useLTVBoost";
 import { predictNextOrder } from "@/lib/ltv-predictor";
@@ -40,6 +40,65 @@ import { getMoatSignals, trackMoatEvent } from "@/lib/moat-telemetry";
 import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
 import { ECOMMERCE_PLATFORM_CHIPS } from "@/lib/ecommerce-platforms";
+import { PLANS } from "@/lib/pricing-constants";
+import type { Json } from "@/integrations/supabase/types";
+
+function dadosJsonObject(dados: Json | null | undefined): Record<string, unknown> {
+  if (dados && typeof dados === "object" && !Array.isArray(dados)) return dados as Record<string, unknown>;
+  return {};
+}
+
+function strFromRecord(rec: Record<string, unknown>, key: string): string | undefined {
+  const v = rec[key];
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+function pickFirstStr(...candidates: (string | null | undefined)[]): string {
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) return c;
+  }
+  return "";
+}
+
+function asProblemTipo(raw: string | null | undefined): ProblemProps["tipo"] {
+  const v = (raw ?? "").toLowerCase();
+  if (v === "funil" || v === "produto" || v === "sazonal" || v === "reputacao") return v;
+  return "funil";
+}
+
+function asProblemSeveridade(raw: string | null | undefined): ProblemProps["severidade"] {
+  const n = (raw ?? "").toLowerCase();
+  if (n === "critical" || n === "critico") return "critico";
+  if (n === "high" || n === "alto") return "alto";
+  if (n === "medium" || n === "medio") return "medio";
+  if (n === "low" || n === "oportunidade" || n === "opportunity") return "oportunidade";
+  if (n === "critico" || n === "alto" || n === "medio" || n === "oportunidade") return n;
+  return "medio";
+}
+
+function asProblemStatus(raw: string | null | undefined): ProblemProps["status"] {
+  const n = (raw ?? "novo").toLowerCase();
+  if (n === "novo" || n === "snoozed" || n === "em_tratamento" || n === "resolvido" || n === "ignorado") return n;
+  return "novo";
+}
+
+/** Mapeia linha `opportunities` (+ campos opcionais em `dados_json`) para props do cartão. */
+function opportunityRowToProblemProps(row: OpportunityRow): ProblemProps {
+  const j = dadosJsonObject(row.dados_json);
+  return {
+    tipo: asProblemTipo(strFromRecord(j, "tipo") ?? row.type),
+    titulo: pickFirstStr(strFromRecord(j, "titulo"), row.title),
+    descricao: pickFirstStr(strFromRecord(j, "descricao"), row.description ?? undefined) || "Impacto imediato no lucro líquido.",
+    severidade: asProblemSeveridade(strFromRecord(j, "severidade") ?? row.severity),
+    impacto_estimado: typeof row.estimated_impact === "number" && Number.isFinite(row.estimated_impact) ? row.estimated_impact : 0,
+    causa_raiz: pickFirstStr(strFromRecord(j, "causa_raiz"), row.root_cause ?? undefined) || undefined,
+    detectado_em: pickFirstStr(
+      typeof row.detected_at === "string" ? row.detected_at : undefined,
+      strFromRecord(j, "detectado_em"),
+    ) || new Date().toISOString(),
+    status: asProblemStatus(row.status),
+  };
+}
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
@@ -50,7 +109,8 @@ export default function Dashboard() {
   const isDemo = searchParams.get("demo") === "true";
   const isNewSetup = searchParams.get("setup") === "complete" || searchParams.get("setup") === "novo";
   const isFirstWeek = searchParams.get("firstweek") === "true";
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: problems = [] } = useProblems();
   const lojaDash = useLoja();
@@ -64,7 +124,13 @@ export default function Dashboard() {
   const pendingCount = queueIsPrescriptions ? pendingRxCount : problems.length;
   const pendingValue = queueIsPrescriptions ? pendingRxValue : problemsValue;
 
-  const { data: statsData } = useDashboardStats(period);
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+    isError: statsError,
+    error: statsQueryError,
+    refetch: refetchHomeStats,
+  } = useDashboardHomeStats(period);
   const { data: baseline } = useConversionBaseline(period);
 
   // Use real data only — no mock fallbacks
@@ -86,16 +152,37 @@ export default function Dashboard() {
 
   const isWhatsAppConnected = whatsappConnections.some(c => c.status === "connected");
 
-  const handleSync = () => {
+  const planKey = (profile?.plan ?? "starter") as keyof typeof PLANS;
+  const monthlyToolEstimate =
+    profile?.plan === "enterprise"
+      ? PLANS.scale.cogsFixed
+      : (PLANS[planKey]?.cogsFixed ?? PLANS.starter.cogsFixed);
+
+  const handleSync = async () => {
     if (isDemo) {
       toast.info("Modo demonstração ativo.");
       return;
     }
+    if (!storeIdDash) {
+      toast.error("Associe uma loja para sincronizar os canais.");
+      return;
+    }
     setIsSyncing(true);
-    setTimeout(() => {
-      toast.success("Canais sincronizados!");
+    try {
+      const { error } = await supabase.functions.invoke("sincronizar-canal", {
+        body: { store_id: storeIdDash },
+      });
+      if (error) throw new Error(error.message);
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-home-stats"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      await queryClient.invalidateQueries({ queryKey: ["conversion-baseline"] });
+      await queryClient.invalidateQueries({ queryKey: ["whatsapp_connections_status"] });
+      toast.success("Canais sincronizados.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível sincronizar. Verifique a edge `sincronizar-canal`.");
+    } finally {
       setIsSyncing(false);
-    }, 1500);
+    }
   };
 
   const [showNPS, setShowNPS] = useState(false);
@@ -165,24 +252,24 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Real data from queries — no hardcoded values
-  const roi = revenueRecovered > 0 ? (revenueRecovered / 297).toFixed(1) : "0";
+  /** ROI vs custo fixo estimado do plano (COGS interno — ver `pricing-constants`). */
+  const roi = revenueRecovered > 0 ? (revenueRecovered / Math.max(monthlyToolEstimate, 1)).toFixed(1) : "0";
   
   const stats = [
     { label: "LTV Boost ROI",  value: `${roi}x`,  trend: revenueGrowth, icon: Zap, color: "text-emerald-500" },
     { label: "Recuperado",     value: `R$ ${revenueRecovered.toLocaleString("pt-BR")}`, trend: revenueGrowth, icon: DollarSign, color: "text-primary" },
-    { label: "Conversão",      value: `${((statsData as any)?.conversionRate ?? 0).toFixed(2)}%`, trend: 0, icon: TrendingUp },
-    { label: "Novos Clientes", value: ((statsData as any)?.newContacts ?? statsData?.newContactsLast30 ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
+    { label: "Conversão",      value: `${(statsData?.conversionRate ?? 0).toFixed(2)}%`, trend: 0, icon: TrendingUp },
+    { label: "Novos Clientes", value: (statsData?.newContactsLast30 ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
   ];
 
-  const conversionRate = Number((statsData as any)?.conversionRate ?? 0);
+  const conversionRate = Number(statsData?.conversionRate ?? 0);
   const conversionTarget = 2.5;
   const conversionGap = Math.max(0, conversionTarget - conversionRate);
   const conversionProgress = Math.min(100, Math.round((conversionRate / conversionTarget) * 100));
   const estimatedIncrementalRevenue = pendingValue;
   const projectedBaseRevenue = Number(statsData?.revenueLast30 ?? 0);
   const projectedWithBoostRevenue = projectedBaseRevenue + estimatedIncrementalRevenue;
-  const dormantCustomers = Number((statsData as any)?.atRiskCount ?? 0);
+  const dormantCustomers = Number(statsData?.atRiskCount ?? 0);
   const orchestratorContext = {
     pendingCount,
     pendingValue,
@@ -201,7 +288,7 @@ export default function Dashboard() {
     recoveredRevenue: orchestratorContext.revenueLast30,
     activeOpportunities: orchestratorContext.activeOpportunities,
     unreadConversations: orchestratorContext.totalUnread,
-    chs: (statsData as any)?.chs ?? 0,
+    chs: statsData?.chs ?? 0,
   });
   const propensity = getPropensityOutput(retentionGraph);
 
@@ -256,6 +343,24 @@ export default function Dashboard() {
 
         {milestone && (
           <MilestoneToast message={milestone} onDismiss={() => setMilestone(null)} />
+        )}
+
+        {statsError && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-sm text-destructive">
+              {statsQueryError instanceof Error ? statsQueryError.message : "Erro ao carregar métricas da home."}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void refetchHomeStats()}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
+
+        {statsLoading && !statsData && (
+          <div className="text-sm text-muted-foreground flex items-center gap-2" role="status" aria-live="polite">
+            <RefreshCw className="w-4 h-4 animate-spin shrink-0" aria-hidden />
+            Carregando indicadores da operação…
+          </div>
         )}
 
         {/* Título + período (toda a página respeita este intervalo) */}
@@ -585,10 +690,10 @@ export default function Dashboard() {
             </div>
             <div onClick={() => navigate("/dashboard/funil")} className="cursor-pointer group">
               <CHSGauge
-                score={(statsData as any)?.chs ?? 0}
-                label={(statsData as any)?.chsLabel ?? "Sem dados"}
-                breakdown={(statsData as any)?.chsBreakdown}
-                historico={(statsData as any)?.chsHistory}
+                score={statsData?.chs ?? 0}
+                label={statsData?.chsLabel ?? "Sem dados"}
+                breakdown={statsData?.chsBreakdown}
+                historico={statsData?.chsHistory}
                 className="h-full border-none shadow-2xl shadow-primary/5 bg-card/50 backdrop-blur-xl group-hover:scale-[1.02] transition-transform duration-500"
               />
             </div>
@@ -801,16 +906,16 @@ export default function Dashboard() {
                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Radar de Recompra</span>
                   </div>
                   <h3 className="text-2xl font-black font-syne tracking-tighter uppercase italic">
-                    <span className="text-primary">{(statsData as any)?.idealPurchaseCount ?? 0} clientes</span> no momento ideal de compra
+                    <span className="text-primary">{statsData?.idealPurchaseCount ?? 0} clientes</span> no momento ideal de compra
                   </h3>
                   <div className="grid grid-cols-3 gap-6 pt-2">
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Potencial de Receita</p>
-                      <p className="text-xl font-black font-syne">R$ {((statsData as any)?.estimatedRevenue ?? 0).toLocaleString("pt-BR")}</p>
+                      <p className="text-xl font-black font-syne">R$ {(statsData?.estimatedRevenue ?? 0).toLocaleString("pt-BR")}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Risco de Churn</p>
-                      <p className="text-xl font-black font-syne text-red-500">{(statsData as any)?.atRiskCount ?? 0} clientes</p>
+                      <p className="text-xl font-black font-syne text-red-500">{statsData?.atRiskCount ?? 0} clientes</p>
                     </div>
                     <div className="flex items-end pb-1">
                       <Button size="sm" className="h-9 font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/20" onClick={() => navigate("/dashboard/campanhas")}>
@@ -822,17 +927,10 @@ export default function Dashboard() {
               </div>
 
               {problems.length > 0 ? (
-                problems.map((p, i) => (
+                problems.map((p) => (
                   <ProblemCard
                     key={p.id}
-                    tipo={(p as any).tipo ?? p.type}
-                    titulo={(p as any).titulo ?? p.title}
-                    descricao={(p as any).descricao ?? p.description ?? "Impacto imediato no lucro líquido."}
-                    severidade={(p as any).severidade ?? p.severity}
-                    impacto_estimado={(p as any).impacto_estimado ?? p.estimated_impact}
-                    causa_raiz={(p as any).causa_raiz ?? p.root_cause}
-                    detectado_em={(p as any).detectado_em ?? p.detected_at}
-                    status={p.status as any}
+                    {...opportunityRowToProblemProps(p)}
                     onVer={() => navigate("/dashboard/prescricoes")}
                     onAprovar={() => navigate("/dashboard/prescricoes")}
                   />

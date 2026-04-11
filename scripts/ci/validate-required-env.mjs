@@ -26,6 +26,8 @@ const EDGE_REQUIRED = [
 
 /** Recomendados / integrações — não bloqueiam `edge` (beta pode não usar todos). */
 const EDGE_RECOMMENDED = [
+  "STRIPE_SECRET_KEY",
+  "STRIPE_BILLING_PORTAL_RETURN_URL",
   "CRON_SECRET",
   "RESEND_DEFAULT_FROM",
   "RESEND_WEBHOOK_SECRET",

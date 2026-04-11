@@ -690,6 +690,27 @@ export type Database = {
           },
         ]
       }
+      billing_cancellation_requests: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       campaign_segments: {
         Row: {
           campaign_id: string
@@ -2927,6 +2948,8 @@ export type Database = {
           points_per_real: number | null
           role: string | null
           social_proof_enabled: boolean | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           trial_ends_at: string | null
           updated_at: string
         }
@@ -2953,6 +2976,8 @@ export type Database = {
           points_per_real?: number | null
           role?: string | null
           social_proof_enabled?: boolean | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           trial_ends_at?: string | null
           updated_at?: string
         }
@@ -2979,6 +3004,8 @@ export type Database = {
           points_per_real?: number | null
           role?: string | null
           social_proof_enabled?: boolean | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           trial_ends_at?: string | null
           updated_at?: string
         }
