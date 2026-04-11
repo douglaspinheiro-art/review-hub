@@ -115,10 +115,11 @@ serve(async (req) => {
 
       totalProcessed++;
     } catch (e) {
-      console.error(`Webhook job ${job.id} error:`, e.message);
+      const err = e as Error;
+      console.error(`Webhook job ${job.id} error:`, err.message);
       await supabase.from("webhook_queue").update({ 
         status: "failed", 
-        error_message: e.message,
+        error_message: err.message,
         updated_at: new Date().toISOString() 
       }).eq("id", job.id);
       totalErrors++;
@@ -130,6 +131,7 @@ serve(async (req) => {
     .from("scheduled_messages")
     .select("*, stores(*), customers_v3(*)")
     .eq("status", "pending")
+    .is("sent_at", null)
     .lte("scheduled_for", now)
     .limit(BATCH_SIZE);
 
@@ -156,15 +158,15 @@ serve(async (req) => {
         meta_api_version: conn.meta_api_version,
       };
 
-      let result: any = null;
-      const metadata = msg.metadata || {};
+      let result: unknown = null;
+      const metadata = (msg.metadata || {}) as Record<string, unknown>;
       if (metadata.content_type === "template" && metadata.meta_template_name) {
-        result = await outboundSendMetaTemplate(waRow, e164, metadata.meta_template_name, "pt_BR", [msg.message_content]);
+        result = await outboundSendMetaTemplate(waRow, e164, String(metadata.meta_template_name), "pt_BR", [msg.message_content]);
       } else {
         result = await outboundSendText(waRow, e164, msg.message_content);
       }
 
-      await supabase.from("scheduled_messages").update({ status: "sent", processed_at: new Date().toISOString() }).eq("id", msg.id);
+      await supabase.from("scheduled_messages").update({ status: "sent", sent_at: new Date().toISOString(), processed_at: new Date().toISOString() }).eq("id", msg.id);
 
       
       // Update Campaign Counter
@@ -175,8 +177,9 @@ serve(async (req) => {
       totalProcessed++;
       await new Promise(r => setTimeout(r, ANTI_SPAM_DELAY_MS));
     } catch (e) {
-      console.error(`WA msg ${msg.id} error:`, e.message);
-      await supabase.from("scheduled_messages").update({ status: "failed", error_message: e.message }).eq("id", msg.id);
+      const err = e as Error;
+      console.error(`WA msg ${msg.id} error:`, err.message);
+      await supabase.from("scheduled_messages").update({ status: "failed", error_message: err.message }).eq("id", msg.id);
       totalErrors++;
     }
   }
@@ -220,8 +223,9 @@ serve(async (req) => {
 
       totalProcessed++;
     } catch (e) {
-      console.error(`Email row ${row.id} error:`, e.message);
-      await supabase.from("newsletter_send_recipients").update({ status: "failed", error_message: e.message }).eq("id", row.id);
+      const err = e as Error;
+      console.error(`Email row ${row.id} error:`, err.message);
+      await supabase.from("newsletter_send_recipients").update({ status: "failed", error_message: err.message }).eq("id", row.id);
       totalErrors++;
     }
   }

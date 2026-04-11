@@ -85,7 +85,8 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
   const initials = contact.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?";
 
   async function handleSendCheckout() {
-    if (!(loja.data as any)?.url) {
+    const lojaData = loja.data as Database["public"]["Tables"]["stores"]["Row"] | null;
+    if (!lojaData?.url) {
       toast.error("Configure a URL da loja em Funil → Configurar loja");
       return;
     }
@@ -99,10 +100,10 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
     }
     setCheckoutLoading(true);
     try {
-      const platform = ((loja.data as any)?.plataforma === "outro" ? "custom" : (loja.data as any)?.plataforma) as EcommercePlatform;
+      const platform = (lojaData?.segment === "outro" ? "custom" : lojaData?.segment || "custom") as EcommercePlatform;
       const url = buildMagicLink({
         platform,
-        storeUrl: (loja.data as any)?.url,
+        storeUrl: lojaData?.url || "",
         cartItems: [{ id: sku.trim(), quantity: Number(qty) || 1 }],
         customerPhone: contact.phone,
         customerEmail: contact.email,
@@ -125,7 +126,8 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
   }
 
   async function handleSendPix() {
-    const pixKey = (loja.data as any)?.pix_key || pixKeyInput.trim();
+    const lojaData = loja.data as Database["public"]["Tables"]["stores"]["Row"] | null;
+    const pixKey = lojaData?.pix_key || pixKeyInput.trim();
     if (!pixKey) {
       toast.error("Informe a chave PIX");
       return;
@@ -143,7 +145,7 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
     try {
       const payload = generatePixPayload({
         key: pixKey,
-        receiverName: (loja.data as any)?.name ?? "Loja",
+        receiverName: lojaData?.name ?? "Loja",
         receiverCity: "Brasil",
         amount,
         description: pixDesc.trim() || undefined,
@@ -304,7 +306,7 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
             <div className="bg-muted/40 border border-violet-500/20 rounded-2xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
               <p className="text-[10px] font-black uppercase tracking-widest text-violet-600">Pagamento PIX</p>
               <div className="space-y-2">
-                {!(loja.data as any)?.pix_key && (
+                {!(loja.data as Database["public"]["Tables"]["stores"]["Row"])?.pix_key && (
                   <div>
                     <Label className="text-[10px] text-muted-foreground">Chave PIX</Label>
                     <Input placeholder="CPF, CNPJ, email ou chave aleatória" value={pixKeyInput} onChange={e => setPixKeyInput(e.target.value)} className="mt-1 h-8 text-sm" />

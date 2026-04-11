@@ -352,7 +352,7 @@ export default function Planos({ embedInDashboard, defaultTab: _defaultTab }: { 
                             if (label === "E-mail Incluso") return `${fmtN(p.includedEmail)} emails`;
                             if (label === "SMS Incluso") return p.includedSMS > 0 ? `${fmtN(p.includedSMS)} msgs` : "—";
                             if (label === "Contatos (Perfil Unificado)") return fmtN(p.maxContacts);
-                            return (d.features as any)[
+                            return (d.features as Record<string, string | boolean>)[
                               label === "Instâncias WhatsApp"  ? "instances"    :
                               label === "Atendentes no Inbox"  ? "users"        :
                               label === "Flow Engine"          ? "journeys"     :

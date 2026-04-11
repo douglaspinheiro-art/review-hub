@@ -131,7 +131,7 @@ async function resolveContacts(
     sendWindowEndHour = Math.min(23, Math.max(0, Number(seg.filters?.send_window_end_hour ?? 21)));
     timezoneOffsetHours = Number(seg.filters?.timezone_offset_hours ?? -3);
   } else {
-    const tags = ((campaignMeta as any)?.tags ?? []) as string[];
+    const tags = (campaignMeta?.tags ?? []) as string[];
     const firstTag = String(tags[0] ?? "");
     if (firstTag === "vip") query = query.in("rfm_segment", ["champions", "loyal"]);
     else if (firstTag === "inactive") query = query.in("rfm_segment", ["at_risk", "lost"]);
@@ -143,18 +143,18 @@ async function resolveContacts(
   const raw = data ?? [];
 
   let baseCandidates = raw;
-  const segKey = String(segments?.[0]?.filters?.segment_key ?? ((campaignMeta as any)?.tags ?? [])[0] ?? "");
+  const segKey = String(segments?.[0]?.filters?.segment_key ?? ((campaignMeta as { tags?: string[] })?.tags ?? [])[0] ?? "");
   const requireAbandonedCart = Boolean(segments?.[0]?.filters?.require_abandoned_cart) || segKey === "cart_abandoned";
   if (requireAbandonedCart) {
     const customerIds = raw.map((r) => r.id);
     if (customerIds.length > 0) {
-      const { data: carts } = await (supabase as any)
+      const { data: carts } = await supabase
         .from("abandoned_carts")
         .select("customer_id,status")
         .eq("store_id", storeId)
         .in("customer_id", customerIds)
         .in("status", ["pending", "open"]);
-      const cartIds = new Set((carts ?? []).map((c: any) => c.customer_id));
+      const cartIds = new Set((carts ?? []).map((c) => c.customer_id));
       baseCandidates = raw.filter((r) => cartIds.has(r.id));
     } else {
       baseCandidates = [];
@@ -183,7 +183,7 @@ async function resolveContacts(
   let suppressedByCooldown = new Set<string>();
   if (ids.length > 0) {
     const cutoff = new Date(Date.now() - cooldownHours * 60 * 60 * 1000).toISOString();
-    const { data: recent } = await (supabase as any)
+    const { data: recent } = await supabase
       .from("message_sends")
       .select("customer_id,status,created_at")
       .eq("store_id", storeId)
@@ -191,8 +191,8 @@ async function resolveContacts(
       .gte("created_at", cutoff);
     suppressedByCooldown = new Set(
       (recent ?? [])
-        .filter((r: any) => String(r.status ?? "").startsWith("sent"))
-        .map((r: any) => r.customer_id),
+        .filter((r) => String(r.status ?? "").startsWith("sent"))
+        .map((r) => r.customer_id),
     );
   }
 
@@ -474,14 +474,14 @@ serve(async (req: Request) => {
 
     const contactIds = batch.map((c) => c.id);
     const { data: carts } = contactIds.length > 0
-      ? await (supabase as any)
+      ? await supabase
         .from("abandoned_carts")
         .select("customer_id,cart_value,recovery_url,cart_items,created_at")
         .eq("store_id", campaign.store_id)
         .in("customer_id", contactIds)
         .order("created_at", { ascending: false })
       : { data: [] };
-    const latestCartByCustomer = new Map<string, any>();
+    const latestCartByCustomer = new Map<string, { cart_value?: number; recovery_url?: string; cart_items?: any[] }>();
     for (const cart of (carts ?? [])) {
       if (!latestCartByCustomer.has(cart.customer_id)) {
         latestCartByCustomer.set(cart.customer_id, cart);
@@ -493,8 +493,8 @@ serve(async (req: Request) => {
 
     if (!alreadyInitialized) {
       if (suppressedOptOut.length > 0) {
-        await (supabase as any).from("message_sends").insert(
-          suppressedOptOut.map((contact: any) => ({
+        await supabase.from("message_sends").insert(
+          suppressedOptOut.map((contact) => ({
             user_id: actorUserId,
             store_id: campaign.store_id,
             campaign_id,
@@ -505,7 +505,7 @@ serve(async (req: Request) => {
         );
       }
       if (suppressedCooldown.length > 0) {
-        await (supabase as any).from("message_sends").insert(
+        await supabase.from("message_sends").insert(
           suppressedCooldown.map((contact) => ({
             user_id: actorUserId,
             store_id: campaign.store_id,
@@ -518,7 +518,7 @@ serve(async (req: Request) => {
       }
 
       if (holdouts.length > 0) {
-        await (supabase as any).from("message_sends").insert(
+        await supabase.from("message_sends").insert(
           holdouts.map((contact) => ({
             user_id: actorUserId,
             store_id: campaign.store_id,

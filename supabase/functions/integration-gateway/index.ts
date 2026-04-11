@@ -97,8 +97,9 @@ serve(async (req) => {
       { status: 202, headers: { ...cors, "Content-Type": "application/json" } }
     );
 
-  } catch (e: any) {
-    console.error(`[${requestId}] Gateway Error:`, e?.message);
+  } catch (e) {
+    const err = e as Error;
+    console.error(`[${requestId}] Gateway Error:`, err.message);
     return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
   }
 });

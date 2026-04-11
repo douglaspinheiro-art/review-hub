@@ -119,7 +119,7 @@ export default function Reviews() {
       void queryClient.invalidateQueries({ queryKey: ["reviews"] });
       void queryClient.invalidateQueries({ queryKey: ["reviews-stats"] });
     },
-    onError: (e: any) => toast({ title: "Erro ao aprovar em lote", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Erro ao aprovar em lote", description: e.message, variant: "destructive" }),
   });
 
   const toggleSelect = (id: string) => {
