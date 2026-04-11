@@ -711,6 +711,45 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_message_templates: {
+        Row: {
+          id: string
+          user_id: string
+          store_id: string | null
+          name: string
+          objective: string
+          channel: string
+          message: string
+          whatsapp_config: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          store_id?: string | null
+          name: string
+          objective: string
+          channel?: string
+          message: string
+          whatsapp_config?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          store_id?: string | null
+          name?: string
+          objective?: string
+          channel?: string
+          message?: string
+          whatsapp_config?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       campaign_segments: {
         Row: {
           campaign_id: string

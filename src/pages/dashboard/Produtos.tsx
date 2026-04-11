@@ -298,7 +298,7 @@ export default function Produtos() {
     refetch,
     isFetching,
   } = useProdutosV3(storeId, { filter, page, pageSize: PAGE_SIZE, search: serverSearch });
-  const produtos = productsPage?.rows ?? [];
+  const produtos = useMemo(() => productsPage?.rows ?? [], [productsPage]);
   const totalCatalog = productsPage?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCatalog / PAGE_SIZE));
 

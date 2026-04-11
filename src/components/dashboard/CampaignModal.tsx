@@ -33,7 +33,8 @@ type LojaExtended = {
   meta_conversao?: number | null;
   [key: string]: unknown;
 };
-import { useProductsV3 as useProdutosV3 } from "@/hooks/useLTVBoost";
+import { useProductsV3 as useProdutosV3, type ProductRow } from "@/hooks/useLTVBoost";
+import type { Json } from "@/integrations/supabase/types";
 import { contactMatchesEnglishRfmSegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
 
 export type ProdutoParaCampanha = {
@@ -43,6 +44,15 @@ export type ProdutoParaCampanha = {
   preco?: number | null;
   estoque?: number | null;
 };
+
+type AiCopyVariation = { label: string; text: string };
+
+function parseWaContentType(v: unknown): "text" | "image" | "video" | "audio" | "document" | "template" {
+  if (v === "image" || v === "video" || v === "audio" || v === "document" || v === "template" || v === "text") {
+    return v;
+  }
+  return "text";
+}
 
 function gerarMensagemProdutos(
   mode: "single" | "collection",
@@ -207,7 +217,7 @@ export default function CampaignModal({
 }) {
   const [step, setStep] = useState(prefill?.skipObjective ? 1 : 0);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiVariations, setAiVariations] = useState<any[]>([]);
+  const [aiVariations, setAiVariations] = useState<AiCopyVariation[]>([]);
   const [showMagicLink, setShowMagicLink] = useState(false);
   const [magicSku, setMagicSku] = useState("");
   const [magicQty, setMagicQty] = useState("1");
@@ -260,9 +270,9 @@ export default function CampaignModal({
     queryKey: ["campaign_edit_bundle", editingCampaignId],
     enabled: !!editingCampaignId && !!user?.id,
     queryFn: async () => {
-      const { data: camp, error } = await (supabase.from("campaigns") as any).select("*").eq("id", editingCampaignId).single();
+      const { data: camp, error } = await supabase.from("campaigns").select("*").eq("id", editingCampaignId).single();
       if (error) throw error;
-      const { data: seg } = await (supabase as any).from("campaign_segments").select("type,filters").eq("campaign_id", editingCampaignId).maybeSingle();
+      const { data: seg } = await supabase.from("campaign_segments").select("type,filters").eq("campaign_id", editingCampaignId).maybeSingle();
       return { camp, seg } as {
         camp: Record<string, unknown>;
         seg: { type?: string; filters?: Record<string, unknown> } | null;
@@ -356,7 +366,7 @@ export default function CampaignModal({
     queryKey: ["campaign_message_templates", user?.id, channel, objective],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("campaign_message_templates")
         .select("*")
         .eq("user_id", user.id)
@@ -375,7 +385,7 @@ export default function CampaignModal({
       if (!user) throw new Error("Não autenticado");
       if (!templateName.trim()) throw new Error("Informe um nome para o template");
       if (!message.trim()) throw new Error("Escreva uma mensagem antes de salvar");
-      const { error } = await (supabase as any).from("campaign_message_templates").insert({
+      const { error } = await supabase.from("campaign_message_templates").insert({
         user_id: user.id,
         store_id: lojaData?.id ?? null,
         name: templateName.trim(),
@@ -438,7 +448,7 @@ export default function CampaignModal({
       let campaignId: string | undefined;
 
       if (isEdit && editingCampaignId) {
-        const { error: upErr } = await (supabase.from("campaigns") as any).update({
+        const { error: upErr } = await supabase.from("campaigns").update({
           store_id: lojaData.id,
           name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
           message: data.message,
@@ -450,7 +460,7 @@ export default function CampaignModal({
         if (upErr) throw upErr;
         campaignId = editingCampaignId;
       } else {
-        const { data: inserted, error } = await (supabase.from("campaigns") as any).insert([{
+        const { data: inserted, error } = await supabase.from("campaigns").insert([{
           user_id: user.id,
           store_id: lojaData.id,
           name: data.name || `Campanha ${new Date().toLocaleDateString("pt-BR")}`,
@@ -511,12 +521,11 @@ export default function CampaignModal({
         }
       })();
 
-      await (supabase as any).from("campaign_segments").delete().eq("campaign_id", campaignId);
-      const { error: segErr } = await (supabase as any).from("campaign_segments").insert({
+      await supabase.from("campaign_segments").delete().eq("campaign_id", campaignId);
+      const { error: segErr } = await supabase.from("campaign_segments").insert({
         campaign_id: campaignId,
-        user_id: user!.id,
         type: segmentPayload.type,
-        filters: segmentPayload.filters,
+        filters: segmentPayload.filters as Json,
       });
       if (segErr) throw segErr;
       return { isEdit };
@@ -622,7 +631,7 @@ export default function CampaignModal({
 
   const nextStep = async () => {
     if (step === 0) {
-      const valid = await trigger(["name", "channel", "objective"] as any);
+      const valid = await trigger(["name", "channel", "objective"] as const);
       if (!valid) return;
       setStep(s => s + 1);
       return;
@@ -642,7 +651,7 @@ export default function CampaignModal({
       return;
     }
     if (step === STEP_MENSAGEM) {
-      const valid = await trigger(["message"] as any);
+      const valid = await trigger(["message"] as const);
       if (!valid) return;
     }
     setStep(s => s + 1);
@@ -831,7 +840,7 @@ export default function CampaignModal({
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
-                    {((produtosQuery.data?.rows ?? []) as any[]).map((p) => {
+                    {(produtosQuery.data?.rows ?? ([] as ProductRow[])).map((p) => {
                       const isSelected = selectedProducts.some(s => s.id === p.id);
                       return (
                         <button
@@ -922,14 +931,14 @@ export default function CampaignModal({
                         ))}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {(savedTemplates as any[]).slice(0, 6).map((tpl) => (
+                        {savedTemplates.slice(0, 6).map((tpl) => (
                           <button
                             key={tpl.id}
                             type="button"
                             onClick={() => {
                               setValue("message", tpl.message ?? "");
-                              const waCfg = tpl.whatsapp_config ?? {};
-                              setWaContentType((waCfg.content_type ?? "text") as any);
+                              const waCfg = (tpl.whatsapp_config ?? {}) as Record<string, unknown>;
+                              setWaContentType(parseWaContentType(waCfg.content_type));
                               setWaMediaUrl(waCfg.media_url ?? "");
                               const b = Array.isArray(waCfg.buttons) && waCfg.buttons.length > 0 ? waCfg.buttons[0] : null;
                               setWaButtonLabel(b?.label ?? "");

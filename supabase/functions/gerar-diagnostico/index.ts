@@ -14,6 +14,19 @@ const BENCHMARKS: Record<string, number> = {
   "Alimentos": 3.0, "Outro": 2.5,
 };
 
+type HistoricoPrescricaoLinha = {
+  titulo?: string;
+  funcionou?: boolean;
+  canal?: string;
+  segmento?: string;
+  roi_real?: number | string;
+};
+
+type EventoSazonalLinha = {
+  nome?: string;
+  dias_restantes?: number;
+};
+
 const DESCONTO_POR_SEGMENTO: Record<string, { tipo: string; valor: number; justificativa: string }> = {
   campiao:       { tipo: "percentual", valor: 5,  justificativa: "Campeões respondem a qualquer incentivo — não desperdice margem" },
   fiel:          { tipo: "percentual", valor: 8,  justificativa: "Fiéis valorizam reconhecimento mais que desconto" },
@@ -185,14 +198,14 @@ Saúde de produtos:
 
 Histórico de prescrições (últimas 5):
 ${historico_prescricoes.length > 0
-  ? historico_prescricoes.map((p: any) =>
-    `- "${p.titulo}": ${p.funcionou ? '✓ funcionou' : '✗ não funcionou'} | ${p.canal} | seg:${p.segmento} | roi_real:${p.roi_real}x`
+  ? (historico_prescricoes as HistoricoPrescricaoLinha[]).map((p) =>
+    `- "${p.titulo ?? ""}": ${p.funcionou ? '✓ funcionou' : '✗ não funcionou'} | ${p.canal ?? ""} | seg:${p.segmento ?? ""} | roi_real:${p.roi_real}x`
   ).join('\n')
   : '- Nenhuma prescrição anterior'}
 
 Eventos sazonais próximos:
 ${proximos_eventos_sazonais.length > 0
-  ? proximos_eventos_sazonais.map((e: any) => `- ${e.nome} em ${e.dias_restantes} dias`).join('\n')
+  ? (proximos_eventos_sazonais as EventoSazonalLinha[]).map((e) => `- ${e.nome ?? ""} em ${e.dias_restantes ?? "?"} dias`).join('\n')
   : '- Nenhum evento nos próximos 30 dias'}
 
 Gere 3 problemas priorizados por impacto, 2 oportunidades e 3 recomendações de UX.
