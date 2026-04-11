@@ -14,12 +14,51 @@ import {
 } from "../_shared/edge-utils.ts";
 import { writeAuditLog } from "../_shared/audit.ts";
 import { uuidSchema, validateRequest } from "../_shared/validation.ts";
-import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
 };
+
+/** Shared Payload Structure */
+interface CartWebhookPayload {
+  checkout?: Record<string, unknown>;
+  store_id?: string;
+  cart_hash?: string;
+  [key: string]: unknown;
+}
+
+/** Normalized Item Structure */
+interface NormalizedItem {
+  id?: string | number;
+  variant_id?: string | number;
+  name?: string;
+  quantity?: number;
+  price: number;
+  sku?: string;
+  inventory_quantity?: number | null;
+  category?: string | null;
+  tags?: unknown[];
+}
+
+/** Normalized Final Payload */
+interface NormalizedCartPayload {
+  external_id: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string;
+  cart_value: number;
+  cart_items: NormalizedItem[];
+  recovery_url?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  shipping_value?: number;
+  shipping_zip_code?: string | null;
+  payment_failure_reason?: string | null;
+  inventory_status?: Array<{ sku?: string; qty: number | null }>;
+  abandon_step: string | null;
+}
 
 Deno.serve(async (req) => {
   const startedAt = Date.now();
@@ -51,7 +90,7 @@ Deno.serve(async (req) => {
   if (!queryParsed.success) return errorResponse("store_id is required in query params", 400);
   const storeId = queryParsed.data.store_id;
 
-  let payload: any;
+  let payload: CartWebhookPayload;
   try {
     payload = await req.json();
   } catch {
@@ -102,7 +141,7 @@ Deno.serve(async (req) => {
     store_id: storeId,
     user_id: store.user_id,
     platform: source,
-    payload_normalized: normalized as any,
+    payload_normalized: normalized as Record<string, unknown>,
     status: "pending",
   });
 
@@ -125,7 +164,7 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify({ ok: true, store_id: storeId, request_id: requestId, message: "Webhook enqueued for processing" }), { status: 202, headers: corsHeaders });
 });
 
-function detectSource(req: Request, payload: any): string {
+function detectSource(req: Request, payload: CartWebhookPayload): string {
   const ua = req.headers.get("user-agent") ?? "";
   const ual = ua.toLowerCase();
   if (ual.includes("shopify")) return "shopify";
@@ -134,67 +173,146 @@ function detectSource(req: Request, payload: any): string {
   return "custom";
 }
 
+/** Generic Checkout Object for various platforms */
+interface CheckoutObj {
+  id?: string | number;
+  abandon_step?: string;
+  step?: string;
+  checkout_step?: string;
+  last_payment_error_message?: string;
+  payment_error_message?: string;
+  email?: string;
+  customer_email?: string;
+  phone?: string;
+  customer?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+  };
+  billing?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+  };
+  shipping_address?: {
+    zip?: string;
+    zip_code?: string;
+  };
+  shipping_zip_code?: string;
+  shipping_lines?: unknown[];
+  line_items?: Record<string, unknown>[]; // will fix this too
+  items?: Record<string, unknown>[];
+  products?: Record<string, unknown>[];
+  total_price?: string | number;
+  total?: string | number;
+  cart_total?: string | number;
+  abandoned_checkout_url?: string;
+  checkout_url?: string;
+  payment_url?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  total_shipping_price_set?: {
+    shop_money?: {
+      amount?: string | number;
+    };
+  };
+  shipping_total?: string | number;
+  shipping_cost?: string | number;
+  shipping?: {
+    postcode?: string;
+  };
+  contact?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
+  customer_name?: string;
+  customer_phone?: string;
+  [key: string]: unknown;
+}
+
 /** Heurística de etapa do checkout abandonado (Shopify / genérico). */
-function inferAbandonStepFromCheckout(ch: any, source: string): string | null {
-  const explicit = ch?.abandon_step ?? ch?.step ?? ch?.checkout_step;
+function inferAbandonStepFromCheckout(ch: CheckoutObj, source: string): string | null {
+  const explicit = ch.abandon_step ?? ch.step ?? ch.checkout_step;
   if (typeof explicit === "string" && explicit.length > 0) return explicit;
   if (source === "shopify") {
-    if (ch?.last_payment_error_message) return "payment";
-    if (ch?.shipping_address?.zip || ch?.shipping_lines?.length) return "shipping_or_delivery";
-    if (ch?.email || ch?.customer?.email) return "contact_information";
+    if (ch.last_payment_error_message) return "payment";
+    if (ch.shipping_address?.zip || ch.shipping_lines?.length) return "shipping_or_delivery";
+    if (ch.email || ch.customer?.email) return "contact_information";
     return "unknown";
   }
-  if (ch?.payment_error_message) return "payment";
-  if (ch?.shipping_address || ch?.shipping_zip_code) return "shipping_or_delivery";
-  if (ch?.customer_email || ch?.contact?.email) return "contact_information";
+  if (ch.payment_error_message) return "payment";
+  if (ch.shipping_address || ch.shipping_zip_code) return "shipping_or_delivery";
+  if (ch.customer_email || ch.contact?.email) return "contact_information";
   return "unknown";
 }
 
-function normalizePayload(source: string, p: any) {
+/** External Cart Item from various platforms */
+interface ExternalCartItem {
+  id?: string | number;
+  product_id?: string | number;
+  variant_id?: string | number;
+  title?: string;
+  name?: string;
+  product_name?: string;
+  quantity?: number;
+  price?: string | number;
+  subtotal?: string | number;
+  sku?: string;
+  variant_inventory_management?: unknown;
+  variant_inventory_policy?: number;
+  product_type?: string;
+  properties?: unknown[];
+  stock?: number;
+  category?: string;
+  [key: string]: unknown;
+}
+
+function normalizePayload(source: string, p: CartWebhookPayload): NormalizedCartPayload {
   if (source === "shopify") {
-    const ch = p.checkout ?? p;
-    const items = (ch.line_items || []).map((item: any) => ({
-      id: item.product_id,
-      variant_id: item.variant_id,
-      name: item.title,
-      quantity: item.quantity,
-      price: parseFloat(item.price || 0),
-      sku: item.sku,
-      // Shopify inventory and tags (if available in webhook payload)
-      inventory_quantity: item.variant_inventory_management ? item.variant_inventory_policy : null, 
-      category: item.product_type || null,
-      tags: item.properties || []
+    const ch = (p.checkout ?? p) as CheckoutObj;
+    const items: NormalizedItem[] = ((ch.line_items || []) as ExternalCartItem[]).map((item) => ({
+      id: String(item.product_id ?? ""),
+      variant_id: String(item.variant_id ?? ""),
+      name: String(item.title ?? ""),
+      quantity: Number(item.quantity ?? 0),
+      price: parseFloat(String(item.price || 0)),
+      sku: String(item.sku ?? ""),
+      inventory_quantity: item.variant_inventory_management ? Number(item.variant_inventory_policy ?? 0) : null, 
+      category: String(item.product_type || ""),
+      tags: (item.properties || []) as unknown[]
     }));
 
     return {
-      external_id: String(ch.id),
+      external_id: String(ch.id ?? ""),
       customer_name: `${ch.customer?.first_name || ""} ${ch.customer?.last_name || ""}`.trim(),
       customer_phone: normalizePhone(ch.phone || ch.customer?.phone || ""),
       customer_email: ch.email || ch.customer?.email,
-      cart_value: parseFloat(ch.total_price || 0),
+      cart_value: parseFloat(String(ch.total_price || 0)),
       cart_items: items,
       recovery_url: ch.abandoned_checkout_url,
-      // Enriched fields
       utm_source: ch.utm_source || null,
       utm_medium: ch.utm_medium || null,
       utm_campaign: ch.utm_campaign || null,
-      shipping_value: parseFloat(ch.total_shipping_price_set?.shop_money?.amount || 0),
+      shipping_value: parseFloat(String(ch.total_shipping_price_set?.shop_money?.amount || 0)),
       shipping_zip_code: ch.shipping_address?.zip || null,
       payment_failure_reason: ch.last_payment_error_message || null,
-      // Inventory Status JSON
-      inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity })),
+      inventory_status: items.map((i) => ({ sku: i.sku, qty: i.inventory_quantity ?? null })),
       abandon_step: inferAbandonStepFromCheckout(ch, "shopify"),
     };
   }
 
   if (source === "woocommerce") {
-    const ch = p.checkout ?? p;
-    const items = (ch.line_items || []).map((item: any) => ({
-      id: item.product_id,
-      name: item.name || item.product_name,
-      quantity: item.quantity,
-      price: parseFloat(item.price || item.subtotal || 0),
-      sku: item.sku,
+    const ch = (p.checkout ?? p) as CheckoutObj;
+    const items: NormalizedItem[] = ((ch.line_items || []) as ExternalCartItem[]).map((item) => ({
+      id: String(item.product_id ?? ""),
+      name: String(item.name || item.product_name || ""),
+      quantity: Number(item.quantity ?? 0),
+      price: parseFloat(String(item.price || item.subtotal || 0)),
+      sku: String(item.sku ?? ""),
       inventory_quantity: null,
       category: null,
     }));
@@ -203,30 +321,30 @@ function normalizePayload(source: string, p: any) {
       customer_name: `${ch.billing?.first_name || ""} ${ch.billing?.last_name || ""}`.trim() || ch.customer_name || "",
       customer_phone: normalizePhone(ch.billing?.phone || ch.phone || ""),
       customer_email: ch.billing?.email || ch.customer_email,
-      cart_value: parseFloat(ch.total || ch.cart_total || 0),
+      cart_value: parseFloat(String(ch.total || ch.cart_total || 0)),
       cart_items: items,
       recovery_url: ch.checkout_url || ch.payment_url || null,
       utm_source: ch.utm_source || null,
       utm_medium: ch.utm_medium || null,
       utm_campaign: ch.utm_campaign || null,
-      shipping_value: parseFloat(ch.shipping_total || 0),
+      shipping_value: parseFloat(String(ch.shipping_total || 0)),
       shipping_zip_code: ch.shipping?.postcode || null,
       payment_failure_reason: ch.payment_error_message || null,
-      inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity })),
+      inventory_status: items.map((i) => ({ sku: i.sku, qty: i.inventory_quantity ?? null })),
       abandon_step: inferAbandonStepFromCheckout(ch, "woocommerce"),
     };
   }
   
   // Nuvemshop or Custom
-  const ch = p.checkout ?? p;
-  const items = (ch.items || ch.products || []).map((item: any) => ({
-    id: item.id || item.product_id,
-    name: item.name || item.title,
-    quantity: item.quantity,
-    price: parseFloat(item.price || 0),
-    sku: item.sku,
-    inventory_quantity: item.stock || null,
-    category: item.category || null
+  const ch = (p.checkout ?? p) as CheckoutObj;
+  const items: NormalizedItem[] = (((ch.items || ch.products || []) as ExternalCartItem[])).map((item) => ({
+    id: String(item.id || item.product_id || ""),
+    name: String(item.name || item.title || ""),
+    quantity: Number(item.quantity ?? 0),
+    price: parseFloat(String(item.price || 0)),
+    sku: String(item.sku ?? ""),
+    inventory_quantity: Number(item.stock ?? 0) || null,
+    category: String(item.category || "")
   }));
 
   return {
@@ -234,16 +352,16 @@ function normalizePayload(source: string, p: any) {
     customer_name: ch.customer_name || ch.contact?.name || "",
     customer_phone: normalizePhone(ch.customer_phone || ch.contact?.phone || ""),
     customer_email: ch.customer_email || ch.contact?.email,
-    cart_value: parseFloat(ch.cart_value || ch.total || 0),
+    cart_value: parseFloat(String(ch.cart_value || ch.total || 0)),
     cart_items: items,
     recovery_url: ch.recovery_url || ch.checkout_url,
     utm_source: ch.utm_source || null,
     utm_medium: ch.utm_medium || null,
     utm_campaign: ch.utm_campaign || null,
-    shipping_value: parseFloat(ch.shipping_cost || 0),
+    shipping_value: parseFloat(String(ch.shipping_cost || 0)),
     shipping_zip_code: ch.shipping_zip_code || ch.shipping_address?.zip_code || null,
     payment_failure_reason: ch.payment_error_message || null,
-    inventory_status: items.map((i: any) => ({ sku: i.sku, qty: i.inventory_quantity })),
+    inventory_status: items.map((i) => ({ sku: i.sku, qty: i.inventory_quantity ?? null })),
     abandon_step: inferAbandonStepFromCheckout(ch, source === "nuvemshop" ? "nuvemshop" : "custom"),
   };
 }

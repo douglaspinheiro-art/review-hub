@@ -86,7 +86,7 @@ serve(async (req) => {
 
       if (flowRes.ok) {
         const cartMetaKey = String(cart.id);
-        const { data: existingCadence } = await (supabase as any)
+        const { data: existingCadence } = await supabase
           .from("scheduled_messages")
           .select("id")
           .eq("metadata->>cart_id", cartMetaKey)
@@ -125,7 +125,7 @@ serve(async (req) => {
           },
         }));
 
-        const { error: scheduleErr } = await (supabase as any)
+        const { error: scheduleErr } = await supabase
           .from("scheduled_messages")
           .insert(scheduledPayload);
 
@@ -162,8 +162,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, processed: results.length, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
+  } catch (err: unknown) {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

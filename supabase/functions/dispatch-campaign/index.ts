@@ -481,7 +481,7 @@ serve(async (req: Request) => {
         .in("customer_id", contactIds)
         .order("created_at", { ascending: false })
       : { data: [] };
-    const latestCartByCustomer = new Map<string, { cart_value?: number; recovery_url?: string; cart_items?: any[] }>();
+    const latestCartByCustomer = new Map<string, { cart_value?: number; recovery_url?: string; cart_items?: Record<string, unknown>[] }>();
     for (const cart of (carts ?? [])) {
       if (!latestCartByCustomer.has(cart.customer_id)) {
         latestCartByCustomer.set(cart.customer_id, cart);
@@ -553,6 +553,16 @@ serve(async (req: Request) => {
             // Link tracking is handled here so it's ready in the DB
             const trackedText = wrapLinksForTracking(text, campaign_id, actorUserId, contact.id);
 
+            interface WhatsAppBlocks {
+              content_type?: string;
+              media_url?: string;
+              meta_template_name?: string;
+            }
+            interface CampaignBlocks {
+              whatsapp?: WhatsAppBlocks;
+            }
+            const blocks = (campaign.blocks as unknown as CampaignBlocks) || {};
+
             return {
               user_id: actorUserId,
               store_id: campaign.store_id,
@@ -564,9 +574,9 @@ serve(async (req: Request) => {
               status: "pending",
               metadata: {
                 campaign_name: campaign.name,
-                content_type: (campaign as any)?.blocks?.whatsapp?.content_type || "text",
-                media_url: (campaign as any)?.blocks?.whatsapp?.media_url || null,
-                meta_template_name: (campaign as any)?.blocks?.whatsapp?.meta_template_name || null,
+                content_type: blocks.whatsapp?.content_type || "text",
+                media_url: blocks.whatsapp?.media_url || null,
+                meta_template_name: blocks.whatsapp?.meta_template_name || null,
               }
             };
           })
