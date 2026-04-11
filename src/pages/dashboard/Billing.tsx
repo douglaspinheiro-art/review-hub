@@ -272,7 +272,7 @@ export default function Billing() {
         <div className="grid sm:grid-cols-3 gap-3 text-center">
           {[
             { label: "Base Fixa (Starter)", value: `R$ ${PRICING_PLANS.starter.base.toLocaleString("pt-BR")}` },
-            { label: "Success Fee", value: "3% a 1%" },
+            { label: "Success Fee", value: "3% a 1.5%" },
             { label: "Foco total em", value: "ROI Real" },
           ].map(({ label, value }) => (
             <div key={label} className="bg-background/50 rounded-lg p-3 border border-border/50">
@@ -343,8 +343,8 @@ export default function Billing() {
               </p>
             </div>
             <div className="bg-muted/30 rounded-xl p-4 space-y-1">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No plano Escala você teria</p>
-              <p className="text-2xl font-black">10.000 contatos</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No plano Scale você teria</p>
+              <p className="text-2xl font-black">20.000 contatos</p>
               <p className="text-xs text-muted-foreground">vs. {PLAN_LIMITS[currentPlan].contacts.toLocaleString("pt-BR")} no seu plano atual</p>
             </div>
             <div className="flex gap-3">

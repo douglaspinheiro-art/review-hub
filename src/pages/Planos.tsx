@@ -47,18 +47,18 @@ const PLAN_DISPLAY = [
     ctaLabel: "Começar agora",
     ctaTo: "/signup",
     ctaVariant: "outline" as const,
-    feeExamples: [10_000, 30_000, 100_000],
+    feeExamples: [10_000, 30_000, 50_000],
     features: {
       contacts: "1.000",
-      instances: "1 instância",
-      users: "Até 2 atendentes",
-      journeys: "Flow Engine básico",
+      instances: "1 loja",
+      users: "2 usuários",
+      journeys: "Até 3 automações",
       rfm: "Básico",
       chs: false,
-      aiNegotiator: false,
+      aiNegotiator: "30 conv./mês",
       forecast: false,
       loyalty: false,
-      support: "Chat",
+      support: "WhatsApp",
     },
   },
   {
@@ -68,16 +68,17 @@ const PLAN_DISPLAY = [
     ctaLabel: "Começar agora",
     ctaTo: "/signup",
     ctaVariant: "default" as const,
-    feeExamples: [10_000, 30_000, 100_000],
+    highlight: true,
+    feeExamples: [50_000, 100_000, 200_000],
     features: {
       contacts: "5.000",
-      instances: "2 instâncias",
-      users: "Até 5 atendentes",
-      journeys: "Jornadas ilimitadas",
+      instances: "2 lojas",
+      users: "Até 5 usuários",
+      journeys: "Ilimitadas",
       rfm: "Completo",
       chs: "✓",
-      aiNegotiator: "100 conv./mês",
-      forecast: "30 dias",
+      aiNegotiator: "300 conv./mês",
+      forecast: "✓",
       loyalty: "✓",
       support: "Prioritário",
     },
@@ -89,18 +90,18 @@ const PLAN_DISPLAY = [
     ctaLabel: "Falar com especialista",
     ctaTo: "/contato",
     ctaVariant: "default" as const,
-    feeExamples: [10_000, 30_000, 100_000],
+    feeExamples: [200_000, 500_000, 1_000_000],
     features: {
-      contacts: "10.000",
-      instances: "5 instâncias",
-      users: "Até 15 atendentes",
-      journeys: "Jornadas ilimitadas",
+      contacts: "20.000",
+      instances: "Até 5 lojas",
+      users: "Ilimitado",
+      journeys: "Ilimitadas",
       rfm: "Completo + IA",
       chs: "Multi-loja",
-      aiNegotiator: "Ilimitado",
-      forecast: "Total + IA",
+      aiNegotiator: "Fair Use",
+      forecast: "✓",
       loyalty: "✓",
-      support: "Onboarding dedicado",
+      support: "White-label + API",
     },
   },
 ];
@@ -112,14 +113,14 @@ const COMPARISON_ROWS = [
   { label: "E-mail Incluso" },
   { label: "SMS Incluso" },
   { label: "Contatos (Perfil Unificado)" },
-  { label: "Instâncias WhatsApp" },
-  { label: "Atendentes no Inbox" },
-  { label: "Flow Engine" },
-  { label: "CHS Score" },
-  { label: "Agente IA Negociador" },
+  { label: "Lojas" },
+  { label: "Usuários" },
+  { label: "Automações" },
   { label: "Previsão de receita" },
-  { label: "Programa de Fidelidade" },
-  { label: "Suporte" },
+  { label: "A/B em Prescrições" },
+  { label: "Fidelidade Completa" },
+  { label: "Agente IA (Conversas)" },
+  { label: "API + White-label" },
 ];
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -232,7 +233,7 @@ export default function Planos({ embedInDashboard, defaultTab: _defaultTab }: { 
                         <div className="bg-muted/30 rounded-lg p-3 space-y-1.5 text-xs">
                           {[
                             { label: "Base Fixa", val: p.base, prefix: "" },
-                            { label: "Success Fee (ex.)",    val: d.key === "starter" ? 150 : d.key === "growth" ? 300 : 600, prefix: "+" },
+                            { label: "Success Fee (est.)",    val: d.key === "starter" ? 300 : d.key === "growth" ? 1000 : 3000, prefix: "+" },
                           ].map(({ label, val, prefix }) => (
                             <div key={label} className="flex justify-between">
                               <span className="text-muted-foreground">{label}</span>
@@ -242,7 +243,7 @@ export default function Planos({ embedInDashboard, defaultTab: _defaultTab }: { 
                           <div className="flex justify-between border-t border-border/50 pt-1.5 font-black text-sm">
                             <span>Total estimado</span>
                             <span className="text-primary">
-                              {fmt(d.key === "starter" ? 597 : d.key === "growth" ? 1197 : 2597)}
+                              {fmt(d.key === "starter" ? 797 : d.key === "growth" ? 1997 : 5497)}
                             </span>
                           </div>
                         </div>
@@ -353,13 +354,14 @@ export default function Planos({ embedInDashboard, defaultTab: _defaultTab }: { 
                             if (label === "SMS Incluso") return p.includedSMS > 0 ? `${fmtN(p.includedSMS)} msgs` : "—";
                             if (label === "Contatos (Perfil Unificado)") return fmtN(p.maxContacts);
                             return (d.features as Record<string, string | boolean>)[
-                              label === "Instâncias WhatsApp"  ? "instances"    :
-                              label === "Atendentes no Inbox"  ? "users"        :
-                              label === "Flow Engine"          ? "journeys"     :
-                              label === "CHS Score"            ? "chs"          :
-                              label === "Agente IA Negociador" ? "aiNegotiator" :
-                              label === "Previsão de receita"  ? "forecast"     :
-                              label === "Programa de Fidelidade" ? "loyalty"    :
+                              label === "Lojas"               ? "instances"    :
+                              label === "Usuários"            ? "users"        :
+                              label === "Automações"          ? "journeys"     :
+                              label === "Previsão de receita" ? "forecast"     :
+                              label === "A/B em Prescrições"  ? "forecast"     : // Both linked to forecast feature
+                              label === "Fidelidade Completa" ? "loyalty"      :
+                              label === "Agente IA (Conversas)"? "aiNegotiator" :
+                              label === "API + White-label"   ? "support"      :
                               "support"
                             ];
                           });

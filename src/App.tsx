@@ -238,13 +238,13 @@ const App = () => (
           <Route path="/dashboard/whatsapp" element={<DashboardRoute routeLabel="Integração WhatsApp"><BetaLimitedPageGuard><WhatsApp /></BetaLimitedPageGuard></DashboardRoute>} />
           <Route path="/dashboard/configuracoes" element={<DashboardRoute routeLabel="Configurações da Conta"><Configuracoes /></DashboardRoute>} />
           <Route path="/dashboard/billing" element={<DashboardRoute routeLabel="Fatura e Assinatura"><Billing /></DashboardRoute>} />
-          <Route path="/dashboard/api-keys" element={<DashboardRoute routeLabel="Chaves de API"><ApiKeys /></DashboardRoute>} />
-          <Route path="/dashboard/white-label" element={<DashboardRoute routeLabel="Painel White Label"><WhiteLabel /></DashboardRoute>} />
+          <Route path="/dashboard/api-keys" element={<DashboardRoute routeLabel="Chaves de API" requiredPlan="scale"><ApiKeys /></DashboardRoute>} />
+          <Route path="/dashboard/white-label" element={<DashboardRoute routeLabel="Painel White Label" requiredPlan="scale"><WhiteLabel /></DashboardRoute>} />
           <Route path="/dashboard/integracoes" element={<DashboardRoute routeLabel="Ecossistema de Integrações"><Integracoes /></DashboardRoute>} />
-          <Route path="/dashboard/equipe" element={<DashboardRoute routeLabel="Membros da Equipe"><Equipe /></DashboardRoute>} />
-          <Route path="/dashboard/afiliados" element={<DashboardRoute routeLabel="Gestão de Afiliados"><Afiliados /></DashboardRoute>} />
-          <Route path="/dashboard/fidelidade" element={<DashboardRoute routeLabel="Programa de Fidelidade"><Fidelidade /></DashboardRoute>} />
-          <Route path="/dashboard/relatorios" element={<DashboardRoute routeLabel="Relatórios Consolidados"><Relatorios /></DashboardRoute>} />
+          <Route path="/dashboard/equipe" element={<DashboardRoute routeLabel="Membros da Equipe" requiredPlan="growth"><Equipe /></DashboardRoute>} />
+          <Route path="/dashboard/afiliados" element={<DashboardRoute routeLabel="Gestão de Afiliados" requiredPlan="scale"><Afiliados /></DashboardRoute>} />
+          <Route path="/dashboard/fidelidade" element={<DashboardRoute routeLabel="Programa de Fidelidade" requiredPlan="growth"><Fidelidade /></DashboardRoute>} />
+          <Route path="/dashboard/relatorios" element={<DashboardRoute routeLabel="Relatórios Consolidados" requiredPlan="growth"><Relatorios /></DashboardRoute>} />
           <Route path="/dashboard/benchmark" element={<DashboardRoute routeLabel="Benchmark do Setor"><BenchmarkScore /></DashboardRoute>} />
           <Route path="/dashboard/chatbot" element={<DashboardRoute routeLabel="Construtor de Chatbot"><Chatbot /></DashboardRoute>} />
           <Route path="/dashboard/newsletter" element={<DashboardRoute routeLabel="Newsletter Builder"><BetaLimitedPageGuard><Newsletter /></BetaLimitedPageGuard></DashboardRoute>} />
