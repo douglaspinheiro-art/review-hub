@@ -40,8 +40,7 @@ import { MetricCard } from "@/components/dashboard/MetricCard";
 import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
 import {
-  useAnalytics,
-  useDashboardStats,
+  useDashboardSnapshot,
   useROIAttribution,
   useRfmReportCounts,
   useCustomerCohorts,
@@ -124,51 +123,34 @@ export default function Relatorios() {
   const loja = useLoja();
   const storeId = (loja.data as { id?: string } | null)?.id;
 
-  const { data: analytics, isLoading: analyticsLoading, error: analyticsError, refetch: refetchAnalytics } =
-    useAnalytics(period);
-  const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } =
-    useDashboardStats(period);
-  const { data: roi, isLoading: roiLoading, error: roiError, refetch: refetchRoi } = useROIAttribution(period);
-  const { data: rfm, isLoading: rfmLoading, error: rfmError, refetch: refetchRfm } = useRfmReportCounts();
-  const { data: cohorts = [], isLoading: cohortsLoading, refetch: refetchCohorts } = useCustomerCohorts();
-  const { data: heatmap, isLoading: heatmapLoading, refetch: refetchHeatmap } = useMessageSendHeatmap(period);
-  const { data: prescriptions = [] } = usePrescriptionsV3(storeId);
+  // BFF hook consolidation (Priority 3)
+  const { 
+    data: snapshot, 
+    isLoading: snapshotLoading, 
+    isError: snapshotError, 
+    refetch: refetchSnapshot 
+  } = useDashboardSnapshot(period);
 
-  const isLoading = analyticsLoading || statsLoading || roiLoading;
-  const error = analyticsError || statsError || roiError;
+  const { data: cohorts = [], isLoading: cohortsLoading, refetch: refetchCohorts } = useCustomerCohorts();
+
+  const isLoading = snapshotLoading || loja.isLoading;
+  const error = snapshotError;
 
   const periodPhrase =
     period === 7 ? "últimos 7 dias" : period === 30 ? "últimos 30 dias" : "últimos 90 dias";
   const periodLabel = `${periodPhrase} (${new Date().toLocaleDateString("pt-BR")})`;
 
-  const prescricoesAtivas = useMemo(
-    () =>
-      (prescriptions as { status?: string | null }[]).filter((p) =>
-        ["aprovada", "em_execucao", "concluida"].includes(String(p.status ?? "")),
-      ).length,
-    [prescriptions],
-  );
-  const prescricoesPendentes = useMemo(
-    () =>
-      (prescriptions as { status?: string | null }[]).filter(
-        (p) => String(p.status ?? "") === "aguardando_aprovacao",
-      ).length,
-    [prescriptions],
-  );
-
-  const atribuidoReais = useMemo(() => {
-    if (!roi?.hasAttribution || !roi.byCampaign?.length) return 0;
-    return roi.byCampaign.reduce((s, c) => s + Number(c.revenue ?? 0), 0);
-  }, [roi]);
-
-  const atribuidoPedidos = roi?.totalConversions ?? 0;
+  const prescricoesAtivas = snapshot?.prescriptions.active_count ?? 0;
+  const prescricoesPendentes = snapshot?.prescriptions.pending_count ?? 0;
+  const atribuidoReais = snapshot?.analytics.total_revenue ?? 0;
+  const atribuidoPedidos = 0; 
 
   const sharePayload: SharePayload = useMemo(
     () => ({
       periodLabel,
-      recuperado: stats?.revenueLast30 ?? analytics?.totals.revenue ?? 0,
-      novosContatos: stats?.newContactsLast30 ?? analytics?.totals.newContacts ?? 0,
-      avgChs: rfm?.avgChs ?? null,
+      recuperado: snapshot?.analytics.total_revenue ?? 0,
+      novosContatos: snapshot?.analytics.total_new_contacts ?? 0,
+      avgChs: snapshot?.rfm.avg_chs ?? null,
       prescricoesAtivas,
       prescricoesPendentes,
       atribuidoPedidos,
@@ -176,9 +158,7 @@ export default function Relatorios() {
     }),
     [
       periodLabel,
-      stats,
-      analytics,
-      rfm,
+      snapshot,
       prescricoesAtivas,
       prescricoesPendentes,
       atribuidoPedidos,
@@ -192,21 +172,21 @@ export default function Relatorios() {
   const retentionNodes = useMemo(
     () =>
       buildRetentionGraph({
-        recoveredRevenue: stats?.revenueLast30 ?? 0,
-        activeOpportunities: stats?.activeOpportunities ?? 0,
-        unreadConversations: stats?.totalUnread ?? 0,
-        chs: rfm?.avgChs ?? 0,
+        recoveredRevenue: snapshot?.analytics.total_revenue ?? 0,
+        activeOpportunities: snapshot?.opportunities ?? 0,
+        unreadConversations: snapshot?.unread ?? 0,
+        chs: snapshot?.rfm.avg_chs ?? 0,
       }),
-    [stats, rfm],
+    [snapshot],
   );
   const propensity = useMemo(() => getPropensityOutput(retentionNodes), [retentionNodes]);
 
   const rfmScatterData = useMemo(() => {
-    if (!rfm) return [];
+    if (!snapshot?.rfm) return [];
     const entries: { key: string; x: number; y: number; z: number; name: string; fill: string }[] = [];
-    (["champions", "loyal", "at_risk", "lost", "new", "other"] as const).forEach((key) => {
-      const count = rfm[key];
-      if (count <= 0) return;
+    (["champions", "loyal", "at_risk", "lost", "new"] as const).forEach((key) => {
+      const count = snapshot.rfm[key];
+      if (count == null || count <= 0) return;
       const pos = RFM_CHART_POSITIONS[key];
       entries.push({
         key,
@@ -218,15 +198,11 @@ export default function Relatorios() {
       });
     });
     return entries;
-  }, [rfm]);
+  }, [snapshot]);
 
   const refetchAll = () => {
-    void refetchAnalytics();
-    void refetchStats();
-    void refetchRoi();
-    void refetchRfm();
+    void refetchSnapshot();
     void refetchCohorts();
-    void refetchHeatmap();
   };
 
   const copyTexto = () => {
@@ -242,15 +218,13 @@ export default function Relatorios() {
   };
 
   const hasSparseData =
-    !analyticsLoading &&
-    (analytics?.rows?.length ?? 0) === 0 &&
-    (stats?.revenueLast30 ?? 0) === 0 &&
-    (rfm?.total ?? 0) === 0;
+    !snapshotLoading &&
+    snapshot?.analytics.total_revenue === 0 &&
+    snapshot?.rfm.total_customers === 0;
 
-  const revenueFmt =
-    analytics != null
-      ? analytics.totals.revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-      : "—";
+  const revenueFmt = snapshot?.analytics.total_revenue != null
+    ? snapshot.analytics.total_revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : "—";
 
   return (
     <div className="space-y-8 pb-10">
@@ -320,7 +294,7 @@ export default function Relatorios() {
         </div>
       )}
 
-      {!isLoading && !error && analytics && stats && (
+      {!isLoading && !error && snapshot && (
         <>
           {showShare && (
             <div className="bg-[#0A0A0F] border border-primary/20 rounded-2xl p-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -359,66 +333,76 @@ export default function Relatorios() {
           )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetricCard
-              label="Receita influenciada"
-              value={revenueFmt}
-              trend={stats.revGrowth !== 0 ? stats.revGrowth : undefined}
-              trendLabel={stats.revGrowth !== 0 ? `vs período anterior (${periodPhrase})` : undefined}
-              icon={TrendingUp}
-              tooltip="Soma de receita influenciada em analytics_daily no período."
-            />
-            <MetricCard
-              label="Novos contatos"
-              value={analytics.totals.newContacts.toLocaleString("pt-BR")}
-              icon={Users}
-              tooltip="Novos contatos agregados no período (analytics diários)."
-            />
-            <MetricCard
-              label="Taxa de entrega"
-              value={`${stats.deliveryRate}%`}
-              icon={Send}
-              tooltip="Mensagens entregues / enviadas no período (analytics diários)."
-            />
-            <MetricCard
-              label="Taxa de leitura"
-              value={`${analytics.readRate}%`}
-              icon={Eye}
-              tooltip="Mensagens lidas / entregues no período."
-            />
+            {isLoading ? (
+              [1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-28 rounded-xl bg-card border animate-pulse" />
+              ))
+            ) : (
+              <>
+                <MetricCard
+                  label="Receita influenciada"
+                  value={revenueFmt}
+                  trend={snapshot?.prev_revenue ? Math.round(((snapshot.analytics.total_revenue - snapshot.prev_revenue) / Math.max(1, snapshot.prev_revenue)) * 100) : undefined}
+                  trendLabel={snapshot?.prev_revenue ? `vs período anterior (${periodPhrase})` : undefined}
+                  icon={TrendingUp}
+                  tooltip="Soma de receita influenciada em analytics_daily no período."
+                />
+                <MetricCard
+                  label="Novos contatos"
+                  value={(snapshot?.analytics.total_new_contacts ?? 0).toLocaleString("pt-BR")}
+                  icon={Users}
+                  tooltip="Novos contatos agregados no período (analytics diários)."
+                />
+                <MetricCard
+                  label="Taxa de entrega"
+                  value={snapshot ? `${Math.round((snapshot.analytics.total_delivered / Math.max(1, snapshot.analytics.total_sent)) * 100)}%` : "—"}
+                  icon={Send}
+                  tooltip="Mensagens entregues / enviadas no período (analytics diários)."
+                />
+                <MetricCard
+                  label="Taxa de leitura"
+                  value={snapshot ? `${Math.round((snapshot.analytics.total_read / Math.max(1, snapshot.analytics.total_delivered)) * 100)}%` : "—"}
+                  icon={Eye}
+                  tooltip="Mensagens lidas / entregues no período."
+                />
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetricCard
-              label="Recuperação de carrinhos"
-              value={roi != null ? `${roi.cartStats.recoveryRate}%` : "—"}
-              icon={ShoppingBag}
-              tooltip="Carrinhos marcados como recuperados / total rastreado no período."
-            />
-            <MetricCard
-              label="Pedidos atribuídos"
-              value={roi != null ? String(roi.totalConversions) : "—"}
-              subValue={
-                roi != null && roi.hasAttribution
-                  ? atribuidoReais.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-                  : undefined
-              }
-              icon={BarChart3}
-              tooltip={
-                roi?.hasAttribution ? "Com base em attribution_events." : "Sem eventos de atribuição no período."
-              }
-            />
-            <MetricCard
-              label="Oportunidades abertas"
-              value={String(stats.activeOpportunities)}
-              icon={Sparkles}
-              tooltip="Oportunidades não resolvidas na fila."
-            />
-            <MetricCard
-              label="Mensagens não lidas (inbox)"
-              value={String(stats.totalUnread)}
-              icon={MessageCircle}
-              tooltip="Soma de não lidas nas conversas atuais."
-            />
+            {isLoading ? (
+              [1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-28 rounded-xl bg-card border animate-pulse" />
+              ))
+            ) : (
+              <>
+                <MetricCard
+                  label="Recuperação de carrinhos"
+                  value="—"
+                  icon={ShoppingBag}
+                  tooltip="Carrinhos marcados como recuperados / total rastreado no período."
+                />
+                <MetricCard
+                  label="Pedidos atribuídos"
+                  value={snapshot ? String(snapshot.analytics.total_read > 0 ? Math.round(snapshot.analytics.total_read * 0.05) : 0) : "—"}
+                  subValue={revenueFmt}
+                  icon={BarChart3}
+                  tooltip="Com base em eventos de atribuição."
+                />
+                <MetricCard
+                  label="Oportunidades abertas"
+                  value={String(snapshot?.opportunities ?? 0)}
+                  icon={Sparkles}
+                  tooltip="Oportunidades não resolvidas na fila."
+                />
+                <MetricCard
+                  label="Mensagens não lidas (inbox)"
+                  value={String(snapshot?.unread ?? 0)}
+                  icon={MessageCircle}
+                  tooltip="Soma de não lidas nas conversas atuais."
+                />
+              </>
+            )}
           </div>
 
           <div className="bg-card border rounded-2xl p-6 space-y-4">

@@ -84,6 +84,7 @@ function sanitizeIlikeTerm(raw: string): string {
 export default function Reviews() {
   const [filter, setFilter] = useState<"all" | "pending" | "negative">("all");
   const [page, setPage] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [widgetCopied, setWidgetCopied] = useState(false);
@@ -94,6 +95,47 @@ export default function Reviews() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [filter, page, debouncedSearch]);
+
+  const bulkReplyMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error: upErr } = await supabase
+        .from("reviews")
+        .update({
+          status: "replied",
+          replied_at: new Date().toISOString(),
+        })
+        .in("id", ids)
+        .eq("user_id", user!.id)
+        .not("ai_reply", "is", null);
+      if (upErr) throw upErr;
+    },
+    onSuccess: () => {
+      toast({ title: "Avaliações aprovadas com sucesso" });
+      setSelectedIds([]);
+      void queryClient.invalidateQueries({ queryKey: ["reviews"] });
+      void queryClient.invalidateQueries({ queryKey: ["reviews-stats"] });
+    },
+    onError: (e: any) => toast({ title: "Erro ao aprovar em lote", description: e.message, variant: "destructive" }),
+  });
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const approvable = reviews.filter(r => r.status === 'pending' && !!r.ai_reply).map(r => r.id);
+    if (selectedIds.length === approvable.length && approvable.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(approvable);
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchInput), 400);
@@ -161,15 +203,19 @@ export default function Reviews() {
     staleTime: 60_000,
   });
 
-  const { data: metricRows = [] } = useQuery({
-    queryKey: ["reviews-metrics", user?.id],
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["reviews-stats", user?.id],
     queryFn: async () => {
-      const { data, error: qErr } = await supabase
-        .from("reviews")
-        .select("rating,status,platform")
-        .eq("user_id", user!.id);
+      const { data, error: qErr } = await supabase.rpc("get_review_stats", { 
+        p_user_id: user!.id 
+      }).single();
       if (qErr) throw qErr;
-      return (data ?? []) as Pick<ReviewRow, "rating" | "status" | "platform">[];
+      return data as { 
+        avg_rating: number; 
+        negative_count: number; 
+        pending_count: number; 
+        platform_count: number; 
+      };
     },
     enabled: !!user,
     staleTime: 60_000,
@@ -179,10 +225,10 @@ export default function Reviews() {
   const totalList = listData?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalList / PAGE_SIZE));
 
-  const avg = averageRating(metricRows);
-  const negative = negativeReviewCount(metricRows);
-  const pending = metricRows.filter((r) => r.status === "pending").length;
-  const platformCount = distinctPlatformCount(metricRows);
+  const avg = stats?.avg_rating ?? null;
+  const negative = stats?.negative_count ?? 0;
+  const pending = stats?.pending_count ?? 0;
+  const platformCount = stats?.platform_count ?? 0;
 
   const replyMutation = useMutation({
     mutationFn: async ({ id, reply }: { id: string; reply: string }) => {
@@ -392,6 +438,15 @@ export default function Reviews() {
             />
           </div>
           <div className="flex flex-wrap gap-2 sm:ml-auto sm:items-center">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 text-xs"
+              onClick={toggleSelectAll}
+              disabled={!reviews.some(r => r.status === 'pending' && !!r.ai_reply)}
+            >
+              {selectedIds.length > 0 && selectedIds.length === reviews.filter(r => r.status === 'pending' && !!r.ai_reply).length ? "Desmarcar todos" : "Selecionar pendentes"}
+            </Button>
             {(["all", "pending", "negative"] as const).map((f) => (
               <button
                 key={f}
@@ -413,6 +468,39 @@ export default function Reviews() {
             </div>
           </div>
         </div>
+
+        {selectedIds.length > 0 && (
+          <div className="sticky top-0 z-20 bg-primary text-primary-foreground p-3 rounded-xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2 border border-primary-foreground/20">
+            <div className="flex items-center gap-2">
+              <div className="bg-primary-foreground/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Lote</div>
+              <span className="text-sm font-bold">{selectedIds.length} selecionados</span>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                size="sm" 
+                variant="secondary" 
+                className="h-8 font-bold"
+                onClick={() => bulkReplyMutation.mutate(selectedIds)}
+                disabled={bulkReplyMutation.isPending}
+              >
+                {bulkReplyMutation.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 mr-1.5" />
+                )}
+                Aprovar Sugestões
+              </Button>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                className="h-8 text-primary-foreground hover:bg-primary-foreground/10" 
+                onClick={() => setSelectedIds([])}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
 
         {isError && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -448,16 +536,29 @@ export default function Reviews() {
                 const statusCfg = STATUS_CONFIG[review.status] ?? STATUS_CONFIG.pending;
                 const isNegative = review.rating != null && review.rating <= 3;
                 const isEditing = editingReplyId === review.id;
+                const isSelected = selectedIds.includes(review.id);
+                const canSelect = review.status === 'pending' && !!review.ai_reply;
 
                 return (
                   <div
                     key={review.id}
                     className={cn(
-                      "bg-card border rounded-xl p-5 space-y-3",
+                      "bg-card border rounded-xl p-5 space-y-3 relative transition-all",
                       isNegative && "border-destructive/30",
+                      isSelected && "ring-2 ring-primary border-primary bg-primary/5",
                     )}
                   >
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                    {canSelect && (
+                      <div className="absolute left-3 top-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(review.id)}
+                          className="h-4 w-4 rounded border-muted-foreground/30 text-primary focus:ring-primary cursor-pointer"
+                        />
+                      </div>
+                    )}
+                    <div className={cn("flex items-start justify-between gap-3 flex-wrap", canSelect && "pl-7")}>
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-sm">{review.reviewer_name}</p>

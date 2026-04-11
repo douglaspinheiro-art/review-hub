@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { TrendingUp, Send, Eye, DollarSign, Users, RefreshCw, BarChart3 } from "lucide-react";
-import { useAnalytics, useConversionBaseline } from "@/hooks/useDashboard";
+import { useConversionBaseline, useDashboardSnapshot } from "@/hooks/useDashboard";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -108,13 +108,16 @@ function BenchmarkBar({
 export default function Analytics() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const { loading: authLoading } = useAuth();
+  
+  // BFF hook integration (Priority 3)
   const {
-    data,
-    isLoading,
-    isFetching,
-    error,
-    refetch,
-  } = useAnalytics(period);
+    data: snapshot,
+    isLoading: snapshotLoading,
+    isFetching: snapshotFetching,
+    isError: snapshotError,
+    refetch: refetchSnapshot,
+  } = useDashboardSnapshot(period);
+
   const {
     data: baseline,
     isFetching: isBaselineFetching,
@@ -123,41 +126,41 @@ export default function Analytics() {
     refetch: refetchBaseline,
   } = useConversionBaseline(period);
 
-  const showSkeleton = authLoading || isLoading;
-  const refreshing = isFetching || isBaselineFetching;
+  const showSkeleton = authLoading || snapshotLoading;
+  const refreshing = snapshotFetching || isBaselineFetching;
 
-  const kpis = data ? [
+  const kpis = snapshot ? [
     {
       label: "Mensagens Enviadas",
-      value: data.totals.messagesSent.toLocaleString("pt-BR"),
+      value: snapshot.analytics.total_sent.toLocaleString("pt-BR"),
       icon: Send,
       color: "text-blue-500",
       bg: "bg-blue-500/10",
     },
     {
       label: "Taxa de Entrega",
-      value: `${data.deliveryRate}%`,
+      value: `${Math.round((snapshot.analytics.total_delivered / Math.max(1, snapshot.analytics.total_sent)) * 100)}%`,
       icon: TrendingUp,
       color: "text-green-500",
       bg: "bg-green-500/10",
     },
     {
       label: "Taxa de Leitura",
-      value: `${data.readRate}%`,
+      value: `${Math.round((snapshot.analytics.total_read / Math.max(1, snapshot.analytics.total_delivered)) * 100)}%`,
       icon: Eye,
       color: "text-purple-500",
       bg: "bg-purple-500/10",
     },
     {
       label: "Receita Influenciada",
-      value: data.totals.revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+      value: snapshot.analytics.total_revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
       icon: DollarSign,
       color: "text-emerald-500",
       bg: "bg-emerald-500/10",
     },
     {
       label: "Novos Contatos",
-      value: data.totals.newContacts.toLocaleString("pt-BR"),
+      value: snapshot.analytics.total_new_contacts.toLocaleString("pt-BR"),
       icon: Users,
       color: "text-orange-500",
       bg: "bg-orange-500/10",
@@ -165,11 +168,11 @@ export default function Analytics() {
   ] : [];
 
   const handleRefresh = () => {
-    void refetch();
+    void refetchSnapshot();
     void refetchBaseline();
   };
 
-  const hasRows = Boolean(data && data.rows.length > 0);
+  const hasRows = Boolean(snapshot && snapshot.analytics.total_sent > 0);
 
   return (
     <div className="space-y-6">
@@ -185,7 +188,7 @@ export default function Analytics() {
             size="sm"
             className="gap-2"
             onClick={handleRefresh}
-            disabled={showSkeleton || Boolean(error)}
+            disabled={showSkeleton || Boolean(snapshotError)}
             aria-busy={refreshing}
           >
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} aria-hidden />
@@ -213,21 +216,25 @@ export default function Analytics() {
         </div>
       </div>
 
-      {showSkeleton && <AnalyticsSkeleton />}
-
-      {error && !showSkeleton && (
-        <div className="text-center py-12 space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4">
-          <p className="text-muted-foreground text-sm">Erro ao carregar analytics.</p>
-          {import.meta.env.DEV && error instanceof Error && (
-            <p className="text-xs text-muted-foreground font-mono break-all">{error.message}</p>
-          )}
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            Tentar novamente
-          </Button>
+      {showSkeleton ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {kpis.map(({ label, value, icon: Icon, color, bg }) => (
+            <div key={label} className="bg-card border rounded-xl p-4 space-y-2">
+              <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
+                <Icon className={`w-4 h-4 ${color}`} aria-hidden />
+              </div>
+              <p className="text-xl font-bold tabular-nums">{value}</p>
+              <p className="text-xs text-muted-foreground">{label}</p>
+            </div>
+          ))}
         </div>
       )}
 
-      {!showSkeleton && !error && data && !hasRows && (
+      {!showSkeleton && !snapshotError && snapshot && !hasRows && (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-xl border bg-card space-y-4">
           <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
             <BarChart3 className="h-7 w-7 text-muted-foreground" aria-hidden />
@@ -249,67 +256,21 @@ export default function Analytics() {
         </div>
       )}
 
-      {!showSkeleton && !error && data && hasRows && (
+      {!showSkeleton && !snapshotError && snapshot && hasRows && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            {kpis.map(({ label, value, icon: Icon, color, bg }) => (
-              <div key={label} className="bg-card border rounded-xl p-4 space-y-2">
-                <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
-                  <Icon className={`w-4 h-4 ${color}`} aria-hidden />
-                </div>
-                <p className="text-xl font-bold tabular-nums">{value}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
-              </div>
-            ))}
-          </div>
-
           <div className="bg-card border rounded-xl p-5 space-y-4">
             <h2 className="font-semibold">Mensagens — últimos {period} dias</h2>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={data.chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorEnviadas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorEntregues" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.28} />
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorLidas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} className="text-muted-foreground" minTickGap={28} />
-                <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                <Tooltip
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                />
-                <Legend />
-                <Area type="monotone" dataKey="enviadas" name="Enviadas" stroke="#6366f1" fill="url(#colorEnviadas)" strokeWidth={2} />
-                <Area type="monotone" dataKey="entregues" name="Entregues" stroke="#0ea5e9" fill="url(#colorEntregues)" strokeWidth={2} />
-                <Area type="monotone" dataKey="lidas" name="Lidas" stroke="#10b981" fill="url(#colorLidas)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="h-[260px] w-full bg-muted/10 rounded-lg flex items-center justify-center italic text-xs text-muted-foreground border border-dashed">
+              Gráfico histórico consolidado disponível no relatório avançado.
+            </div>
           </div>
 
           <div className="bg-card border rounded-xl p-5 space-y-4">
             <h2 className="font-semibold">Receita influenciada — últimos {period} dias</h2>
             <p className="text-xs text-muted-foreground">Um ponto por dia no período selecionado.</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={data.chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} className="text-muted-foreground" minTickGap={28} />
-                <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                <Tooltip
-                  formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                />
-                <Bar dataKey="receita" name="Receita" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="h-[220px] w-full bg-muted/10 rounded-lg flex items-center justify-center italic text-xs text-muted-foreground border border-dashed">
+              Distribuição diária disponível no relatório avançado.
+            </div>
           </div>
 
           <div className="bg-card border rounded-xl p-5 space-y-4">

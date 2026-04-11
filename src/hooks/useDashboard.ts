@@ -1161,3 +1161,84 @@ export function useProblems() {
     enabled: !!user,
   });
 }
+
+/**
+ * Forecast Projection: Calls server-side statistical math for revenue projection.
+ */
+export function useForecastProjection(storeId: string | null, days = 30) {
+  return useQuery({
+    queryKey: ["forecast-projection", storeId, days],
+    queryFn: async () => {
+      if (!storeId) return null;
+      const { data, error } = await supabase.rpc("calculate_forecast_projection", {
+        p_store_id: storeId,
+        p_period_days: days
+      });
+      if (error) throw error;
+      return data as {
+        projected_30: number;
+        trend_pct: number;
+        avg_daily: number;
+        total_realized: number;
+        days_count: number;
+        calculated_at: string;
+      };
+    },
+    enabled: !!storeId,
+    staleTime: 300_000, // 5 minutes cache
+  });
+}
+
+/** 
+ * Dashboard BFF: Fetches a complete snapshot of the dashboard metrics in one call.
+ * Consolidates analytics, RFM, prescriptions, opportunities and heatmap.
+ */
+export function useDashboardSnapshot(days = 30) {
+  const { user, loading: authLoading } = useAuth();
+  return useQuery({
+    queryKey: ["dashboard-snapshot", user?.id ?? null, days],
+    queryFn: async () => {
+      const { storeId } = await getCurrentUserAndStore();
+      if (!storeId) throw new Error("Loja não encontrada");
+
+      const { data, error } = await supabase.rpc("get_dashboard_snapshot", {
+        p_store_id: storeId,
+        p_period_days: days
+      });
+
+      if (error) throw error;
+      return data as {
+        analytics: {
+          total_revenue: number;
+          total_sent: number;
+          total_delivered: number;
+          total_read: number;
+          total_new_contacts: number;
+        };
+        prev_revenue: number;
+        rfm: {
+          champions: number;
+          loyal: number;
+          at_risk: number;
+          lost: number;
+          new: number;
+          total_customers: number;
+          avg_chs: number;
+        };
+        opportunities: number;
+        unread: number;
+        prescriptions: {
+          active_count: number;
+          pending_count: number;
+        };
+        heatmap: {
+          cells: Record<string, number>;
+          max_val: number;
+        };
+        timestamp: string;
+      };
+    },
+    enabled: !authLoading && !!user,
+    staleTime: 60_000,
+  });
+}

@@ -46,18 +46,30 @@ export default function Forecast() {
     refetch: refetchSnapshot,
   } = useForecastSnapshot(storeId);
 
+  const {
+    data: projectionData,
+    isLoading: loadingProjection,
+    refetch: refetchProjection,
+  } = useForecastProjection(storeId, FORECAST_ANALYTICS_DAYS);
+
   const rows = analytics?.rows;
   const projection = useMemo(() => buildForecastProjection(rows ?? []), [rows]);
-  const { chartBuckets, projected30, trendPct, avgDaily, realizedWindowTotal } = projection;
+  const { chartBuckets, realizedWindowTotal } = projection;
+
+  // Prefer server-side projection data, fallback to client calculation
+  const projected30 = projectionData?.projected_30 ?? projection.projected30;
+  const trendPct = projectionData?.trend_pct ?? projection.trendPct;
+  const avgDaily = projectionData?.avg_daily ?? projection.avgDaily;
 
   const analyticsReady = !loadingAnalytics && !analyticsError;
   const lojaReady = !loja.isLoading;
   const rowCount = rows?.length ?? 0;
-  const showSkeleton = (!lojaReady || (loadingAnalytics && rowCount === 0)) && !analyticsError;
+  const showSkeleton = (!lojaReady || (loadingAnalytics && rowCount === 0) || loadingProjection) && !analyticsError;
 
   const refetchAll = () => {
     void refetchAnalytics();
     void refetchSnapshot();
+    void refetchProjection();
   };
 
   if (showSkeleton) {
