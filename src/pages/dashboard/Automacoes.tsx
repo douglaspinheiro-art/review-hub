@@ -302,7 +302,7 @@ export default function Automacoes() {
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertTitle className="text-amber-800 dark:text-amber-200">WhatsApp não conectado nesta loja</AlertTitle>
           <AlertDescription className="text-sm text-muted-foreground">
-            O agendador envia mensagens pela Evolution/Meta só com conexão ativa.{" "}
+            O agendador envia mensagens pela Meta Cloud só com conexão ativa.{" "}
             <Link className="font-bold text-primary underline" to="/dashboard/whatsapp">
               Conectar WhatsApp
             </Link>

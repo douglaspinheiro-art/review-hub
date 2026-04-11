@@ -30,5 +30,5 @@ dist-ssr
 *.sln
 *.sw?
 
-# Clone local do Evolution API (repo separado; não versionar aqui)
+# Clone local opcional (stack externa; não versionar no repo principal)
 evolution-api/

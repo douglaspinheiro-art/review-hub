@@ -279,7 +279,7 @@ export default function Planos({ embedInDashboard, defaultTab: _defaultTab }: { 
                       { label: "WhatsApp", price: "R$ 0,50/msg" },
                       { label: "E-mail",   price: "R$ 0,01/msg" },
                       { label: "SMS",      price: "R$ 0,20/msg" },
-                      { label: "Evolution API", price: "Incluso" },
+                      { label: "WhatsApp Meta Cloud", price: "Incluso" },
                     ].map(({ label, price }) => (
                       <div key={label} className="space-y-0.5">
                         <p className="font-bold uppercase tracking-widest opacity-40">{label}</p>

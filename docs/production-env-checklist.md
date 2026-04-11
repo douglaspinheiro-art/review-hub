@@ -67,9 +67,9 @@ Ajuste em **Authentication → URL configuration** do projeto:
 | `WEBHOOK_CART_SECRET` | `webhook-cart` |
 | `FLOW_ENGINE_SECRET` | `flow-engine` / encadeamento interno |
 
-**Recomendados** (conforme funções ligadas): `RESEND_DEFAULT_FROM`, `RESEND_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `DISPATCH_NEWSLETTER_INTERNAL_SECRET`, `WHATSAPP_WEBHOOK_SECRET`, `SMS_DEV_TOKEN`, `LOGTAIL_SOURCE_TOKEN`.
+**Recomendados** (conforme funções ligadas): `RESEND_DEFAULT_FROM`, `RESEND_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `DISPATCH_NEWSLETTER_INTERNAL_SECRET`, `SMS_DEV_TOKEN`, `LOGTAIL_SOURCE_TOKEN`.
 
-**WhatsApp Cloud API (Meta)** — se não usar Evolution e sim `provider = meta_cloud`: `META_WHATSAPP_VERIFY_TOKEN` (webhook GET challenge) e `META_APP_SECRET` (assinatura `X-Hub-Signature-256`). Deploy: `meta-whatsapp-webhook`, `meta-whatsapp-send`. Guia: `docs/meta-whatsapp-cloud-setup.md`.
+**WhatsApp Cloud API (Meta)** — `META_WHATSAPP_VERIFY_TOKEN` (webhook GET challenge) e `META_APP_SECRET` (assinatura `X-Hub-Signature-256`). Deploy: `meta-whatsapp-webhook`, `meta-whatsapp-send`. Guia: `docs/meta-whatsapp-cloud-setup.md`.
 
 ## Health Checks rápidos
 

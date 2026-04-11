@@ -58,11 +58,6 @@
       "sha256": "e60c62fb6f19192905e8418819be7c626bfb9730283e1bdf1debba86f863de13"
     },
     {
-      "function": "evolution-proxy",
-      "file": "supabase/functions/evolution-proxy/index.ts",
-      "sha256": "d6b98e7f96c8b29902c9bba45776bee497d7ad776fb80f1ae7dc8931de6a60c6"
-    },
-    {
       "function": "fetch-store-metrics",
       "file": "supabase/functions/fetch-store-metrics/index.ts",
       "sha256": "f938a027d3d88612e3a0b808bcf63c574f4c16128de5cee0a0da1a4e911720c6"
@@ -157,10 +152,5 @@
       "file": "supabase/functions/whatsapp-health-check/index.ts",
       "sha256": "e7d1b36fd3f62cb5e98ad3142000599db802d6022a645905e74c1d4ad69e148e"
     },
-    {
-      "function": "whatsapp-webhook",
-      "file": "supabase/functions/whatsapp-webhook/index.ts",
-      "sha256": "5724d67d53b64b59bb08911e2927b3d7ad1103ec6c89482a88c5214c99358162"
-    }
   ]
 }

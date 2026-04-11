@@ -1,6 +1,6 @@
 /**
  * Proxy autenticado para envio WhatsApp Cloud API (Meta) — token só no edge.
- * O browser chama com JWT; Evolution continua usando evolution-proxy.
+ * O browser chama com JWT; credenciais Meta ficam no servidor.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";

@@ -1,13 +1,14 @@
 /**
  * whatsapp-health-check
- * Periodically validates instance connection status, attempts reconnect,
- * and notifies account owner on disconnections.
+ * Valida conexões Meta Cloud (Graph API) e atualiza status na tabela.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/edge-utils.ts";
+
+const GRAPH = "https://graph.facebook.com";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -28,9 +29,10 @@ serve(async (req) => {
 
   const { data: connections, error } = await supabase
     .from("whatsapp_connections")
-    .select("id,user_id,store_id,instance_name,status,evolution_api_url,evolution_api_key")
-    .not("evolution_api_url", "is", null)
-    .not("evolution_api_key", "is", null)
+    .select("id,user_id,store_id,instance_name,status,provider,meta_phone_number_id,meta_access_token,meta_api_version")
+    .eq("provider", "meta_cloud")
+    .not("meta_phone_number_id", "is", null)
+    .not("meta_access_token", "is", null)
     .limit(200);
 
   if (error) {
@@ -41,38 +43,32 @@ serve(async (req) => {
   }
 
   let checked = 0;
-  let reconnected = 0;
   let disconnected = 0;
 
-  for (const conn of (connections ?? [])) {
+  for (const conn of connections ?? []) {
     try {
-      const stateRes = await fetch(`${conn.evolution_api_url.replace(/\/$/, "")}/instance/connectionState/${conn.instance_name}`, {
-        headers: { "Content-Type": "application/json", apikey: conn.evolution_api_key },
+      const ver = String((conn as { meta_api_version?: string | null }).meta_api_version ?? "v21.0").replace(/^v/, "v");
+      const phoneId = (conn as { meta_phone_number_id: string }).meta_phone_number_id;
+      const token = (conn as { meta_access_token: string }).meta_access_token;
+      const stateRes = await fetch(`${GRAPH}/${ver}/${phoneId}?fields=id`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
       checked += 1;
-      if (!stateRes.ok) continue;
-      const stateBody = await stateRes.json();
-      const state = String(stateBody?.state ?? "close");
-      const mapped = state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
+      const mapped = stateRes.ok ? "connected" : "disconnected";
+      if (mapped === "disconnected") disconnected += 1;
 
       await supabase
         .from("whatsapp_connections")
         .update({ status: mapped })
-        .eq("id", conn.id);
+        .eq("id", (conn as { id: string }).id);
 
       if (mapped === "disconnected") {
-        disconnected += 1;
-        await fetch(`${conn.evolution_api_url.replace(/\/$/, "")}/instance/connect/${conn.instance_name}`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json", apikey: conn.evolution_api_key },
-        }).then(() => { reconnected += 1; }, () => {});
-
-        const title = `WhatsApp desconectado: ${conn.instance_name}`;
-        await (supabase as any).from("notifications").insert({
-          user_id: conn.user_id,
+        const title = `WhatsApp (Meta): token ou número inválido — ${(conn as { instance_name?: string }).instance_name ?? ""}`;
+        await supabase.from("notifications").insert({
+          user_id: (conn as { user_id: string }).user_id,
           type: "system",
           title,
-          body: "Detectamos desconexão da instância. Tentamos reconectar automaticamente.",
+          body: "Não foi possível validar a conexão na Graph API. Atualize o token em Dashboard → WhatsApp.",
           action_url: "/dashboard/whatsapp",
         }).then(() => {}, () => {});
       }
@@ -81,7 +77,7 @@ serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, checked, disconnected, reconnect_attempts: reconnected }), {
+  return new Response(JSON.stringify({ ok: true, checked, disconnected }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });

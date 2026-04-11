@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Wifi, WifiOff, QrCode, Plus, Trash2, RefreshCw,
+  Wifi, WifiOff, Plus, Trash2,
   Loader2, CheckCircle, AlertCircle, Settings, Zap, Copy, ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,18 +27,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import {
-  getQRCodeForConnection,
-  getConnectionStateForConnection,
-  mapEvolutionState,
-  setWebhookForConnection,
-  createInstanceForConnection,
-  deleteInstanceForConnection,
-  EVOLUTION_USE_PROXY,
-} from "@/lib/evolution-api";
 import { cn } from "@/lib/utils";
 import {
-  evolutionReadyForQr,
   metaShowsWebhookHelp,
   shouldWarnIncompleteSetup,
 } from "@/lib/whatsapp/connection-ui";
@@ -48,8 +38,6 @@ type Connection = {
   instance_name: string;
   phone_number: string | null;
   status: "disconnected" | "connecting" | "connected" | "error";
-  evolution_api_url: string | null;
-  evolution_api_key: string | null;
   provider?: string | null;
   meta_phone_number_id?: string | null;
   meta_waba_id?: string | null;
@@ -93,9 +81,6 @@ export default function WhatsApp() {
   const [showForm, setShowForm] = useState(false);
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [instanceName, setInstanceName] = useState("");
-  const [apiUrl, setApiUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [connectionProvider, setConnectionProvider] = useState<"evolution" | "meta_cloud">("evolution");
   const [metaPhoneNumberId, setMetaPhoneNumberId] = useState("");
   const [metaWabaId, setMetaWabaId] = useState("");
   const [metaAccessToken, setMetaAccessToken] = useState("");
@@ -106,9 +91,6 @@ export default function WhatsApp() {
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
-  const [qrMap, setQrMap] = useState<Record<string, string>>({});
-  const [qrLoading, setQrLoading] = useState<Record<string, boolean>>({});
-  const [countdownMap, setCountdownMap] = useState<Record<string, number>>({});
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -120,13 +102,8 @@ export default function WhatsApp() {
     return `${base}/functions/v1/meta-whatsapp-webhook`;
   }, []);
 
-  const connectionSelect = useMemo(
-    () =>
-      EVOLUTION_USE_PROXY
-        ? "id, instance_name, phone_number, status, evolution_api_url, provider, meta_phone_number_id, meta_waba_id, meta_default_template_name, connected_at, created_at, store_id"
-        : "id, instance_name, phone_number, status, evolution_api_url, evolution_api_key, provider, meta_phone_number_id, meta_waba_id, meta_default_template_name, connected_at, created_at, store_id",
-    [],
-  );
+  const connectionSelect =
+    "id, instance_name, phone_number, status, provider, meta_phone_number_id, meta_waba_id, meta_default_template_name, connected_at, created_at, store_id";
 
   const fetchLojas = useCallback(async () => {
     if (!user?.id) return;
@@ -193,8 +170,6 @@ export default function WhatsApp() {
     return [
       c.id,
       c.provider ?? "",
-      c.evolution_api_url ?? "",
-      c.evolution_api_key ?? "",
       c.meta_phone_number_id ?? "",
       c.meta_waba_id ?? "",
       c.meta_default_template_name ?? "",
@@ -206,13 +181,6 @@ export default function WhatsApp() {
     if (!showApiConfig || !selectedApiConnectionId) return;
     const c = connections.find((x) => x.id === selectedApiConnectionId);
     if (!c) return;
-    setConnectionProvider(c.provider === "meta_cloud" ? "meta_cloud" : "evolution");
-    setApiUrl(c.evolution_api_url ?? "");
-    if (!EVOLUTION_USE_PROXY) {
-      setApiKey(c.evolution_api_key ?? "");
-    } else {
-      setApiKey("");
-    }
     setMetaPhoneNumberId(c.meta_phone_number_id ?? "");
     setMetaWabaId(c.meta_waba_id ?? "");
     setMetaDefaultTemplate(c.meta_default_template_name ?? "");
@@ -235,44 +203,27 @@ export default function WhatsApp() {
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
-      const isMeta = connectionProvider === "meta_cloud";
       const storeId = selectedStoreId || null;
       const row = {
         user_id: user!.id,
         store_id: storeId,
         instance_name: name.trim(),
         status: "disconnected" as const,
-        provider: connectionProvider,
-        evolution_api_url: !isMeta ? apiUrl?.trim() || null : null,
-        evolution_api_key: !isMeta ? apiKey?.trim() || null : null,
-        meta_phone_number_id: isMeta ? metaPhoneNumberId.trim() || null : null,
-        meta_waba_id: isMeta ? metaWabaId.trim() || null : null,
-        meta_access_token: isMeta ? metaAccessToken.trim() || null : null,
-        meta_default_template_name: isMeta ? metaDefaultTemplate.trim() || null : null,
+        provider: "meta_cloud" as const,
+        evolution_api_url: null,
+        evolution_api_key: null,
+        meta_phone_number_id: metaPhoneNumberId.trim() || null,
+        meta_waba_id: metaWabaId.trim() || null,
+        meta_access_token: metaAccessToken.trim() || null,
+        meta_default_template_name: metaDefaultTemplate.trim() || null,
       };
       const { data: inserted, error } = await supabase
         .from("whatsapp_connections")
         .insert(row)
-        .select(
-          EVOLUTION_USE_PROXY
-            ? "id, instance_name, evolution_api_url, provider"
-            : "id, instance_name, evolution_api_url, evolution_api_key, provider",
-        )
+        .select("id, instance_name, provider")
         .single();
       if (error) throw error;
-      if (!isMeta && inserted?.evolution_api_url && (EVOLUTION_USE_PROXY || inserted?.evolution_api_key)) {
-        try {
-          await createInstanceForConnection(inserted as Parameters<typeof createInstanceForConnection>[0]);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          toast({
-            title: "Instância salva; aviso da Evolution",
-            description: `${msg} — você pode tentar gerar o QR Code mesmo assim.`,
-            variant: "destructive",
-          });
-        }
-      }
-      if (isMeta && inserted?.id && metaPhoneNumberId.trim() && metaAccessToken.trim()) {
+      if (inserted?.id && metaPhoneNumberId.trim() && metaAccessToken.trim()) {
         const ver = await invokeMetaVerify(inserted.id as string);
         if (!ver.ok) {
           toast({
@@ -289,9 +240,7 @@ export default function WhatsApp() {
       setShowForm(false);
       toast({
         title: "Instância criada",
-        description: connectionProvider === "meta_cloud"
-          ? "Configure o webhook no Meta e use «Validar com Meta» se necessário."
-          : "Clique em «Mostrar QR Code» para conectar.",
+        description: "Configure o webhook no Meta e use «Validar com Meta» se necessário.",
       });
     },
     onError: (e: Error) =>
@@ -304,20 +253,15 @@ export default function WhatsApp() {
 
   const updateApiMutation = useMutation({
     mutationFn: async (connectionId: string) => {
-      const isMeta = connectionProvider === "meta_cloud";
       const patch: Record<string, unknown> = {
-        provider: connectionProvider,
-        evolution_api_url: !isMeta ? apiUrl.trim() || null : null,
-        meta_phone_number_id: isMeta ? metaPhoneNumberId.trim() || null : null,
-        meta_waba_id: isMeta ? metaWabaId.trim() || null : null,
-        meta_default_template_name: isMeta ? metaDefaultTemplate.trim() || null : null,
+        provider: "meta_cloud",
+        evolution_api_url: null,
+        evolution_api_key: null,
+        meta_phone_number_id: metaPhoneNumberId.trim() || null,
+        meta_waba_id: metaWabaId.trim() || null,
+        meta_default_template_name: metaDefaultTemplate.trim() || null,
       };
-      if (!isMeta) {
-        if (apiKey.trim()) {
-          patch.evolution_api_key = apiKey.trim();
-        }
-      }
-      if (isMeta && metaAccessToken.trim()) {
+      if (metaAccessToken.trim()) {
         patch.meta_access_token = metaAccessToken.trim();
       }
       const { error } = await supabase
@@ -365,37 +309,10 @@ export default function WhatsApp() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data: row } = await supabase
-        .from("whatsapp_connections")
-        .select(
-          EVOLUTION_USE_PROXY
-            ? "id, instance_name, evolution_api_url, provider"
-            : "id, instance_name, evolution_api_url, evolution_api_key, provider",
-        )
-        .eq("id", id)
-        .single();
-      const conn = (row as Connection | null) ?? null;
-      if (
-        conn &&
-        conn.provider !== "meta_cloud" &&
-        conn.evolution_api_url &&
-        conn.evolution_api_key
-      ) {
-        try {
-          await deleteInstanceForConnection(conn);
-        } catch {
-          /* seguimos e removemos no banco */
-        }
-      }
       const { error } = await supabase.from("whatsapp_connections").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: (_, id) => {
-      setQrMap((m) => {
-        const n = { ...m };
-        delete n[id];
-        return n;
-      });
+    onSuccess: () => {
       setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
       toast({ title: "Instância removida" });
@@ -408,107 +325,9 @@ export default function WhatsApp() {
       }),
   });
 
-  const fetchQR = useCallback(async (conn: Connection) => {
-    if (conn.provider === "meta_cloud") {
-      toast({
-        title: "Conexão Meta oficial",
-        description: "Não é necessário QR Code. O número é gerenciado no Facebook / Meta Business.",
-      });
-      return;
-    }
-    if (!conn.evolution_api_url || !conn.evolution_api_key) {
-      toast({
-        title: "Evolution API não configurada",
-        description: "Configure a URL e chave da API em Configurar API.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setQrLoading((m) => ({ ...m, [conn.id]: true }));
-    try {
-      const data = await getQRCodeForConnection(conn);
-      const src = data.base64.startsWith("data:") ? data.base64 : `data:image/png;base64,${data.base64}`;
-      setQrMap((m) => ({ ...m, [conn.id]: src }));
-      setCountdownMap((m) => ({ ...m, [conn.id]: 60 }));
-      await supabase.from("whatsapp_connections").update({ status: "connecting" }).eq("id", conn.id);
-      queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
-    } catch (err: unknown) {
-      toast({
-        title: "Erro ao buscar QR Code",
-        description: (err as Error)?.message ?? "Verifique se a Evolution API está acessível.",
-        variant: "destructive",
-      });
-    } finally {
-      setQrLoading((m) => ({ ...m, [conn.id]: false }));
-    }
-  }, [toast, queryClient]);
-
-  const checkConnectionState = useCallback(async (conn: Connection) => {
-    if (conn.provider === "meta_cloud") return;
-    if (!conn.evolution_api_url || !conn.evolution_api_key) return;
-    try {
-      const state = await getConnectionStateForConnection(conn);
-      const mapped = mapEvolutionState(state.state);
-      if (mapped === "connected") {
-        setQrMap((m) => {
-          const n = { ...m };
-          delete n[conn.id];
-          return n;
-        });
-        await supabase.from("whatsapp_connections").update({
-          status: "connected",
-          connected_at: new Date().toISOString(),
-        }).eq("id", conn.id);
-        try {
-          const appUrl = import.meta.env.VITE_SUPABASE_URL || "";
-          if (appUrl) {
-            await setWebhookForConnection(conn, `${appUrl.replace(/\/$/, "")}/functions/v1/whatsapp-webhook`);
-          }
-        } catch {
-          /* webhook opcional */
-        }
-        queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
-        toast({ title: "WhatsApp conectado!", description: `Instância ${conn.instance_name} está ativa.` });
-      }
-    } catch {
-      /* polling silencioso */
-    }
-  }, [queryClient, toast]);
-
-  useEffect(() => {
-    const ids = Object.keys(qrMap);
-    if (ids.length === 0) return;
-    const interval = setInterval(() => {
-      ids.forEach((id) => {
-        const conn = connections.find((c) => c.id === id);
-        if (conn) void checkConnectionState(conn);
-      });
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [qrMap, connections, checkConnectionState]);
-
-  useEffect(() => {
-    const ids = Object.keys(qrMap);
-    if (ids.length === 0) return;
-    const t = setInterval(() => {
-      setCountdownMap((prev) => {
-        const next = { ...prev };
-        ids.forEach((id) => {
-          if ((next[id] ?? 0) > 0) next[id] = (next[id] ?? 0) - 1;
-        });
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, [qrMap]);
-
   const selectedStoreLabel = lojas.find((s) => s.id === selectedStoreId)?.name ?? "";
 
-  const canSaveApi =
-    !!selectedApiConnectionId &&
-    (connectionProvider === "evolution"
-      ? !!(apiUrl.trim() && (EVOLUTION_USE_PROXY || apiKey.trim()))
-      : !!metaPhoneNumberId.trim());
+  const canSaveApi = !!selectedApiConnectionId && !!metaPhoneNumberId.trim();
 
   const showInitialSpinner = storeListLoading || (connectionsEnabled && isLoading);
 
@@ -583,41 +402,9 @@ export default function WhatsApp() {
               Crie uma instância nesta loja antes de salvar credenciais aqui.
             </p>
           )}
-          <div className="space-y-1.5">
-            <Label htmlFor="conn-provider">Provedor</Label>
-            <select
-              id="conn-provider"
-              className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={connectionProvider}
-              onChange={(e) => setConnectionProvider(e.target.value as "evolution" | "meta_cloud")}
-            >
-              <option value="evolution">Evolution API (self-hosted)</option>
-              <option value="meta_cloud">Meta — WhatsApp Cloud API (oficial)</option>
-            </select>
-          </div>
-          {connectionProvider === "evolution" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="api-url">URL da API</Label>
-                <Input
-                  id="api-url"
-                  placeholder="https://sua-api.com"
-                  value={apiUrl}
-                  onChange={(e) => setApiUrl(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="api-key">Chave da API (ApiKey)</Label>
-                <Input
-                  id="api-key"
-                  type="password"
-                  placeholder={EVOLUTION_USE_PROXY ? "Preencha para atualizar a chave" : "sua_chave_secreta"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-              </div>
-            </div>
-          ) : (
+          <p className="text-xs text-muted-foreground">
+            Provedor: <strong>Meta — WhatsApp Cloud API</strong>
+          </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="meta-phone-id">Phone number ID (Graph API)</Label>
@@ -675,7 +462,6 @@ export default function WhatsApp() {
                 </p>
               </div>
             </div>
-          )}
           <div className="flex flex-wrap gap-2 pt-2">
             <Button
               onClick={() => selectedApiConnectionId && updateApiMutation.mutate(selectedApiConnectionId)}
@@ -685,7 +471,7 @@ export default function WhatsApp() {
               {updateApiMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
               Salvar nesta conexão
             </Button>
-            {connectionProvider === "meta_cloud" && selectedApiConnectionId && (
+            {selectedApiConnectionId && (
               <Button
                 type="button"
                 variant="secondary"
@@ -715,18 +501,9 @@ export default function WhatsApp() {
               Será associada à loja: <span className="font-medium text-foreground">{selectedStoreLabel}</span>
             </p>
           ) : null}
-          <div className="space-y-1.5">
-            <Label htmlFor="new-provider">Provedor</Label>
-            <select
-              id="new-provider"
-              className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={connectionProvider}
-              onChange={(e) => setConnectionProvider(e.target.value as "evolution" | "meta_cloud")}
-            >
-              <option value="evolution">Evolution API</option>
-              <option value="meta_cloud">Meta Cloud API</option>
-            </select>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Nova conexão usa <strong>Meta Cloud API</strong> (oficial).
+          </p>
           <div className="space-y-1.5">
             <Label htmlFor="instance-name">Nome da instância</Label>
             <Input
@@ -742,29 +519,6 @@ export default function WhatsApp() {
               }}
             />
           </div>
-          {connectionProvider === "evolution" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="create-api-url">URL da Evolution API</Label>
-                <Input
-                  id="create-api-url"
-                  placeholder="https://sua-api.com"
-                  value={apiUrl}
-                  onChange={(e) => setApiUrl(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-api-key">Chave da API</Label>
-                <Input
-                  id="create-api-key"
-                  type="password"
-                  placeholder="ApiKey da instância"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-              </div>
-            </div>
-          ) : (
             <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="create-meta-phone">Phone number ID</Label>
@@ -796,15 +550,14 @@ export default function WhatsApp() {
                 />
               </div>
             </div>
-          )}
           <div className="flex gap-2">
             <Button
               onClick={() => createMutation.mutate(instanceName)}
               disabled={
                 !instanceName.trim() ||
                 createMutation.isPending ||
-                (connectionProvider === "evolution" && (!apiUrl.trim() || !apiKey.trim())) ||
-                (connectionProvider === "meta_cloud" && (!metaPhoneNumberId.trim() || !metaAccessToken.trim()))
+                !metaPhoneNumberId.trim() ||
+                !metaAccessToken.trim()
               }
             >
               {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
@@ -849,13 +602,8 @@ export default function WhatsApp() {
         <div className="space-y-3">
           {connections.map((conn) => {
             const cfg = STATUS_CONFIG[conn.status] ?? STATUS_CONFIG.disconnected;
-            const qr = qrMap[conn.id];
-            const loadingQR = qrLoading[conn.id];
-            const hasEvolutionCfg = evolutionReadyForQr(conn);
             const showMetaWebhook = metaShowsWebhookHelp(conn);
             const warnSetup = shouldWarnIncompleteSetup(conn);
-            const countdown = countdownMap[conn.id] ?? 0;
-            const qrExpired = qr && countdown <= 0;
 
             return (
               <div key={conn.id} className="bg-card border rounded-xl p-5 space-y-4">
@@ -879,11 +627,11 @@ export default function WhatsApp() {
                       <p className="font-medium flex items-center gap-2 flex-wrap">
                         {conn.instance_name}
                         <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-muted border">
-                          {conn.provider === "meta_cloud" ? "Meta Cloud" : "Evolution"}
+                          Meta Cloud
                         </span>
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {conn.phone_number ?? (conn.provider === "meta_cloud" ? "Cloud API" : "Número não conectado")}
+                        {conn.phone_number ?? "Cloud API"}
                       </p>
                     </div>
                   </div>
@@ -897,7 +645,7 @@ export default function WhatsApp() {
                     <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
                     <span>
                       Configure a API em <strong>Configurar API</strong>
-                      {conn.provider === "meta_cloud" ? " (Phone number ID + token) e valide com Meta." : " para ativar o QR Code."}
+                      {" (Phone number ID + token) e valide com Meta."}
                     </span>
                     <button
                       type="button"
@@ -910,77 +658,7 @@ export default function WhatsApp() {
                   </div>
                 )}
 
-                {conn.provider !== "meta_cloud" && conn.status !== "connected" && hasEvolutionCfg && (
-                  <div className="border-t pt-4">
-                    {qr ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          {qrExpired ? (
-                            <>
-                              <div className="w-2 h-2 rounded-full bg-destructive" />
-                              <p className="text-sm font-medium text-destructive">QR Code expirado</p>
-                            </>
-                          ) : (
-                            <>
-                              <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                                Aguardando leitura — <span className="font-black">{countdown}s</span>
-                              </p>
-                            </>
-                          )}
-                        </div>
-                        <div className="flex gap-6 items-start">
-                          {qrExpired ? (
-                            <div className="w-44 h-44 border-4 border-destructive/20 rounded-xl bg-destructive/5 flex flex-col items-center justify-center gap-3">
-                              <p className="text-xs font-bold text-destructive text-center">QR expirado</p>
-                              <Button size="sm" variant="outline" className="gap-2" onClick={() => fetchQR(conn)} disabled={loadingQR}>
-                                {loadingQR ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                                Gerar novo
-                              </Button>
-                            </div>
-                          ) : (
-                            <img
-                              src={qr}
-                              alt="QR Code WhatsApp"
-                              className="w-44 h-44 border-4 border-white rounded-xl shadow-md dark:border-border"
-                            />
-                          )}
-                          <div className="space-y-3 text-sm text-muted-foreground">
-                            <p className="font-medium text-foreground">Como conectar:</p>
-                            <ol className="list-decimal list-inside space-y-1.5">
-                              <li>Abra o WhatsApp no seu celular</li>
-                              <li>Toque em <strong>Dispositivos vinculados</strong></li>
-                              <li>Toque em <strong>Vincular um dispositivo</strong></li>
-                              <li>Aponte a câmera para o QR Code</li>
-                            </ol>
-                            {!qrExpired && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-2 mt-2"
-                                onClick={() => fetchQR(conn)}
-                                disabled={loadingQR}
-                              >
-                                {loadingQR ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                                Atualizar QR
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3">
-                        <Button size="sm" className="gap-2" onClick={() => fetchQR(conn)} disabled={loadingQR}>
-                          {loadingQR ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
-                          {loadingQR ? "Carregando QR Code…" : "Mostrar QR Code"}
-                        </Button>
-                        <p className="text-xs text-muted-foreground">Escaneie com o WhatsApp Business para conectar</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {conn.provider === "meta_cloud" && showMetaWebhook && (
+                {showMetaWebhook && (
                   <div className="text-xs text-muted-foreground border-t pt-3 space-y-2">
                     <p className="font-medium text-foreground">Webhook Meta Cloud</p>
                     <div className="flex gap-2 flex-wrap items-center">
@@ -1021,18 +699,6 @@ export default function WhatsApp() {
                 )}
 
                 <div className="flex items-center gap-2 justify-end border-t pt-3">
-                  {conn.provider !== "meta_cloud" && conn.status !== "connected" && hasEvolutionCfg && !qr && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 text-muted-foreground h-8"
-                      onClick={() => fetchQR(conn)}
-                      disabled={loadingQR}
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Reconectar
-                    </Button>
-                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1052,10 +718,6 @@ export default function WhatsApp() {
 
       <div className="bg-muted/50 border rounded-xl p-4 text-sm text-muted-foreground space-y-2">
         <p className="font-medium text-foreground">Como conectar</p>
-        <p className="text-xs">
-          <strong>Evolution:</strong> crie uma instância, use <strong>Configurar API</strong> (URL + chave) na mesma conexão,{" "}
-          <strong>Mostrar QR Code</strong> e aguarde a confirmação.
-        </p>
         <p className="text-xs">
           <strong>Meta Cloud API:</strong> credenciais por conexão + <strong>Validar com Meta</strong>. Copie a URL do webhook no Meta Developer. Documentação:{" "}
           <code className="text-[10px] bg-background px-1 rounded border">docs/meta-whatsapp-cloud-setup.md</code>.

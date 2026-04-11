@@ -28,7 +28,6 @@
   - `flow-engine`
   - `process-scheduled-messages`
   - `webhook-cart` (if secret configured)
-  - `whatsapp-webhook` (if secret configured)
   - `integration-gateway` (if secret configured)
 
 ## Load sanity

@@ -30,7 +30,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 import { useToast } from "@/hooks/use-toast";
-import { sendTextForConnection, sendTemplateForConnection, type ConnRow } from "@/lib/evolution-api";
+import { sendTemplateForConnection, type ConnRow } from "@/lib/meta-whatsapp-client";
 import { cn } from "@/lib/utils";
 import {
   buildCartRecoveryMessage,
@@ -251,13 +251,14 @@ export default function CarrinhoAbandonado() {
 
   const pickWaConnection = async (uid: string, storeId: string | null): Promise<ConnRow> => {
     const sel =
-      "id, instance_name, status, evolution_api_url, provider, meta_phone_number_id, meta_default_template_name, meta_api_version, store_id";
+      "id, instance_name, status, provider, meta_phone_number_id, meta_default_template_name, meta_api_version, store_id";
     if (storeId) {
       const { data: byStore, error: e1 } = await supabase
         .from("whatsapp_connections")
         .select(sel)
         .eq("user_id", uid)
         .eq("status", "connected")
+        .eq("provider", "meta_cloud")
         .eq("store_id", storeId)
         .limit(1)
         .maybeSingle();
@@ -268,6 +269,7 @@ export default function CarrinhoAbandonado() {
       .select(sel)
       .eq("user_id", uid)
       .eq("status", "connected")
+      .eq("provider", "meta_cloud")
       .is("store_id", null)
       .limit(1)
       .maybeSingle();
@@ -277,6 +279,7 @@ export default function CarrinhoAbandonado() {
       .select(sel)
       .eq("user_id", uid)
       .eq("status", "connected")
+      .eq("provider", "meta_cloud")
       .limit(1)
       .maybeSingle();
     if (e3 || !anyConn) {
@@ -328,26 +331,20 @@ export default function CarrinhoAbandonado() {
 
       await assertMarketingAllowed(cart, storeId);
 
-      const waRow = await pickWaConnection(tenantUid, storeId);
-      const waConns = waRow as ConnRow;
-      const isMeta = waConns.provider === "meta_cloud";
-      if (isMeta) {
-        if (!waConns.meta_phone_number_id?.trim()) {
-          throw new Error("Meta Cloud API: informe Phone number ID em Dashboard → WhatsApp → Configurar API.");
-        }
-        if (!waConns.meta_default_template_name?.trim()) {
-          throw new Error(
-            "Meta Cloud API: fora da janela de 24h é obrigatório um template aprovado. Defina o template padrão em Configurar API (variáveis compatíveis com o texto enviado).",
-          );
-        }
-      } else if (!waConns.evolution_api_url) {
-        throw new Error("Evolution API não configurada. Use Configurar API no painel WhatsApp.");
+      const waConns = await pickWaConnection(tenantUid, storeId);
+      if (!waConns.meta_phone_number_id?.trim()) {
+        throw new Error("Meta Cloud API: informe Phone number ID em Dashboard → WhatsApp → Configurar API.");
+      }
+      if (!waConns.meta_default_template_name?.trim()) {
+        throw new Error(
+          "Meta Cloud API: fora da janela de 24h é obrigatório um template aprovado. Defina o template padrão em Configurar API (variáveis compatíveis com o texto enviado).",
+        );
       }
 
       const safeUrl = parseSafeHttpUrl(cart.recovery_url);
-      if (isMeta && !safeUrl) {
+      if (!safeUrl) {
         throw new Error(
-          "Meta Cloud: este carrinho não tem um link de recuperação (https) válido. Confirme o payload do webhook ou envie texto pela Evolution.",
+          "Meta Cloud: este carrinho não tem um link de recuperação (https) válido. Confirme o payload do webhook da loja.",
         );
       }
 
@@ -363,15 +360,11 @@ export default function CarrinhoAbandonado() {
         ? cart.customer_phone.replace(/\D/g, "")
         : `55${cart.customer_phone.replace(/\D/g, "")}`;
 
-      if (isMeta) {
-        await sendTemplateForConnection(waConns, {
-          number,
-          text: message,
-          buttons: [{ type: "url", displayText: "Retomar carrinho", content: safeUrl! }],
-        });
-      } else {
-        await sendTextForConnection(waConns, { number, text: message });
-      }
+      await sendTemplateForConnection(waConns, {
+        number,
+        text: message,
+        buttons: [{ type: "url", displayText: "Retomar carrinho", content: safeUrl! }],
+      });
 
       const { error: updateErr } = await supabase
         .from("abandoned_carts")

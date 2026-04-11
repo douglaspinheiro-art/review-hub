@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyCronSecret } from "../_shared/edge-utils.ts";
+import { metaGraphSendText } from "../_shared/meta-graph-send.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -23,9 +24,10 @@ type StorePulseRow = {
 
 type WaConnRow = {
   instance_name: string | null;
-  evolution_api_url: string | null;
-  evolution_api_key: string | null;
   provider: string;
+  meta_phone_number_id: string | null;
+  meta_access_token: string | null;
+  meta_api_version: string | null;
 };
 
 async function resolveStoreId(
@@ -157,28 +159,25 @@ Sua loja está operando bem!
 
       const connQuery = supabase
         .from("whatsapp_connections")
-        .select("id, instance_name, evolution_api_url, evolution_api_key, status, provider")
+        .select("id, instance_name, status, provider, meta_phone_number_id, meta_access_token, meta_api_version")
         .eq("user_id", userId)
-        .eq("status", "connected");
+        .eq("status", "connected")
+        .eq("provider", "meta_cloud");
       if (storeId) connQuery.eq("store_id", storeId);
       const { data: conexoes } = await connQuery.order("updated_at", { ascending: false }).limit(3);
 
       const list = (conexoes ?? []) as WaConnRow[];
       const conexaoAtiva = list.find((c) =>
-        Boolean(c.instance_name && c.evolution_api_url && c.evolution_api_key && c.provider !== "meta_cloud")
+        Boolean(
+          c.instance_name &&
+            c.meta_phone_number_id?.trim() &&
+            c.meta_access_token?.trim() &&
+            c.provider === "meta_cloud",
+        )
       );
 
       if (!conexaoAtiva) {
-        console.log(`Usuário ${userId} sem Evolution API conectada — pulando pulse`);
-        continue;
-      }
-
-      const evolutionUrl = Deno.env.get("EVOLUTION_API_URL") || conexaoAtiva.evolution_api_url;
-      const evolutionKey = Deno.env.get("EVOLUTION_API_KEY") || conexaoAtiva.evolution_api_key;
-      const instanceName = conexaoAtiva.instance_name;
-
-      if (!evolutionUrl || !evolutionKey || !instanceName) {
-        console.log(`Usuário ${userId} sem config Evolution API — pulando pulse`);
+        console.log(`Usuário ${userId} sem Meta Cloud API conectada — pulando pulse`);
         continue;
       }
 
@@ -189,30 +188,17 @@ Sua loja está operando bem!
       }
 
       try {
-        const response = await fetch(
-          `${evolutionUrl.replace(/\/$/, "")}/message/sendText/${instanceName}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: evolutionKey,
-            },
-            body: JSON.stringify({
-              number: numDigits,
-              text: mensagem,
-            }),
-          }
+        await metaGraphSendText(
+          conexaoAtiva.meta_phone_number_id!,
+          conexaoAtiva.meta_access_token!,
+          numDigits,
+          mensagem,
+          conexaoAtiva.meta_api_version ?? "v21.0",
         );
-
-        if (response.ok) {
-          enviados++;
-        } else {
-          erros++;
-          console.error(`Erro ao enviar pulse para ${userId}:`, await response.text());
-        }
+        enviados++;
       } catch (sendErr) {
         erros++;
-        console.error(`Falha na requisição Evolution API para ${userId}:`, sendErr);
+        console.error(`Falha ao enviar pulse Meta para ${userId}:`, sendErr);
       }
     }
 

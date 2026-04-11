@@ -10,6 +10,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyCronSecret } from "../_shared/edge-utils.ts";
+import { metaGraphSendText } from "../_shared/meta-graph-send.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -134,12 +135,19 @@ async function processUser(
   // Get user's WhatsApp connection
   const { data: conn } = await supabase
     .from("whatsapp_connections")
-    .select("evolution_api_url, evolution_api_key, instance_name, owner_phone")
+    .select("meta_phone_number_id, meta_access_token, meta_api_version, instance_name, owner_phone, provider")
     .eq("user_id", userId)
     .eq("status", "connected")
+    .eq("provider", "meta_cloud")
     .maybeSingle();
 
   if (!conn || !conn.owner_phone) return;
+  const c = conn as {
+    meta_phone_number_id?: string | null;
+    meta_access_token?: string | null;
+    meta_api_version?: string | null;
+  };
+  if (!c.meta_phone_number_id?.trim() || !c.meta_access_token?.trim()) return;
 
   // Build WhatsApp message
   const readEmoji = tierEmoji(readRate, INDUSTRY_BENCHMARKS.read_rate);
@@ -167,25 +175,16 @@ async function processUser(
     `\n🟢 acima do benchmark  🟡 dentro  🔴 abaixo\n\n` +
     `Veja o painel completo em ltvboost.com.br/dashboard/relatorios`;
 
-  // Send via Evolution API
   const phone = conn.owner_phone.replace(/\D/g, "");
   const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
   try {
-    await fetch(
-      `${conn.evolution_api_url}/message/sendText/${conn.instance_name}`,
-      {
-        method: "POST",
-        headers: {
-          "apikey": conn.evolution_api_key,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          number: `${normalizedPhone}@s.whatsapp.net`,
-          options: { delay: 1000 },
-          textMessage: { text: message },
-        }),
-      },
+    await metaGraphSendText(
+      c.meta_phone_number_id!,
+      c.meta_access_token!,
+      normalizedPhone,
+      message,
+      c.meta_api_version ?? "v21.0",
     );
 
     // Mark as sent

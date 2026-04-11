@@ -8,6 +8,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist",
+      "evolution-api/**",
       // Vitest/Vite geram ficheiros .timestamp-*.mjs efémeros ao carregar este config;
       // lintar vitest.config.ts pode provocar ENOENT se o ficheiro for apagado em paralelo.
       "vitest.config.ts",

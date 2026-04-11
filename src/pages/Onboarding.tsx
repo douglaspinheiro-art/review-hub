@@ -311,8 +311,8 @@ export default function Onboarding() {
                         <Smartphone className="w-5 h-5 text-emerald-500" />
                       </div>
                       <div>
-                        <h3 className="font-bold">Conexão via Evolution API</h3>
-                        <p className="text-xs text-muted-foreground">Instância estável e segura para WhatsApp Business.</p>
+                        <h3 className="font-bold">Conexão via Meta Cloud API</h3>
+                        <p className="text-xs text-muted-foreground">WhatsApp Business oficial (Graph API) no dashboard.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -332,7 +332,7 @@ export default function Onboarding() {
                       variant="outline"
                       className="w-full h-12 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500 hover:text-white font-bold rounded-xl gap-2"
                     >
-                      <QrCode className="w-4 h-4" /> Escanear QR Code agora
+                      <QrCode className="w-4 h-4" /> Continuar (configurar depois)
                     </Button>
                     <p className="text-[10px] text-muted-foreground text-center mt-3 italic">
                       Você também pode configurar isso depois no dashboard.

@@ -103,7 +103,7 @@ const CATALOG: CatalogCategory[] = [
 ];
 
 const QUICK_LINKS: { to: string; label: string; description: string; icon: LucideIcon }[] = [
-  { to: "/dashboard/whatsapp", label: "WhatsApp", description: "Evolution ou Meta Cloud", icon: MessageSquare },
+  { to: "/dashboard/whatsapp", label: "WhatsApp", description: "Meta Cloud API", icon: MessageSquare },
   { to: "/dashboard/convertiq/setup", label: "GA4 / ConvertIQ", description: "Funil e Property ID", icon: Activity },
   { to: "/dashboard/carrinho-abandonado", label: "Carrinho abandonado", description: "Webhook e URL da loja", icon: Webhook },
   { to: "/dashboard/canais", label: "Canais e logs", description: "Webhooks recebidos", icon: Radio },

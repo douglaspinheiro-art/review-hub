@@ -14,7 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { buildMagicLink, EcommercePlatform } from "@/lib/checkout-builder";
 import { generatePixPayload } from "@/lib/pix-generator";
-import { sendTextForConnection, type ConnRow } from "@/lib/evolution-api";
+import { sendTextForConnection, type ConnRow } from "@/lib/meta-whatsapp-client";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 
@@ -67,9 +67,10 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
       let q = supabase
         .from("whatsapp_connections")
         .select(
-          "id, instance_name, status, evolution_api_url, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
+          "id, instance_name, status, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
         )
-        .eq("status", "connected");
+        .eq("status", "connected")
+        .eq("provider", "meta_cloud");
       q = storeId ? q.eq("store_id", storeId) : q.eq("user_id", effectiveUserId);
       const { data, error } = await q.order("updated_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;

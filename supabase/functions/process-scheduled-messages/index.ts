@@ -7,6 +7,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/edge-utils.ts";
+import { outboundSendText } from "../_shared/whatsapp-outbound.ts";
 
 const ANTI_SPAM_DELAY_MS = 1000;
 
@@ -78,6 +79,7 @@ serve(async (req) => {
         .select("*")
         .eq("store_id", msg.store_id)
         .eq("status", "connected")
+        .eq("provider", "meta_cloud")
         .limit(1)
         .single();
 
@@ -86,17 +88,25 @@ serve(async (req) => {
         continue;
       }
 
-      // 3. Send to Evolution API
-      const phone = msg.customers_v3.phone;
-      const evolutionUrl = `${conn.evolution_api_url.replace(/\/$/, "")}/message/sendText/${conn.instance_name}`;
-      
-      const res = await fetch(evolutionUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: conn.evolution_api_key },
-        body: JSON.stringify({ number: phone, text: msg.message_content })
-      });
+      const prov = String((conn as { provider?: string }).provider ?? "");
+      if (prov !== "meta_cloud") {
+        console.warn(`Store ${msg.store_id} sem conexão Meta Cloud ativa — pulando mensagem ${msg.id}`);
+        continue;
+      }
 
-      if (!res.ok) throw new Error(`Evolution API Error: ${await res.text()}`);
+      const phone = String(msg.customers_v3.phone ?? "");
+      const digits = phone.replace(/\D/g, "");
+      const e164 = digits.startsWith("55") ? digits : `55${digits}`;
+
+      const waRow = {
+        provider: "meta_cloud",
+        instance_name: String((conn as { instance_name?: string }).instance_name ?? ""),
+        meta_phone_number_id: (conn as { meta_phone_number_id?: string | null }).meta_phone_number_id ?? null,
+        meta_access_token: (conn as { meta_access_token?: string | null }).meta_access_token ?? null,
+        meta_api_version: (conn as { meta_api_version?: string | null }).meta_api_version ?? null,
+      };
+
+      await outboundSendText(waRow, e164, String(msg.message_content ?? ""), ANTI_SPAM_DELAY_MS);
 
       // 4. Update status and log
       await supabase.from("scheduled_messages").update({

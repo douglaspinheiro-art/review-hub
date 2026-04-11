@@ -1,16 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  evolutionReadyForQr,
   metaShowsWebhookHelp,
   shouldWarnIncompleteSetup,
 } from "../connection-ui";
 
 describe("connection-ui", () => {
-  it("evolutionReadyForQr exige URL e chave", () => {
-    expect(evolutionReadyForQr({ provider: "evolution", evolution_api_url: "https://x", evolution_api_key: "k" })).toBe(true);
-    expect(evolutionReadyForQr({ provider: "evolution", evolution_api_url: "https://x", evolution_api_key: null })).toBe(false);
-  });
-
   it("metaShowsWebhookHelp só com phone id (sem token no objeto)", () => {
     expect(metaShowsWebhookHelp({ provider: "meta_cloud", meta_phone_number_id: "123" })).toBe(true);
     expect(metaShowsWebhookHelp({ provider: "meta_cloud", meta_phone_number_id: "" })).toBe(false);
@@ -31,5 +25,9 @@ describe("connection-ui", () => {
     expect(
       shouldWarnIncompleteSetup({ provider: "meta_cloud", status: "disconnected", meta_phone_number_id: null }),
     ).toBe(true);
+  });
+
+  it("shouldWarnIncompleteSetup para provider legado não-Meta", () => {
+    expect(shouldWarnIncompleteSetup({ provider: "evolution", status: "disconnected" })).toBe(true);
   });
 });

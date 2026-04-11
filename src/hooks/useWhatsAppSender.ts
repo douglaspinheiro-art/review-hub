@@ -5,9 +5,7 @@ import {
   sendTextForConnection,
   sendTemplateForConnection,
   sendFlowForConnection,
-  getConnectionStateForConnection,
-  mapEvolutionState,
-} from "@/lib/evolution-api";
+} from "@/lib/meta-whatsapp-client";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 
@@ -38,15 +36,14 @@ export function useWhatsAppSender() {
       if (!user) return null;
       const { storeId, effectiveUserId } = await getCurrentUserAndStore();
       if (!effectiveUserId) return null;
-      // Do NOT select evolution_api_key or meta_access_token — credentials must
-      // stay on the server and be accessed only through the edge function proxies
-      // (evolution-proxy / meta-whatsapp-send).
+      // Do NOT select meta_access_token — credentials stay on the server (meta-whatsapp-send).
       let q = supabase
         .from("whatsapp_connections")
         .select(
-          "id, instance_name, status, evolution_api_url, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
+          "id, instance_name, status, provider, meta_phone_number_id, meta_default_template_name, meta_api_version",
         )
-        .eq("status", "connected");
+        .eq("status", "connected")
+        .eq("provider", "meta_cloud");
       q = storeId ? q.eq("store_id", storeId) : q.eq("user_id", effectiveUserId);
       const { data, error } = await q.order("updated_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;
@@ -58,11 +55,7 @@ export function useWhatsAppSender() {
 
   // hasCredentials: proxy handles the actual API keys server-side;
   // we only need to know if the connection row has enough metadata to route the call.
-  const hasCredentials =
-    !!connection &&
-    (connection.provider === "meta_cloud"
-      ? !!connection.meta_phone_number_id
-      : !!connection.evolution_api_url);
+  const hasCredentials = !!connection && !!connection.meta_phone_number_id;
 
   const isReady = !isLoading && !!connection && connection.status === "connected" && hasCredentials;
 
@@ -82,7 +75,6 @@ export function useWhatsAppSender() {
         delay: 1200,
       });
 
-      // Evolution API returns the message key with id
       const external_id = response?.key?.id ?? response?.messageId ?? undefined;
       return { success: true, external_id };
     } catch (err: unknown) {
@@ -134,17 +126,7 @@ export function useWhatsAppSender() {
   }
 
   async function refreshConnectionStatus(): Promise<void> {
-    if (!connection || connection.provider === "meta_cloud") return;
-    try {
-      const state = await getConnectionStateForConnection(connection);
-      const mapped = mapEvolutionState(state.state);
-      await supabase
-        .from("whatsapp_connections")
-        .update({ status: mapped })
-        .eq("id", connection.id);
-    } catch {
-      // silent — connection may be temporarily unreachable
-    }
+    /* Meta Cloud: estado vem do webhook / painel Meta; sem polling no cliente. */
   }
 
   return {

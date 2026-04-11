@@ -69,11 +69,11 @@ npx supabase db pull
 
 Gera nova(s) migração(ões) a partir do diff. Revise o SQL antes de commitar.
 
-## Supabase local (Docker) vs remoto
+## Supabase local (stack CLI) vs remoto
 
 - **`supabase start`** sobe Postgres/Studio **local**; as migrações aplicadas são as da pasta `migrations` no momento do reset/start.
-- O **`migration list`** acima compara **arquivos da pasta `migrations`** com o **banco remoto linkado**, não necessariamente com o Postgres do Docker local.
-- Para alinhar **local Docker** com os arquivos: `npx supabase db reset` (apaga dados locais) ou aplicar migrações conforme a [documentação CLI](https://supabase.com/docs/guides/cli/local-development).
+- O **`migration list`** acima compara **arquivos da pasta `migrations`** com o **banco remoto linkado**, não necessariamente com o Postgres da stack local do CLI.
+- Para alinhar o **Postgres local** com os arquivos: `npx supabase db reset` (apaga dados locais) ou aplicar migrações conforme a [documentação CLI](https://supabase.com/docs/guides/cli/local-development).
 
 ## Link e login
 

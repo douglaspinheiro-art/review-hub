@@ -667,7 +667,7 @@ export default function Configuracoes() {
                     <Wifi className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <div className="text-sm font-bold">WhatsApp (Evolution / Meta)</div>
+                    <div className="text-sm font-bold">WhatsApp (Meta Cloud)</div>
                     <div className={cn(
                       "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1",
                       waConnected ? "text-emerald-500" : "text-amber-500"
