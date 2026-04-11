@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { PROFILE_SESSION_SELECT } from "@/lib/supabase-select-fragments";
 
 export interface Profile {
   id: string;
@@ -38,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = useCallback(async (userId: string) => {
     const { data, error } = await supabase
       .from("profiles")
-      .select("*")
+      .select(PROFILE_SESSION_SELECT)
       .eq("id", userId)
       .single();
     if (error && error.code !== "PGRST116") {

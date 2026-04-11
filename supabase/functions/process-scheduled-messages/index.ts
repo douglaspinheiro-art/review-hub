@@ -20,8 +20,14 @@ import { sendEmail } from "../_shared/resend-email.ts";
 import { renderBlocksToHTML } from "../_shared/newsletter-html.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
-const ANTI_SPAM_DELAY_MS = 1200;
 const BATCH_SIZE = 100;
+
+function readAntiSpamDelayMs(): number {
+  const raw = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_ANTI_SPAM_MS");
+  const n = raw == null || raw === "" ? 350 : Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 350;
+  return Math.min(8000, n);
+}
 
 serve(async (req) => {
   const startedAt = Date.now();
@@ -36,15 +42,17 @@ serve(async (req) => {
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const APP_URL = Deno.env.get("APP_URL") || "https://app.ltvboost.com.br";
+  const ANTI_SPAM_DELAY_MS = readAntiSpamDelayMs();
 
   const now = new Date().toISOString();
   let totalProcessed = 0;
   let totalErrors = 0;
+  let campaignsFinalized = 0;
 
   // ── 1. WEBHOOK QUEUE (webhook_queue) ────────────────────────────────────────
   const { data: pendingWebhooks } = await supabase
     .from("webhook_queue")
-    .select("*")
+    .select("id, store_id, user_id, platform, payload_normalized, status, created_at, updated_at")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(BATCH_SIZE);
@@ -136,10 +144,12 @@ serve(async (req) => {
   // ── 2. WHATSAPP QUEUE (scheduled_messages) ──────────────────────────────────
   const { data: pendingWA } = await supabase
     .from("scheduled_messages")
-    .select("*, stores(*), customers_v3(*)")
+    .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone)")
     .eq("status", "pending")
     .is("sent_at", null)
     .lte("scheduled_for", now)
+    .order("store_id", { ascending: true })
+    .order("scheduled_for", { ascending: true })
     .limit(BATCH_SIZE);
 
   for (const msg of (pendingWA ?? [])) {
@@ -151,7 +161,8 @@ serve(async (req) => {
       if (!claim) continue;
 
       const { data: conn } = await supabase.from("whatsapp_connections")
-        .select("*").eq("store_id", msg.store_id).eq("status", "connected").limit(1).maybeSingle();
+        .select("id, instance_name, meta_phone_number_id, meta_access_token, meta_api_version, store_id, status")
+        .eq("store_id", msg.store_id).eq("status", "connected").limit(1).maybeSingle();
 
       if (!conn) throw new Error("No active connection");
 
@@ -182,7 +193,7 @@ serve(async (req) => {
       }
 
       totalProcessed++;
-      await new Promise(r => setTimeout(r, ANTI_SPAM_DELAY_MS));
+      if (ANTI_SPAM_DELAY_MS > 0) await new Promise((r) => setTimeout(r, ANTI_SPAM_DELAY_MS));
     } catch (e) {
       const err = e as Error;
       console.error(`WA msg ${msg.id} error:`, err.message);
@@ -194,7 +205,9 @@ serve(async (req) => {
   // ── 2. EMAIL QUEUE (newsletter_send_recipients) ──────────────────────────────
   const { data: pendingEmail } = await supabase
     .from("newsletter_send_recipients")
-    .select("*, customers_v3(*), campaigns(*)")
+    .select(
+      "id, campaign_id, subject_variant, customers_v3(email, name), campaigns(id, store_id, blocks, subject, subject_variant_b)",
+    )
     .eq("status", "pending")
     .limit(BATCH_SIZE);
 
@@ -208,7 +221,11 @@ serve(async (req) => {
 
       const campaign = row.campaigns;
       const customer = row.customers_v3;
-      const { data: store } = await supabase.from("stores").select("*").eq("id", campaign.store_id).single();
+      const { data: store } = await supabase
+        .from("stores")
+        .select("id, name, email_from_address, email_reply_to")
+        .eq("id", campaign.store_id)
+        .single();
 
       const unsubscribeUrl = `https://app.ltvboost.com.br/unsubscribe?sid=${row.id}`;
       const html = renderBlocksToHTML(campaign.blocks || [], {
@@ -238,16 +255,11 @@ serve(async (req) => {
   }
 
   // ── 3. POST-PROCESSING (Campaign Cleanup) ──────────────────────────────────
-  // Check campaigns that are 'running' but have no more 'pending' or 'processing' rows
-  const { data: activeCampaigns } = await supabase.from("campaigns").select("id").eq("status", "running");
-  for (const c of (activeCampaigns ?? [])) {
-    const { count: pending } = await supabase.from("scheduled_messages").select("id", { count: "exact", head: true }).eq("campaign_id", c.id).in("status", ["pending", "processing"]);
-    const { count: pendingEmail } = await supabase.from("newsletter_send_recipients").select("id", { count: "exact", head: true }).eq("campaign_id", c.id).in("status", ["pending", "processing"]);
-    
-    if ((pending ?? 0) === 0 && (pendingEmail ?? 0) === 0) {
-      await supabase.from("campaigns").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", c.id);
-      // Trigger A/B winner logic if needed (can be a separate RPC)
-    }
+  const { data: finalizedN, error: finalizeErr } = await supabase.rpc("finalize_completed_campaigns");
+  if (finalizeErr) {
+    console.error(`finalize_completed_campaigns: ${finalizeErr.message}`);
+  } else if (typeof finalizedN === "number") {
+    campaignsFinalized = finalizedN;
   }
 
   const elapsedMs = Date.now() - startedAt;
@@ -258,6 +270,7 @@ serve(async (req) => {
       processed: totalProcessed,
       errors: totalErrors,
       elapsed_ms: elapsedMs,
+      campaigns_finalized: campaignsFinalized,
     }),
   );
 
@@ -268,6 +281,7 @@ serve(async (req) => {
       processed: totalProcessed,
       errors: totalErrors,
       elapsed_ms: elapsedMs,
+      campaigns_finalized: campaignsFinalized,
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );

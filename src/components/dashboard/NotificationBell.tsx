@@ -4,6 +4,7 @@ import { Bell, ShoppingCart, Star, Megaphone, CreditCard, Users, Zap, X } from "
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { NOTIFICATIONS_LIST_SELECT } from "@/lib/supabase-select-fragments";
 
 type Notification = {
   id: string;
@@ -55,7 +56,7 @@ export default function NotificationBell() {
       try {
         const { data, error } = await supabase
           .from("notifications")
-          .select("*")
+          .select(NOTIFICATIONS_LIST_SELECT)
           .eq("user_id", user!.id)
           .order("created_at", { ascending: false })
           .limit(20);

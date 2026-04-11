@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { JOURNEYS_CONFIG_SELECT } from "@/lib/supabase-select-fragments";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -81,7 +82,7 @@ export default function Automacoes() {
     queryFn: async (): Promise<AutomacoesBundle> => {
       const { data: journeys, error: jErr } = await supabase
         .from("journeys_config")
-        .select("*")
+        .select(JOURNEYS_CONFIG_SELECT)
         .eq("store_id", selectedStoreId)
         .order("tipo_jornada");
       if (jErr) throw jErr;

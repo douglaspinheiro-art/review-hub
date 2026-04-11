@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { WHITE_LABEL_SELECT } from "@/lib/supabase-select-fragments";
 
 const PRESET_COLORS = [
   "#7c3aed", "#2563eb", "#16a34a", "#dc2626",
@@ -24,7 +25,7 @@ export default function WhiteLabel() {
     queryFn: async () => {
       const { data } = await supabase
         .from("white_label")
-        .select("*")
+        .select(WHITE_LABEL_SELECT)
         .eq("user_id", user!.id)
         .single();
       return data;

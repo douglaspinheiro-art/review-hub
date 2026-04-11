@@ -8,8 +8,8 @@ import {
   corsHeaders,
   errorResponse,
   validateBrowserOrigin,
-  checkRateLimit,
-  getClientIp,
+  checkDistributedRateLimit,
+  rateLimitedResponseWithRetry,
   z,
 } from "../_shared/edge-utils.ts";
 import { uuidSchema, validateRequest } from "../_shared/validation.ts";
@@ -67,12 +67,11 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) return errorResponse("Unauthorized", 401);
 
-    const ip = getClientIp(req);
-    if (!checkRateLimit(`meta-wa-send:${user.id}:${ip}`, 60, 60_000)) {
-      return errorResponse("Rate limited", 429);
-    }
-
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const distLimit = await checkDistributedRateLimit(admin, `meta-wa-send:${user.id}`, 60, 60_000);
+    if (!distLimit.allowed) {
+      return rateLimitedResponseWithRetry(distLimit.retryAfterSeconds);
+    }
     const { data: conn, error: connErr } = await admin
       .from("whatsapp_connections")
       .select(

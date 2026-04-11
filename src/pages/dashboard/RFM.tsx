@@ -142,7 +142,7 @@ export default function RFM() {
     isError,
     error,
     refetch,
-  } = useContacts({ variant: "sample" });
+  } = useContacts({ variant: "sample", sampleMaxRows: 1000 });
   const {
     data: rfmReport,
     isLoading: rfmReportLoading,

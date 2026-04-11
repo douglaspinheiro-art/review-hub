@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 import type { Database } from "@/integrations/supabase/types";
+import { DATA_QUALITY_SNAPSHOT_SELECT, FUNIL_DIARIO_SELECT } from "@/lib/supabase-select-fragments";
 
 type FunilDiarioRow = Database["public"]["Tables"]["funil_diario"]["Row"];
 type DataQualityRow = Database["public"]["Tables"]["data_quality_snapshots"]["Row"];
@@ -72,7 +73,7 @@ export function useOperationalHealth() {
       const [funilRes, qualityRes, webhookRes] = await Promise.all([
         supabase
           .from("funil_diario")
-          .select("*")
+          .select(FUNIL_DIARIO_SELECT)
           .eq("store_id", storeId)
           .order("ingested_at", { ascending: false, nullsFirst: false })
           .order("metric_date", { ascending: false })
@@ -80,7 +81,7 @@ export function useOperationalHealth() {
           .maybeSingle(),
         supabase
           .from("data_quality_snapshots")
-          .select("*")
+          .select(DATA_QUALITY_SNAPSHOT_SELECT)
           .eq("store_id", storeId)
           .order("snapshot_date", { ascending: false })
           .order("created_at", { ascending: false })

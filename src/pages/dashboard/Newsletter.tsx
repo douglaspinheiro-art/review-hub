@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { CAMPAIGN_LIST_SELECT } from "@/lib/supabase-select-fragments";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -212,7 +213,7 @@ export default function Newsletter() {
       if (!campaignId) return null;
       const { data, error } = await supabase
         .from("campaigns")
-        .select("*")
+        .select(CAMPAIGN_LIST_SELECT)
         .eq("id", campaignId)
         .eq("user_id", user!.id)
         .maybeSingle();

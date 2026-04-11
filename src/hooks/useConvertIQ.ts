@@ -6,6 +6,13 @@ import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import type { Database } from "@/integrations/supabase/types";
 import { UI_NICHE_TO_SECTOR_DB, type BenchmarkNicheKey } from "@/lib/benchmark-niches";
+import {
+  CONVERTIQ_SETTINGS_SELECT,
+  DIAGNOSTICS_LIST_SELECT,
+  FUNNEL_METRICS_SELECT,
+  SECTOR_BENCHMARK_SELECT,
+  STORE_V3_PUBLIC_SELECT,
+} from "@/lib/supabase-select-fragments";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -179,7 +186,7 @@ export function useLoja() {
       if (!uid) return null;
       const { storeId } = await getCurrentUserAndStore(storeHint);
       if (!storeId) return null;
-      const { data, error } = await supabase.from("stores").select("*").eq("id", storeId).maybeSingle();
+      const { data, error } = await supabase.from("stores").select(STORE_V3_PUBLIC_SELECT).eq("id", storeId).maybeSingle();
       if (error) throw error;
       return data ?? null;
     },
@@ -196,7 +203,7 @@ export function useConvertIQConfig() {
       if (!uid) return null;
       const { data } = await supabase
         .from("convertiq_settings")
-        .select("*")
+        .select(CONVERTIQ_SETTINGS_SELECT)
         .eq("user_id", uid)
         .maybeSingle();
       return data ?? null;
@@ -214,7 +221,7 @@ export function useMetricasFunil(lojaId: string | null, periodo: "7d" | "30d" | 
       const since = new Date(Date.now() - diasMap[periodo] * 86400_000).toISOString().split("T")[0];
       const { data, error } = await supabase
         .from("funnel_metrics")
-        .select("*")
+        .select(FUNNEL_METRICS_SELECT)
         .eq("store_id", lojaId!)
         .gte("data", since)
         .order("data", { ascending: false })
@@ -298,7 +305,7 @@ export function useFunilPageMetricas(lojaId: string | null, periodo: "7d" | "30d
       const since = new Date(Date.now() - diasMap[periodo] * 86400_000).toISOString().split("T")[0];
       const { data: fmRow, error: fmErr } = await supabase
         .from("funnel_metrics")
-        .select("*")
+        .select(FUNNEL_METRICS_SELECT)
         .eq("store_id", lojaId!)
         .gte("data", since)
         .order("data", { ascending: false })
@@ -337,7 +344,7 @@ export function useLatestDiagnostico(lojaId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("diagnostics")
-        .select("*")
+        .select(DIAGNOSTICS_LIST_SELECT)
         .eq("store_id", lojaId)
         .eq("status", "done")
         .order("created_at", { ascending: false })
@@ -357,7 +364,7 @@ export function useDiagnosticos(lojaId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("diagnostics")
-        .select("*")
+        .select(DIAGNOSTICS_LIST_SELECT)
         .eq("store_id", lojaId)
         .eq("status", "done")
         .order("created_at", { ascending: false })
@@ -376,7 +383,7 @@ export function useSectorBenchmark(niche: BenchmarkNicheKey) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sector_benchmarks")
-        .select("*")
+        .select(SECTOR_BENCHMARK_SELECT)
         .eq("segmento", dbSegment)
         .maybeSingle();
       if (error) {
@@ -416,7 +423,7 @@ export function useSaveLoja() {
       const { data: store, error: storeErr } = await supabase
         .from("stores")
         .upsert(storeRow, { onConflict: "user_id" })
-        .select()
+        .select(STORE_V3_PUBLIC_SELECT)
         .single();
 
       if (storeErr) throw storeErr;
@@ -494,7 +501,7 @@ export function useGerarDiagnostico() {
           meta_conversao: payload.metaConversao,
           dados_funil: payload.metricas as unknown as Record<string, unknown>,
         })
-        .select()
+        .select(DIAGNOSTICS_LIST_SELECT)
         .single();
 
       if (diagErr || !diagRow) throw diagErr ?? new Error("Erro ao criar diagnóstico");

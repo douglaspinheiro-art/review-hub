@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { API_KEYS_SAFE_SELECT } from "@/lib/supabase-select-fragments";
 
 type ApiKey = {
   id: string;
@@ -43,7 +44,7 @@ export default function ApiKeys() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("api_keys")
-        .select("*")
+        .select(API_KEYS_SAFE_SELECT)
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) return [] as ApiKey[];

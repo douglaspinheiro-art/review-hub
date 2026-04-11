@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { SYSTEM_CONFIG_SELECT } from "@/lib/supabase-select-fragments";
 
 interface SystemConfig {
   id: string;
@@ -14,7 +15,7 @@ export function useSistemaConfig() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("system_config")
-        .select("*")
+        .select(SYSTEM_CONFIG_SELECT)
         .eq("id", "config_geral")
         .single();
       if (error) {

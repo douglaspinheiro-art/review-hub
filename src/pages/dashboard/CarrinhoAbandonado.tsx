@@ -40,6 +40,9 @@ import {
 
 const PAGE_SIZE = 20;
 
+const ABANDONED_CART_LIST_COLUMNS =
+  "id,store_id,user_id,status,cart_value,cart_items,customer_id,customer_name,customer_phone,customer_email,created_at,updated_at,recovery_url,message_sent_at,recovered_at,abandon_step,external_id";
+
 type CartStatus = "pending" | "processing" | "message_sent" | "recovered" | "expired";
 
 type Cart = {
@@ -262,7 +265,7 @@ export default function CarrinhoAbandonado() {
 
       let listQ = supabase
         .from("abandoned_carts")
-        .select("*", { count: "exact" })
+        .select(ABANDONED_CART_LIST_COLUMNS, { count: "exact" })
         .gte("created_at", sinceIso)
         .order("created_at", { ascending: false });
       if (effectiveStoreId) listQ = listQ.eq("store_id", effectiveStoreId);

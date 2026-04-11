@@ -6,6 +6,14 @@ import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 import { logQueryTiming } from "@/lib/query-page-telemetry";
+import {
+  CHANNELS_LIST_SELECT,
+  FUNNEL_METRICS_V3_SELECT,
+  OPPORTUNITIES_LIST_SELECT,
+  PRESCRIPTIONS_WITH_OPPORTUNITY_SELECT,
+  STORE_V3_PUBLIC_SELECT,
+  WEBHOOK_LOGS_LIST_SELECT,
+} from "@/lib/supabase-select-fragments";
 
 export type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 
@@ -43,7 +51,7 @@ export function useStoreV3(storeId?: string) {
       if (!storeId) return null;
       const { data, error } = await supabase
         .from("stores")
-        .select("*")
+        .select(STORE_V3_PUBLIC_SELECT)
         .eq("id", storeId)
         .single();
       if (error) throw error;
@@ -59,7 +67,7 @@ export function useOpportunitiesV3(storeId?: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("opportunities")
-        .select("*")
+        .select(OPPORTUNITIES_LIST_SELECT)
         .eq("store_id", storeId)
         .order("detected_at", { ascending: false });
       if (error) throw error;
@@ -77,7 +85,7 @@ export function usePrescriptionsV3(storeId?: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("prescriptions")
-        .select("*, opportunities(*)")
+        .select(PRESCRIPTIONS_WITH_OPPORTUNITY_SELECT)
         .eq("store_id", storeId)
         .order("created_at", { ascending: false })
         .limit(PRESCRIPTIONS_PAGE_SIZE);
@@ -210,7 +218,7 @@ export function useCanaisPageData(fetchEnabled: boolean) {
       const since = new Date(Date.now() - CANAIS_ORDER_STATS_DAYS * 86_400_000).toISOString();
       const chRes = await supabase
         .from("channels")
-        .select("*")
+        .select(CHANNELS_LIST_SELECT)
         .eq("store_id", storeId)
         .order("created_at", { ascending: false });
       if (chRes.error) throw chRes.error;
@@ -263,7 +271,7 @@ export function useWebhookLogs(fetchEnabled = true) {
     queryFn: async (): Promise<WebhookLogEnriched[]> => {
       const { data: logs, error } = await supabase
         .from("webhook_logs")
-        .select("*")
+        .select(WEBHOOK_LOGS_LIST_SELECT)
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
@@ -291,7 +299,7 @@ export function useMetricsV3(storeId?: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("funnel_metrics_v3")
-        .select("*")
+        .select(FUNNEL_METRICS_V3_SELECT)
         .eq("store_id", storeId)
         .order("data_referencia", { ascending: false })
         .limit(1)

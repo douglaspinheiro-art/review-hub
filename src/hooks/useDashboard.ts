@@ -17,6 +17,39 @@ import {
   mapDashboardSnapshotRpcToHomeStats,
   type DashboardHomeStats,
 } from "@/lib/dashboard-home-stats";
+import { CAMPAIGN_LIST_SELECT, OPPORTUNITIES_LIST_SELECT } from "@/lib/supabase-select-fragments";
+
+const ANALYTICS_DAILY_LIST_COLUMNS =
+  "id,date,store_id,user_id,revenue_influenced,messages_sent,messages_delivered,messages_read,new_contacts,active_conversations,created_at";
+
+async function fetchLegacyConversationKpis(
+  storeId: string | null,
+  effectiveUserId: string,
+): Promise<{ openConversations: number; totalUnread: number }> {
+  try {
+    const { data, error } = await supabase.rpc("get_legacy_dashboard_conversation_kpis", {
+      p_store_id: storeId,
+      p_user_id: effectiveUserId,
+    });
+    if (error) throw error;
+    const row = data as { open_count?: unknown; unread_sum?: unknown } | null;
+    return {
+      openConversations: Number(row?.open_count ?? 0),
+      totalUnread: Number(row?.unread_sum ?? 0),
+    };
+  } catch {
+    const convQuery = storeId
+      ? supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("store_id", storeId)
+      : supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("user_id", effectiveUserId);
+    const { data, error } = await convQuery;
+    if (error) throw error;
+    const rows = data ?? [];
+    return {
+      openConversations: rows.filter((c) => c.status === "open").length,
+      totalUnread: rows.reduce((sum, c) => sum + (c.unread_count ?? 0), 0),
+    };
+  }
+}
 
 export type OpportunityRow = Database["public"]["Tables"]["opportunities"]["Row"];
 
@@ -87,27 +120,23 @@ export async function fetchDashboardStatsLegacyData(days: number) {
     ? supabase.from("customers_v3").select("id", { count: "exact", head: true }).eq("store_id", storeId)
     : supabase.from("contacts").select("id", { count: "exact", head: true }).eq("user_id", effectiveUserId);
 
-  const conversationsQuery = storeId
-    ? supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("store_id", storeId)
-    : supabase.from("conversations").select("id, status, unread_count", { count: "exact" }).eq("user_id", effectiveUserId);
-
   const campaignsQuery = storeId
     ? supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("store_id", storeId)
     : supabase.from("campaigns").select("id, status, sent_count, delivered_count, read_count").eq("user_id", effectiveUserId);
 
   const buildAnalytics = () =>
     storeId
-      ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
-      : supabase.from("analytics_daily").select("*").eq("user_id", effectiveUserId);
+      ? supabase.from("analytics_daily").select(ANALYTICS_DAILY_LIST_COLUMNS).eq("store_id", storeId)
+      : supabase.from("analytics_daily").select(ANALYTICS_DAILY_LIST_COLUMNS).eq("user_id", effectiveUserId);
 
   const buildOpportunities = () =>
     storeId
       ? supabase.from("opportunities").select("id", { count: "exact", head: true }).eq("store_id", storeId)
       : supabase.from("opportunities").select("id", { count: "exact", head: true }).eq("user_id", effectiveUserId);
 
-  const [customersRes, conversationsRes, campaignsRes, analyticsRes, analyticsPrevRes, opportunitiesRes] = await Promise.all([
+  const [customersRes, convKpis, campaignsRes, analyticsRes, analyticsPrevRes, opportunitiesRes] = await Promise.all([
     customersQuery,
-    conversationsQuery,
+    fetchLegacyConversationKpis(storeId, effectiveUserId),
     campaignsQuery,
     buildAnalytics().gte("date", since).order("date", { ascending: true }),
     buildAnalytics().select("revenue_influenced").gte("date", prevSince).lt("date", since),
@@ -118,8 +147,8 @@ export async function fetchDashboardStatsLegacyData(days: number) {
   const campaigns = campaignsRes.data ?? [];
 
   const totalContacts = customersRes.count ?? 0;
-  const openConversations = (conversationsRes.data ?? []).filter((c) => c.status === "open").length;
-  const totalUnread = (conversationsRes.data ?? []).reduce((sum, c) => sum + (c.unread_count ?? 0), 0);
+  const openConversations = convKpis.openConversations;
+  const totalUnread = convKpis.totalUnread;
 
   const completedCampaigns = campaigns.filter((c) => c.status === "completed" || c.status === "running");
   const totalSent = completedCampaigns.reduce((s, c) => s + c.sent_count, 0);
@@ -352,8 +381,8 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
       if (!userId || !effectiveUserId) return [];
 
       const baseCampaignsQuery = storeId
-        ? supabase.from("campaigns").select("*").eq("store_id", storeId)
-        : supabase.from("campaigns").select("*").eq("user_id", effectiveUserId);
+        ? supabase.from("campaigns").select(CAMPAIGN_LIST_SELECT).eq("store_id", storeId)
+        : supabase.from("campaigns").select(CAMPAIGN_LIST_SELECT).eq("user_id", effectiveUserId);
       const campaignsQuery = createdSince
         ? baseCampaignsQuery.gte("created_at", createdSince)
         : baseCampaignsQuery;
@@ -462,12 +491,15 @@ export type UseContactsOptions = {
   search?: string;
   /** Filtro por aliases de segmento em `customers_v3.rfm_segment` (linhas sem segmento no banco não aparecem). */
   rfmSegment?: RfmEnglishSegment | null;
+  /** Modo `sample` (RFM): máximo de linhas (200–2000). Default 500. */
+  sampleMaxRows?: number;
 };
 
 export function useContacts(options: UseContactsOptions = {}) {
   const variant = options.variant ?? "sample";
   const page = options.page ?? 1;
-  const pageSize = variant === "sample" ? 500 : (options.pageSize ?? 50);
+  const sampleMaxRows = Math.min(2000, Math.max(200, options.sampleMaxRows ?? 500));
+  const pageSize = variant === "sample" ? sampleMaxRows : (options.pageSize ?? 50);
   const search =
     variant === "list"
       ? (options.search ?? "")
@@ -478,7 +510,7 @@ export function useContacts(options: UseContactsOptions = {}) {
 
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["contacts", user?.id ?? null, variant, page, pageSize, search, rfmSegment],
+    queryKey: ["contacts", user?.id ?? null, variant, page, pageSize, search, rfmSegment, variant === "sample" ? sampleMaxRows : 0],
     queryFn: async (): Promise<ContactsQueryResult> => {
       const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
       if (!userId || !effectiveUserId) {
@@ -508,7 +540,7 @@ export function useContacts(options: UseContactsOptions = {}) {
         const to = from + pageSize - 1;
         dataQuery = dataQuery.order("created_at", { ascending: false }).range(from, to);
       } else {
-        dataQuery = dataQuery.order("created_at", { ascending: false }).limit(500);
+        dataQuery = dataQuery.order("created_at", { ascending: false }).limit(sampleMaxRows);
       }
 
       const [{ data, error }, { count, error: countErr }] = await Promise.all([
@@ -678,8 +710,8 @@ export function useAnalytics(days = 30) {
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
       const query = storeId
-        ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
-        : supabase.from("analytics_daily").select("*").eq("user_id", effectiveUserId);
+        ? supabase.from("analytics_daily").select(ANALYTICS_DAILY_LIST_COLUMNS).eq("store_id", storeId)
+        : supabase.from("analytics_daily").select(ANALYTICS_DAILY_LIST_COLUMNS).eq("user_id", effectiveUserId);
 
       const { data, error } = await query.gte("date", since).order("date", { ascending: true });
       if (error) throw error;
@@ -689,7 +721,7 @@ export function useAnalytics(days = 30) {
     },
     enabled: !authLoading && !!user,
     staleTime: 60_000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -705,7 +737,7 @@ export function useForecastSnapshot(storeId: string | null | undefined) {
       if (!storeId) return null;
       const { data, error } = await supabase
         .from("forecast_snapshots")
-        .select("*")
+        .select("id,store_id,user_id,data_calculo,cenario_base,cenario_com_prescricoes,cenario_com_ux,confianca_ia,created_at")
         .eq("store_id", storeId)
         .order("data_calculo", { ascending: false })
         .limit(1)
@@ -974,8 +1006,8 @@ export function useROIAttribution(days = 30) {
       // Each builder must be constructed fresh per query in Promise.all.
       const buildAnalyticsROI = () =>
         storeId
-          ? supabase.from("analytics_daily").select("*").eq("store_id", storeId)
-          : supabase.from("analytics_daily").select("*").eq("user_id", effectiveUserId);
+          ? supabase.from("analytics_daily").select(ANALYTICS_DAILY_LIST_COLUMNS).eq("store_id", storeId)
+          : supabase.from("analytics_daily").select(ANALYTICS_DAILY_LIST_COLUMNS).eq("user_id", effectiveUserId);
 
       const MAX_SCOPE_CAMPAIGN_IDS = 20_000;
       const MAX_ATTRIBUTED_CAMPAIGN_DETAIL = 500;
@@ -1352,8 +1384,8 @@ export function useProblems() {
       if (!userId || !effectiveUserId) return [];
 
       const query = storeId
-        ? supabase.from("opportunities").select("*").eq("store_id", storeId)
-        : supabase.from("opportunities").select("*").eq("user_id", effectiveUserId);
+        ? supabase.from("opportunities").select(OPPORTUNITIES_LIST_SELECT).eq("store_id", storeId)
+        : supabase.from("opportunities").select(OPPORTUNITIES_LIST_SELECT).eq("user_id", effectiveUserId);
 
       const { data, error } = await query
         .neq("status", "resolvido")

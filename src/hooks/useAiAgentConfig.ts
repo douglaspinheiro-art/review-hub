@@ -29,7 +29,7 @@ export function useAiAgentConfig(storeId: string | undefined, userId: string | u
       const ownerId = effectiveUserId ?? userId!;
       const { data, error } = await supabase
         .from("ai_agent_config")
-        .select("*")
+        .select("id,store_id,user_id,ativo,modo,personalidade_preset,prompt_sistema,tom_de_voz,conhecimento_loja,updated_at")
         .eq("store_id", storeId as string)
         .maybeSingle();
       if (error) throw error;

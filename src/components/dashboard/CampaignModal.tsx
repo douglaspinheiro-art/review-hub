@@ -36,6 +36,8 @@ type LojaExtended = {
 import { useProductsV3 as useProdutosV3, type ProductRow } from "@/hooks/useLTVBoost";
 import type { Json } from "@/integrations/supabase/types";
 import { contactMatchesEnglishRfmSegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
+import { CAMPAIGN_LIST_SELECT, CAMPAIGN_MESSAGE_TEMPLATE_SELECT } from "@/lib/supabase-select-fragments";
+import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 
 export type ProdutoParaCampanha = {
   id: string;
@@ -270,7 +272,7 @@ export default function CampaignModal({
     queryKey: ["campaign_edit_bundle", editingCampaignId],
     enabled: !!editingCampaignId && !!user?.id,
     queryFn: async () => {
-      const { data: camp, error } = await supabase.from("campaigns").select("*").eq("id", editingCampaignId).single();
+      const { data: camp, error } = await supabase.from("campaigns").select(CAMPAIGN_LIST_SELECT).eq("id", editingCampaignId).single();
       if (error) throw error;
       const { data: seg } = await supabase.from("campaign_segments").select("type,filters").eq("campaign_id", editingCampaignId).maybeSingle();
       return { camp, seg } as {
@@ -317,16 +319,47 @@ export default function CampaignModal({
   }, [editingCampaignId, editBundle, initialObjective, prefill?.objective, reset]);
 
   const { data: segmentCounts = EMPTY_SEGMENT_COUNTS } = useQuery({
-    queryKey: ["campaign_modal_segment_counts", loja.data?.id],
+    queryKey: ["campaign_modal_segment_counts", loja.data?.id, user?.id],
     queryFn: async () => {
-      const storeId = loja.data?.id;
-      if (!storeId) return EMPTY_SEGMENT_COUNTS;
-      const [{ data: rows, error }, { count: cartCount, error: cartErr }] = await Promise.all([
-        supabase.from("customers_v3").select("rfm_segment").eq("store_id", storeId),
+      const hintStoreId = loja.data?.id;
+      if (!hintStoreId) return EMPTY_SEGMENT_COUNTS;
+      const { storeId, effectiveUserId } = await getCurrentUserAndStore(hintStoreId);
+      if (!storeId || !effectiveUserId) return EMPTY_SEGMENT_COUNTS;
+
+      const [{ data: rpcData, error: rpcErr }, { count: cartCount, error: cartErr }] = await Promise.all([
+        supabase.rpc("get_rfm_report_counts", { p_store_id: storeId, p_owner_user_id: effectiveUserId }),
         supabase.from("abandoned_carts").select("id", { count: "exact", head: true }).eq("store_id", storeId).in("status", ["pending", "open"]),
       ]);
-      if (error) throw error;
       if (cartErr) throw cartErr;
+
+      if (!rpcErr && rpcData && typeof rpcData === "object") {
+        const j = rpcData as Record<string, unknown>;
+        const champions = Number(j.champions ?? 0);
+        const loyal = Number(j.loyal ?? 0);
+        const atRisk = Number(j.at_risk ?? 0);
+        const lost = Number(j.lost ?? 0);
+        const newSeg = Number(j.new ?? 0);
+        return {
+          ...EMPTY_SEGMENT_COUNTS,
+          all: Number(j.total ?? 0),
+          cart_abandoned: cartCount ?? 0,
+          rfm_champions: champions,
+          rfm_loyal: loyal,
+          rfm_at_risk: atRisk,
+          rfm_lost: lost,
+          rfm_new: newSeg,
+          active: champions + loyal + newSeg,
+          inactive: atRisk + lost,
+          vip: champions + loyal,
+        };
+      }
+
+      console.warn(
+        "[CampaignModal] get_rfm_report_counts indisponível — fallback por linha (aplique migrações no Supabase).",
+        rpcErr?.message ?? rpcErr,
+      );
+      const { data: rows, error } = await supabase.from("customers_v3").select("rfm_segment").eq("store_id", storeId);
+      if (error) throw error;
       const list = rows ?? [];
       const c = { ...EMPTY_SEGMENT_COUNTS };
       c.all = list.length;
@@ -353,7 +386,7 @@ export default function CampaignModal({
       }).length;
       return c;
     },
-    enabled: !!loja.data?.id,
+    enabled: !!loja.data?.id && !!user,
     staleTime: 30_000,
   });
 
@@ -368,7 +401,7 @@ export default function CampaignModal({
       if (!user) return [];
       const { data, error } = await supabase
         .from("campaign_message_templates")
-        .select("*")
+        .select(CAMPAIGN_MESSAGE_TEMPLATE_SELECT)
         .eq("user_id", user.id)
         .eq("channel", channel)
         .eq("objective", objective)

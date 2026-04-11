@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { INTEGRATIONS_LIST_SELECT } from "@/lib/supabase-select-fragments";
 type Integration = {
   id: string;
   type: string;
@@ -156,7 +157,7 @@ export default function Integracoes() {
     queryFn: async () => {
       const { data, error: qError } = await supabase
         .from("integrations")
-        .select("*")
+        .select(INTEGRATIONS_LIST_SELECT)
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
       if (qError) throw new Error(qError.message);

@@ -23,6 +23,7 @@ import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
+import { PROFILE_SESSION_SELECT, SETTINGS_V3_SELECT } from "@/lib/supabase-select-fragments";
 
 type SettingsV3Row = Database["public"]["Tables"]["settings_v3"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
@@ -114,7 +115,7 @@ export default function Configuracoes() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("settings_v3")
-        .select("*")
+        .select(SETTINGS_V3_SELECT)
         .eq("user_id", user!.id)
         .maybeSingle();
       if (error) throw error;
@@ -258,7 +259,7 @@ export default function Configuracoes() {
       await refetchProfile();
       await queryClient.invalidateQueries({ queryKey: ["settings_v3"] });
       const freshSettings = await refetchSettings();
-      const { data: freshProfile } = await supabase.from("profiles").select("*").eq("id", user!.id).single();
+      const { data: freshProfile } = await supabase.from("profiles").select(PROFILE_SESSION_SELECT).eq("id", user!.id).single();
       if (freshProfile) {
         baselineRef.current = baselineFromProfileAndSettings(
           freshProfile as ProfileRow,

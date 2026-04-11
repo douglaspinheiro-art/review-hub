@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { AFFILIATE_REFERRALS_SELECT } from "@/lib/supabase-select-fragments";
 
 type Referral = {
   id: string;
@@ -44,7 +45,7 @@ export default function Afiliados() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("affiliate_referrals")
-        .select("*")
+        .select(AFFILIATE_REFERRALS_SELECT)
         .eq("referrer_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;

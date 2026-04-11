@@ -9,6 +9,9 @@ import { logSecurityEvent } from "@/lib/security-logger";
 import { supabase } from "@/lib/supabase";
 import { PLAN_LEVELS, type PlanTier } from "@/lib/pricing-constants";
 
+const PASSWORD_ROTATION_CACHE_KEY = "ltv_pw_rotation_v1";
+const PASSWORD_ROTATION_CACHE_TTL_MS = 10 * 60 * 1000;
+
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredPlan?: PlanTier;
@@ -64,11 +67,38 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp }
         setPasswordCheckDone(true);
         return;
       }
+      const cacheKey = `${PASSWORD_ROTATION_CACHE_KEY}:${user.id}`;
+      try {
+        const raw = sessionStorage.getItem(cacheKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as { due?: boolean; at?: number };
+          if (
+            typeof parsed?.due === "boolean" &&
+            typeof parsed?.at === "number" &&
+            Date.now() - parsed.at < PASSWORD_ROTATION_CACHE_TTL_MS
+          ) {
+            if (!cancelled) {
+              setPasswordRotationDue(parsed.due);
+              setPasswordCheckDone(true);
+            }
+            return;
+          }
+        }
+      } catch {
+        /* ignore cache parse errors */
+      }
+
       const { data } = await supabase.rpc("is_password_rotation_due", {
         _user_id: user.id,
       });
+      const due = data === true;
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify({ due, at: Date.now() }));
+      } catch {
+        /* ignore quota / private mode */
+      }
       if (!cancelled) {
-        setPasswordRotationDue(data === true);
+        setPasswordRotationDue(due);
         setPasswordCheckDone(true);
       }
     }

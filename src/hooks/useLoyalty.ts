@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import type { Database } from "@/integrations/supabase/types";
 import { logQueryTiming } from "@/lib/query-page-telemetry";
+import { LOYALTY_REWARDS_SELECT } from "@/lib/supabase-select-fragments";
 
 export const LOYALTY_TX_PAGE_SIZE = 25;
 
@@ -120,7 +121,7 @@ async function fetchLoyaltyDashboard(
   if (rewardStoreId) {
     const rw = await supabase
       .from("loyalty_rewards")
-      .select("*")
+      .select(LOYALTY_REWARDS_SELECT)
       .eq("store_id", rewardStoreId)
       .order("custo_pontos", { ascending: true });
     if (rw.error) console.warn("loyalty_rewards:", rw.error.message);

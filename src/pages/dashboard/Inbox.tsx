@@ -209,6 +209,11 @@ export default function Inbox() {
     () => ["messages", selectedId, messageFetchLimit, messagesRealtimeDegraded ? 1 : 0] as const,
     [selectedId, messageFetchLimit, messagesRealtimeDegraded],
   );
+
+  const canRequestAiSuggestion = useMemo(() => {
+    if (!selectedId || messages.length === 0) return false;
+    return messages[messages.length - 1].direction === "inbound";
+  }, [selectedId, messages]);
   
   const sender = useWhatsAppSender();
   const { data: conversationNotes = [] } = useQuery<DbConversationNote[]>({
@@ -217,7 +222,7 @@ export default function Inbox() {
       if (!selectedId) return [];
       const { data, error } = await supabase
         .from("conversation_notes")
-        .select("*")
+        .select("id,conversation_id,user_id,note,created_at")
         .eq("conversation_id", selectedId)
         .order("created_at", { ascending: false })
         .limit(20);
@@ -234,42 +239,35 @@ export default function Inbox() {
     setMessageFetchLimit(200);
   }, [selectedId]);
 
-  const lastInboundSignature = useMemo(() => {
-    const inbound = [...messages].reverse().find((m) => m.direction === "inbound");
-    if (!inbound) return "";
-    return `${inbound.id}:${inbound.created_at}:${String(inbound.content ?? "").slice(0, 120)}`;
-  }, [messages]);
-
   useEffect(() => {
-    if (!selectedId || messages.length === 0) {
-      setAiSuggestion(null);
-      return;
-    }
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.direction === "outbound") {
-      setAiSuggestion(null);
-      return;
-    }
+    setAiSuggestion(null);
+    setLoadingAi(false);
+  }, [selectedId]);
 
-    let cancelled = false;
-    async function getSuggestion() {
-      setLoadingAi(true);
-      try {
-        const { data, error } = await supabase.functions.invoke("ai-reply-suggest", {
-          body: { conversation_id: selectedId },
-        });
-        if (error) throw error;
-        const suggestion = data?.suggestion ?? data?.suggestions?.[0] ?? null;
-        if (!cancelled) setAiSuggestion(suggestion);
-      } catch (e) {
-        if (!cancelled) setAiSuggestion(null);
-      } finally {
-        if (!cancelled) setLoadingAi(false);
-      }
+  const requestAiSuggestion = useCallback(async () => {
+    if (!selectedId || messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.direction !== "inbound") {
+      toast.info("A sugestão de IA está disponível quando a última mensagem é do cliente.");
+      return;
     }
-    void getSuggestion();
-    return () => { cancelled = true; };
-  }, [selectedId, lastInboundSignature, messages]);
+    setLoadingAi(true);
+    setAiSuggestion(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-reply-suggest", {
+        body: { conversation_id: selectedId },
+      });
+      if (error) throw error;
+      const suggestion = data?.suggestion ?? data?.suggestions?.[0] ?? null;
+      setAiSuggestion(suggestion);
+      if (!suggestion) toast.info("A IA não devolveu sugestão para este contexto.");
+    } catch {
+      setAiSuggestion(null);
+      toast.error("Não foi possível obter sugestão da IA.");
+    } finally {
+      setLoadingAi(false);
+    }
+  }, [selectedId, messages]);
 
   useEffect(() => {
     setLiveMessagesRt("unknown");
@@ -540,6 +538,8 @@ export default function Inbox() {
                     conversationNotes={conversationNotes}
                     isSending={sendMutation.isPending}
                     onAiUsed={() => trackMoatEvent("inbox_ai_used", { conversation_id: selectedId })}
+                    onRequestAiSuggestion={requestAiSuggestion}
+                    canRequestAiSuggestion={canRequestAiSuggestion}
                   />
                 </div>
 

@@ -24,6 +24,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { cn } from "@/lib/utils";
+import { TEAM_MEMBERS_LIST_SELECT } from "@/lib/supabase-select-fragments";
 import { planTierAtLeast } from "@/lib/pricing-constants";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -79,7 +80,7 @@ export default function Equipe() {
     queryFn: async () => {
       const { data, error: qErr } = await supabase
         .from("team_members")
-        .select("*")
+        .select(TEAM_MEMBERS_LIST_SELECT)
         .eq("account_owner_id", user!.id)
         .order("invited_at", { ascending: false });
       if (qErr) throw qErr;

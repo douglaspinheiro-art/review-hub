@@ -32,6 +32,9 @@ interface MessageComposerProps {
   conversationNotes: DbConversationNote[];
   isSending: boolean;
   onAiUsed?: () => void;
+  /** Quando definido, a sugestão de IA só é pedida ao clicar (evita custo/latência automáticos). */
+  onRequestAiSuggestion?: () => void;
+  canRequestAiSuggestion?: boolean;
 }
 
 export function MessageComposer({
@@ -58,6 +61,8 @@ export function MessageComposer({
   conversationNotes,
   isSending,
   onAiUsed,
+  onRequestAiSuggestion,
+  canRequestAiSuggestion = true,
 }: MessageComposerProps) {
   return (
     <div className="border-t p-4 bg-card shrink-0 space-y-3">
@@ -135,6 +140,21 @@ export function MessageComposer({
             placeholder="Screen ID"
             className="h-8 text-xs"
           />
+        </div>
+      )}
+      {composerMode === "text" && onRequestAiSuggestion && !inboxReadOnly && (
+        <div className="flex items-center gap-2 px-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            disabled={!canRequestAiSuggestion || loadingAi}
+            onClick={() => onRequestAiSuggestion()}
+          >
+            {loadingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            Sugestão de resposta (IA)
+          </Button>
         </div>
       )}
       {loadingAi && !draft && (

@@ -32,6 +32,9 @@ type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 
 const PAGE_SIZE = 25;
 
+const REVIEW_LIST_COLUMNS =
+  "id,user_id,platform,rating,reviewer_name,content,status,url,ai_reply,replied_at,created_at,updated_at,raw_payload";
+
 const PLATFORM_CONFIG: Record<
   string,
   { label: string; className: string }
@@ -185,7 +188,7 @@ export default function Reviews() {
       const term = sanitizeIlikeTerm(debouncedSearch);
       let q = supabase
         .from("reviews")
-        .select("*", { count: "exact" })
+        .select(REVIEW_LIST_COLUMNS, { count: "exact" })
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false })
         .range(from, to);
