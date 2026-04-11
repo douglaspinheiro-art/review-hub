@@ -407,153 +407,69 @@ serve(async (req) => {
     const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeId, contacts.map((c) => c.id));
     let sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
     if (!isTest) {
+      // 1. Clear existing recipients for this campaign to avoid duplicates if re-dispatched
       await sb.from("newsletter_send_recipients").delete().eq("campaign_id", campaign_id);
 
       const realContacts = contacts.filter((c) => c.id !== "test");
       if (realContacts.length > 0) {
-        const { error: insErr } = await sb.from("newsletter_send_recipients").insert(
-          realContacts.map((c) => ({
-            campaign_id,
-            customer_id: c.id,
-            user_id: userId,
-            subject_variant: abEnabled ? pickAbVariant(c.id) : "a",
-          })),
-        );
-        if (insErr) throw insErr;
+        // 2. Enqueue recipients in chunks to avoid large payload issues
+        const CHUNK_SIZE = 1000;
+        for (let i = 0; i < realContacts.length; i += CHUNK_SIZE) {
+          const chunk = realContacts.slice(i, i + CHUNK_SIZE);
+          const { error: insErr } = await sb.from("newsletter_send_recipients").insert(
+            chunk.map((c) => ({
+              campaign_id,
+              customer_id: c.id,
+              user_id: userId,
+              subject_variant: abEnabled ? pickAbVariant(c.id) : "a",
+              status: "pending",
+            })),
+          );
+          if (insErr) throw insErr;
+        }
       }
 
-      const { data: recipientRows, error: recvErr } = await sb
-        .from("newsletter_send_recipients")
-        .select("id,customer_id,subject_variant")
-        .eq("campaign_id", campaign_id);
-      if (recvErr) throw recvErr;
-      sidAndVariantByCustomer = new Map(
-        (recipientRows ?? []).map((r: { id: string; customer_id: string; subject_variant?: "a" | "b" | null }) => [
-          r.customer_id,
-          { sid: r.id, subject_variant: r.subject_variant === "b" ? "b" : "a" },
-        ]),
-      );
+      // 3. Set campaign to running; the background worker will pick it up
+      await sb.from("campaigns").update({ 
+        status: "running",
+        total_contacts: realContacts.length,
+        sent_count: 0
+      }).eq("id", campaign_id);
+
+      return jsonResponse({ 
+        success: true, 
+        message: "Newsletter enfileirada para envio processado em segundo plano.",
+        total: realContacts.length 
+      });
     }
 
-    if (!isTest) {
-      await sb.from("campaigns").update({ status: "running" }).eq("id", campaign_id);
-    }
-
+    // IF TEST: process synchronously (keep the old pMap logic just for test email)
     const results = await pMap(
       contacts,
       async (contact) => {
-        if (!contact.email) return;
-        const recipientMeta = contact.id === "test" ? null : sidAndVariantByCustomer.get(contact.id);
-        const sid = recipientMeta?.sid ?? "";
-        if (!isTest && !sid) return;
-
-        const unsubscribeUrl = await buildSignedUnsubscribeUrl(APP_URL, userId, contact.id, sid || undefined);
-        const openPixelUrl = isTest || !sid
-          ? undefined
-          : `${SUPABASE_URL}/functions/v1/track-email-open?sid=${encodeURIComponent(sid)}`;
-
-        const variant = abEnabled && recipientMeta ? recipientMeta.subject_variant : "a";
-        const subject = variant === "b" ? subjectB : subjectA;
+        const unsubscribeUrl = await buildSignedUnsubscribeUrl(APP_URL, userId, contact.id);
+        const subject = subjectA;
         const cartContext = cartContextByCustomer.get(contact.id);
-        const couponTag = (contact.tags ?? []).find((t) => String(t).toLowerCase().startsWith("coupon:"));
-        const couponCode = couponTag ? couponTag.split(":").slice(1).join(":") : "";
-        const ultimaCompra = contact.last_purchase_at
-          ? new Date(contact.last_purchase_at).toLocaleDateString("pt-BR")
-          : "";
-
+        
         let html = renderBlocksToHTML(blocksHydrated, {
           unsubscribeUrl,
           preheader,
-          openPixelUrl,
           mergeVars: {
             nome: contact.name ?? "Cliente",
             loja: storeName,
-            email: contact.email,
-            segmento_rfm: contact.rfm_segment ?? "",
-            ultima_compra_em: ultimaCompra,
-            perfil_comportamental: contact.behavioral_profile ?? "",
-            canal_preferido: contact.preferred_channel ?? "",
-            valor_carrinho: cartContext?.cart_value != null
-              ? Number(cartContext.cart_value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-              : "",
-            link_checkout: cartContext?.recovery_url ?? "",
-            origem_trafego: cartContext?.utm_source ?? "",
-            motivo_falha_pagamento: cartContext?.payment_failure_reason ?? "",
-            cupom: couponCode,
+            email: contact.email ?? "",
+            valor_carrinho: cartContext?.cart_value != null ? String(cartContext.cart_value) : "",
           },
           brandPrimaryHex: brandHex ?? undefined,
         });
 
-        if (!isTest && sid) {
-          html = applyUtmsToHtml(html, utmBase);
-          html = wrapClickTracking(html, SUPABASE_URL, sid);
-        }
-
-        await sendEmail(contact.email, subject, html, fromHeader, replyTo, userId);
+        await sendEmail(contact.email!, subject, html, fromHeader, replyTo, userId);
       },
-      10,
+      1,
     );
 
-    const sent = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.filter((r) => r.status === "rejected").length;
+    return jsonResponse({ sent: results.length, total: contacts.length });
 
-    if (failed > 0) console.error(`${failed} envios falharam`);
-
-    if (!isTest) {
-      await sb.from("campaigns").update({
-        status: "completed",
-        sent_count: sent,
-        total_contacts: contacts.length,
-      }).eq("id", campaign_id);
-
-      if (abEnabled) {
-        const { data: recipients } = await sb
-          .from("newsletter_send_recipients")
-          .select("id,subject_variant")
-          .eq("campaign_id", campaign_id);
-        const recipientIds = (recipients ?? []).map((r: any) => r.id);
-        if (recipientIds.length > 0) {
-          const { data: events } = await sb
-            .from("email_engagement_events")
-            .select("send_recipient_id,event_type")
-            .eq("campaign_id", campaign_id)
-            .in("send_recipient_id", recipientIds);
-
-          const byRecipientVariant = new Map((recipients ?? []).map((r: any) => [r.id, r.subject_variant === "b" ? "b" : "a"]));
-          const totals = { a: { sent: 0, opens: 0, clicks: 0 }, b: { sent: 0, opens: 0, clicks: 0 } };
-          for (const r of (recipients ?? []) as any[]) totals[r.subject_variant === "b" ? "b" : "a"].sent += 1;
-          const uniqueOpen = new Set<string>();
-          const uniqueClick = new Set<string>();
-          for (const ev of (events ?? []) as any[]) {
-            const key = `${ev.send_recipient_id}:${ev.event_type}`;
-            if (ev.event_type === "open") uniqueOpen.add(key);
-            if (ev.event_type === "click") uniqueClick.add(key);
-          }
-          for (const k of uniqueOpen) {
-            const rid = k.split(":")[0];
-            const v = byRecipientVariant.get(rid);
-            if (v) totals[v].opens += 1;
-          }
-          for (const k of uniqueClick) {
-            const rid = k.split(":")[0];
-            const v = byRecipientVariant.get(rid);
-            if (v) totals[v].clicks += 1;
-          }
-          const minSample = 25;
-          if (totals.a.sent >= minSample && totals.b.sent >= minSample) {
-            const score = (s: { sent: number; opens: number; clicks: number }) =>
-              ((s.clicks / Math.max(1, s.sent)) * 0.7) + ((s.opens / Math.max(1, s.sent)) * 0.3);
-            const winner = score(totals.a) >= score(totals.b) ? "a" : "b";
-            await sb.from("campaigns").update({ winner_variant: winner } as never).eq("id", campaign_id).then(() => undefined).catch(() => undefined);
-          }
-        }
-      }
-    }
-
-    return new Response(JSON.stringify({ sent, failed, total: contacts.length }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
   } catch (err: unknown) {
     const requestId = crypto.randomUUID();
     console.error(`[${requestId}] dispatch-newsletter error:`, err);

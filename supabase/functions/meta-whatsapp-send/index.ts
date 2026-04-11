@@ -95,33 +95,56 @@ serve(async (req) => {
     }
 
     if (kind === "verify") {
-      const info = await metaGraphFetchPhoneNumber(phoneId, token, apiVer);
-      const { error: upErr } = await admin
-        .from("whatsapp_connections")
-        .update({
-          phone_number: info.display_phone_number ?? null,
-          status: "connected",
-          connected_at: new Date().toISOString(),
-        })
-        .eq("id", connectionId)
-        .eq("user_id", user.id);
-      if (upErr) {
-        return new Response(JSON.stringify({ ok: false as const, error: upErr.message }), {
+      try {
+        const info = await metaGraphFetchPhoneNumber(phoneId, token, apiVer);
+        const { error: upErr } = await admin
+          .from("whatsapp_connections")
+          .update({
+            phone_number: info.display_phone_number ?? null,
+            status: "connected",
+            connected_at: new Date().toISOString(),
+            health_status: "healthy",
+            health_details: {
+              verified_name: info.verified_name,
+              quality_rating: info.quality_rating,
+              api_version: apiVer,
+            },
+            last_health_check_at: new Date().toISOString(),
+          })
+          .eq("id", connectionId)
+          .eq("user_id", user.id);
+        
+        if (upErr) throw upErr;
+
+        return new Response(
+          JSON.stringify({
+            ok: true as const,
+            data: {
+              display_phone_number: info.display_phone_number,
+              verified_name: info.verified_name,
+              quality_rating: info.quality_rating,
+            },
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      } catch (err) {
+        const isAuthErr = String(err).includes("401") || String(err).includes("token");
+        await admin
+          .from("whatsapp_connections")
+          .update({
+            status: "error",
+            health_status: isAuthErr ? "unauthorized" : "degraded",
+            health_details: { error: String(err) },
+            last_health_check_at: new Date().toISOString(),
+          })
+          .eq("id", connectionId)
+          .eq("user_id", user.id);
+        
+        return new Response(JSON.stringify({ ok: false as const, error: String(err) }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(
-        JSON.stringify({
-          ok: true as const,
-          data: {
-            display_phone_number: info.display_phone_number,
-            verified_name: info.verified_name,
-            quality_rating: info.quality_rating,
-          },
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
     }
 
     let data: { messages?: Array<{ id?: string }> };

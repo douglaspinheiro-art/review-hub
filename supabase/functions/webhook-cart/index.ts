@@ -87,77 +87,42 @@ Deno.serve(async (req) => {
   }
 
   // 2. Identify User/Store
-  const { data: store } = await supabase.from("stores").select("user_id").eq("id", storeId).single();
-  if (!store) return new Response(JSON.stringify({ error: "Store not found" }), { status: 404, headers: corsHeaders });
+  const { data: store, error: storeError } = await supabase
+    .from("stores")
+    .select("user_id")
+    .eq("id", storeId)
+    .single();
 
-  // 3. Upsert Customer (v3 model)
-  const { data: customer } = await supabase.from("customers_v3").upsert({
-    user_id: store.user_id,
-    store_id: storeId,
-    phone: normalized.customer_phone,
-    email: normalized.customer_email,
-    name: normalized.customer_name,
-  }, { onConflict: "store_id, phone" }).select("id").single();
-
-  // 4. Save Abandoned Cart
-  const { error: cartError } = await supabase.from("abandoned_carts").upsert({
-    user_id: store.user_id,
-    store_id: storeId,
-    customer_id: customer?.id,
-    external_id: normalized.external_id,
-    source,
-    cart_value: normalized.cart_value,
-    cart_items: normalized.cart_items,
-    recovery_url: normalized.recovery_url,
-    status: "pending",
-    raw_payload: payload,
-    // New enriched fields
-    utm_source: normalized.utm_source,
-    utm_medium: normalized.utm_medium,
-    utm_campaign: normalized.utm_campaign,
-    shipping_value: normalized.shipping_value,
-    shipping_zip_code: normalized.shipping_zip_code,
-    payment_failure_reason: normalized.payment_failure_reason,
-    inventory_status: normalized.inventory_status,
-    abandon_step: normalized.abandon_step ?? null,
-  }, { onConflict: "store_id, external_id" });
-
-  if (cartError) {
-    console.error(`[${requestId}] Cart error:`, cartError);
-    return errorResponse("Internal server error", 500);
+  if (storeError || !store) {
+    return new Response(JSON.stringify({ error: "Store not found" }), { status: 404, headers: corsHeaders });
   }
 
-  // 5. Trigger Flow Engine (async) — payment_pending na etapa/falha de pagamento; senão carrinho clássico
-  if (customer?.id) {
-    const paymentLike =
-      normalized.abandon_step === "payment" ||
-      (typeof normalized.payment_failure_reason === "string" &&
-        normalized.payment_failure_reason.trim().length > 0);
-    const event = paymentLike ? "payment_pending" : "cart_abandoned";
-    invokeFlowEngine(url.origin, {
-      event,
-      store_id: storeId,
-      customer_id: customer.id,
-      payload: {
-        recovery_url: normalized.recovery_url ?? "",
-        cart_value: normalized.cart_value,
-        shipping_value: normalized.shipping_value,
-      },
-    }).catch((e) => console.error(`[${requestId}] flow-engine`, e));
+  // 3. Enqueue for background processing
+  const { error: queueError } = await supabase.from("webhook_queue").insert({
+    store_id: storeId,
+    user_id: store.user_id,
+    platform: source,
+    payload_normalized: normalized as any,
+    status: "pending",
+  });
+
+  if (queueError) {
+    console.error(`[${requestId}] Queue error:`, queueError);
+    return errorResponse("Failed to enqueue webhook", 500);
   }
 
   console.log(
-    `[${requestId}] webhook-cart ok source=${source} store=${storeId} elapsed_ms=${Date.now() - startedAt}`,
+    `[${requestId}] webhook-cart enqueued source=${source} store=${storeId} elapsed_ms=${Date.now() - startedAt}`,
   );
   await writeAuditLog(supabase, {
-    action: "webhook_ingest",
+    action: "webhook_enqueued",
     resource: "webhook-cart",
     result: "success",
     ip,
     tenant_id: storeId,
     metadata: { request_id: requestId, source },
   });
-  return new Response(JSON.stringify({ ok: true, store_id: storeId, request_id: requestId }), { status: 200, headers: corsHeaders });
+  return new Response(JSON.stringify({ ok: true, store_id: storeId, request_id: requestId, message: "Webhook enqueued for processing" }), { status: 202, headers: corsHeaders });
 });
 
 function detectSource(req: Request, payload: any): string {

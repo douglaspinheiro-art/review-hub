@@ -529,253 +529,71 @@ serve(async (req: Request) => {
           })),
         );
       }
-
-      await supabase
-        .from("campaigns")
-        .update({ total_contacts: contacts.length + holdouts.length })
-        .eq("id", campaign_id);
     }
 
-    const priorSent = Number((campaign as { sent_count?: number }).sent_count ?? 0);
-    let sentCount = 0;
-    let failedCount = 0;
+    // Enqueue ELIGIBLE contacts into scheduled_messages
+    if (eligible.length > 0) {
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < eligible.length; i += CHUNK_SIZE) {
+        const chunk = eligible.slice(i, i + CHUNK_SIZE);
+        const { error: insErr } = await supabase.from("scheduled_messages").insert(
+          chunk.map((contact) => {
+            const cart = latestCartByCustomer.get(contact.id);
+            const firstItem = Array.isArray(cart?.cart_items) && cart.cart_items.length > 0 ? cart.cart_items[0] : null;
+            const text = interpolate(campaign.message, {
+              name: contact.name ?? "",
+              phone: contact.phone ?? "",
+              email: contact.email ?? "",
+              valor_carrinho: cart?.cart_value != null
+                ? Number(cart.cart_value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                : "",
+              ultimo_produto: firstItem?.name ?? "",
+              link_checkout: cart?.recovery_url ?? "",
+            });
+            // Link tracking is handled here so it's ready in the DB
+            const trackedText = wrapLinksForTracking(text, campaign_id, actorUserId, contact.id);
 
-    for (const contact of batch) {
-      try {
-        const phone = normalizePhone(contact.phone);
-        const cart = latestCartByCustomer.get(contact.id);
-        const firstItem = Array.isArray(cart?.cart_items) && cart.cart_items.length > 0 ? cart.cart_items[0] : null;
-        const baseText = interpolate(campaign.message, {
-          name: contact.name ?? "",
-          phone: contact.phone ?? "",
-          email: contact.email ?? "",
-          valor_carrinho: cart?.cart_value != null
-            ? Number(cart.cart_value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-            : "",
-          ultimo_produto: firstItem?.name ?? "",
-          cupom: "",
-          link_checkout: cart?.recovery_url ?? "",
-        });
-        const text = wrapLinksForTracking(baseText, campaign_id, actorUserId, contact.id);
-
-        const waConfig = (campaign as any)?.blocks?.whatsapp ?? {};
-        const contentType = String(waConfig?.content_type ?? "text");
-        let result: { key?: { id?: string }; messageId?: string } | null = null;
-
-        const waRow = {
-          provider: prov,
-          instance_name: conn.instance_name,
-          meta_phone_number_id: (conn as { meta_phone_number_id?: string | null }).meta_phone_number_id ?? null,
-          meta_access_token: (conn as { meta_access_token?: string | null }).meta_access_token ?? null,
-          meta_api_version: (conn as { meta_api_version?: string | null }).meta_api_version ?? null,
-        };
-
-        const metaTplName = String(waConfig?.meta_template_name ?? (conn as any).meta_default_template_name ?? "")
-          .trim();
-        if (contentType === "template" && Array.isArray(waConfig?.buttons) && waConfig.buttons.length > 0) {
-          if (!metaTplName) {
-            throw new Error(
-              "Campanha Meta: defina blocks.whatsapp.meta_template_name ou meta_default_template_name na conexão.",
-            );
-          }
-          result = await outboundSendMetaTemplate(waRow, phone, metaTplName, "pt_BR", [text]);
-        } else if (contentType === "image" && waConfig?.media_url) {
-          const raw = await metaGraphSendImageLink(
-            waRow.meta_phone_number_id!,
-            waRow.meta_access_token!,
-            phone,
-            String(waConfig.media_url),
-            text,
-            waRow.meta_api_version ?? "v21.0",
-          );
-          result = graphToResult(raw);
-        } else {
-          result = await outboundSendText(waRow, phone, text, ANTI_SPAM_DELAY_MS);
-        }
-
-        const externalId = result?.key?.id ?? result?.messageId ?? null;
-
-        // Find or create conversation for this contact
-        let conversationId: string | null = null;
-        const { data: existingConv } = await supabase
-          .from("conversations")
-          .select("id")
-          .eq("store_id", campaign.store_id)
-          .eq("contact_id", contact.id)
-          .limit(1)
-          .maybeSingle();
-
-        if (existingConv) {
-          conversationId = existingConv.id;
-        } else {
-          const { data: newConv } = await supabase
-            .from("conversations")
-            .insert({
+            return {
               user_id: actorUserId,
               store_id: campaign.store_id,
-              contact_id: contact.id,
-              status: "open",
-              last_message: text,
-              last_message_at: new Date().toISOString(),
-            })
-            .select("id")
-            .single();
-          conversationId = newConv?.id ?? null;
-        }
-
-        if (conversationId) {
-          // Insert message record
-          const { data: msgRecord } = await supabase
-            .from("messages")
-            .insert({
-              user_id: actorUserId,
-              conversation_id: conversationId,
-              content: text,
-              direction: "outbound",
-              status: "sent",
-              type: contentType === "template" ? "template" : (contentType || "text"),
-              external_id: externalId,
-            })
-            .select("id")
-            .single();
-
-          // Insert send log for attribution
-          await supabase.from("message_sends").insert({
-            user_id: actorUserId,
-            store_id: campaign.store_id,
-            campaign_id: campaign_id,
-            customer_id: contact.id,
-            message_id: msgRecord?.id ?? null,
-            phone,
-            status: "sent",
-          });
-
-          // Update conversation last_message
-          await supabase
-            .from("conversations")
-            .update({ last_message: text, last_message_at: new Date().toISOString() })
-            .eq("id", conversationId);
-        }
-
-        sentCount++;
-
-        // Update running count periodically
-        if (sentCount % 10 === 0) {
-          await supabase
-            .from("campaigns")
-            .update({ sent_count: priorSent + sentCount })
-            .eq("id", campaign_id);
-        }
-
-        // Anti-spam delay between messages
-        await sleep(ANTI_SPAM_DELAY_MS);
-      } catch (err) {
-        console.error(`Failed to send to ${contact.phone}:`, err);
-        failedCount++;
+              customer_id: contact.id,
+              journey_id: null, // this is a manual campaign
+              campaign_id: campaign_id,
+              message_content: trackedText,
+              scheduled_for: new Date().toISOString(),
+              status: "pending",
+              metadata: {
+                campaign_name: campaign.name,
+                content_type: (campaign as any)?.blocks?.whatsapp?.content_type || "text",
+                media_url: (campaign as any)?.blocks?.whatsapp?.media_url || null,
+                meta_template_name: (campaign as any)?.blocks?.whatsapp?.meta_template_name || null,
+              }
+            };
+          })
+        );
+        if (insErr) throw insErr;
       }
     }
-
-    const batchAttempted = batch.length;
-    const newSentTotal = priorSent + sentCount;
-    const allFailedInBatch = batchAttempted > 0 && sentCount === 0 && failedCount === batchAttempted;
-    const finalStatus = partial
-      ? "running"
-      : (allFailedInBatch ? "failed" : "completed");
 
     await supabase
       .from("campaigns")
       .update({
-        status: finalStatus,
-        sent_count: newSentTotal,
+        status: "running",
+        total_contacts: contacts.length + holdouts.length,
+        sent_count: 0
       })
       .eq("id", campaign_id);
-
-    const sourceRx = (campaign as { source_prescription_id?: string | null }).source_prescription_id;
-    if (sourceRx && finalStatus === "completed") {
-      const { error: prDoneErr } = await supabase
-        .from("prescriptions")
-        .update({ status: "concluida" })
-        .eq("id", sourceRx)
-        .eq("user_id", actorUserId);
-      if (prDoneErr) console.warn("prescription concluida sync:", prDoneErr.message);
-    }
-
-    // A/B continuous learning: if both variants have enough traffic, decide winner automatically.
-    if (!partial && (campaign as any).ab_test_id) {
-      const { data: abVariants } = await (supabase as any)
-        .from("campaigns")
-        .select("id,ab_variant,sent_count,read_count,reply_count,status")
-        .eq("ab_test_id", (campaign as any).ab_test_id)
-        .in("ab_variant", ["a", "b"]);
-
-      const variantA = (abVariants ?? []).find((v: any) => v.ab_variant === "a");
-      const variantB = (abVariants ?? []).find((v: any) => v.ab_variant === "b");
-
-      const minSample = 25;
-      if (
-        variantA && variantB &&
-        Number(variantA.sent_count ?? 0) >= minSample &&
-        Number(variantB.sent_count ?? 0) >= minSample
-      ) {
-        const score = (v: any) => {
-          const sent = Math.max(1, Number(v.sent_count ?? 0));
-          const readRate = Number(v.read_count ?? 0) / sent;
-          const replyRate = Number(v.reply_count ?? 0) / sent;
-          return (replyRate * 0.7) + (readRate * 0.3);
-        };
-        const winner = score(variantA) >= score(variantB) ? "a" : "b";
-        await (supabase as any)
-          .from("ab_tests")
-          .update({
-            winner_variant: winner,
-            status: "decided",
-            decided_at: new Date().toISOString(),
-          })
-          .eq("id", (campaign as any).ab_test_id);
-      }
-    }
-
-    // Update daily analytics
-    const today = new Date().toISOString().split("T")[0];
-    const { error: rpcError } = await supabase.rpc("increment_daily_analytics_messages", {
-      p_store_id: campaign.store_id,
-      p_date: today,
-      p_sent: sentCount,
-    });
-
-    if (rpcError) {
-      // Fallback: manual upsert se RPC falhar
-      console.warn("increment_daily_analytics_messages RPC failed, using fallback:", rpcError.message);
-      const { data: existing } = await supabase
-        .from("analytics_daily")
-        .select("messages_sent")
-        .eq("store_id", campaign.store_id)
-        .eq("date", today)
-        .maybeSingle();
-
-      await supabase.from("analytics_daily").upsert({
-        user_id: actorUserId,
-        store_id: campaign.store_id,
-        date: today,
-        messages_sent: (existing?.messages_sent ?? 0) + sentCount,
-      }, { onConflict: "store_id, date" });
-    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        sent: sentCount,
-        failed: failedCount,
+        message: "Campanha WhatsApp enfileirada com sucesso.",
+        enqueued: eligible.length,
         total: contacts.length + holdouts.length,
-        suppressed_opt_out: alreadyInitialized ? 0 : suppressedOptOut.length,
-        suppressed_cooldown: alreadyInitialized ? 0 : suppressedCooldown.length,
-        partial,
-        remaining: partial ? Math.max(0, eligible.length - batch.length) : 0,
-        sent_total: newSentTotal,
-        dispatch_reason: partial ? "batch_continue" : undefined,
       }),
       { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } },
     );
+
   } catch (err) {
     console.error(`[${requestId}] dispatch-campaign error:`, err);
     return errorResponse(`Internal server error [${requestId}]`, 500);

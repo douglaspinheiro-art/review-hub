@@ -1,248 +1,248 @@
 /**
- * LTV Boost v4 — Worker: Process Scheduled Messages
- * Runs periodically to send pending messages from scheduled_messages table.
+ * LTV Boost v4 — Worker: Process Queued Messages (WhatsApp & Email)
+ * Runs periodically to send pending messages from:
+ * 1. scheduled_messages (WhatsApp - Campaigns & Journeys)
+ * 2. newsletter_send_recipients (Email - Newsletter campaigns)
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 import { corsHeaders } from "../_shared/edge-utils.ts";
-import { outboundSendText } from "../_shared/whatsapp-outbound.ts";
+import { outboundSendText, outboundSendEvolution, outboundSendMetaTemplate } from "../_shared/whatsapp-outbound.ts";
+import { sendEmail } from "../_shared/resend-email.ts";
+import { renderBlocksToHTML } from "../_shared/newsletter-html.ts";
+import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
-const ANTI_SPAM_DELAY_MS = 1000;
+const ANTI_SPAM_DELAY_MS = 1200;
+const BATCH_SIZE = 100;
 
 serve(async (req) => {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  // Only the dedicated PROCESS_SCHEDULED_MESSAGES_SECRET is accepted — not the service_role_key.
   const internalSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET");
-  if (!internalSecret) {
-    console.error("PROCESS_SCHEDULED_MESSAGES_SECRET is not configured");
-    return new Response(JSON.stringify({ error: "Service unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-  const authHeader = req.headers.get("authorization") ?? "";
-  const providedSecret = req.headers.get("x-internal-secret") ?? "";
-  const validInternal =
-    authHeader === `Bearer ${internalSecret}` || providedSecret === internalSecret;
-  if (!validInternal) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  const providedSecret = req.headers.get("x-internal-secret") || req.headers.get("authorization")?.replace("Bearer ", "");
+  if (!internalSecret || providedSecret !== internalSecret) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-  );
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const APP_URL = Deno.env.get("APP_URL") || "https://app.ltvboost.com.br";
 
-  // 1. Get pending messages ready to be sent
   const now = new Date().toISOString();
-  const { data: pending, error } = await supabase
+  let totalProcessed = 0;
+  let totalErrors = 0;
+
+  // ── 1. WEBHOOK QUEUE (webhook_queue) ────────────────────────────────────────
+  const { data: pendingWebhooks } = await supabase
+    .from("webhook_queue")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(BATCH_SIZE);
+
+  for (const job of (pendingWebhooks ?? [])) {
+    try {
+      // Atomic claim
+      const { data: claim } = await supabase.from("webhook_queue")
+        .update({ status: "processing", updated_at: new Date().toISOString() })
+        .eq("id", job.id).eq("status", "pending").select("id").maybeSingle();
+      if (!claim) continue;
+
+      const normalized = job.payload_normalized;
+      const storeId = job.store_id;
+      const userId = job.user_id;
+
+      // 1. Upsert Customer (v3 model)
+      const { data: customer } = await supabase.from("customers_v3").upsert({
+        user_id: userId,
+        store_id: storeId,
+        phone: normalized.customer_phone,
+        email: normalized.customer_email,
+        name: normalized.customer_name,
+      }, { onConflict: "store_id, phone" }).select("id").single();
+
+      if (!customer) throw new Error("Failed to upsert customer");
+
+      // 2. Save Abandoned Cart
+      const { error: cartError } = await supabase.from("abandoned_carts").upsert({
+        user_id: userId,
+        store_id: storeId,
+        customer_id: customer.id,
+        external_id: normalized.external_id,
+        source: job.platform,
+        cart_value: normalized.cart_value,
+        cart_items: normalized.cart_items,
+        recovery_url: normalized.recovery_url,
+        status: "pending",
+        raw_payload: normalized, // In the queue we store normalized, but we can store raw too if needed
+        utm_source: normalized.utm_source,
+        utm_medium: normalized.utm_medium,
+        utm_campaign: normalized.utm_campaign,
+        shipping_value: normalized.shipping_value,
+        shipping_zip_code: normalized.shipping_zip_code,
+        payment_failure_reason: normalized.payment_failure_reason,
+        inventory_status: normalized.inventory_status,
+        abandon_step: normalized.abandon_step ?? null,
+      }, { onConflict: "store_id, external_id" });
+
+      if (cartError) throw cartError;
+
+      // 3. Trigger Flow Engine
+      const paymentLike =
+        normalized.abandon_step === "payment" ||
+        (typeof normalized.payment_failure_reason === "string" &&
+          normalized.payment_failure_reason.trim().length > 0);
+      const event = paymentLike ? "payment_pending" : "cart_abandoned";
+      
+      await invokeFlowEngine(APP_URL, {
+        event,
+        store_id: storeId,
+        customer_id: customer.id,
+        payload: {
+          recovery_url: normalized.recovery_url ?? "",
+          cart_value: normalized.cart_value,
+          shipping_value: normalized.shipping_value,
+        },
+      });
+
+      await supabase.from("webhook_queue").update({ 
+        status: "completed", 
+        processed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString() 
+      }).eq("id", job.id);
+
+      totalProcessed++;
+    } catch (e) {
+      console.error(`Webhook job ${job.id} error:`, e.message);
+      await supabase.from("webhook_queue").update({ 
+        status: "failed", 
+        error_message: e.message,
+        updated_at: new Date().toISOString() 
+      }).eq("id", job.id);
+      totalErrors++;
+    }
+  }
+
+  // ── 2. WHATSAPP QUEUE (scheduled_messages) ──────────────────────────────────
+  const { data: pendingWA } = await supabase
     .from("scheduled_messages")
     .select("*, stores(*), customers_v3(*)")
     .eq("status", "pending")
-    .is("sent_at", null)
     .lte("scheduled_for", now)
-    .limit(50); // Process in batches
+    .limit(BATCH_SIZE);
 
-  if (error) return new Response(JSON.stringify({ error: error.message, request_id: requestId }), { status: 500 });
-
-  let sentCount = 0;
-  let dispatchedCampaigns = 0;
-
-  for (const msg of (pending ?? [])) {
+  for (const msg of (pendingWA ?? [])) {
     try {
-      // Atomic claim: only one worker can set sent_at from NULL -> timestamp.
-      const claimStamp = new Date().toISOString();
-      const { data: claimRow, error: claimError } = await supabase
-        .from("scheduled_messages")
-        .update({ sent_at: claimStamp })
-        .eq("id", msg.id)
-        .eq("status", "pending")
-        .is("sent_at", null)
-        .select("id")
-        .maybeSingle();
-      if (claimError) {
-        console.error(`[${requestId}] claim failed for msg ${msg.id}:`, claimError.message);
-        continue;
-      }
-      if (!claimRow) {
-        continue;
-      }
+      // Atomic claim
+      const { data: claim } = await supabase.from("scheduled_messages")
+        .update({ status: "processing", processed_at: new Date().toISOString() })
+        .eq("id", msg.id).eq("status", "pending").select("id").maybeSingle();
+      if (!claim) continue;
 
-      // 2. Find active WhatsApp connection
-      const { data: conn } = await supabase
-        .from("whatsapp_connections")
-        .select("*")
-        .eq("store_id", msg.store_id)
-        .eq("status", "connected")
-        .eq("provider", "meta_cloud")
-        .limit(1)
-        .single();
+      const { data: conn } = await supabase.from("whatsapp_connections")
+        .select("*").eq("store_id", msg.store_id).eq("status", "connected").limit(1).maybeSingle();
 
-      if (!conn) {
-        console.warn(`No connection for store ${msg.store_id}`);
-        continue;
-      }
+      if (!conn) throw new Error("No active connection");
 
-      const prov = String((conn as { provider?: string }).provider ?? "");
-      if (prov !== "meta_cloud") {
-        console.warn(`Store ${msg.store_id} sem conexão Meta Cloud ativa — pulando mensagem ${msg.id}`);
-        continue;
-      }
-
-      const phone = String(msg.customers_v3.phone ?? "");
-      const digits = phone.replace(/\D/g, "");
-      const e164 = digits.startsWith("55") ? digits : `55${digits}`;
-
+      const phone = (msg.customers_v3.phone || "").replace(/\D/g, "");
+      const e164 = phone.startsWith("55") ? phone : `55${phone}`;
       const waRow = {
         provider: "meta_cloud",
-        instance_name: String((conn as { instance_name?: string }).instance_name ?? ""),
-        meta_phone_number_id: (conn as { meta_phone_number_id?: string | null }).meta_phone_number_id ?? null,
-        meta_access_token: (conn as { meta_access_token?: string | null }).meta_access_token ?? null,
-        meta_api_version: (conn as { meta_api_version?: string | null }).meta_api_version ?? null,
+        instance_name: conn.instance_name,
+        meta_phone_number_id: conn.meta_phone_number_id,
+        meta_access_token: conn.meta_access_token,
+        meta_api_version: conn.meta_api_version,
       };
 
-      await outboundSendText(waRow, e164, String(msg.message_content ?? ""), ANTI_SPAM_DELAY_MS);
-
-      // 4. Update status and log
-      await supabase.from("scheduled_messages").update({
-        status: "sent",
-        sent_at: new Date().toISOString()
-      }).eq("id", msg.id);
-
-      if (msg.journey_id) {
-        const { data: jc } = await supabase.from("journeys_config").select("id, kpi_atual").eq("id", msg.journey_id).maybeSingle();
-        if (jc?.id) {
-          const next = Number((jc as { kpi_atual?: number | null }).kpi_atual ?? 0) + 1;
-          await supabase
-            .from("journeys_config")
-            .update({ kpi_atual: next, updated_at: new Date().toISOString() })
-            .eq("id", jc.id);
-        }
+      let result: any = null;
+      const metadata = msg.metadata || {};
+      if (metadata.content_type === "template" && metadata.meta_template_name) {
+        result = await outboundSendMetaTemplate(waRow, e164, metadata.meta_template_name, "pt_BR", [msg.message_content]);
+      } else {
+        result = await outboundSendText(waRow, e164, msg.message_content);
       }
 
-      // Create a conversation/message entry for UI visibility
-      const { data: conv } = await supabase.from("conversations").upsert({
-        user_id: msg.user_id,
-        store_id: msg.store_id,
-        contact_id: msg.customer_id, // mapping legacy field
-        last_message: msg.message_content,
-        last_message_at: new Date().toISOString()
-      }, { onConflict: 'store_id, contact_id' }).select("id").single();
+      await supabase.from("scheduled_messages").update({ status: "sent", processed_at: new Date().toISOString() }).eq("id", msg.id);
 
-      if (conv) {
-        await supabase.from("messages").insert({
-          user_id: msg.user_id,
-          conversation_id: conv.id,
-          content: msg.message_content,
-          direction: "outbound",
-          status: "sent"
-        });
+      
+      // Update Campaign Counter
+      if (msg.campaign_id) {
+        await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: msg.campaign_id });
       }
 
-      // Log for Attribution + instrumentation by flow step
-      const step = Number((msg.metadata as any)?.cadence_step ?? 1);
-      const escalation = Boolean((msg.metadata as any)?.escalation_recommended);
-      await supabase.from("message_sends").insert({
-        user_id: msg.user_id,
-        store_id: msg.store_id,
-        customer_id: msg.customer_id,
-        automation_id: msg.journey_id ?? null,
-        phone,
-        status: escalation && step >= 3 ? "sent_handoff_recommended" : "sent"
-      });
-
-      sentCount++;
+      totalProcessed++;
       await new Promise(r => setTimeout(r, ANTI_SPAM_DELAY_MS));
-
-    } catch (e: any) {
-      console.error(`[${requestId}] Failed to send msg ${msg.id}:`, e?.message ?? e);
-      await supabase.from("scheduled_messages").update({ status: "failed", sent_at: null }).eq("id", msg.id);
+    } catch (e) {
+      console.error(`WA msg ${msg.id} error:`, e.message);
+      await supabase.from("scheduled_messages").update({ status: "failed", error_message: e.message }).eq("id", msg.id);
+      totalErrors++;
     }
   }
 
-  // 5. Dispatch WhatsApp campaigns that were scheduled (scheduled_at <= now)
-  const { data: dueCampaigns } = await supabase
-    .from("campaigns")
-    .select("id")
-    .eq("status", "scheduled")
-    .eq("channel", "whatsapp")
-    .lte("scheduled_at", now)
-    .limit(20);
+  // ── 2. EMAIL QUEUE (newsletter_send_recipients) ──────────────────────────────
+  const { data: pendingEmail } = await supabase
+    .from("newsletter_send_recipients")
+    .select("*, customers_v3(*), campaigns(*)")
+    .eq("status", "pending")
+    .limit(BATCH_SIZE);
 
-  for (const campaign of (dueCampaigns ?? [])) {
+  for (const row of (pendingEmail ?? [])) {
     try {
-      const dispatchRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/dispatch-campaign`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-        },
-        body: JSON.stringify({ campaign_id: campaign.id }),
+      // Atomic claim
+      const { data: claim } = await supabase.from("newsletter_send_recipients")
+        .update({ status: "processing", processed_at: new Date().toISOString() })
+        .eq("id", row.id).eq("status", "pending").select("id").maybeSingle();
+      if (!claim) continue;
+
+      const campaign = row.campaigns;
+      const customer = row.customers_v3;
+      const { data: store } = await supabase.from("stores").select("*").eq("id", campaign.store_id).single();
+
+      const unsubscribeUrl = `https://app.ltvboost.com.br/unsubscribe?sid=${row.id}`;
+      const html = renderBlocksToHTML(campaign.blocks || [], {
+        unsubscribeUrl,
+        mergeVars: { nome: customer.name || "Cliente", loja: store.name }
       });
-      if (dispatchRes.ok) {
-        dispatchedCampaigns += 1;
-      } else {
-        console.error(`[${requestId}] failed dispatch scheduled campaign ${campaign.id}: ${await dispatchRes.text()}`);
-      }
-    } catch (e: any) {
-      console.error(`[${requestId}] scheduled campaign dispatch error ${campaign.id}:`, e?.message ?? e);
+
+      await sendEmail({
+        from: `${store.name} <${store.email_from_address || "contato@ltvboost.com.br"}>`,
+        to: customer.email,
+        subject: row.subject_variant === "b" ? campaign.subject_variant_b : campaign.subject,
+        html,
+        reply_to: store.email_reply_to,
+        tags: [{ name: "campaign_id", value: campaign.id }]
+      });
+
+      await supabase.from("newsletter_send_recipients").update({ status: "sent", processed_at: new Date().toISOString() }).eq("id", row.id);
+      await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: campaign.id });
+
+      totalProcessed++;
+    } catch (e) {
+      console.error(`Email row ${row.id} error:`, e.message);
+      await supabase.from("newsletter_send_recipients").update({ status: "failed", error_message: e.message }).eq("id", row.id);
+      totalErrors++;
     }
   }
 
-  // 6. Scheduled e-mail newsletters (same cron worker; segment stored on campaigns row)
-  let dispatchedEmailCampaigns = 0;
-  const { data: dueEmailCampaigns } = await supabase
-    .from("campaigns")
-    .select("id")
-    .eq("status", "scheduled")
-    .eq("channel", "email")
-    .lte("scheduled_at", now)
-    .limit(10);
-
-  const scheduleSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET") ?? "";
-  for (const campaign of (dueEmailCampaigns ?? [])) {
-    try {
-      if (!scheduleSecret) {
-        console.warn(`[${requestId}] PROCESS_SCHEDULED_MESSAGES_SECRET not set; skip scheduled email ${campaign.id}`);
-        break;
-      }
-      const dispatchRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/dispatch-newsletter`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "x-internal-secret": scheduleSecret,
-        },
-        body: JSON.stringify({ campaign_id: campaign.id }),
-      });
-      if (dispatchRes.ok) {
-        dispatchedEmailCampaigns += 1;
-      } else {
-        console.error(
-          `[${requestId}] failed dispatch scheduled newsletter ${campaign.id}: ${await dispatchRes.text()}`,
-        );
-      }
-    } catch (e: any) {
-      console.error(`[${requestId}] scheduled newsletter dispatch error ${campaign.id}:`, e?.message ?? e);
+  // ── 3. POST-PROCESSING (Campaign Cleanup) ──────────────────────────────────
+  // Check campaigns that are 'running' but have no more 'pending' or 'processing' rows
+  const { data: activeCampaigns } = await supabase.from("campaigns").select("id").eq("status", "running");
+  for (const c of (activeCampaigns ?? [])) {
+    const { count: pending } = await supabase.from("scheduled_messages").select("id", { count: "exact", head: true }).eq("campaign_id", c.id).in("status", ["pending", "processing"]);
+    const { count: pendingEmail } = await supabase.from("newsletter_send_recipients").select("id", { count: "exact", head: true }).eq("campaign_id", c.id).in("status", ["pending", "processing"]);
+    
+    if ((pending ?? 0) === 0 && (pendingEmail ?? 0) === 0) {
+      await supabase.from("campaigns").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", c.id);
+      // Trigger A/B winner logic if needed (can be a separate RPC)
     }
   }
 
-  console.log(
-    `[${requestId}] process-scheduled-messages sent=${sentCount} scheduled_campaigns=${dispatchedCampaigns} scheduled_email_campaigns=${dispatchedEmailCampaigns} elapsed_ms=${Date.now() - startedAt}`,
-  );
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      sent: sentCount,
-      campaigns_dispatched: dispatchedCampaigns,
-      email_campaigns_dispatched: dispatchedEmailCampaigns,
-      request_id: requestId,
-    }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
+  return new Response(JSON.stringify({ 
+    ok: true, 
+    processed: totalProcessed, 
+    errors: totalErrors, 
+    elapsed: Date.now() - startedAt 
+  }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });

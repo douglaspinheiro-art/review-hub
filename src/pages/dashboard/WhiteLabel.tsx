@@ -190,19 +190,43 @@ export default function WhiteLabel() {
 
       {/* Domínio */}
       <div className="bg-card border rounded-xl p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Globe className="w-4 h-4 text-primary" />
-          <h2 className="font-semibold">Domínio personalizado</h2>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-primary" />
+            <h2 className="font-semibold">Domínio personalizado</h2>
+          </div>
+          {dnsStatus === "valid" && (
+            <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1.5 py-1">
+              <Check className="w-3 h-3" /> Validado
+            </Badge>
+          )}
+          {dnsStatus === "invalid" && (
+            <Badge variant="destructive" className="gap-1.5 py-1">
+              <X className="w-3 h-3" /> Incorreto
+            </Badge>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label>Domínio</Label>
-          <Input
-            value={customDomain}
-            onChange={(e) => setCustomDomain(e.target.value)}
-            placeholder="app.minhaagencia.com.br"
-          />
+          <div className="flex gap-2">
+            <Input
+              value={customDomain}
+              onChange={(e) => { setCustomDomain(e.target.value); setDnsStatus(null); }}
+              placeholder="app.minhaagencia.com.br"
+              className="flex-1"
+            />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="shrink-0"
+              disabled={!customDomain || verifyDnsMutation.isPending}
+              onClick={() => verifyDnsMutation.mutate()}
+            >
+              {verifyDnsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Verificar DNS"}
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
-            Configure um CNAME apontando para <code className="font-mono">app.ltvboost.com</code> no seu DNS.
+            Configure um CNAME apontando para <code className="font-mono text-primary">app.ltvboost.com</code> no seu DNS.
           </p>
         </div>
         {customDomain && (

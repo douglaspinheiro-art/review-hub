@@ -693,9 +693,10 @@ export default function Campanhas() {
 
                 {isWa && (c.status === "draft" || c.status === "scheduled") && (
                   <p className="text-[11px] text-muted-foreground">
-                    O servidor envia até <strong className="text-foreground">35</strong> mensagens por lote. Se o público for maior, use <strong className="text-foreground">Continuar envio</strong> até finalizar.
+                    A campanha será processada automaticamente em segundo plano após o disparo.
                   </p>
                 )}
+
 
                 {(c as { next_best_action?: string }).next_best_action && c.sent_count > 0 && (
                   <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-3 py-0.5">

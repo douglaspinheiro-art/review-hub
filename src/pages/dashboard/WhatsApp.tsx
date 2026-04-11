@@ -629,15 +629,33 @@ export default function WhatsApp() {
                         <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-muted border">
                           Meta Cloud
                         </span>
+                        {conn.health_status && conn.health_status !== "unknown" && (
+                          <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border uppercase tracking-wider", HEALTH_CONFIG[conn.health_status].className)}>
+                            {HEALTH_CONFIG[conn.health_status].label}
+                          </span>
+                        )}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {conn.phone_number ?? "Cloud API"}
+                        {conn.health_details?.verified_name && (
+                          <span className="ml-2 text-xs opacity-70">({conn.health_details.verified_name})</span>
+                        )}
                       </p>
                     </div>
                   </div>
-                  <span className={cn("text-xs px-2 py-1 rounded-full border font-medium shrink-0", cfg.color)}>
-                    {cfg.label}
-                  </span>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className={cn("text-xs px-2 py-1 rounded-full border font-medium shrink-0", cfg.color)}>
+                      {cfg.label}
+                    </span>
+                    {conn.health_details?.quality_rating && (
+                      <span className="text-[10px] text-muted-foreground font-medium">
+                        Qualidade: <span className={cn(
+                          conn.health_details.quality_rating === "GREEN" ? "text-emerald-600" :
+                          conn.health_details.quality_rating === "YELLOW" ? "text-amber-600" : "text-red-600"
+                        )}>{conn.health_details.quality_rating}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {warnSetup && (

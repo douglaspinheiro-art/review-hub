@@ -493,16 +493,12 @@ export default function Newsletter() {
       if (data.scheduled) {
         toast.success("Newsletter agendada com sucesso!");
       } else {
-        const failed = data.failed ?? 0;
-        if (failed > 0) {
-          toast.warning(
-            `Envio concluído com ressalvas: ${data.sent} enviados, ${failed} falharam${data.total != null ? ` (total ${data.total})` : ""}.`,
-          );
-        } else {
-          toast.success(`Newsletter enviada! ${data.sent} destinatários.`);
-        }
+        toast.success("Newsletter enfileirada para envio!", {
+          description: "O disparo será processado em segundo plano. Você pode acompanhar o progresso na aba Campanhas.",
+        });
       }
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+
       queryClient.invalidateQueries({ queryKey: ["newsletter-campaign-stats", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["newsletter_non_openers_count", campaignId] });
       navigate("/dashboard/campanhas");
