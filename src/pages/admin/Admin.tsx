@@ -27,11 +27,7 @@ export default function Admin() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Defense-in-depth: verify admin at component level in addition to route guard
-  if (!adminLoading && isAdmin === false) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+  // All hooks must be declared before any conditional return (rules-of-hooks)
   useEffect(() => {
     if (!config) return;
     setMaintenanceOn(!!config.maintenance_active);
@@ -68,6 +64,12 @@ export default function Admin() {
       toast.error("Erro ao salvar", { description: friendly });
     },
   });
+
+  // Defense-in-depth: verify admin at component level in addition to route guard.
+  // Placed after all hook declarations to comply with rules-of-hooks.
+  if (!adminLoading && isAdmin === false) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 p-6 md:p-10">
