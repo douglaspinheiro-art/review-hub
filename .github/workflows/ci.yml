@@ -30,11 +30,15 @@ jobs:
         run: npm run release:check
 
       - name: Validate frontend env (secrets do repositório)
-        if: ${{ secrets.VITE_SUPABASE_URL != '' && secrets.VITE_SUPABASE_ANON_KEY != '' }}
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: npm run validate:env:frontend
+        run: |
+          if [ -n "${VITE_SUPABASE_URL:-}" ] && [ -n "${VITE_SUPABASE_ANON_KEY:-}" ]; then
+            npm run validate:env:frontend
+          else
+            echo "Skipping validate:env:frontend (VITE_SUPABASE_* não definidos nos secrets do repo)."
+          fi
 
       - name: Lint changed files
         run: npm run lint:changed
