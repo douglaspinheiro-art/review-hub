@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 const examples = [
   { icon: Sparkles, title: "Recuperação VIP", msg: "Olá, Ana! Notamos que você adicionou itens ao carrinho mas não finalizou. Posso te ajudar a concluir? Tenho uma condição especial reservada." },
   { icon: TrendingUp, title: "Upsell Inteligente", msg: "Carlos, com base nas suas últimas compras, preparamos uma seleção que combina perfeitamente com o que você já tem. Quer ver?" },
-  { icon: ShoppingBag, title: "Reativação Preditiva", msg: "Oi, Juliana! Faz 45 dias desde sua última compra — separamos novidades do segmento que você mais curte. Posso mostrar?" },
+  { icon: ShoppingBag, title: "Reativação Preditiva", msg: "Oi, Juliana! Faz 45 dias desde sua última compra - separamos novidades do segmento que você mais curte. Posso mostrar?" },
   { icon: FileText, title: "NPS Consultivo", msg: "Pedro, sua última experiência conosco foi há 3 dias. O que achou? Sua resposta vai direto para o time de produto." },
 ];
 
@@ -30,7 +30,7 @@ export default function CTASection() {
             <span className="text-primary italic">e reduza churn no automático.</span>
           </h2>
           <p className="text-muted-foreground text-xl mb-10 leading-relaxed max-w-2xl mx-auto">
-            Cada mensagem é gerada pelo Agente IA com base no comportamento real do cliente — nome, histórico, momento certo. Zero template genérico.
+            Cada mensagem é gerada pelo Agente IA com base no comportamento real do cliente - nome, histórico, momento certo. Zero template genérico.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Button asChild size="lg" className="h-16 px-10 text-lg font-black bg-emerald-600 hover:bg-emerald-500 rounded-2xl shadow-xl shadow-emerald-900/20 gap-2">

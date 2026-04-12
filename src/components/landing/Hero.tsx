@@ -19,14 +19,12 @@ export default function Hero() {
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold leading-[1.05] tracking-tight">
-              O sistema operacional de{" "}
-              <span className="text-gradient">retenção para e-commerce</span>
+              Descubra quanto sua loja perde{" "}
+              <span className="text-gradient">todo dia.</span>
             </h1>
 
-            <p className="text-lg text-muted-foreground max-w-lg leading-relaxed">
-              Para lojas de <span className="text-foreground font-semibold">R$30k a R$3M/mes</span> que precisam previsibilidade
-              de caixa. O foco e <span className="text-foreground font-semibold">lucro incremental comprovado</span>, nao volume
-              de disparos.
+            <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
+              A LTV Boost identifica o dinheiro parado na sua base e recupera ele automaticamente com IA.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -44,7 +42,7 @@ export default function Hero() {
             <div className="flex flex-wrap gap-4 items-center">
               <Button asChild size="lg" className="h-14 px-8 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] transition-all">
                 <a href="/signup">
-                  Ver Diagnostico da Minha Operacao <ArrowRight className="ml-2 w-5 h-5" />
+                  Ver o diagnóstico da minha loja <ArrowRight className="ml-2 w-5 h-5" />
                 </a>
               </Button>
               <Button asChild variant="outline" size="lg" className="h-14 px-8 text-base rounded-xl border-border/50 hover:bg-secondary">

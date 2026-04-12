@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: "Como funciona o chatbot com IA?",
-    a: "Nosso chatbot usa inteligência artificial para entender a intenção do cliente, responder perguntas frequentes, recomendar produtos e até finalizar vendas — tudo de forma automática.",
+    a: "Nosso chatbot usa inteligência artificial para entender a intenção do cliente, responder perguntas frequentes, recomendar produtos e até finalizar vendas - tudo de forma automática.",
   },
   {
     q: "Existe fidelidade ou multa contratual?",

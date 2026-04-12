@@ -100,7 +100,7 @@ export default function Cases() {
               <blockquote className="text-lg font-medium leading-relaxed italic text-foreground/90">
                 "{c.quote}"
               </blockquote>
-              <p className="text-sm text-muted-foreground">— {c.author}</p>
+              <p className="text-sm text-muted-foreground">- {c.author}</p>
             </div>
             <div className="flex md:flex-col gap-6 md:gap-8">
               {c.metrics.map(({ icon: Icon, value, label }) => (
