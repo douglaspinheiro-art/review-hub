@@ -12,8 +12,13 @@ type DbMessage = Database["public"]["Tables"]["messages"]["Row"];
 interface MessageListProps {
   messages: DbMessage[];
   loadingMsgs: boolean;
+  /** Limite efectivo usado na query (últimas N mensagens). */
   messageFetchLimit: number;
   setMessageFetchLimit: React.Dispatch<React.SetStateAction<number>>;
+  /** Incremento ao carregar histórico (default 100). */
+  loadStep?: number;
+  /** Teto de mensagens a pedir ao servidor (default 2000). */
+  maxMessages?: number;
   bottomRef: RefObject<HTMLDivElement>;
 }
 
@@ -28,18 +33,26 @@ export function MessageList({
   loadingMsgs,
   messageFetchLimit,
   setMessageFetchLimit,
+  loadStep = 100,
+  maxMessages = 2000,
   bottomRef,
 }: MessageListProps) {
+  const canLoadOlder =
+    !loadingMsgs &&
+    messages.length > 0 &&
+    messages.length === messageFetchLimit &&
+    messageFetchLimit < maxMessages;
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {!loadingMsgs && messages.length > 0 && messages.length >= messageFetchLimit && messageFetchLimit < 2000 && (
+      {canLoadOlder && (
         <div className="flex justify-center pb-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="text-xs"
-            onClick={() => setMessageFetchLimit((n) => Math.min(n + 100, 2000))}
+            onClick={() => setMessageFetchLimit((n) => Math.min(n + loadStep, maxMessages))}
           >
             Carregar mensagens anteriores
           </Button>

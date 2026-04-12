@@ -247,6 +247,13 @@ export function ConversationList({
             onClick={setSelectedId}
           />
         ))}
+        {!isLoading && conversations.length > 0 && (
+          <p className="px-3 py-2 text-[10px] text-muted-foreground text-center border-t border-border/50 bg-muted/20">
+            {conversations.length}{" "}
+            {conversations.length === 1 ? "conversa carregada" : "conversas carregadas"}
+            {hasNextConvPage ? " — use “Carregar mais conversas” para a página seguinte" : ""}
+          </p>
+        )}
         {!isLoading && hasNextConvPage && (
           <div className="p-3 border-t">
             <Button

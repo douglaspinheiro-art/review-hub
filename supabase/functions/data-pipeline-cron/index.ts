@@ -6,7 +6,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyCronSecret } from "../_shared/edge-utils.ts";
+import { logCronAlert, verifyCronSecret } from "../_shared/edge-utils.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -67,14 +67,14 @@ async function jobQuality(supabase: ReturnType<typeof createClient>, snapshotDat
 
     const { count: whTotal } = await supabase
       .from("webhook_logs")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("store_id", sid)
       .eq("event_type", "ecommerce_order")
       .gte("created_at", since);
 
     const { count: dupTotal } = await supabase
       .from("webhook_logs")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("store_id", sid)
       .eq("event_type", "ecommerce_order")
       .eq("status_processamento", "ignorado")
@@ -209,18 +209,45 @@ serve(async (req) => {
   const snapshotDate = new Date().toISOString().slice(0, 10);
 
   const out: Record<string, string> = {};
+  const jobErrors: Record<string, string> = {};
+
   if (jobs.includes("quality")) {
-    await jobQuality(supabase, snapshotDate);
-    out.quality = "ok";
+    try {
+      await jobQuality(supabase, snapshotDate);
+      out.quality = "ok";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      out.quality = "error";
+      jobErrors.quality = msg;
+      logCronAlert({ component: "data-pipeline-cron", job: "quality", error: msg });
+    }
   }
   if (jobs.includes("cohorts")) {
-    await jobCohorts(supabase);
-    out.cohorts = "ok";
+    try {
+      await jobCohorts(supabase);
+      out.cohorts = "ok";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      out.cohorts = "error";
+      jobErrors.cohorts = msg;
+      logCronAlert({ component: "data-pipeline-cron", job: "cohorts", error: msg });
+    }
   }
   if (jobs.includes("catalog")) {
-    await jobCatalog(supabase);
-    out.catalog = "ok";
+    try {
+      await jobCatalog(supabase);
+      out.catalog = "ok";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      out.catalog = "error";
+      jobErrors.catalog = msg;
+      logCronAlert({ component: "data-pipeline-cron", job: "catalog", error: msg });
+    }
   }
 
-  return new Response(JSON.stringify({ ok: true, snapshot_date: snapshotDate, jobs: out }), { headers: cors });
+  const ok = Object.keys(jobErrors).length === 0;
+  return new Response(
+    JSON.stringify({ ok, snapshot_date: snapshotDate, jobs: out, job_errors: ok ? undefined : jobErrors }),
+    { status: ok ? 200 : 500, headers: cors },
+  );
 });

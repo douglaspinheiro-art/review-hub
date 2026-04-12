@@ -29,6 +29,8 @@ export default defineConfig(({ mode }) => ({
           "vendor-supabase": ["@supabase/supabase-js"],
           "vendor-charts": ["recharts"],
           "vendor-forms": ["react-hook-form", "@hookform/resolvers", "zod"],
+          "vendor-icons": ["lucide-react"],
+          "vendor-sentry": ["@sentry/react"],
         },
       },
     },

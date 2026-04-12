@@ -8,6 +8,9 @@ import {
   useConversationIdsByMessageSearch,
   useInboxRoutingSettings,
   getCurrentUserAndStore,
+  INBOX_MESSAGES_MAX_LIMIT,
+  INBOX_MESSAGES_DEFAULT_LIMIT,
+  INBOX_MESSAGES_LOAD_STEP,
   type InboxAssigneeFilter,
 } from "@/hooks/useDashboard";
 import { useWhatsAppSender } from "@/hooks/useWhatsAppSender";
@@ -87,7 +90,7 @@ export default function Inbox() {
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState<InboxAssigneeFilter>("all");
-  const [messageFetchLimit, setMessageFetchLimit] = useState(200);
+  const [messageFetchLimit, setMessageFetchLimit] = useState(INBOX_MESSAGES_DEFAULT_LIMIT);
   const [search, setSearch] = useState(initialSearchFromUrl);
   const [tagFilter, setTagFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -198,16 +201,21 @@ export default function Inbox() {
     onError: () => toast.error("Erro ao salvar fila"),
   });
 
+  const messageLimitCapped = useMemo(
+    () => Math.min(INBOX_MESSAGES_MAX_LIMIT, Math.max(20, messageFetchLimit)),
+    [messageFetchLimit],
+  );
+
   const {
     data: messages = [],
     isLoading: loadingMsgs,
     isError: messagesError,
     refetch: refetchMessages,
-  } = useMessages(selectedId, messageFetchLimit, { realtimeDegraded: messagesRealtimeDegraded });
-  
+  } = useMessages(selectedId, messageLimitCapped, { realtimeDegraded: messagesRealtimeDegraded });
+
   const messagesQueryKey = useMemo(
-    () => ["messages", selectedId, messageFetchLimit, messagesRealtimeDegraded ? 1 : 0] as const,
-    [selectedId, messageFetchLimit, messagesRealtimeDegraded],
+    () => ["messages", selectedId, messageLimitCapped, messagesRealtimeDegraded ? 1 : 0] as const,
+    [selectedId, messageLimitCapped, messagesRealtimeDegraded],
   );
 
   const canRequestAiSuggestion = useMemo(() => {
@@ -236,7 +244,7 @@ export default function Inbox() {
   const [loadingAi, setLoadingAi] = useState(false);
 
   useEffect(() => {
-    setMessageFetchLimit(200);
+    setMessageFetchLimit(INBOX_MESSAGES_DEFAULT_LIMIT);
   }, [selectedId]);
 
   useEffect(() => {
@@ -285,14 +293,14 @@ export default function Inbox() {
           const row = payload.new as DbMessage;
           if (!row?.id) return;
           queryClient.setQueryData(
-            ["messages", selectedId, messageFetchLimit, degradedFlag],
+            ["messages", selectedId, messageLimitCapped, degradedFlag],
             (prev: DbMessage[] | undefined) => {
               const list = prev ?? [];
               if (list.some((m) => m.id === row.id)) return list;
               const next = [...list, row].sort(
                 (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
               );
-              if (next.length > messageFetchLimit) return next.slice(-messageFetchLimit);
+              if (next.length > messageLimitCapped) return next.slice(-messageLimitCapped);
               return next;
             },
           );
@@ -303,7 +311,7 @@ export default function Inbox() {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") setLiveMessagesRt("err");
       });
     return () => { void supabase.removeChannel(channel); };
-  }, [selectedId, queryClient, messageFetchLimit, messagesRealtimeDegraded]);
+  }, [selectedId, queryClient, messageLimitCapped, messagesRealtimeDegraded]);
 
   useEffect(() => {
     if (!storeScopeReady) return;
@@ -500,8 +508,10 @@ export default function Inbox() {
                   <MessageList
                     messages={messages}
                     loadingMsgs={loadingMsgs}
-                    messageFetchLimit={messageFetchLimit}
+                    messageFetchLimit={messageLimitCapped}
                     setMessageFetchLimit={setMessageFetchLimit}
+                    loadStep={INBOX_MESSAGES_LOAD_STEP}
+                    maxMessages={INBOX_MESSAGES_MAX_LIMIT}
                     bottomRef={bottomRef}
                   />
 

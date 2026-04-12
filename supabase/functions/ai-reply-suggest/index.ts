@@ -1,7 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { corsHeaders, checkRateLimit, getClientIp } from "../_shared/edge-utils.ts";
+import {
+  corsHeaders,
+  checkRateLimit,
+  getClientIp,
+  checkDistributedRateLimit,
+  rateLimitedResponseWithRetry,
+} from "../_shared/edge-utils.ts";
 
 const ConversationBodySchema = z.object({
   conversation_id: z.string().uuid(),
@@ -21,14 +27,18 @@ const ReviewBodySchema = z
     { message: "Informe review_id ou content", path: ["content"] },
   );
 
+const JSON_HDR = { ...corsHeaders, "Content-Type": "application/json" };
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const requestId = crypto.randomUUID();
 
   try {
     const authHeader = req.headers.get("authorization") ?? "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     if (!token) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Unauthorized", request_id: requestId }), { status: 401, headers: JSON_HDR });
     }
 
     const authClient = createClient(
@@ -38,7 +48,7 @@ serve(async (req) => {
     );
     const { data: authData } = await authClient.auth.getUser();
     if (!authData.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Unauthorized", request_id: requestId }), { status: 401, headers: JSON_HDR });
     }
 
     const body = await req.json();
@@ -48,19 +58,20 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: "Validation failed",
+          request_id: requestId,
           details: {
             conversation: parsedConversation.success ? null : parsedConversation.error.flatten().fieldErrors,
             review: parsedReview.success ? null : parsedReview.error.flatten().fieldErrors,
           },
         }),
-        { status: 400, headers: corsHeaders },
+        { status: 400, headers: JSON_HDR },
       );
     }
 
     const clientIp = getClientIp(req);
     const rlKey = `ai-reply:${authData.user.id}:${clientIp}`;
     if (!checkRateLimit(rlKey, 30, 60_000)) {
-      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Rate limit exceeded", request_id: requestId }), { status: 429, headers: JSON_HDR });
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
@@ -78,9 +89,15 @@ serve(async (req) => {
         .eq("id", conversation_id)
         .maybeSingle();
 
-      // IDOR guard: verify the authenticated user owns this conversation
       if (!conv || conv.user_id !== authData.user.id) {
-        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+        return new Response(JSON.stringify({ error: "Forbidden", request_id: requestId }), { status: 403, headers: JSON_HDR });
+      }
+
+      const storeRateKey = `ai-reply-suggest:store:${conv.store_id ?? "none"}`;
+      const dayCapStore = Math.min(200, Math.max(5, Number(Deno.env.get("AI_REPLY_SUGGEST_MAX_PER_STORE_PER_DAY") ?? "80") || 80));
+      const distStore = await checkDistributedRateLimit(supabase, storeRateKey, dayCapStore, 86_400_000);
+      if (!distStore.allowed) {
+        return rateLimitedResponseWithRetry(distStore.retryAfterSeconds);
       }
 
       const { data: aiCfg } = conv?.store_id
@@ -145,21 +162,28 @@ Retorne APENAS o texto sugerido, sem introduções ou explicações.`;
           .maybeSingle();
 
         if (revErr) {
-          return new Response(JSON.stringify({ error: revErr.message }), { status: 500, headers: corsHeaders });
+          return new Response(JSON.stringify({ error: revErr.message, request_id: requestId }), { status: 500, headers: JSON_HDR });
         }
         if (!row) {
-          return new Response(JSON.stringify({ error: "Review not found" }), { status: 404, headers: corsHeaders });
+          return new Response(JSON.stringify({ error: "Review not found", request_id: requestId }), { status: 404, headers: JSON_HDR });
         }
         if (row.user_id !== authData.user.id) {
-          return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+          return new Response(JSON.stringify({ error: "Forbidden", request_id: requestId }), { status: 403, headers: JSON_HDR });
         }
         const c = (row.content ?? "").trim();
         if (!c) {
-          return new Response(JSON.stringify({ error: "Review has no text content" }), { status: 400, headers: corsHeaders });
+          return new Response(JSON.stringify({ error: "Review has no text content", request_id: requestId }), { status: 400, headers: JSON_HDR });
         }
         content = c;
         rating = row.rating ?? null;
         reviewer_name = row.reviewer_name ?? "Cliente";
+      }
+
+      const userReviewKey = `ai-reply-suggest:user-reviews:${authData.user.id}`;
+      const dayCapReviews = Math.min(200, Math.max(5, Number(Deno.env.get("AI_REPLY_SUGGEST_MAX_PER_USER_REVIEWS_PER_DAY") ?? "60") || 60));
+      const distReviews = await checkDistributedRateLimit(supabase, userReviewKey, dayCapReviews, 86_400_000);
+      if (!distReviews.allowed) {
+        return rateLimitedResponseWithRetry(distReviews.retryAfterSeconds);
       }
 
       system = `Você é um especialista em atendimento e reputação para e-commerce brasileiro.
@@ -189,8 +213,8 @@ Gere uma resposta ideal para publicar na avaliação.`;
         ? data.error.message
         : (typeof data?.message === "string" ? data.message : JSON.stringify(data?.error ?? data));
       return new Response(
-        JSON.stringify({ error: msg || "Anthropic API error", status: response.status }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({ error: msg || "Anthropic API error", status: response.status, request_id: requestId }),
+        { status: 502, headers: JSON_HDR },
       );
     }
     const suggestion = data?.content?.[0]?.text ?? "";
@@ -198,12 +222,12 @@ Gere uma resposta ideal para publicar na avaliação.`;
       throw new Error("Empty model response");
     }
 
-    // Keep backward compatibility with existing frontend contracts.
     return new Response(
-      JSON.stringify({ suggestion, suggestions: [suggestion], reply: suggestion }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ suggestion, suggestions: [suggestion], reply: suggestion, request_id: requestId }),
+      { headers: JSON_HDR },
     );
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: message, request_id: requestId }), { status: 500, headers: JSON_HDR });
   }
 });

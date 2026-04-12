@@ -112,16 +112,15 @@ export default function Dashboard() {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: problems = [] } = useProblems();
+  const { data: problemsQuery } = useProblems();
+  const problems = problemsQuery?.items ?? [];
+  const openOpportunitiesCount = problemsQuery?.totalCount ?? 0;
+  const problemsValue = problemsQuery?.totalEstimatedImpact ?? 0;
   const lojaDash = useLoja();
   const storeIdDash = (lojaDash.data as { id?: string } | null)?.id;
   const { pendingCount: pendingRxCount, pendingValue: pendingRxValue } = usePrescriptionsPendingStats(storeIdDash);
-  const problemsValue = problems.reduce(
-    (acc, p) => acc + Number((p as { impacto_estimado?: number; estimated_impact?: number }).impacto_estimado ?? (p as { estimated_impact?: number }).estimated_impact ?? 0),
-    0,
-  );
   const queueIsPrescriptions = pendingRxCount > 0;
-  const pendingCount = queueIsPrescriptions ? pendingRxCount : problems.length;
+  const pendingCount = queueIsPrescriptions ? pendingRxCount : openOpportunitiesCount;
   const pendingValue = queueIsPrescriptions ? pendingRxValue : problemsValue;
 
   const {
@@ -136,7 +135,7 @@ export default function Dashboard() {
   // Use real data only — no mock fallbacks
   const revenueRecovered = statsData?.revenueLast30 ?? 0;
   const revenueGrowth = statsData?.revGrowth ?? 0;
-  const hasData = revenueRecovered > 0 || problems.length > 0 || pendingRxCount > 0;
+  const hasData = revenueRecovered > 0 || openOpportunitiesCount > 0 || pendingRxCount > 0;
 
   const { data: whatsappConnections = [] } = useQuery({
     queryKey: ["whatsapp_connections_status", user?.id ?? null],
@@ -926,15 +925,23 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {problems.length > 0 ? (
-                problems.map((p) => (
-                  <ProblemCard
-                    key={p.id}
-                    {...opportunityRowToProblemProps(p)}
-                    onVer={() => navigate("/dashboard/prescricoes")}
-                    onAprovar={() => navigate("/dashboard/prescricoes")}
-                  />
-                ))
+              {openOpportunitiesCount > 0 ? (
+                <>
+                  {problems.map((p) => (
+                    <ProblemCard
+                      key={p.id}
+                      {...opportunityRowToProblemProps(p)}
+                      onVer={() => navigate("/dashboard/prescricoes")}
+                      onAprovar={() => navigate("/dashboard/prescricoes")}
+                    />
+                  ))}
+                  {openOpportunitiesCount > problems.length && (
+                    <p className="text-center text-[11px] text-muted-foreground py-2">
+                      A mostrar as {problems.length} mais recentes de{" "}
+                      {openOpportunitiesCount.toLocaleString("pt-BR")} oportunidades abertas. Ver todas em Prescrições.
+                    </p>
+                  )}
+                </>
               ) : (
                 <div className="bg-card/50 border border-dashed border-border/50 rounded-2xl p-12 text-center space-y-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">

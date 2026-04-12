@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 import { corsHeaders, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import { ANALYTICS_DAILY_WEEK_SELECT } from "../_shared/db-select-fragments.ts";
 
 const BodySchema = z.object({ store_id: z.string().uuid() });
 
@@ -23,7 +24,11 @@ serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-    const { data: analytics } = await supabase.from("analytics_daily").select("*").eq("store_id", store_id).gte("date", sevenDaysAgo);
+    const { data: analytics } = await supabase
+      .from("analytics_daily")
+      .select(ANALYTICS_DAILY_WEEK_SELECT)
+      .eq("store_id", store_id)
+      .gte("date", sevenDaysAgo);
     if (!analytics || analytics.length === 0) {
       return new Response(JSON.stringify({ ok: true, status: "no_data_for_period" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

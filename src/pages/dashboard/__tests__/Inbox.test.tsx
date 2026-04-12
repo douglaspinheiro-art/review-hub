@@ -18,6 +18,9 @@ const convInfiniteEmpty = {
 };
 
 vi.mock("@/hooks/useDashboard", () => ({
+  INBOX_MESSAGES_DEFAULT_LIMIT: 200,
+  INBOX_MESSAGES_MAX_LIMIT: 2000,
+  INBOX_MESSAGES_LOAD_STEP: 100,
   getCurrentUserAndStore: vi.fn().mockResolvedValue({
     userId: "u1",
     storeId: "s1",

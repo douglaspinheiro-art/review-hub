@@ -29,6 +29,13 @@ jobs:
       - name: Release readiness (smoke + gates)
         run: npm run release:check
 
+      - name: Validate frontend env (secrets do repositório)
+        if: ${{ secrets.VITE_SUPABASE_URL != '' && secrets.VITE_SUPABASE_ANON_KEY != '' }}
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run validate:env:frontend
+
       - name: Lint changed files
         run: npm run lint:changed
 
@@ -37,3 +44,17 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E smoke (preview em 4173)
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 --strictPort &
+          PREVIEW_PID=$!
+          for i in $(seq 1 90); do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:4173/ >/dev/null
+          PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 npm run test:e2e
+          kill $PREVIEW_PID 2>/dev/null || true
+        env:
+          CI: true

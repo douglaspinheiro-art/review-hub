@@ -25,7 +25,7 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/hooks/useDashboard", () => ({
-  useProblems: () => ({ data: [] }),
+  useProblems: () => ({ data: { items: [], totalCount: 0, totalEstimatedImpact: 0 } }),
   useDashboardHomeStats: () => ({
     data: {
       revenueLast30: 0,

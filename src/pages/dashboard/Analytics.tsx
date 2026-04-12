@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { WHATSAPP_CAMPAIGN_BENCHMARKS_BR } from "@/lib/industry-benchmarks";
 import { cn } from "@/lib/utils";
+import { CHART_SERIES_MAX_POINTS, downsampleDailySeriesBySum } from "@/lib/chart-downsample";
 import {
   AreaChart,
   Area,
@@ -141,7 +142,14 @@ export default function Analytics() {
     refetch: refetchBaseline,
   } = useConversionBaseline(period);
 
-  const chartSeries = useMemo(() => parseSnapshotChartSeries(snapshot?.chart_series), [snapshot?.chart_series]);
+  const chartSeries = useMemo(() => {
+    const parsed = parseSnapshotChartSeries(snapshot?.chart_series);
+    return downsampleDailySeriesBySum(
+      parsed,
+      ["messages_sent", "messages_delivered", "messages_read", "revenue_influenced"],
+      CHART_SERIES_MAX_POINTS,
+    );
+  }, [snapshot?.chart_series]);
 
   const showSkeleton = authLoading || snapshotLoading;
   const refreshing = snapshotFetching || isBaselineFetching;

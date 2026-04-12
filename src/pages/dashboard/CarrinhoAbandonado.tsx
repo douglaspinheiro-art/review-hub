@@ -136,6 +136,33 @@ function extractCartIdsFromScheduledMetadata(rows: { metadata: unknown }[] | nul
   return ids;
 }
 
+/** Evita um único `limit(3000)` no browser: pede ao PostgREST em páginas estáveis (`range`). */
+const SCHEDULED_METADATA_BATCH = 500;
+const SCHEDULED_METADATA_MAX_ROWS = 5000;
+
+async function fetchScheduledMetadataBatchesForCartHighlight(
+  effectiveUserId: string,
+  storeId: string | null,
+): Promise<{ metadata: unknown }[]> {
+  const acc: { metadata: unknown }[] = [];
+  for (let offset = 0; offset < SCHEDULED_METADATA_MAX_ROWS; offset += SCHEDULED_METADATA_BATCH) {
+    let q = supabase
+      .from("scheduled_messages")
+      .select("metadata")
+      .eq("user_id", effectiveUserId)
+      .eq("status", "pending")
+      .order("id", { ascending: true })
+      .range(offset, offset + SCHEDULED_METADATA_BATCH - 1);
+    if (storeId) q = q.eq("store_id", storeId);
+    const { data, error } = await q;
+    if (error) throw error;
+    const batch = data ?? [];
+    acc.push(...batch);
+    if (batch.length < SCHEDULED_METADATA_BATCH) break;
+  }
+  return acc;
+}
+
 export default function CarrinhoAbandonado() {
   const [filter, setFilter] = useState<string>("all");
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
@@ -195,15 +222,8 @@ export default function CarrinhoAbandonado() {
       const { storeId: defaultStoreId, effectiveUserId } = await getCurrentUserAndStore();
       if (!effectiveUserId) return new Set<string>();
       const sid = selectedStoreId || defaultStoreId || null;
-      let q = supabase
-        .from("scheduled_messages")
-        .select("metadata")
-        .eq("user_id", effectiveUserId)
-        .eq("status", "pending");
-      if (sid) q = q.eq("store_id", sid);
-      const { data, error } = await q.limit(3000);
-      if (error) throw error;
-      return extractCartIdsFromScheduledMetadata(data ?? []);
+      const rows = await fetchScheduledMetadataBatchesForCartHighlight(effectiveUserId, sid);
+      return extractCartIdsFromScheduledMetadata(rows);
     },
     enabled: !!user?.id && !storeListLoading,
   });

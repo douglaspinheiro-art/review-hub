@@ -118,7 +118,7 @@ export default function Billing() {
   });
 
   const { data: stats } = useDashboardHomeStats(30);
-  const { data: problems = [] } = useProblems();
+  const { data: problemsQuery } = useProblems();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
 
@@ -133,7 +133,7 @@ export default function Billing() {
     }
   }, [usage?.contacts, limits.contacts]);
 
-  const revenueAtRisk = problems.reduce((acc, p) => acc + Number(p.estimated_impact || 0), 0);
+  const revenueAtRisk = problemsQuery?.totalEstimatedImpact ?? 0;
   const totalRecovered = stats?.revenueLast30 ?? 0;
 
   const openStripePortal = async () => {

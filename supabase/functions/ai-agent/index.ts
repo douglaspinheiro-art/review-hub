@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { verifyJwt, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import { AI_AGENT_CONFIG_SELECT } from "../_shared/db-select-fragments.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -40,14 +41,22 @@ serve(async (req) => {
     if (!store || store.user_id !== auth.userId) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
     }
-    const { data: aiConfig } = await supabase.from("ai_agent_config").select("*").eq("store_id", store_id).maybeSingle();
+    const { data: aiConfig } = await supabase
+      .from("ai_agent_config")
+      .select(AI_AGENT_CONFIG_SELECT)
+      .eq("store_id", store_id)
+      .maybeSingle();
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
 
-    const system = `Você é o Agente de IA da loja ${store?.name || 'LTV Boost'}.
+    const personality =
+      (aiConfig as { tom_de_voz?: string | null; personalidade_preset?: string | null } | null)?.tom_de_voz?.trim() ||
+      (aiConfig as { personalidade_preset?: string | null } | null)?.personalidade_preset?.trim() ||
+      "Profissional e prestativa";
+    const system = `Você é o Agente de IA da loja ${store?.name || "LTV Boost"}.
 Seu objetivo é ajudar o cliente, resolver dúvidas e incentivar a conversão de forma natural.
-Personalidade da marca: ${aiConfig?.personality || 'Profissional e prestativa'}.
+Personalidade da marca: ${personality}.
 Contexto do segmento: ${store?.segment}.
 Instruções: Nunca invente informações. Se não souber algo, direcione para um humano.`;
 

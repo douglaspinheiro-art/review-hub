@@ -39,11 +39,18 @@ function writeLocalEvents(events: LocalEvent[]) {
   }
 }
 
+function isDemoSession(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.querySelector("[data-ltv-demo='true']") != null;
+}
+
 export async function trackMoatEvent(event: MoatEventName, payload: MoatEventPayload = {}) {
+  const is_demo = isDemoSession();
+  const mergedPayload: MoatEventPayload = { ...payload, is_demo };
   const localEvent: LocalEvent = {
     event,
     at: new Date().toISOString(),
-    payload,
+    payload: mergedPayload,
   };
 
   const existing = readLocalEvents();
@@ -60,7 +67,7 @@ export async function trackMoatEvent(event: MoatEventName, payload: MoatEventPay
     await (supabase as any).from("moat_events").insert({
       user_id: userId,
       event_name: event,
-      payload,
+      payload: mergedPayload,
       created_at: localEvent.at,
     });
   } catch {

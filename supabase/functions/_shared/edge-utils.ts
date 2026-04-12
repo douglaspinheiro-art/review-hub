@@ -53,6 +53,9 @@ export async function checkDistributedRateLimit(
 ): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
   const now = Date.now();
   const windowStart = new Date(now - windowMs).toISOString();
+  const failOpen =
+    String(Deno.env.get("DISTRIBUTED_RATE_LIMIT_FAIL_OPEN") ?? "").toLowerCase() === "true" ||
+    String(Deno.env.get("DISTRIBUTED_RATE_LIMIT_FAIL_OPEN") ?? "") === "1";
 
   const { count, error: countError } = await supabase
     .from("api_request_logs")
@@ -61,7 +64,11 @@ export async function checkDistributedRateLimit(
     .gte("created_at", windowStart);
 
   if (countError) {
-    return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+    console.error("[checkDistributedRateLimit] count error — fail-closed unless DISTRIBUTED_RATE_LIMIT_FAIL_OPEN", countError.message);
+    if (failOpen) {
+      return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+    }
+    return { allowed: false, retryAfterSeconds: Math.ceil(windowMs / 1000) };
   }
 
   const currentCount = count ?? 0;
@@ -69,9 +76,16 @@ export async function checkDistributedRateLimit(
     return { allowed: false, retryAfterSeconds: Math.ceil(windowMs / 1000) };
   }
 
-  await supabase.from("api_request_logs").insert({
+  const { error: insErr } = await supabase.from("api_request_logs").insert({
     rate_key: key,
   });
+  if (insErr) {
+    console.error("[checkDistributedRateLimit] insert error", insErr.message);
+    if (failOpen) {
+      return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+    }
+    return { allowed: false, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+  }
 
   return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
 }
@@ -164,6 +178,11 @@ export async function verifyJwt(req: Request): Promise<AuthResult> {
   return { ok: true, userId: user.id };
 }
 
+/** Log estruturado para alertas de cron / jobs internos (filtrar no agregador por `tag`). */
+export function logCronAlert(payload: Record<string, unknown>) {
+  console.error(JSON.stringify({ tag: "CRON_ALERT", ts: new Date().toISOString(), ...payload }));
+}
+
 /**
  * Verifies the Authorization header contains the CRON_SECRET.
  * Use for cron-triggered Edge Functions to prevent unauthorized execution.
@@ -171,10 +190,12 @@ export async function verifyJwt(req: Request): Promise<AuthResult> {
 export function verifyCronSecret(req: Request): Response | null {
   const cronSecret = Deno.env.get("CRON_SECRET");
   if (!cronSecret) {
+    logCronAlert({ component: "verifyCronSecret", error: "CRON_SECRET_missing" });
     return errorResponse("CRON_SECRET is not configured on this server", 500);
   }
   const authHeader = req.headers.get("Authorization");
   if (authHeader !== `Bearer ${cronSecret}`) {
+    logCronAlert({ component: "verifyCronSecret", error: "unauthorized_cron_invocation" });
     return errorResponse("Unauthorized", 401);
   }
   return null;

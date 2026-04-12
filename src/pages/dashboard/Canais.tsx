@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -113,13 +114,19 @@ function mapWebhookStatus(log: WebhookLogEnriched): string {
   return s || "pendente";
 }
 
+const WEBHOOK_LOGS_PAGE_SIZE = 50;
+
 export default function Canais() {
   const { user } = useAuth();
   const { isDemo } = useDemo();
   const queryClient = useQueryClient();
+  const [webhookLogsPage, setWebhookLogsPage] = useState(1);
 
   const canaisQuery = useCanaisPageData(!isDemo);
-  const logsQuery = useWebhookLogs(!isDemo);
+  const logsQuery = useWebhookLogs(!isDemo, { page: webhookLogsPage, pageSize: WEBHOOK_LOGS_PAGE_SIZE });
+  const webhookLogs = logsQuery.data?.logs ?? [];
+  const webhookLogsTotal = logsQuery.data?.totalCount ?? 0;
+  const webhookLogsTotalPages = Math.max(1, Math.ceil(webhookLogsTotal / WEBHOOK_LOGS_PAGE_SIZE));
 
   const onSyncAll = async () => {
     try {
@@ -392,14 +399,14 @@ export default function Canais() {
                         Erro ao carregar logs.
                       </td>
                     </tr>
-                  ) : logsQuery.data?.length === 0 ? (
+                  ) : webhookLogs.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-xs text-muted-foreground italic font-medium">
                         Nenhum log de webhook registado ainda.
                       </td>
                     </tr>
                   ) : (
-                    logsQuery.data?.map((log) => {
+                    webhookLogs.map((log) => {
                       const displayStatus = mapWebhookStatus(log);
                       const plataforma = log.plataforma ?? log.source ?? "—";
                       return (
@@ -472,6 +479,35 @@ export default function Canais() {
                 </tbody>
               </table>
             </div>
+            {webhookLogsTotal > WEBHOOK_LOGS_PAGE_SIZE && (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-border/50 bg-muted/10">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">
+                  Página {webhookLogsPage} de {webhookLogsTotalPages} · {webhookLogsTotal} eventos
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="font-bold text-[10px] uppercase"
+                    disabled={webhookLogsPage <= 1 || logsQuery.isFetching}
+                    onClick={() => setWebhookLogsPage((p) => Math.max(1, p - 1))}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="font-bold text-[10px] uppercase"
+                    disabled={webhookLogsPage >= webhookLogsTotalPages || logsQuery.isFetching}
+                    onClick={() => setWebhookLogsPage((p) => Math.min(webhookLogsTotalPages, p + 1))}
+                  >
+                    Seguinte
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

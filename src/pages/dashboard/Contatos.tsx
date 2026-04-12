@@ -506,8 +506,8 @@ export default function Contatos() {
             >
               Anterior
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {totalCount.toLocaleString("pt-BR")} resultado(s) com os filtros atuais
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Página {page} de {totalPages} · {totalCount.toLocaleString("pt-BR")} resultado(s)
             </span>
             <Button
               type="button"

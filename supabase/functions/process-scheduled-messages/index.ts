@@ -22,6 +22,34 @@ import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
 const BATCH_SIZE = 100;
 
+function readQueueCap(envName: string, fallback: number, hardMax: number): number {
+  const raw = Deno.env.get(envName);
+  const n = raw == null || raw === "" ? fallback : Number(raw);
+  if (!Number.isFinite(n)) return Math.min(hardMax, fallback);
+  return Math.min(hardMax, Math.max(1, Math.floor(n)));
+}
+
+function readWebhookMaxAttempts(): number {
+  const n = Number(Deno.env.get("WEBHOOK_QUEUE_MAX_ATTEMPTS") ?? "5");
+  return Number.isFinite(n) && n >= 1 ? Math.min(50, Math.floor(n)) : 5;
+}
+
+async function invokeFlowEngineWithRetry(
+  appUrl: string,
+  body: Parameters<typeof invokeFlowEngine>[1],
+): Promise<Response> {
+  const max = Math.min(5, Math.max(1, Number(Deno.env.get("FLOW_ENGINE_INVOKE_RETRIES") ?? "3") || 3));
+  let last: Response | null = null;
+  for (let i = 0; i < max; i++) {
+    last = await invokeFlowEngine(appUrl, body);
+    if (last.ok) return last;
+    const retryable = last.status === 429 || last.status >= 500;
+    if (!retryable || i === max - 1) return last;
+    await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+  }
+  return last!;
+}
+
 function readAntiSpamDelayMs(): number {
   const raw = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_ANTI_SPAM_MS");
   const n = raw == null || raw === "" ? 350 : Number(raw);
@@ -48,14 +76,23 @@ serve(async (req) => {
   let totalProcessed = 0;
   let totalErrors = 0;
   let campaignsFinalized = 0;
+  const capWebhooks = readQueueCap("PROCESS_SCHEDULED_MAX_WEBHOOK_JOBS", BATCH_SIZE, 500);
+  const capWa = readQueueCap("PROCESS_SCHEDULED_MAX_WA_MESSAGES", BATCH_SIZE, 500);
+  const capEmail = readQueueCap("PROCESS_SCHEDULED_MAX_EMAIL_RECIPIENTS", BATCH_SIZE, 500);
+  let webhookProcessed = 0;
+  let webhookDeadLetter = 0;
+  let waProcessed = 0;
+  let emailProcessed = 0;
 
   // ── 1. WEBHOOK QUEUE (webhook_queue) ────────────────────────────────────────
+  const webhookMaxAttempts = readWebhookMaxAttempts();
+
   const { data: pendingWebhooks } = await supabase
     .from("webhook_queue")
-    .select("id, store_id, user_id, platform, payload_normalized, status, created_at, updated_at")
+    .select("id, store_id, user_id, platform, payload_normalized, status, attempts, created_at, updated_at")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
-    .limit(BATCH_SIZE);
+    .limit(capWebhooks);
 
   for (const job of (pendingWebhooks ?? [])) {
     try {
@@ -65,17 +102,33 @@ serve(async (req) => {
         .eq("id", job.id).eq("status", "pending").select("id").maybeSingle();
       if (!claim) continue;
 
-      const normalized = job.payload_normalized;
+      const normalized = job.payload_normalized as Record<string, unknown> | null;
       const storeId = job.store_id;
       const userId = job.user_id;
+
+      const phoneRaw = normalized?.customer_phone;
+      const extRaw = normalized?.external_id;
+      const phoneOk = typeof phoneRaw === "string" && phoneRaw.replace(/\D/g, "").length >= 8;
+      const extOk = extRaw != null && String(extRaw).trim().length > 0;
+      if (!phoneOk || !extOk) {
+        await supabase.from("webhook_queue").update({
+          status: "dead_letter",
+          error_message: `invalid_payload: phone_ok=${phoneOk} external_id_ok=${extOk} (use webhook-cart normalized shape)`,
+          attempts: webhookMaxAttempts,
+          updated_at: new Date().toISOString(),
+        }).eq("id", job.id);
+        totalErrors++;
+        webhookDeadLetter++;
+        continue;
+      }
 
       // 1. Upsert Customer (v3 model)
       const { data: customer } = await supabase.from("customers_v3").upsert({
         user_id: userId,
         store_id: storeId,
-        phone: normalized.customer_phone,
-        email: normalized.customer_email,
-        name: normalized.customer_name,
+        phone: normalized.customer_phone as string,
+        email: normalized.customer_email as string | undefined,
+        name: normalized.customer_name as string | undefined,
       }, { onConflict: "store_id, phone" }).select("id").single();
 
       if (!customer) throw new Error("Failed to upsert customer");
@@ -85,7 +138,7 @@ serve(async (req) => {
         user_id: userId,
         store_id: storeId,
         customer_id: customer.id,
-        external_id: normalized.external_id,
+        external_id: String(normalized.external_id),
         source: job.platform,
         cart_value: normalized.cart_value,
         cart_items: normalized.cart_items,
@@ -111,7 +164,7 @@ serve(async (req) => {
           normalized.payment_failure_reason.trim().length > 0);
       const event = paymentLike ? "payment_pending" : "cart_abandoned";
       
-      await invokeFlowEngine(APP_URL, {
+      const flowRes = await invokeFlowEngineWithRetry(APP_URL, {
         event,
         store_id: storeId,
         customer_id: customer.id,
@@ -121,6 +174,10 @@ serve(async (req) => {
           shipping_value: normalized.shipping_value,
         },
       });
+      if (!flowRes.ok) {
+        const detail = await flowRes.text().catch(() => "");
+        throw new Error(`flow-engine ${flowRes.status}: ${detail.slice(0, 400)}`);
+      }
 
       await supabase.from("webhook_queue").update({ 
         status: "completed", 
@@ -129,14 +186,27 @@ serve(async (req) => {
       }).eq("id", job.id);
 
       totalProcessed++;
+      webhookProcessed++;
     } catch (e) {
       const err = e as Error;
       console.error(`Webhook job ${job.id} error:`, err.message);
-      await supabase.from("webhook_queue").update({ 
-        status: "failed", 
-        error_message: err.message,
-        updated_at: new Date().toISOString() 
-      }).eq("id", job.id);
+      const prev = Number((job as { attempts?: number }).attempts ?? 0);
+      const next = prev + 1;
+      if (next >= webhookMaxAttempts) {
+        await supabase.from("webhook_queue").update({
+          status: "dead_letter",
+          error_message: err.message,
+          attempts: next,
+          updated_at: new Date().toISOString(),
+        }).eq("id", job.id);
+      } else {
+        await supabase.from("webhook_queue").update({
+          status: "pending",
+          error_message: err.message,
+          attempts: next,
+          updated_at: new Date().toISOString(),
+        }).eq("id", job.id);
+      }
       totalErrors++;
     }
   }
@@ -150,7 +220,7 @@ serve(async (req) => {
     .lte("scheduled_for", now)
     .order("store_id", { ascending: true })
     .order("scheduled_for", { ascending: true })
-    .limit(BATCH_SIZE);
+    .limit(capWa);
 
   for (const msg of (pendingWA ?? [])) {
     try {
@@ -193,6 +263,7 @@ serve(async (req) => {
       }
 
       totalProcessed++;
+      waProcessed++;
       if (ANTI_SPAM_DELAY_MS > 0) await new Promise((r) => setTimeout(r, ANTI_SPAM_DELAY_MS));
     } catch (e) {
       const err = e as Error;
@@ -209,7 +280,7 @@ serve(async (req) => {
       "id, campaign_id, subject_variant, customers_v3(email, name), campaigns(id, store_id, blocks, subject, subject_variant_b)",
     )
     .eq("status", "pending")
-    .limit(BATCH_SIZE);
+    .limit(capEmail);
 
   for (const row of (pendingEmail ?? [])) {
     try {
@@ -246,6 +317,7 @@ serve(async (req) => {
       await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: campaign.id });
 
       totalProcessed++;
+      emailProcessed++;
     } catch (e) {
       const err = e as Error;
       console.error(`Email row ${row.id} error:`, err.message);
@@ -257,7 +329,12 @@ serve(async (req) => {
   // ── 3. POST-PROCESSING (Campaign Cleanup) ──────────────────────────────────
   const { data: finalizedN, error: finalizeErr } = await supabase.rpc("finalize_completed_campaigns");
   if (finalizeErr) {
-    console.error(`finalize_completed_campaigns: ${finalizeErr.message}`);
+    console.error(JSON.stringify({
+      tag: "CRON_ALERT",
+      component: "finalize_completed_campaigns",
+      message: finalizeErr.message,
+      request_id: requestId,
+    }));
   } else if (typeof finalizedN === "number") {
     campaignsFinalized = finalizedN;
   }
@@ -271,6 +348,13 @@ serve(async (req) => {
       errors: totalErrors,
       elapsed_ms: elapsedMs,
       campaigns_finalized: campaignsFinalized,
+      caps: { webhooks: capWebhooks, wa: capWa, email: capEmail },
+      breakdown: {
+        webhook_ok: webhookProcessed,
+        webhook_dead_letter: webhookDeadLetter,
+        wa_ok: waProcessed,
+        email_ok: emailProcessed,
+      },
     }),
   );
 
@@ -282,6 +366,13 @@ serve(async (req) => {
       errors: totalErrors,
       elapsed_ms: elapsedMs,
       campaigns_finalized: campaignsFinalized,
+      caps: { webhooks: capWebhooks, wa: capWa, email: capEmail },
+      breakdown: {
+        webhook_ok: webhookProcessed,
+        webhook_dead_letter: webhookDeadLetter,
+        wa_ok: waProcessed,
+        email_ok: emailProcessed,
+      },
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );

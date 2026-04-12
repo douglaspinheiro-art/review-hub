@@ -3,6 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 import { corsHeaders } from "../_shared/edge-utils.ts";
+import {
+  CUSTOMERS_V3_FLOW_SELECT,
+  JOURNEYS_CONFIG_FLOW_SELECT,
+  STORES_FLOW_SELECT,
+} from "../_shared/db-select-fragments.ts";
 
 /**
  * `event` === `journeys_config.tipo_jornada` ativo para a loja.
@@ -49,17 +54,26 @@ serve(async (req) => {
     const { event, store_id, customer_id, payload } = parsed.data;
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-    const { data: store } = await supabase.from("stores").select("*").eq("id", store_id).single();
+    const { data: store } = await supabase.from("stores").select(STORES_FLOW_SELECT).eq("id", store_id).single();
     if (!store) throw new Error("Store not found");
 
-    const { data: journeys } = await supabase.from("journeys_config").select("*").eq("store_id", store_id).eq("tipo_jornada", event).eq("ativa", true);
+    const { data: journeys } = await supabase
+      .from("journeys_config")
+      .select(JOURNEYS_CONFIG_FLOW_SELECT)
+      .eq("store_id", store_id)
+      .eq("tipo_jornada", event)
+      .eq("ativa", true);
     if (!journeys || journeys.length === 0) {
       return new Response(JSON.stringify({ ok: true, status: "no_active_journeys" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const processed = [];
     for (const journey of journeys) {
-      const { data: customer } = await supabase.from("customers_v3").select("*").eq("id", customer_id).single();
+      const { data: customer } = await supabase
+        .from("customers_v3")
+        .select(CUSTOMERS_V3_FLOW_SELECT)
+        .eq("id", customer_id)
+        .single();
       if (!customer) continue;
 
       const config = (journey.config_json || {}) as Record<string, any>;

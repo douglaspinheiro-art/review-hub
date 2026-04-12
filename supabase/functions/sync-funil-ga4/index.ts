@@ -5,7 +5,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyCronSecret } from "../_shared/edge-utils.ts";
+import { logCronAlert, verifyCronSecret } from "../_shared/edge-utils.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -122,6 +122,7 @@ serve(async (req) => {
     .not("ga4_access_token", "is", null);
 
   if (stErr) {
+    logCronAlert({ component: "sync-funil-ga4", phase: "list_stores", error: stErr.message });
     return new Response(JSON.stringify({ ok: false, error: stErr.message }), { status: 500, headers: cors });
   }
 
@@ -169,6 +170,16 @@ serve(async (req) => {
         results.push({ store_id: s.id, periodo, ok: false, error: msg });
       }
     }
+  }
+
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length > 0) {
+    logCronAlert({
+      component: "sync-funil-ga4",
+      phase: "ga4_upsert",
+      failed_count: failed.length,
+      sample: failed.slice(0, 8),
+    });
   }
 
   return new Response(JSON.stringify({ ok: true, metric_date: metricDate, results }), { headers: cors });

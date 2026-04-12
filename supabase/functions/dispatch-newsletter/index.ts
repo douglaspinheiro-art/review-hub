@@ -20,6 +20,7 @@ import {
   renderBlocksToHTML,
   appendUtmParams,
 } from "../_shared/newsletter-html.ts";
+import { CAMPAIGNS_DISPATCH_NEWSLETTER_SELECT } from "../_shared/db-select-fragments.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -363,7 +364,7 @@ serve(async (req) => {
 
     const { data: campaign, error: campErr } = await sb
       .from("campaigns")
-      .select("*")
+      .select(CAMPAIGNS_DISPATCH_NEWSLETTER_SELECT)
       .eq("id", campaign_id)
       .eq("user_id", userId)
       .single();

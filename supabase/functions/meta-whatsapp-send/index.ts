@@ -22,6 +22,19 @@ import {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+function metaErrorRetryHint(err: unknown): { retryable: boolean; status: number } {
+  const msg = err instanceof Error ? err.message : String(err);
+  const m = msg.match(/Meta Graph (?:template )?error (\d+)/);
+  const status = m ? Number(m[1]) : 0;
+  if (status === 429 || status === 408) return { retryable: true, status };
+  if (status >= 500) return { retryable: true, status };
+  return { retryable: false, status };
+}
+
+async function sleep(ms: number) {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 const BodySchema = z.discriminatedUnion("kind", [
   z.object({
     connectionId: uuidSchema,
@@ -68,20 +81,33 @@ serve(async (req) => {
     if (authError || !user) return errorResponse("Unauthorized", 401);
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const distLimit = await checkDistributedRateLimit(admin, `meta-wa-send:${user.id}`, 60, 60_000);
-    if (!distLimit.allowed) {
-      return rateLimitedResponseWithRetry(distLimit.retryAfterSeconds);
+    const perUserLimit = await checkDistributedRateLimit(admin, `meta-wa-send:user:${user.id}`, 60, 60_000);
+    if (!perUserLimit.allowed) {
+      return rateLimitedResponseWithRetry(perUserLimit.retryAfterSeconds);
     }
     const { data: conn, error: connErr } = await admin
       .from("whatsapp_connections")
       .select(
-        "id, user_id, provider, meta_phone_number_id, meta_access_token, meta_api_version",
+        "id, user_id, store_id, provider, meta_phone_number_id, meta_access_token, meta_api_version",
       )
       .eq("id", connectionId)
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (connErr || !conn) return errorResponse("Conexão não encontrada", 404);
+    const storeId = (conn as { store_id?: string | null }).store_id ?? "";
+    const storeCap = Math.min(500, Math.max(10, Number(Deno.env.get("META_WA_SEND_PER_STORE_PER_MIN") ?? "120") || 120));
+    if (storeId) {
+      const storeLimit = await checkDistributedRateLimit(
+        admin,
+        `meta-wa-send:store:${storeId}`,
+        storeCap,
+        60_000,
+      );
+      if (!storeLimit.allowed) {
+        return rateLimitedResponseWithRetry(storeLimit.retryAfterSeconds);
+      }
+    }
     if ((conn as { provider?: string }).provider !== "meta_cloud") {
       return errorResponse("Esta conexão não é Meta Cloud API", 400);
     }
@@ -150,19 +176,41 @@ serve(async (req) => {
     if (kind === "sendText") {
       const text = body.text ?? "";
       if (!text.trim()) return errorResponse("text obrigatório", 400);
-      data = await metaGraphSendText(phoneId, token, body.number, text, apiVer);
+      try {
+        data = await metaGraphSendText(phoneId, token, body.number, text, apiVer);
+      } catch (first) {
+        const { retryable } = metaErrorRetryHint(first);
+        if (!retryable) throw first;
+        await sleep(800);
+        data = await metaGraphSendText(phoneId, token, body.number, text, apiVer);
+      }
     } else {
       const name = body.templateName?.trim();
       if (!name) return errorResponse("templateName obrigatório", 400);
-      data = await metaGraphSendTemplate(
-        phoneId,
-        token,
-        body.number,
-        name,
-        body.templateLanguage ?? "pt_BR",
-        body.templateBodyParameters ?? [],
-        apiVer,
-      );
+      try {
+        data = await metaGraphSendTemplate(
+          phoneId,
+          token,
+          body.number,
+          name,
+          body.templateLanguage ?? "pt_BR",
+          body.templateBodyParameters ?? [],
+          apiVer,
+        );
+      } catch (first) {
+        const { retryable } = metaErrorRetryHint(first);
+        if (!retryable) throw first;
+        await sleep(800);
+        data = await metaGraphSendTemplate(
+          phoneId,
+          token,
+          body.number,
+          name,
+          body.templateLanguage ?? "pt_BR",
+          body.templateBodyParameters ?? [],
+          apiVer,
+        );
+      }
     }
 
     const mid = data.messages?.[0]?.id;

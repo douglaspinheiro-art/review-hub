@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { Database, Json } from "@/integrations/supabase/types";
@@ -262,19 +262,38 @@ export function useCanaisPageData(fetchEnabled: boolean) {
   });
 }
 
+export type WebhookLogsQueryResult = {
+  logs: WebhookLogEnriched[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+};
+
 /** Logs de webhook visíveis pela RLS (`auth.uid() = user_id`) + nome da loja resolvido em `stores`. */
-export function useWebhookLogs(fetchEnabled = true) {
+export function useWebhookLogs(
+  fetchEnabled = true,
+  opts?: { page?: number; pageSize?: number },
+) {
   const { user } = useAuth();
+  const page = Math.max(1, opts?.page ?? 1);
+  const pageSize = Math.min(200, Math.max(10, opts?.pageSize ?? 50));
   return useQuery({
-    queryKey: ["webhook_logs", user?.id],
+    queryKey: ["webhook_logs", user?.id, page, pageSize],
     enabled: fetchEnabled && !!user?.id,
-    queryFn: async (): Promise<WebhookLogEnriched[]> => {
+    queryFn: async (): Promise<WebhookLogsQueryResult> => {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
       const { data: logs, error } = await supabase
         .from("webhook_logs")
         .select(WEBHOOK_LOGS_LIST_SELECT)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .range(from, to);
       if (error) throw error;
+
+      const { count, error: countErr } = await supabase
+        .from("webhook_logs")
+        .select("id", { count: "exact", head: true });
+      if (countErr) throw countErr;
       const rows = (logs ?? []) as WebhookLogRow[];
       const ids = [...new Set(rows.map((r) => r.store_id).filter(Boolean))] as string[];
       let names: Record<string, string> = {};
@@ -284,12 +303,19 @@ export function useWebhookLogs(fetchEnabled = true) {
           names = Object.fromEntries(stores.map((s) => [s.id, s.name ?? ""]));
         }
       }
-      return rows.map((r) => ({
+      const enriched = rows.map((r) => ({
         ...r,
         store_name: r.store_id ? names[r.store_id] ?? null : null,
       }));
+      return {
+        logs: enriched,
+        totalCount: count ?? 0,
+        page,
+        pageSize,
+      };
     },
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
 }
 

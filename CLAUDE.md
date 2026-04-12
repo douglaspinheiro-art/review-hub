@@ -18,7 +18,16 @@ npm run supabase:migration-list  # Local vs remoto (migrações); ver docs/supab
 npm run supabase:db-push         # Aplica migrações pendentes no projeto linkado
 npm run supabase:db-push:include-all  # Idem, com --include-all (ordem fora de linha; ver doc)
 npm run release:check         # Smoke + ProtectedRoute + env opcional (ver docs/production-env-checklist.md)
+npm run test:e2e              # Playwright (e2e/); CI usa preview em :4173 + PLAYWRIGHT_BASE_URL
 ```
+
+## Produção / compliance (checklist curto)
+
+- **Migrações:** alinhar remoto com `npm run supabase:migration-list` / `supabase db push --linked` (ver `docs/supabase-migrations-sync.md`).
+- **Stripe:** deploy Edge `stripe-webhook` (sem JWT); secrets `STRIPE_WEBHOOK_SECRET`, opcional `STRIPE_PRICE_TO_PLAN` JSON; Checkout com `client_reference_id` = `profiles.id` e metadata `plan_tier` quando aplicável.
+- **Crons:** `CRON_SECRET`, `PROCESS_SCHEDULED_MESSAGES_SECRET` — rotacionar periodicamente; monitorizar logs com tag `CRON_ALERT`.
+- **Supabase:** plano pago com **PITR / backups** ativos para dados de clientes.
+- **LGPD:** bases legais e retenção documentadas; fluxo de exportação/eliminação de conta alinhado ao DPO (o `unsubscribe` e logs de auditoria já existem — rever políticas de retenção em `webhook_logs` / `api_request_logs`).
 
 ## Architecture
 
@@ -101,8 +110,9 @@ LTV Boost is a WhatsApp marketing SaaS for Brazilian e-commerces. The app has tw
 | `meta-whatsapp-send` | `meta-whatsapp-send` (envio Cloud API; JWT + `connectionId`) |
 | `sync-funil-ga4` | `sync-funil-ga4` — grava `funil_diario` a partir do GA4 da loja (`stores.ga4_*`); **cron** com `Authorization: Bearer CRON_SECRET` |
 | `data-pipeline-cron` | `data-pipeline-cron` — `data_quality_snapshots`, `customer_cohorts`, `catalog_snapshot`; **cron** com `Authorization: Bearer CRON_SECRET` (body opcional `{ "jobs": ["quality","cohorts","catalog"] }`) |
+| Stripe Dashboard → webhooks | `stripe-webhook` — assinatura `STRIPE_WEBHOOK_SECRET`; `verify_jwt = false` |
 
-Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, `sync-funil-ga4`, `data-pipeline-cron`, and others present in the repo.
+Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, **`stripe-webhook`**, **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, `sync-funil-ga4`, `data-pipeline-cron`, and others present in the repo.
 
 ### Dados operacionais (funil GA4 + qualidade)
 

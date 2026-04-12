@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyJwt, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import {
+  verifyJwt,
+  checkRateLimit,
+  rateLimitedResponse,
+  checkDistributedRateLimit,
+  rateLimitedResponseWithRetry,
+} from "../_shared/edge-utils.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -53,6 +59,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    const bodyJson = await req.json();
+
     const {
       loja_id,
       visitantes, produto_visto, carrinho, checkout, pedido,
@@ -68,7 +76,18 @@ serve(async (req) => {
       produtos_avaliacao_baixa = 0,
       historico_prescricoes = [],
       proximos_eventos_sazonais = [],
-    } = await req.json();
+    } = bodyJson;
+
+    const storeUuid =
+      typeof loja_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(loja_id)
+        ? loja_id
+        : null;
+    const dayCap = Math.min(100, Math.max(1, Number(Deno.env.get("GERAR_DIAGNOSTICO_MAX_PER_STORE_PER_DAY") ?? "20") || 20));
+    const rateKey = storeUuid ? `gerar-diagnostico:store:${storeUuid}` : `gerar-diagnostico:user:${auth.userId}`;
+    const dist = await checkDistributedRateLimit(supabase, rateKey, dayCap, 86_400_000);
+    if (!dist.allowed) {
+      return rateLimitedResponseWithRetry(dist.retryAfterSeconds);
+    }
 
     const p = (a: number, b: number) =>
       b > 0 ? ((a / b) * 100).toFixed(1) : "0";

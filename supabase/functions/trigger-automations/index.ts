@@ -7,6 +7,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/edge-utils.ts";
+import { ABANDONED_CARTS_TRIGGER_SELECT } from "../_shared/db-select-fragments.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
 function isAuthorized(req: Request): boolean {
@@ -44,7 +45,7 @@ serve(async (req) => {
     
     const { data: pendingCarts } = await supabase
       .from("abandoned_carts")
-      .select("*")
+      .select(ABANDONED_CARTS_TRIGGER_SELECT)
       .eq("status", "pending")
       .lt("created_at", fifteenMinutesAgo)
       .limit(50);

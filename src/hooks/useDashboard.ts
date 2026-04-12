@@ -18,6 +18,7 @@ import {
   type DashboardHomeStats,
 } from "@/lib/dashboard-home-stats";
 import { CAMPAIGN_LIST_SELECT, OPPORTUNITIES_LIST_SELECT } from "@/lib/supabase-select-fragments";
+import { CHART_SERIES_MAX_POINTS, downsampleDailySeriesBySum } from "@/lib/chart-downsample";
 
 const ANALYTICS_DAILY_LIST_COLUMNS =
   "id,date,store_id,user_id,revenue_influenced,messages_sent,messages_delivered,messages_read,new_contacts,active_conversations,created_at";
@@ -176,13 +177,17 @@ export async function fetchDashboardStatsLegacyData(days: number) {
     revGrowth,
     deliveryRate,
     activeOpportunities: opportunitiesRes.count ?? 0,
-    chartData: analytics.map((d) => ({
-      date: new Date(d.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-      enviadas: d.messages_sent,
-      entregues: d.messages_delivered,
-      lidas: d.messages_read,
-      receita: Number(d.revenue_influenced),
-    })),
+    chartData: downsampleDailySeriesBySum(
+      analytics.map((d) => ({
+        date: new Date(d.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+        enviadas: d.messages_sent,
+        entregues: d.messages_delivered,
+        lidas: d.messages_read,
+        receita: Number(d.revenue_influenced),
+      })),
+      ["enviadas", "entregues", "lidas", "receita"],
+      CHART_SERIES_MAX_POINTS,
+    ),
   };
 }
 
@@ -630,23 +635,34 @@ export function useConversations(
 
 const MESSAGE_LIST_COLUMNS = "id,conversation_id,content,created_at,direction,status,type,external_id,user_id";
 
+/** Limite máximo de mensagens por conversa no Inbox (evita respostas gigantes no browser). */
+export const INBOX_MESSAGES_MAX_LIMIT = 2000;
+export const INBOX_MESSAGES_DEFAULT_LIMIT = 200;
+export const INBOX_MESSAGES_LOAD_STEP = 100;
+
+/**
+ * Últimas `limit` mensagens da conversa (mais recentes), ordenadas cronologicamente para a UI.
+ * Usa `ORDER BY created_at DESC` + `limit` e inverte no cliente — `ASC LIMIT` sozinho devolvia as mais antigas.
+ */
 export function useMessages(
   conversationId: string | null,
-  limit = 200,
+  limit = INBOX_MESSAGES_DEFAULT_LIMIT,
   opts?: { realtimeDegraded?: boolean },
 ) {
+  const capped = Math.min(INBOX_MESSAGES_MAX_LIMIT, Math.max(20, limit));
   return useQuery({
-    queryKey: ["messages", conversationId, limit, opts?.realtimeDegraded ? 1 : 0],
+    queryKey: ["messages", conversationId, capped, opts?.realtimeDegraded ? 1 : 0],
     queryFn: async () => {
       if (!conversationId) return [];
       const { data, error } = await supabase
         .from("messages")
         .select(MESSAGE_LIST_COLUMNS)
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true })
-        .limit(limit);
+        .order("created_at", { ascending: false })
+        .limit(capped);
       if (error) throw error;
-      return data ?? [];
+      const rows = data ?? [];
+      return [...rows].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     },
     enabled: !!conversationId,
     staleTime: 10_000,
@@ -987,7 +1003,7 @@ export function useConversionBaseline(days = 30) {
     },
     enabled: !authLoading && !!user,
     staleTime: 60_000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -1217,19 +1233,23 @@ export function useROIAttribution(days = 30) {
         },
         scenarioImpact,
         channelRisk,
-        chartData: analytics.map((d) => ({
-          date: new Date(`${d.date}T12:00:00`).toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-            timeZone: "America/Sao_Paulo",
-          }),
-          receita: Number(d.revenue_influenced),
-        })),
+        chartData: downsampleDailySeriesBySum(
+          analytics.map((d) => ({
+            date: new Date(`${d.date}T12:00:00`).toLocaleDateString("pt-BR", {
+              day: "2-digit",
+              month: "2-digit",
+              timeZone: "America/Sao_Paulo",
+            }),
+            receita: Number(d.revenue_influenced),
+          })),
+          ["receita"],
+          CHART_SERIES_MAX_POINTS,
+        ),
       };
     },
     enabled: !authLoading && !!user,
     staleTime: 60_000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -1334,7 +1354,10 @@ export type MessageSendHeatmap = {
   max: number;
 };
 
-/** Agrega envios por dia da semana e faixa horária (últimos `days`). */
+/**
+ * Agrega envios por dia da semana e faixa horária (últimos `days`) no browser.
+ * Preferir `useDashboardSnapshot().heatmap` (RPC) em ecrãs que já chamam o snapshot — evita até 8000 linhas no cliente.
+ */
 export function useMessageSendHeatmap(days: number) {
   const { user } = useAuth();
   const scope = useStoreScopeOptional();
@@ -1375,26 +1398,71 @@ export function useMessageSendHeatmap(days: number) {
   });
 }
 
-export function useProblems() {
+export type ProblemsQueryResult = {
+  /** Linhas para cartões / listas (ordenadas por `detected_at`). */
+  items: OpportunityRow[];
+  /** Total de oportunidades abertas (mesmos filtros), para contagens na UI. */
+  totalCount: number;
+  /** Soma de `estimated_impact` em todas as linhas abertas (agregado no servidor). */
+  totalEstimatedImpact: number;
+};
+
+const DEFAULT_PROBLEMS_LIST_LIMIT = 50;
+const MAX_PROBLEMS_LIST_LIMIT = 120;
+
+/**
+ * Oportunidades não resolvidas/ignoradas: lista limitada + totais (contagem e soma de impacto) sem trazer 500 linhas completas.
+ */
+export function useProblems(opts?: { listLimit?: number }) {
   const { user } = useAuth();
+  const listLimit = Math.min(MAX_PROBLEMS_LIST_LIMIT, Math.max(15, opts?.listLimit ?? DEFAULT_PROBLEMS_LIST_LIMIT));
   return useQuery({
-    queryKey: ["problems", user?.id ?? null],
-    queryFn: async (): Promise<OpportunityRow[]> => {
+    queryKey: ["problems", user?.id ?? null, listLimit],
+    queryFn: async (): Promise<ProblemsQueryResult> => {
       const { userId, storeId, effectiveUserId } = await getCurrentUserAndStore();
-      if (!userId || !effectiveUserId) return [];
+      if (!userId || !effectiveUserId) {
+        return { items: [], totalCount: 0, totalEstimatedImpact: 0 };
+      }
 
-      const query = storeId
-        ? supabase.from("opportunities").select(OPPORTUNITIES_LIST_SELECT).eq("store_id", storeId)
-        : supabase.from("opportunities").select(OPPORTUNITIES_LIST_SELECT).eq("user_id", effectiveUserId);
+      const applyTenant = <T extends { eq: (c: string, v: string) => T }>(q: T) =>
+        storeId ? q.eq("store_id", storeId) : q.eq("user_id", effectiveUserId);
 
-      const { data, error } = await query
-        .neq("status", "resolvido")
-        .neq("status", "ignorado")
+      const applyOpen = <T extends { neq: (c: string, v: string) => T }>(q: T) =>
+        q.neq("status", "resolvido").neq("status", "ignorado");
+
+      const listQuery = applyOpen(
+        applyTenant(supabase.from("opportunities").select(OPPORTUNITIES_LIST_SELECT)),
+      )
         .order("detected_at", { ascending: false })
-        .limit(500);
+        .range(0, listLimit - 1);
 
-      if (error) throw error;
-      return (data ?? []) as OpportunityRow[];
+      const countQuery = applyOpen(
+        applyTenant(supabase.from("opportunities").select("id", { count: "exact", head: true })),
+      );
+
+      const sumQuery = applyOpen(
+        applyTenant(supabase.from("opportunities").select("estimated_impact.sum()")),
+      ).maybeSingle();
+
+      const [listRes, countRes, sumRes] = await Promise.all([listQuery, countQuery, sumQuery]);
+
+      if (listRes.error) throw listRes.error;
+      if (countRes.error) throw countRes.error;
+
+      const items = (listRes.data ?? []) as OpportunityRow[];
+      const totalCount = countRes.count ?? 0;
+
+      let totalEstimatedImpact = 0;
+      if (!sumRes.error && sumRes.data != null) {
+        const row = sumRes.data as Record<string, unknown>;
+        const raw = row.sum ?? row["estimated_impact.sum"];
+        totalEstimatedImpact = Number(raw ?? 0);
+        if (!Number.isFinite(totalEstimatedImpact)) totalEstimatedImpact = 0;
+      } else {
+        totalEstimatedImpact = items.reduce((acc, p) => acc + Number(p.estimated_impact ?? 0), 0);
+      }
+
+      return { items, totalCount, totalEstimatedImpact };
     },
     staleTime: 60_000,
     enabled: !!user,

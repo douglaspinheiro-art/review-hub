@@ -39,11 +39,7 @@ import {
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
-import {
-  useDashboardSnapshot,
-  useCustomerCohorts,
-  useMessageSendHeatmap,
-} from "@/hooks/useDashboard";
+import { useDashboardSnapshot, useCustomerCohorts } from "@/hooks/useDashboard";
 import { useLoja } from "@/hooks/useConvertIQ";
 
 const PERIODS: Array<{ label: string; value: 7 | 30 | 90 }> = [
@@ -136,7 +132,14 @@ export default function Relatorios() {
 
   const { data: cohorts = [], isLoading: cohortsLoading, refetch: refetchCohorts } = useCustomerCohorts();
 
-  const { data: heatmap, isLoading: heatmapLoading, refetch: refetchHeatmap } = useMessageSendHeatmap(period);
+  /** Heatmap já vem agregado no RPC `get_dashboard_snapshot` (sem segunda query de milhares de linhas). */
+  const heatmap = useMemo(() => {
+    const h = snapshot?.heatmap;
+    if (!h) return null;
+    const cells = (h.cells && typeof h.cells === "object" ? h.cells : {}) as Record<string, number>;
+    const max = Number(h.max_val ?? 0);
+    return { cells, max };
+  }, [snapshot?.heatmap]);
 
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;
@@ -209,7 +212,6 @@ export default function Relatorios() {
   const refetchAll = () => {
     void refetchSnapshot();
     void refetchCohorts();
-    void refetchHeatmap();
   };
 
   const copyTexto = () => {
@@ -555,13 +557,13 @@ export default function Relatorios() {
               <h3 className="font-bold text-base mb-6 flex items-center gap-2">
                 <MousePointer2 className="w-4 h-4 text-primary" /> Envios por dia e faixa horária
               </h3>
-              {heatmapLoading && <p className="text-sm text-muted-foreground">Carregando envios…</p>}
-              {!heatmapLoading && heatmap && heatmap.max === 0 && (
+              {snapshotLoading && <p className="text-sm text-muted-foreground">Carregando envios…</p>}
+              {!snapshotLoading && heatmap && heatmap.max === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Sem registros em message_sends no período (ou tabela indisponível).
+                  Sem envios agregados no período (snapshot sem dados de heatmap).
                 </p>
               )}
-              {!heatmapLoading && heatmap && heatmap.max > 0 && (
+              {!snapshotLoading && heatmap && heatmap.max > 0 && (
                 <>
                   <div className="space-y-2">
                     <div className="grid grid-cols-4 gap-1">
@@ -596,7 +598,7 @@ export default function Relatorios() {
                     ))}
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-6 italic text-center">
-                    Baseado em até 8000 envios recentes (message_sends.sent_at), agregados por dia da semana e faixa de
+                    Agregação server-side em message_sends (mesmo período do snapshot), por dia da semana e faixa de
                     horário.
                   </p>
                 </>

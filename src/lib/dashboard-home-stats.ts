@@ -3,6 +3,8 @@
  * Centraliza KPIs para evitar casts `(statsData as any)` na UI.
  */
 
+import { CHART_SERIES_MAX_POINTS, downsampleDailySeriesBySum } from "@/lib/chart-downsample";
+
 export type DashboardHomeChartPoint = {
   date: string;
   enviadas: number;
@@ -72,21 +74,25 @@ export function mapDashboardSnapshotRpcToHomeStats(raw: unknown): DashboardHomeS
   const chs = Math.round(num(rfm.avg_chs));
   const chartSeries = Array.isArray(o.chart_series) ? o.chart_series : [];
 
-  const chartData: DashboardHomeChartPoint[] = chartSeries.map((row) => {
-    const r = row && typeof row === "object" ? (row as Record<string, unknown>) : {};
-    const d = r.date;
-    const dateStr =
-      typeof d === "string"
-        ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-        : "";
-    return {
-      date: dateStr,
-      enviadas: num(r.messages_sent),
-      entregues: num(r.messages_delivered),
-      lidas: num(r.messages_read),
-      receita: num(r.revenue_influenced),
-    };
-  });
+  const chartData: DashboardHomeChartPoint[] = downsampleDailySeriesBySum(
+    chartSeries.map((row) => {
+      const r = row && typeof row === "object" ? (row as Record<string, unknown>) : {};
+      const d = r.date;
+      const dateStr =
+        typeof d === "string"
+          ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+          : "";
+      return {
+        date: dateStr,
+        enviadas: num(r.messages_sent),
+        entregues: num(r.messages_delivered),
+        lidas: num(r.messages_read),
+        receita: num(r.revenue_influenced),
+      };
+    }),
+    ["enviadas", "entregues", "lidas", "receita"],
+    CHART_SERIES_MAX_POINTS,
+  );
 
   const now = new Date();
   const chsHistory: DashboardHomeStats["chsHistory"] =

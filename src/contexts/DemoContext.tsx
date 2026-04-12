@@ -44,7 +44,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         },
       }}
     >
-      {children}
+      <div data-ltv-demo="true" className="contents">
+        {children}
+      </div>
     </DemoContext.Provider>
   );
 }
