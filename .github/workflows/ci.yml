@@ -54,11 +54,18 @@ jobs:
 
       - name: E2E smoke (preview em 4173)
         run: |
+          set -e
           npm run preview -- --host 127.0.0.1 --port 4173 --strictPort &
           PREVIEW_PID=$!
-          for i in $(seq 1 90); do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
-          curl -fsS http://127.0.0.1:4173/ >/dev/null
+          # Com set -e, curl falho no loop encerrava o job antes do servidor subir — usar if.
+          for _ in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:4173/" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:4173/" >/dev/null
           PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 npm run test:e2e
-          kill $PREVIEW_PID 2>/dev/null || true
+          kill "$PREVIEW_PID" 2>/dev/null || true
         env:
           CI: true
