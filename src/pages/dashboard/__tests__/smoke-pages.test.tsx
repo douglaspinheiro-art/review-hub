@@ -54,16 +54,43 @@ vi.mock("@/hooks/useDashboard", () => ({
   useConversionBaseline: () => ({ data: null }),
 }));
 
-vi.mock("@/lib/supabase", () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({
-        eq: () => [],
-      }),
-    }),
-    functions: { invoke: vi.fn() },
-  },
-}));
+vi.mock("@/lib/supabase", () => {
+  // Chainable builder: every method returns the same object so arbitrary
+  // .select().eq().order().limit().single() chains all work without TypeError.
+  // Terminal methods (.single, .maybeSingle) and awaiting the chain itself
+  // resolve to { data: null, error: null } — enough for smoke renders.
+  const resolved = Promise.resolve({ data: null, error: null });
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    eq: () => chain,
+    neq: () => chain,
+    in: () => chain,
+    gte: () => chain,
+    lte: () => chain,
+    order: () => chain,
+    limit: () => chain,
+    range: () => chain,
+    update: () => chain,
+    insert: () => chain,
+    upsert: () => chain,
+    delete: () => chain,
+    // Terminal — return resolved promise
+    single: () => resolved,
+    maybeSingle: () => resolved,
+    // Make the chain itself awaitable (needed for direct `await supabase.from(...).eq(...)`)
+    then: (cb: (v: unknown) => unknown) => resolved.then(cb),
+    catch: (cb: (e: unknown) => unknown) => resolved.catch(cb),
+  };
+  return {
+    supabase: {
+      from: () => chain,
+      rpc: () => resolved,
+      functions: { invoke: vi.fn().mockResolvedValue({ data: null, error: null }) },
+      auth: { getUser: () => resolved },
+      channel: () => ({ on: () => ({ subscribe: vi.fn() }), unsubscribe: vi.fn() }),
+    },
+  };
+});
 
 vi.mock("@/components/dashboard/NPSModal", () => ({
   NPSModal: () => <div data-testid="nps-modal" />,
