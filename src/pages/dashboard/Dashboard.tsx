@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   TrendingUp, RefreshCw, ChevronRight, Sparkles,
@@ -32,6 +32,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useProblems, useDashboardHomeStats, useConversionBaseline, type OpportunityRow } from "@/hooks/useDashboard";
+import { useEngagementTracking } from "@/hooks/useEngagementTracking";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { usePrescriptionsPendingStats } from "@/hooks/useLTVBoost";
 import { predictNextOrder } from "@/lib/ltv-predictor";
@@ -103,7 +104,6 @@ function opportunityRowToProblemProps(row: OpportunityRow): ProblemProps {
 export default function Dashboard() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [streak, setStreak] = useState(0);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isDemo = searchParams.get("demo") === "true";
@@ -140,13 +140,15 @@ export default function Dashboard() {
   const { data: whatsappConnections = [] } = useQuery({
     queryKey: ["whatsapp_connections_status", user?.id ?? null],
     queryFn: async () => {
+      const userId = user?.id;
+      if (!userId) return [];
       const { data } = await supabase
         .from("whatsapp_connections")
         .select("status")
-        .eq("user_id", user?.id);
+        .eq("user_id", userId);
       return data || [];
     },
-    enabled: !!user,
+    enabled: !!user?.id,
   });
 
   const isWhatsAppConnected = whatsappConnections.some(c => c.status === "connected");
@@ -184,72 +186,19 @@ export default function Dashboard() {
     }
   };
 
-  const [showNPS, setShowNPS] = useState(false);
-  const [milestone, setMilestone] = useState<string | null>(null);
-  const [streakMilestone, setStreakMilestone] = useState<string | null>(null);
   const [funnelSectionOpen, setFunnelSectionOpen] = useState(true);
   const [activitySectionOpen, setActivitySectionOpen] = useState(false);
 
-  // Streak: conta dias consecutivos de acesso + celebra marcos de 7 e 30 dias
-  useEffect(() => {
-    const today = new Date().toDateString();
-    const lastVisit = localStorage.getItem("ltv_last_visit");
-    const currentStreak = parseInt(localStorage.getItem("ltv_streak") || "0");
-
-    if (lastVisit === today) {
-      setStreak(currentStreak);
-    } else {
-      const yesterday = new Date(Date.now() - 86_400_000).toDateString();
-      const newStreak = lastVisit === yesterday ? currentStreak + 1 : 1;
-      localStorage.setItem("ltv_streak", String(newStreak));
-      localStorage.setItem("ltv_last_visit", today);
-      setStreak(newStreak);
-
-      // Marco de 7 dias
-      if (newStreak === 7 && !localStorage.getItem("ltv_streak_7_shown")) {
-        setTimeout(() => {
-          setStreakMilestone("7 dias seguidos!");
-          localStorage.setItem("ltv_streak_7_shown", "1");
-        }, 800);
-      }
-      // Marco de 30 dias
-      if (newStreak === 30 && !localStorage.getItem("ltv_streak_30_shown")) {
-        setTimeout(() => {
-          setStreakMilestone("30 dias seguidos! Você é top 5% dos usuários.");
-          localStorage.setItem("ltv_streak_30_shown", "1");
-        }, 800);
-      }
-    }
-  }, []);
-
-  // NPS: apenas para usuários com 30+ dias reais de cadastro
-  useEffect(() => {
-    const alreadyShown = localStorage.getItem("ltv_nps_shown");
-    const signupDate = localStorage.getItem("ltv_signup_date");
-    if (!signupDate) {
-      localStorage.setItem("ltv_signup_date", String(Date.now()));
-      return;
-    }
-    if (!alreadyShown) {
-      const daysSince = Math.floor((Date.now() - Number(signupDate)) / (1000 * 60 * 60 * 24));
-      if (daysSince >= 30) {
-        setTimeout(() => setShowNPS(true), 5000);
-        localStorage.setItem("ltv_nps_shown", "1");
-      }
-    }
-  }, []);
-
-  // Milestone: apenas após o usuário aprovar ao menos uma prescrição
-  useEffect(() => {
-    const milestoneShown = localStorage.getItem("ltv_milestone_shown");
-    const prescricoesAprovadas = localStorage.getItem("ltv_prescricoes_aprovadas");
-    if (!milestoneShown && prescricoesAprovadas && parseInt(prescricoesAprovadas) > 0) {
-      setTimeout(() => {
-        setMilestone("R$ 1.000 recuperados");
-        localStorage.setItem("ltv_milestone_shown", "1k");
-      }, 1000);
-    }
-  }, []);
+  // Server-side engagement tracking (streak, NPS, milestone) — cross-device
+  const {
+    streak,
+    streakMilestone,
+    showNPS,
+    milestone,
+    dismissNPS,
+    dismissMilestone,
+    dismissStreakMilestone,
+  } = useEngagementTracking(user?.id ?? null);
 
   /** ROI vs custo fixo estimado do plano (COGS interno — ver `pricing-constants`). */
   const roi = revenueRecovered > 0 ? (revenueRecovered / Math.max(monthlyToolEstimate, 1)).toFixed(1) : "0";
@@ -262,7 +211,8 @@ export default function Dashboard() {
   ];
 
   const conversionRate = Number(statsData?.conversionRate ?? 0);
-  const conversionTarget = 2.5;
+  // Use store's configured target; fall back to sector default of 2.5
+  const conversionTarget = Number((lojaDash.data as { meta_conversao?: number } | null)?.meta_conversao ?? 2.5);
   const conversionGap = Math.max(0, conversionTarget - conversionRate);
   const conversionProgress = Math.min(100, Math.round((conversionRate / conversionTarget) * 100));
   const estimatedIncrementalRevenue = pendingValue;
@@ -334,14 +284,14 @@ export default function Dashboard() {
     <>
       <div className="space-y-10 pb-28 md:pb-20">
         {/* NPS Modal */}
-        {showNPS && <NPSModal onClose={() => setShowNPS(false)} />}
+        {showNPS && <NPSModal onClose={dismissNPS} />}
 
         {streakMilestone && (
-          <StreakMilestoneToast message={streakMilestone} onDismiss={() => setStreakMilestone(null)} />
+          <StreakMilestoneToast message={streakMilestone} onDismiss={dismissStreakMilestone} />
         )}
 
         {milestone && (
-          <MilestoneToast message={milestone} onDismiss={() => setMilestone(null)} />
+          <MilestoneToast message={milestone} onDismiss={dismissMilestone} />
         )}
 
         {statsError && (

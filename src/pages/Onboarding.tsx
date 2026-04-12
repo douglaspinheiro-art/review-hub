@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -53,13 +54,12 @@ export default function Onboarding() {
   ];
 
   const toggleChannel = (id: string) => {
-    if (channels.includes(id)) {
-      setChannels(channels.filter(c => c !== id));
-    } else {
-    setChannels((prev) => [...prev, id]);
-      toast.info(`Integração com ${id.toUpperCase()} em breve. Configure via Configurações > Integrações.`);
-    }
+    setChannels(prev =>
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
   };
+
+  const BR_PHONE_RE = /^\+?55\s?\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}$/;
 
   const handleNextStep = () => {
     if (step === 1 && (!objective || !vertical)) {
@@ -71,22 +71,30 @@ export default function Onboarding() {
   };
 
   const handleLaunch = async () => {
+    // Validate pulse number if provided
+    const trimmedPulse = pulseNum.trim();
+    if (trimmedPulse && !BR_PHONE_RE.test(trimmedPulse)) {
+      toast.error("Número de WhatsApp inválido. Use o formato +55 11 99999-9999.");
+      return;
+    }
+
     setIsLaunching(true);
     try {
       if (objective && vertical) {
         saveStrategyProfile({ objective, vertical });
         if (user?.id) {
+          const updatePayload: Record<string, unknown> = { segment: vertical };
+          if (trimmedPulse) updatePayload.notification_phone = trimmedPulse;
           const { error: storeErr } = await supabase
             .from("stores")
-            .update({ segment: vertical })
+            .update(updatePayload)
             .eq("user_id", user.id);
           if (storeErr) {
-            console.warn("Onboarding: segmento não persistido na loja:", storeErr.message);
+            console.warn("Onboarding: dados não persistidos na loja:", storeErr.message);
+          } else if (trimmedPulse) {
+            toast.success(`Pulse semanal ativado para ${trimmedPulse}!`);
           }
         }
-      }
-      if (pulseNum) {
-        toast.success(`Pulse semanal ativado para ${pulseNum}!`);
       }
       sessionStorage.removeItem("ltv_show_community");
       sessionStorage.removeItem("ltv_company");
@@ -103,9 +111,10 @@ export default function Onboarding() {
     navigate('/dashboard?demo=true');
   };
 
-  // Mock prescription for step 3
-  const mockPrescription = perda
-    ? { valor: Math.round(Number(perda) * 0.18), tipo: "Carrinho Abandonado", clientes: Math.floor(Number(perda) / 120) }
+  // Mock prescription for step 3 — clamp perda to prevent URL manipulation
+  const perdaNum = Math.min(Math.max(0, Number(perda) || 0), 999_999);
+  const mockPrescription = perdaNum > 0
+    ? { valor: Math.round(perdaNum * 0.18), tipo: "Carrinho Abandonado", clientes: Math.floor(perdaNum / 120) }
     : { valor: 4200, tipo: "Boletos Expirados", clientes: 34 };
 
   return (
@@ -113,30 +122,33 @@ export default function Onboarding() {
       <TooltipProvider>
         <div className="max-w-4xl w-full space-y-12">
           {/* Progress Header */}
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
-              <span className="font-bold tracking-tighter">LTV BOOST</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex gap-2">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className={cn("w-2 h-2 rounded-full transition-all", i <= step ? "bg-primary" : "bg-muted")} />
-                ))}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
+                <span className="font-bold tracking-tighter">LTV BOOST</span>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                Passo {step} de 3
-              </span>
+              <div className="flex items-center gap-4">
+                <div className="flex gap-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className={cn("w-2 h-2 rounded-full transition-all", i <= step ? "bg-primary" : "bg-muted")} />
+                  ))}
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  Passo {step} de 3
+                </span>
+              </div>
             </div>
+            <Progress value={Math.round((step / 3) * 100)} className="h-1 bg-muted/40" />
           </div>
 
           {/* STEP 1: Canais */}
           {step === 1 && (
             <>
               <div className="text-center space-y-4">
-                {perda ? (
+                {perdaNum > 0 ? (
                   <div className="inline-flex items-center gap-2 bg-red-500/10 text-red-500 text-[10px] font-black px-3 py-1 rounded-full border border-red-500/20 uppercase tracking-[0.2em] mb-2">
-                    Meta: Recuperar R$ {Number(perda).toLocaleString('pt-BR')}/mês
+                    Meta: Recuperar R$ {perdaNum.toLocaleString('pt-BR')}/mês
                   </div>
                 ) : (
                   <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-[10px] font-black px-3 py-1 rounded-full border border-primary/20 uppercase tracking-[0.2em] mb-2">
@@ -220,7 +232,7 @@ export default function Onboarding() {
                               <span className="text-sm font-bold block">{s.label}</span>
                               <Info className="w-3 h-3 text-muted-foreground/40" />
                             </div>
-                            {channels.includes(s.id) && <span className="text-[9px] text-primary font-bold uppercase mt-1 block">Conectado</span>}
+                            {channels.includes(s.id) && <span className="text-[9px] text-primary font-bold uppercase mt-1 block">Selecionado — configure em Integrações</span>}
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="bg-[#13131A] border-[#1E1E2E] text-xs max-w-[200px]">
@@ -275,7 +287,7 @@ export default function Onboarding() {
                                   <Info className="w-3 h-3 text-muted-foreground/40" />
                                   {m.badge && <Badge className="bg-primary/20 text-primary border-0 text-[8px] font-black">{m.badge}</Badge>}
                                 </div>
-                                <span className="text-[10px] text-muted-foreground font-medium">{channels.includes(m.id) ? "✓ Sincronizado com sucesso" : "Clique para autenticar"}</span>
+                                <span className="text-[10px] text-muted-foreground font-medium">{channels.includes(m.id) ? "✓ Selecionado — configure em Integrações" : "Clique para selecionar"}</span>
                               </div>
                             </div>
                             {channels.includes(m.id) ? (
@@ -338,19 +350,19 @@ export default function Onboarding() {
 
                   <div className="pt-4">
                     <Button
-                      onClick={() => { toast.success("WhatsApp conectado!"); setStep(3); }}
+                      onClick={() => { toast.info("WhatsApp será configurado no dashboard após o cadastro."); setStep(3); }}
                       variant="outline"
                       className="w-full h-12 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500 hover:text-white font-bold rounded-xl gap-2"
                     >
-                      <QrCode className="w-4 h-4" /> Continuar (configurar depois)
+                      <QrCode className="w-4 h-4" /> Configurar depois
                     </Button>
                     <p className="text-[10px] text-muted-foreground text-center mt-3 italic">
-                      Você também pode configurar isso depois no dashboard.
+                      Configure em Dashboard → WhatsApp após o cadastro.
                     </p>
                   </div>
                 </div>
 
-                <div className="relative group cursor-pointer" onClick={() => { toast.success("WhatsApp conectado!"); setStep(3); }}>
+                <div className="relative group cursor-pointer" onClick={() => { toast.info("WhatsApp será configurado no dashboard após o cadastro."); setStep(3); }}>
                   <div className="absolute inset-0 bg-emerald-500/20 blur-2xl group-hover:bg-emerald-500/30 transition-all rounded-full" />
                   <div className="relative bg-black rounded-2xl p-6 border border-white/10 shadow-2xl flex flex-col items-center gap-4">
                     <div className="w-48 h-48 bg-white rounded-xl p-2 flex items-center justify-center relative overflow-hidden">
@@ -461,22 +473,13 @@ export default function Onboarding() {
                     Bem-vindo(a) ao LTV Boost{companyName ? `, ${companyName}` : ""}! Nossa comunidade exclusiva é onde lojistas compartilham táticas reais que movem o ponteiro.
                   </p>
                   <div className="flex gap-3 flex-wrap">
-                    <a
-                      href={`https://wa.me/5511999999999?text=${encodeURIComponent(`Olá! Acabei de criar minha conta no LTV Boost${companyName ? ` (${companyName})` : ""}. Quero entrar na comunidade Elite E-commerce Brasil!`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
                       className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
+                      onClick={() => toast.info("Link da comunidade disponível em breve no dashboard.")}
                     >
-                      <MessageCircle className="w-4 h-4" /> Entrar no WhatsApp
-                    </a>
-                    <a
-                      href="https://t.me/eliteecommercebr"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 border border-white/10 hover:bg-white/5 text-white/70 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
-                    >
-                      Telegram →
-                    </a>
+                      <MessageCircle className="w-4 h-4" /> Entrar na Comunidade
+                    </button>
                   </div>
                 </div>
               )}

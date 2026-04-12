@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Sparkles, Filter, Settings, Zap, RefreshCw, ChevronRight, Lock, TrendingUp, ArrowRight, X,
+  ChevronUp, ChevronDown,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { Confetti } from "@/components/dashboard/Confetti";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { usePrescriptionsV3, useUpdatePrescriptionStatus } from "@/hooks/useLTVBoost";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   mockPrescricaoToRow,
   isPrescriptionInExecution,
@@ -30,7 +32,6 @@ import {
   type PrescriptionRow,
 } from "@/lib/prescription-map";
 import { mockPrescricoes } from "@/lib/mock-data";
-import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
 const UPSELL_POTENTIAL_CAP = 25_000;
@@ -57,6 +58,10 @@ export default function Prescricoes() {
   const [showUpsellBanner, setShowUpsellBanner] = useState(true);
   const [showTrialGate, setShowTrialGate] = useState(false);
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
+  const [sortCol, setSortCol] = useState<"estimated_potential" | "estimated_roi">("estimated_potential");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [activeTab, setActiveTab] = useState("aguardando");
+  const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { profile, isTrialActive } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -84,14 +89,21 @@ export default function Prescricoes() {
     () => filtered.filter((r) => isPrescriptionInExecution(r.status)),
     [filtered],
   );
-  const concluidas = useMemo(
-    () => filtered.filter((r) => (r.status ?? "") === "concluida"),
-    [filtered],
-  );
+  const concluidas = useMemo(() => {
+    const base = filtered.filter((r) => (r.status ?? "") === "concluida");
+    return [...base].sort((a, b) => {
+      const aVal = Number(sortCol === "estimated_potential" ? a.estimated_potential : a.estimated_roi) || 0;
+      const bVal = Number(sortCol === "estimated_potential" ? b.estimated_potential : b.estimated_roi) || 0;
+      return sortDir === "desc" ? bVal - aVal : aVal - bVal;
+    });
+  }, [filtered, sortCol, sortDir]);
 
   const pendingPotentialSum = useMemo(
     () =>
-      aguardando.reduce((a, r) => a + Number(r.estimated_potential ?? 0), 0),
+      aguardando.reduce((a, r) => {
+        const val = Number(r.estimated_potential ?? 0);
+        return a + (Number.isFinite(val) ? val : 0);
+      }, 0),
     [aguardando],
   );
   const upsellDisplay = Math.min(
@@ -102,23 +114,21 @@ export default function Prescricoes() {
   const isStarter = profile?.plan === "starter";
   const isNotScale = profile?.plan !== "scale" && profile?.plan !== "enterprise";
 
-  const handleAprovar = async (row: PrescriptionRow) => {
-    if (isTrialActive) {
-      setShowTrialGate(true);
-      return;
-    }
+  // Cleanup confetti timer on unmount
+  useEffect(() => () => {
+    if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
+  }, []);
 
-    if (isDemo) {
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 2000);
-      toast.info("Modo demonstração: rascunho de campanha não persistido.");
-      navigate("/dashboard/campanhas?new=true");
-      return;
-    }
+  const showConfettiWithCleanup = () => {
+    if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
+    setShowConfetti(true);
+    confettiTimerRef.current = setTimeout(() => setShowConfetti(false), 2000);
+  };
 
-    const prefill = prescriptionToCampaignPrefill(row);
-
-    try {
+  // handleAprovar as TanStack Query mutation for proper state management
+  const approveMutation = useMutation({
+    mutationFn: async (row: PrescriptionRow) => {
+      const prefill = prescriptionToCampaignPrefill(row);
       const { data: campaignId, error: rpcError } = await supabase.rpc("approve_prescription_campaign_draft", {
         p_prescription_id: row.id,
         p_campaign_name: prefill.name || "Campanha da Prescrição",
@@ -127,24 +137,50 @@ export default function Prescricoes() {
         p_email_rfm: prefill.rfmSegment || "",
         p_email_mode: prefill.segment || "",
       });
-
       if (rpcError) throw rpcError;
       if (!campaignId || typeof campaignId !== "string") {
         throw new Error("Resposta inválida ao criar campanha.");
       }
-
+      return campaignId as string;
+    },
+    onMutate: async (row: PrescriptionRow) => {
+      // Optimistic update: move row from aguardando to execucao immediately
+      await queryClient.cancelQueries({ queryKey: ["prescriptions_v3", storeId] });
+      const prev = queryClient.getQueryData<PrescriptionRow[]>(["prescriptions_v3", storeId]);
+      queryClient.setQueryData<PrescriptionRow[]>(["prescriptions_v3", storeId], (old = []) =>
+        old.map(r => r.id === row.id ? { ...r, status: "aprovada" } : r)
+      );
+      return { prev };
+    },
+    onSuccess: async (campaignId) => {
       await queryClient.invalidateQueries({ queryKey: ["prescriptions_v3", storeId] });
-
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 2000);
-
+      showConfettiWithCleanup();
       navigate(`/dashboard/campanhas?edit=${campaignId}`);
-    } catch (e: unknown) {
+    },
+    onError: (e: unknown, _row, context) => {
+      // Roll back optimistic update
+      if (context?.prev) {
+        queryClient.setQueryData(["prescriptions_v3", storeId], context.prev);
+      }
       console.error("Erro ao aprovar prescrição:", e);
       toast.error(
         "Não foi possível persistir a campanha: " + (e instanceof Error ? e.message : String(e)),
       );
+    },
+  });
+
+  const handleAprovar = (row: PrescriptionRow) => {
+    if (isTrialActive) {
+      setShowTrialGate(true);
+      return;
     }
+    if (isDemo) {
+      showConfettiWithCleanup();
+      toast.info("Modo demonstração: rascunho de campanha não persistido.");
+      navigate("/dashboard/campanhas?new=true");
+      return;
+    }
+    approveMutation.mutate(row);
   };
 
   const handleRejeitar = async (row: PrescriptionRow) => {
@@ -198,11 +234,13 @@ export default function Prescricoes() {
           </DialogContent>
         </Dialog>
 
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-lg border-t border-border z-50 flex gap-3 animate-in slide-in-from-bottom-full duration-500">
-          <Button variant="outline" className="flex-1 h-12 font-bold rounded-xl" onClick={() => navigate("/dashboard")}>
-            Voltar
-          </Button>
-        </div>
+        {activeTab !== "concluidas" && (
+          <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-lg border-t border-border z-50 flex gap-3 animate-in slide-in-from-bottom-full duration-500">
+            <Button variant="outline" className="flex-1 h-12 font-bold rounded-xl" onClick={() => navigate("/dashboard")}>
+              Voltar
+            </Button>
+          </div>
+        )}
 
         {!onboardingBannerDismissed && (
           <div className="bg-card border border-primary/20 rounded-2xl p-5 flex flex-col sm:flex-row gap-4 items-start animate-in fade-in slide-in-from-top-2 duration-500">
@@ -311,7 +349,7 @@ export default function Prescricoes() {
           </div>
         )}
 
-        <Tabs defaultValue="aguardando" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="flex items-center justify-between mb-6 overflow-x-auto gap-4 pb-2">
             <TabsList className="bg-muted/50 p-1 rounded-xl shrink-0">
               <TabsTrigger value="aguardando" className="rounded-lg px-6 font-bold text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm">
@@ -465,8 +503,30 @@ export default function Prescricoes() {
                     <tr className="bg-muted/30 border-b border-border/50">
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Prescrição</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Canal</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Potencial est.</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">ROI est.</th>
+                      <th
+                        className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground cursor-pointer select-none hover:text-foreground"
+                        onClick={() => {
+                          if (sortCol === "estimated_potential") setSortDir(d => d === "desc" ? "asc" : "desc");
+                          else { setSortCol("estimated_potential"); setSortDir("desc"); }
+                        }}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          Potencial est.
+                          {sortCol === "estimated_potential" ? (sortDir === "desc" ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />) : null}
+                        </span>
+                      </th>
+                      <th
+                        className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground cursor-pointer select-none hover:text-foreground"
+                        onClick={() => {
+                          if (sortCol === "estimated_roi") setSortDir(d => d === "desc" ? "asc" : "desc");
+                          else { setSortCol("estimated_roi"); setSortDir("desc"); }
+                        }}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          ROI est.
+                          {sortCol === "estimated_roi" ? (sortDir === "desc" ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />) : null}
+                        </span>
+                      </th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground" />
                     </tr>
                   </thead>

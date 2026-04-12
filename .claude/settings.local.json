@@ -27,7 +27,8 @@
       "Skill(update-config)",
       "Bash(npx supabase:*)",
       "Read(//c/Users/Douglas - Performanc/AppData/Roaming/supabase/**)",
-      "Read(//c/Users/Douglas - Performanc/.supabase/**)"
+      "Read(//c/Users/Douglas - Performanc/.supabase/**)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

@@ -2979,6 +2979,8 @@ export type Database = {
           loyalty_program_enabled: boolean
           loyalty_program_name: string | null
           loyalty_slug: string | null
+          milestone_1k_shown: boolean
+          nps_shown_at: string | null
           onboarding_completed: boolean
           password_rotated_at: string | null
           phone: string | null
@@ -2987,6 +2989,10 @@ export type Database = {
           points_per_real: number | null
           role: string | null
           social_proof_enabled: boolean | null
+          streak_7_shown: boolean
+          streak_30_shown: boolean
+          streak_count: number
+          streak_last_visit_date: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           trial_ends_at: string | null
@@ -3007,6 +3013,8 @@ export type Database = {
           loyalty_program_enabled?: boolean
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
+          milestone_1k_shown?: boolean
+          nps_shown_at?: string | null
           onboarding_completed?: boolean
           password_rotated_at?: string | null
           phone?: string | null
@@ -3015,6 +3023,10 @@ export type Database = {
           points_per_real?: number | null
           role?: string | null
           social_proof_enabled?: boolean | null
+          streak_7_shown?: boolean
+          streak_30_shown?: boolean
+          streak_count?: number
+          streak_last_visit_date?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           trial_ends_at?: string | null
@@ -3035,6 +3047,8 @@ export type Database = {
           loyalty_program_enabled?: boolean
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
+          milestone_1k_shown?: boolean
+          nps_shown_at?: string | null
           onboarding_completed?: boolean
           password_rotated_at?: string | null
           phone?: string | null
@@ -3043,6 +3057,10 @@ export type Database = {
           points_per_real?: number | null
           role?: string | null
           social_proof_enabled?: boolean | null
+          streak_7_shown?: boolean
+          streak_30_shown?: boolean
+          streak_count?: number
+          streak_last_visit_date?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           trial_ends_at?: string | null

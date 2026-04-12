@@ -47,7 +47,6 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp }
         setStepUpChecked(true);
         return;
       }
-      localStorage.setItem("ltv_stepup_user_hint", user.id);
       const valid = await hasValidStepUp(user.id);
       if (!cancelled) {
         setStepUpOk(valid);

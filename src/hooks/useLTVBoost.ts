@@ -77,7 +77,7 @@ export function useOpportunitiesV3(storeId?: string) {
   });
 }
 
-const PRESCRIPTIONS_PAGE_SIZE = 500;
+const PRESCRIPTIONS_PAGE_SIZE = 50;
 
 export function usePrescriptionsV3(storeId?: string) {
   return useQuery({
@@ -96,9 +96,17 @@ export function usePrescriptionsV3(storeId?: string) {
   });
 }
 
+export const VALID_PRESCRIPTION_STATUSES = [
+  "aguardando_aprovacao",
+  "aprovada",
+  "em_execucao",
+  "concluida",
+  "rejeitada",
+] as const;
+
 export type PrescriptionStatusUpdate = {
   id: string;
-  status: "aguardando_aprovacao" | "aprovada" | "em_execucao" | "concluida" | "rejeitada";
+  status: typeof VALID_PRESCRIPTION_STATUSES[number];
 };
 
 export function useUpdatePrescriptionStatus(storeId?: string) {
@@ -109,6 +117,24 @@ export function useUpdatePrescriptionStatus(storeId?: string) {
       if (storeId) q = q.eq("store_id", storeId);
       const { error } = await q;
       if (error) throw error;
+    },
+    onMutate: async ({ id, status }) => {
+      // Runtime guard: reject invalid status values before touching the cache
+      if (!(VALID_PRESCRIPTION_STATUSES as readonly string[]).includes(status)) {
+        throw new Error(`[useUpdatePrescriptionStatus] Invalid status value: "${status}"`);
+      }
+      await queryClient.cancelQueries({ queryKey: ["prescriptions_v3", storeId] });
+      const prev = queryClient.getQueryData(["prescriptions_v3", storeId]);
+      queryClient.setQueryData<Array<{ id: string; status?: string | null }>>(
+        ["prescriptions_v3", storeId],
+        (old = []) => old.map(r => r.id === id ? { ...r, status } : r),
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev !== undefined) {
+        queryClient.setQueryData(["prescriptions_v3", storeId], context.prev);
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["prescriptions_v3", storeId] });

@@ -12,14 +12,26 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
+const _allowedOrigin = Deno.env.get("ALLOWED_ORIGIN");
+if (!_allowedOrigin) {
+  // Log to Supabase Function logs so ops can detect misconfiguration
+  console.warn("[edge-utils] ALLOWED_ORIGIN não está configurado — usando wildcard '*'. Defina ALLOWED_ORIGIN em produção.");
+}
+
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
+  "Access-Control-Allow-Origin": _allowedOrigin ?? "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // ── Rate Limiting (in-memory, per-instance) ───────────────────────────────────
+// ⚠️  ATENÇÃO: Este limite é por instância Deno. Em funções serverless que escalam
+// horizontalmente, cada cold-start cria um mapa vazio — o limite NÃO é partilhado
+// entre instâncias. Use `checkDistributedRateLimit` para limite consistente em
+// multi-instância. Mantenha `checkRateLimit` apenas como guard rápido local
+// (ex.: burst protection dentro de uma mesma instância).
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+let _rateLimitCallCount = 0;
 
 export function checkRateLimit(
   key: string,
@@ -27,6 +39,14 @@ export function checkRateLimit(
   windowMs = 60_000
 ): boolean {
   const now = Date.now();
+
+  // Sweep expired entries every 500 calls to prevent unbounded Map growth.
+  if (++_rateLimitCallCount % 500 === 0) {
+    for (const [k, v] of rateLimitMap.entries()) {
+      if (now > v.resetAt) rateLimitMap.delete(k);
+    }
+  }
+
   const entry = rateLimitMap.get(key);
   if (!entry || now > entry.resetAt) {
     rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
@@ -45,49 +65,44 @@ export function getClientIp(req: Request): string {
   );
 }
 
+/**
+ * Atomic distributed rate limit backed by `check_rate_limit_atomic` Postgres RPC.
+ *
+ * Uses a transaction-level advisory lock in Postgres to serialize concurrent
+ * requests for the same key — eliminating the TOCTOU race condition of the
+ * previous read-then-insert pattern.
+ *
+ * Requires migration: 20260421120000_atomic_rate_limit_rpc.sql
+ */
 export async function checkDistributedRateLimit(
   supabase: SupabaseClient,
   key: string,
   maxRequests: number,
   windowMs: number,
 ): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
-  const now = Date.now();
-  const windowStart = new Date(now - windowMs).toISOString();
+  const retryAfterSeconds = Math.ceil(windowMs / 1000);
   const failOpen =
     String(Deno.env.get("DISTRIBUTED_RATE_LIMIT_FAIL_OPEN") ?? "").toLowerCase() === "true" ||
     String(Deno.env.get("DISTRIBUTED_RATE_LIMIT_FAIL_OPEN") ?? "") === "1";
 
-  const { count, error: countError } = await supabase
-    .from("api_request_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("rate_key", key)
-    .gte("created_at", windowStart);
+  try {
+    const { data: allowed, error } = await supabase.rpc("check_rate_limit_atomic", {
+      p_key: key,
+      p_max: maxRequests,
+      p_window_ms: windowMs,
+    });
 
-  if (countError) {
-    console.error("[checkDistributedRateLimit] count error — fail-closed unless DISTRIBUTED_RATE_LIMIT_FAIL_OPEN", countError.message);
-    if (failOpen) {
-      return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+    if (error) {
+      console.error("[checkDistributedRateLimit] rpc error — fail-closed unless DISTRIBUTED_RATE_LIMIT_FAIL_OPEN:", error.message);
+      return { allowed: failOpen, retryAfterSeconds };
     }
-    return { allowed: false, retryAfterSeconds: Math.ceil(windowMs / 1000) };
-  }
 
-  const currentCount = count ?? 0;
-  if (currentCount >= maxRequests) {
-    return { allowed: false, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+    return { allowed: !!allowed, retryAfterSeconds };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[checkDistributedRateLimit] unexpected error — fail-closed unless DISTRIBUTED_RATE_LIMIT_FAIL_OPEN:", msg);
+    return { allowed: failOpen, retryAfterSeconds };
   }
-
-  const { error: insErr } = await supabase.from("api_request_logs").insert({
-    rate_key: key,
-  });
-  if (insErr) {
-    console.error("[checkDistributedRateLimit] insert error", insErr.message);
-    if (failOpen) {
-      return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
-    }
-    return { allowed: false, retryAfterSeconds: Math.ceil(windowMs / 1000) };
-  }
-
-  return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
 }
 
 // ── Validation helper ─────────────────────────────────────────────────────────

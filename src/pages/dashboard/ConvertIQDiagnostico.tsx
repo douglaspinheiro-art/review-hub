@@ -4,8 +4,9 @@ import {
   ArrowLeft, Sparkles, ChevronRight, Loader2, History, AlertCircle, Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useLoja, useLatestDiagnostico, useDiagnosticos, DiagnosticoJSON, Problema } from "@/hooks/useConvertIQ";
+import { useLoja, useLatestDiagnostico, useDiagnosticos, parseDiagnosticoJSON, type DiagnosticoJSON, type Problema } from "@/hooks/useConvertIQ";
 import CampaignModal, { ProdutoParaCampanha } from "@/components/dashboard/CampaignModal";
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ function ProblemaCard({ p, i, onCriarCampanha }: { p: Problema; i: number; onCri
         <div>
           <p className="text-xs text-muted-foreground">Impacto estimado</p>
           <p className="font-mono font-bold text-red-500">
-            R$ {p.impacto_reais.toLocaleString("pt-BR")}/mês
+            R$ {(p.impacto_reais ?? 0).toLocaleString("pt-BR")}/mês
           </p>
         </div>
         <Button
@@ -117,7 +118,7 @@ function HistoryModal({ diags, onClose }: {
                   {json?.problemas && (
                     <div className="flex gap-1 mt-2 flex-wrap">
                       {json.problemas.map((p, i) => (
-                        <span key={i} className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full border",
+                        <span key={`hp-${p.severidade}-${i}`} className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full border",
                           sevConfig[p.severidade as keyof typeof sevConfig]?.badge ?? "bg-muted text-muted-foreground border-border"
                         )}>
                           {p.titulo.slice(0, 20)}…
@@ -151,8 +152,19 @@ export default function ConvertIQDiagnostico() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      <div className="space-y-6">
+        <Skeleton className="h-5 w-40 rounded-lg" />
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-72 rounded-xl" />
+          <Skeleton className="h-4 w-56 rounded-lg" />
+        </div>
+        <Skeleton className="h-48 w-full rounded-2xl" />
+        <div className="grid md:grid-cols-3 gap-4">
+          <Skeleton className="h-64 rounded-2xl" />
+          <Skeleton className="hidden md:block h-64 rounded-2xl" />
+          <Skeleton className="hidden md:block h-64 rounded-2xl" />
+        </div>
+        <Skeleton className="h-12 w-full rounded-2xl" />
       </div>
     );
   }
@@ -173,7 +185,7 @@ export default function ConvertIQDiagnostico() {
     );
   }
 
-  const diagJson = lastDiag.data.recomendacoes as unknown as DiagnosticoJSON | null;
+  const diagJson = parseDiagnosticoJSON(lastDiag.data.recomendacoes);
   const problemas = diagJson?.problemas ?? [];
   const problemasOrdenados = [...problemas].sort((a, b) => b.impacto_reais - a.impacto_reais);
   const gargaloPrincipal = problemasOrdenados[0] ?? null;
@@ -252,7 +264,7 @@ export default function ConvertIQDiagnostico() {
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Por que a IA recomendou isso</p>
             <ul className="space-y-1">
               {problemas.slice(0, 3).map((p, idx) => (
-                <li key={idx} className="text-sm">
+                <li key={`ev-${p.severidade}-${p.impacto_reais}-${idx}`} className="text-sm">
                   - <strong>{p.titulo}</strong>: {p.evidencia ?? p.descricao}
                 </li>
               ))}
@@ -274,7 +286,7 @@ export default function ConvertIQDiagnostico() {
                 <div className="rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">Impacto mensal estimado</p>
                   <p className="font-mono font-bold text-red-500 mt-1">
-                    R$ {gargaloPrincipal.impacto_reais.toLocaleString("pt-BR")}
+                    R$ {(gargaloPrincipal.impacto_reais ?? 0).toLocaleString("pt-BR")}
                   </p>
                 </div>
                 <div className="rounded-xl border p-3">
@@ -284,7 +296,11 @@ export default function ConvertIQDiagnostico() {
                 <div className="rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">Confiança da hipótese</p>
                   <p className="text-sm font-semibold mt-1">
-                    {Math.max(35, Math.min(95, gargaloPrincipal.confianca ?? (pct || 70)))}%
+                    {gargaloPrincipal.confianca != null && gargaloPrincipal.confianca > 0
+                      ? `${Math.min(99, gargaloPrincipal.confianca)}%`
+                      : pct > 0
+                        ? `${Math.min(99, pct)}%`
+                        : "N/A"}
                   </p>
                 </div>
               </div>
@@ -299,7 +315,7 @@ export default function ConvertIQDiagnostico() {
           <div className="grid md:grid-cols-3 gap-4">
             {problemas.map((p, i) => (
               <ProblemaCard
-                key={i}
+                key={`${p.severidade}-${p.impacto_reais}-${i}`}
                 p={p}
                 i={i}
                 onCriarCampanha={() => setCampaignModal({
@@ -325,7 +341,7 @@ export default function ConvertIQDiagnostico() {
           <h2 className="font-semibold mb-3">Plano semanal sugerido (copiloto)</h2>
           <div className="grid md:grid-cols-2 gap-3">
             {diagJson.recomendacoes.slice(0, 4).map((r, i) => (
-              <div key={i} className="rounded-xl border p-3">
+              <div key={`rec-${r.titulo}-${i}`} className="rounded-xl border p-3">
                 <p className="text-xs text-muted-foreground">Semana {i + 1}</p>
                 <p className="text-sm font-medium mt-1">{r.titulo}</p>
                 <p className="text-xs text-muted-foreground mt-1">

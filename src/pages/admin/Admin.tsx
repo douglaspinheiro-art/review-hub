@@ -1,21 +1,36 @@
 import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Shield, ExternalLink, AlertTriangle, Loader2 } from "lucide-react";
+import { Shield, ExternalLink, AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
+import { useIsAdmin } from "@/hooks/useAdminCheck";
 import { toast } from "sonner";
 
 export default function Admin() {
   const queryClient = useQueryClient();
+  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
   const { data: config, isLoading: configLoading } = useSistemaConfig();
   const [maintenanceOn, setMaintenanceOn] = useState(false);
   const [message, setMessage] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Defense-in-depth: verify admin at component level in addition to route guard
+  if (!adminLoading && isAdmin === false) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   useEffect(() => {
     if (!config) return;
@@ -37,15 +52,48 @@ export default function Admin() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["system_config"] });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
       toast.success("Configuração global atualizada.");
     },
     onError: (e: Error) => {
-      toast.error("Não foi possível guardar", { description: e.message });
+      const friendly =
+        e.message.includes("row-level security") || e.message.includes("permission") || e.message.includes("denied")
+          ? "Sem permissão para alterar esta configuração."
+          : e.message.includes("duplicate") || e.message.includes("unique")
+          ? "Conflito de dados — recarregue a página e tente novamente."
+          : e.message.includes("network") || e.message.includes("fetch")
+          ? "Erro de rede — verifique sua conexão e tente novamente."
+          : "Não foi possível salvar. Tente novamente em instantes.";
+      toast.error("Erro ao salvar", { description: friendly });
     },
   });
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 p-6 md:p-10">
+      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar alteração de manutenção</AlertDialogTitle>
+            <AlertDialogDescription>
+              {maintenanceOn
+                ? "Ao ativar a manutenção, todos os usuários sem papel de staff serão bloqueados. Deseja continuar?"
+                : "Ao desativar a manutenção, o acesso será restaurado para todos os usuários. Deseja continuar?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saveMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setShowConfirm(false); saveMutation.mutate(); }}
+              disabled={saveMutation.isPending}
+              className={maintenanceOn ? "bg-destructive hover:bg-destructive/90" : ""}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
@@ -54,7 +102,7 @@ export default function Admin() {
           <div>
             <h1 className="text-2xl md:text-3xl font-black font-syne tracking-tight">Administração da plataforma</h1>
             <p className="text-sm text-muted-foreground">
-              Controlo operacional interno. Visível apenas para utilizadores com papel <code className="text-xs bg-muted px-1 rounded">admin</code> em{" "}
+              Controle operacional interno. Visível apenas para usuários com papel <code className="text-xs bg-muted px-1 rounded">admin</code> em{" "}
               <code className="text-xs bg-muted px-1 rounded">user_roles</code>.
             </p>
           </div>
@@ -77,7 +125,7 @@ export default function Admin() {
         <CardContent className="space-y-6">
           {configLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" /> A carregar estado atual…
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando estado atual…
             </div>
           ) : (
             <>
@@ -99,7 +147,7 @@ export default function Admin() {
                 <Label htmlFor="maintenance-msg">Mensagem (opcional)</Label>
                 <Textarea
                   id="maintenance-msg"
-                  placeholder="Ex.: Estamos a melhorar o sistema. Voltamos em breve."
+                  placeholder="Ex.: Estamos melhorando o sistema. Voltamos em breve."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   rows={4}
@@ -109,16 +157,16 @@ export default function Admin() {
               </div>
               <Button
                 type="button"
-                onClick={() => saveMutation.mutate()}
+                onClick={() => setShowConfirm(true)}
                 disabled={saveMutation.isPending}
                 className="font-bold"
               >
                 {saveMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> A guardar…
-                  </>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando…</>
+                ) : saveSuccess ? (
+                  <><CheckCircle2 className="w-4 h-4 mr-2 text-emerald-400" /> Salvo com sucesso</>
                 ) : (
-                  "Guardar alterações"
+                  "Salvar alterações"
                 )}
               </Button>
             </>

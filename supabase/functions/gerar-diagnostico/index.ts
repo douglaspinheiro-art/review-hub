@@ -6,13 +6,9 @@ import {
   rateLimitedResponse,
   checkDistributedRateLimit,
   rateLimitedResponseWithRetry,
+  corsHeaders as cors,
+  validateBrowserOrigin,
 } from "../_shared/edge-utils.ts";
-
-const cors = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
 
 const BENCHMARKS: Record<string, number> = {
   "Moda": 2.8, "Beleza e Cosméticos": 3.1, "Suplementos": 3.4,
@@ -46,6 +42,9 @@ const DESCONTO_POR_SEGMENTO: Record<string, { tipo: string; valor: number; justi
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  const originCheck = validateBrowserOrigin(req);
+  if (originCheck) return originCheck;
 
   const auth = await verifyJwt(req);
   if (!auth.ok) return auth.response;
@@ -87,6 +86,14 @@ serve(async (req) => {
     const dist = await checkDistributedRateLimit(supabase, rateKey, dayCap, 86_400_000);
     if (!dist.allowed) {
       return rateLimitedResponseWithRetry(dist.retryAfterSeconds);
+    }
+
+    // Guard against division by zero before any rate computation
+    if (!visitantes || visitantes <= 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: "visitantes deve ser maior que zero" }),
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
+      );
     }
 
     const p = (a: number, b: number) =>
@@ -231,26 +238,63 @@ Gere 3 problemas priorizados por impacto, 2 oportunidades e 3 recomendações de
 Para cada prescrição, use o desconto mínimo necessário para o segmento alvo.
 NÃO repita abordagens de prescrições que não funcionaram.`;
 
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 3000,
-        system,
-        messages: [{ role: "user", content: user }],
-      }),
-    });
+    // Anthropic call with exponential backoff on 429/5xx
+    async function callAnthropicWithRetry(maxRetries = 3): Promise<Response> {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-3-5-sonnet-20241022",
+            max_tokens: 3000,
+            system,
+            messages: [{ role: "user", content: user }],
+          }),
+        });
+        if (res.status === 429 || res.status >= 500) {
+          const retryAfter = res.headers.get("retry-after");
+          const waitMs = retryAfter
+            ? Math.min(Number(retryAfter) * 1000, 16_000)
+            : Math.min(1000 * Math.pow(2, attempt), 8_000);
+          console.warn(`[gerar-diagnostico] Anthropic HTTP ${res.status}, retry ${attempt + 1}/${maxRetries} in ${waitMs}ms`);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+        return res;
+      }
+      throw new Error("Anthropic API indisponível após retentativas.");
+    }
+
+    const r = await callAnthropicWithRetry();
 
     const data = await r.json();
+    if (!data.content?.[0]?.text) {
+      console.error("[gerar-diagnostico] Resposta inesperada da Anthropic:", JSON.stringify(data).slice(0, 300));
+      throw new Error("Resposta inválida da Anthropic API");
+    }
     const raw  = data.content[0].text.trim();
-    let diag;
-    try { diag = JSON.parse(raw); }
-    catch { diag = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? "{}"); }
+    let diag: Record<string, unknown>;
+    try {
+      diag = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/)?.[0];
+      if (!match) throw new Error("Anthropic retornou JSON inválido");
+      diag = JSON.parse(match);
+    }
+
+    // Validate minimum required fields from AI response
+    if (!diag || typeof diag !== "object" || !Array.isArray(diag.problemas)) {
+      console.error("[gerar-diagnostico] Diagnóstico sem campo 'problemas':", JSON.stringify(diag).slice(0, 200));
+      throw new Error("Diagnóstico gerado sem estrutura mínima requerida");
+    }
+    if (diag.problemas.length === 0) {
+      console.error("[gerar-diagnostico] IA retornou array 'problemas' vazio — resposta incompleta");
+      throw new Error("Diagnóstico gerado sem problemas identificados. Tente novamente.");
+    }
 
     // Salvar diagnóstico no banco
     if (loja_id) {
@@ -274,44 +318,61 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
       await supabase.from("stores").update({ conversion_health_score: chs }).eq("id", loja_id);
       await supabase.rpc("append_chs_history", { store_id_input: loja_id, new_score: chs, new_label: chs_label });
 
-      // Criar problemas e prescrições sugeridas
-      for (const p of diag.problemas) {
-        const { data: probData } = await supabase.from("opportunities").insert({
-          store_id: loja_id,
-          user_id: storeUserId,
-          type: p.tipo,
-          title: p.titulo,
-          description: p.descricao,
-          severity: p.severidade,
-          estimated_impact: p.impacto_reais,
-          root_cause: p.causa_raiz,
-          dados_json: p
-        }).select().single();
+      // Batch insert opportunities (single round-trip instead of N)
+      type DiagProblema = {
+        tipo?: string; titulo?: string; descricao?: string; severidade?: string;
+        impacto_reais?: unknown; causa_raiz?: string; prescricao_sugerida?: Record<string, unknown>;
+      };
+      const problemas = (diag.problemas as DiagProblema[]).filter(p => p && typeof p === "object");
+      const oppsPayload = problemas.map(p => ({
+        store_id: loja_id,
+        user_id: storeUserId,
+        type: p.tipo ?? "funil",
+        title: p.titulo ?? "Problema identificado",
+        description: p.descricao ?? "",
+        severity: p.severidade ?? "medio",
+        estimated_impact: Number.isFinite(Number(p.impacto_reais)) ? Number(p.impacto_reais) : 0,
+        root_cause: p.causa_raiz ?? null,
+        dados_json: p,
+      }));
 
-        if (probData && p.prescricao_sugerida) {
-          const s = p.prescricao_sugerida;
-          await supabase.from("prescriptions").insert({
+      const { data: insertedOpps } = await supabase
+        .from("opportunities")
+        .insert(oppsPayload)
+        .select("id");
+
+      // Batch insert prescriptions for all problems that have a suggestion
+      const rxPayload = [];
+      for (let i = 0; i < problemas.length; i++) {
+        const p = problemas[i];
+        const s = p.prescricao_sugerida;
+        const oppId = insertedOpps?.[i]?.id;
+        if (s && oppId) {
+          rxPayload.push({
             store_id: loja_id,
             user_id: storeUserId,
-            opportunity_id: probData.id,
-            title: s.titulo,
-            description: s.descricao || p.descricao,
-            execution_channel: s.canal,
-            segment_target: s.segmento,
-            behavioral_profile_target: s.perfil_comportamental,
-            num_clients_target: s.num_clientes_estimado,
-            discount_value: s.desconto_valor,
-            discount_type: s.desconto_tipo,
-            estimated_potential: s.potencial_estimado,
-            estimated_roi: s.roi_estimado,
+            opportunity_id: oppId,
+            title: String(s.titulo ?? "Prescrição sugerida"),
+            description: String(s.descricao ?? p.descricao ?? ""),
+            execution_channel: String(s.canal ?? "whatsapp"),
+            segment_target: String(s.segmento ?? "all"),
+            behavioral_profile_target: s.perfil_comportamental ?? null,
+            num_clients_target: Number.isFinite(Number(s.num_clientes_estimado)) ? Number(s.num_clientes_estimado) : null,
+            discount_value: Number.isFinite(Number(s.desconto_valor)) ? Number(s.desconto_valor) : null,
+            discount_type: s.desconto_tipo ?? null,
+            estimated_potential: Number.isFinite(Number(s.potencial_estimado)) ? Number(s.potencial_estimado) : null,
+            estimated_roi: Number.isFinite(Number(s.roi_estimado)) ? Number(s.roi_estimado) : null,
             template_json: {
-              mensagem: s.mensagem_base,
-              prazo: s.prazo_resultado_dias,
+              mensagem: s.mensagem_base ?? "",
+              prazo: s.prazo_resultado_dias ?? null,
               ab_test: Boolean(s.ab_teste_recomendado),
             },
-            status: 'aguardando_aprovacao'
+            status: "aguardando_aprovacao",
           });
         }
+      }
+      if (rxPayload.length > 0) {
+        await supabase.from("prescriptions").insert(rxPayload);
       }
     }
 

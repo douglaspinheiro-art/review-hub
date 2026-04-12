@@ -12,6 +12,14 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
+  /**
+   * Incluir @sentry/react + hoist-non-react-statics: o Sentry ESM faz `import x from 'hoist-non-react-statics'`
+   * mas o pacote só publica CJS — sem pré-bundle, o Vite serve o .cjs e falta export `default` (SyntaxError em profiler.js).
+   * O `exclude` anterior só em @sentry/react expunha esse caminho.
+   */
+  optimizeDeps: {
+    include: ["@sentry/react", "hoist-non-react-statics"],
+  },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {

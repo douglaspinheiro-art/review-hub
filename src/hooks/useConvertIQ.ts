@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -58,6 +59,51 @@ export interface DiagnosticoJSON {
   percentual_explicado: number;
   problemas: Problema[];
   recomendacoes: Recomendacao[];
+}
+
+// ─── Zod runtime schemas (validate AI JSON from DB before rendering) ──────────
+
+const ProblemaSchema = z.object({
+  titulo: z.string().default(""),
+  descricao: z.string().default(""),
+  severidade: z.enum(["critico", "alto", "medio"]).default("medio"),
+  impacto_reais: z.number().default(0),
+  etapa: z.enum(["produto", "carrinho", "checkout", "pagamento"]).optional(),
+  evidencia: z.string().optional(),
+  confianca: z.number().optional(),
+  causa_raiz: z.string().optional(),
+});
+
+const RecomendacaoSchema = z.object({
+  titulo: z.string().default(""),
+  descricao: z.string().default(""),
+  esforco: z.enum(["baixo", "medio", "alto"]).default("medio"),
+  impacto_pp: z.number().default(0),
+  prazo_semanas: z.number().default(4),
+  tipo: z.enum(["quick_win", "ab_test", "medio_prazo"]).default("medio_prazo"),
+  owner: z.enum(["trafego", "cro", "crm", "produto", "dados"]).optional(),
+});
+
+export const DiagnosticoJSONSchema = z.object({
+  resumo: z.string().default(""),
+  perda_principal: z.string().default(""),
+  percentual_explicado: z.number().default(0),
+  problemas: z.array(ProblemaSchema).default([]),
+  recomendacoes: z.array(RecomendacaoSchema).default([]),
+});
+
+/** Safely parses the `recomendacoes` JSONB field from the diagnostics table. Returns null for empty/invalid data. */
+export function parseDiagnosticoJSON(raw: unknown): DiagnosticoJSON | null {
+  if (!raw || typeof raw !== "object") return null;
+  const result = DiagnosticoJSONSchema.safeParse(raw);
+  if (!result.success) {
+    console.warn("[parseDiagnosticoJSON] validation failed:", result.error.flatten().fieldErrors);
+    return null;
+  }
+  // Only return data if it has at least a non-empty resumo or some problems
+  const d = result.data;
+  if (!d.resumo && d.problemas.length === 0) return null;
+  return d;
 }
 
 export interface DataHealthAlert {
@@ -368,7 +414,7 @@ export function useDiagnosticos(lojaId: string | null) {
         .eq("store_id", lojaId)
         .eq("status", "done")
         .order("created_at", { ascending: false })
-        .limit(12);
+        .limit(30);
       if (error) throw error;
       return data ?? [];
     },
