@@ -86,7 +86,7 @@ export default function BenchmarkScore() {
       : Number((loja.data as StoreRow & { ticket_medio?: number })?.ticket_medio ?? 0);
 
   const cvrForScore = cvr ?? 0;
-  const ticketForScore = ticket > 0 ? ticket : STATIC_TICKET_FALLBACK(loja.data);
+  const ticketForScore = ticket > 0 ? ticket : STATIC_TICKET_FALLBACK(loja.data as any);
 
   const cvrScore = Math.max(
     1,

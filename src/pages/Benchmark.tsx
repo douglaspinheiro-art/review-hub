@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, TrendingUp, BarChart2, Users, Zap, Info } from "lucide-react";
@@ -80,7 +79,6 @@ const METRICAS_INDUSTRIA = [
 
 export default function BenchmarkPage() {
   const [segmentoAtivo, setSegmentoAtivo] = useState<string | null>(null);
-  const segmento = SEGMENTOS.find(s => s.nome === segmentoAtivo) ?? null;
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white">

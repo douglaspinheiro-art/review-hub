@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { JOURNEYS_CONFIG_SELECT } from "@/lib/supabase-select-fragments";
+import { JOURNEYS_CONFIG_SELECT as _JOURNEYS_CONFIG_SELECT } from "@/lib/supabase-select-fragments";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";

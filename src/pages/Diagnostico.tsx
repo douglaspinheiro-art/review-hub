@@ -1,10 +1,10 @@
-// @ts-nocheck
+// @ts-nocheck — Schema misalignment: storeMetrics type, WizardFormPersist.nome null safety
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Zap, ArrowRight, CheckCircle2, AlertCircle,
   TrendingUp, Smartphone, MessageCircle, BarChart3,
-  Search, Users, ShoppingBag, Globe, Loader2,
+  Globe, Loader2,
   Check, Info, RefreshCw, Link2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,6 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";

@@ -1,23 +1,13 @@
-// @ts-nocheck
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import type { Database } from "@/integrations/supabase/types";
 import { logQueryTiming } from "@/lib/query-page-telemetry";
-import { LOYALTY_REWARDS_SELECT } from "@/lib/supabase-select-fragments";
 
 export const LOYALTY_TX_PAGE_SIZE = 25;
 
 type LoyaltyRewardRow = Database["public"]["Tables"]["loyalty_rewards"]["Row"];
-
-type RpcLoyaltySummary = {
-  members_with_balance?: number;
-  total_points_balance?: number;
-  total_earned_sum?: number;
-  total_redeemed_sum?: number;
-  tier_counts?: Record<string, number> | null;
-};
 
 export interface LoyaltyDashboardData {
   storeId: string | null;
@@ -59,11 +49,12 @@ async function fetchLoyaltyDashboard(
   
   const { data: bundle, error: bErr } = await supabase.rpc("get_loyalty_dashboard_bundle_v2", {
     p_user_id: userId,
-    p_rewards_store_id: rewardsStoreIdHint,
+    p_rewards_store_id: rewardsStoreIdHint ?? undefined,
   });
 
   if (bErr) throw bErr;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = bundle as any;
   const profile = res.profile;
   const stats = res.stats || {};
@@ -115,7 +106,7 @@ export function useLoyaltyTransactions(cursor: string | null = null) {
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_loyalty_transactions_v2", {
         p_user_id: user!.id,
-        p_cursor_created_at: cursor,
+        p_cursor_created_at: cursor ?? undefined,
         p_limit: LOYALTY_TX_PAGE_SIZE,
       });
 

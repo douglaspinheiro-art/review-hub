@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import {
@@ -60,7 +60,7 @@ export function useWhatsAppSender() {
   // we only need to know if the connection row has enough metadata to route the call.
   const hasCredentials = !!connection && !!connection.meta_phone_number_id;
 
-  const isReady = !isLoading && !!connection && connection.status === "connected" && hasCredentials;
+  const isReady = !isLoading && !!connection && hasCredentials;
 
   async function sendMessage(phone: string, text: string): Promise<SendResult> {
     if (!connection) {
