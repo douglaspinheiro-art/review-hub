@@ -21,6 +21,7 @@ export default function StepUpMfa() {
   }
 
   async function handleConfirmStepUp() {
+    if (!supabaseUserId) return;
     setVerifying(true);
     try {
       await markStepUpVerified(supabaseUserId);

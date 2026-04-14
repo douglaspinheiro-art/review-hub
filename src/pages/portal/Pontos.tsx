@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { Phone, Trophy, Star, Gift, Clock, Loader2, ChevronRight } from "lucide-react";
+import { Trophy, Star, Gift, Clock, Loader2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";

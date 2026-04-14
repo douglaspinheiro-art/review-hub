@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Palette, Globe, Mail, MessageSquare, Eye, Loader2, Lock, Users, TrendingUp, Copy, ExternalLink, Check, DollarSign } from "lucide-react";
+import { Palette, Globe, Mail, MessageSquare, Loader2, Lock, Users, TrendingUp, Copy, ExternalLink, Check, X, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +41,19 @@ export default function WhiteLabel() {
   const [supportEmail, setSupportEmail] = useState("");
   const [supportWhatsapp, setSupportWhatsapp] = useState("");
   const [hideBranding, setHideBranding] = useState(false);
+  const [dnsStatus, setDnsStatus] = useState<"valid" | "invalid" | null>(null);
+
+  const verifyDnsMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("verify-domain", {
+        body: { domain: customDomain },
+      });
+      if (error) throw error;
+      return data as { valid: boolean };
+    },
+    onSuccess: (data) => setDnsStatus(data?.valid ? "valid" : "invalid"),
+    onError: () => setDnsStatus("invalid"),
+  });
 
   useEffect(() => {
     if (wl) {
