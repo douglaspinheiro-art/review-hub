@@ -49,15 +49,30 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium --with-deps
+        timeout-minutes: 5
+
+      - name: Install Playwright deps (cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+        timeout-minutes: 3
 
       - name: E2E smoke (preview em 4173)
         run: |
           set -e
           npm run preview -- --host 127.0.0.1 --port 4173 --strictPort &
           PREVIEW_PID=$!
-          # Com set -e, curl falho no loop encerrava o job antes do servidor subir — usar if.
           for _ in $(seq 1 90); do
             if curl -fsS "http://127.0.0.1:4173/" >/dev/null 2>&1; then
               break
