@@ -116,6 +116,27 @@ function extractSecretFromRow(row: IntegrationRow, source: SignatureSource): str
     );
   }
 
+  if (source === "vtex") {
+    return (
+      readString(row.webhook_secret) ??
+      pickFromConfig(mergedConfig, ["app_key", "webhook_secret", "api_key"])
+    );
+  }
+
+  if (source === "tray") {
+    return (
+      readString(row.webhook_secret) ??
+      pickFromConfig(mergedConfig, ["webhook_secret", "access_token", "store_token"])
+    );
+  }
+
+  if (source === "yampi") {
+    return (
+      readString(row.webhook_secret) ??
+      pickFromConfig(mergedConfig, ["webhook_secret", "secret_key", "token"])
+    );
+  }
+
   return (
     readString(row.webhook_secret) ??
     pickFromConfig(mergedConfig, ["webhook_secret", "client_secret", "secret", "webhookSigningSecret"])
