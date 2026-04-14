@@ -35,6 +35,11 @@ const BATCH_SIZE = 500; // raised from 100 → 500 (parallel processing makes th
  *  Throughput: 10 stores × avg 50 msgs = 500 msgs/batch → ~1,000 msgs/min at 2-min cron. */
 const MAX_PARALLEL_STORES = 10;
 
+/** Max concurrent webhook jobs processed in parallel per batch.
+ *  Each job may call flow-engine (network I/O) so parallelism improves throughput.
+ *  Capped to prevent PgBouncer exhaustion (each job uses ~2 DB calls). */
+const MAX_PARALLEL_WEBHOOKS = 10;
+
 /** Max retry attempts for Meta Cloud API calls (429 / 5xx). */
 const META_MAX_RETRIES = 3;
 

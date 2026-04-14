@@ -148,3 +148,19 @@ verify_jwt = false
 
 [functions.track-whatsapp-click]
 verify_jwt = false
+
+# Webhook de pedidos — autenticação via WEBHOOK_ORDERS_SECRET.
+[functions.webhook-orders]
+verify_jwt = false
+
+# Webhook de reembolsos — autenticação via WEBHOOK_REFUNDS_SECRET.
+[functions.webhook-refunds]
+verify_jwt = false
+
+# Inngest serve — expõe funções durável para o Inngest runtime.
+[functions.inngest-serve]
+verify_jwt = false
+
+# Enqueue Inngest event — proxy autenticado por JWT do usuário.
+[functions.enqueue-inngest-event]
+verify_jwt = true
