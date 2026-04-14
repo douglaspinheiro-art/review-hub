@@ -12,7 +12,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z, errorResponse, jsonResponse, validateBrowserOrigin, checkDistributedRateLimit, rateLimitedResponse, timingSafeEqual } from "../_shared/edge-utils.ts";
 import { emailSchema, rejectIfBodyTooLarge, uuidSchema } from "../_shared/validation.ts";
 import {
@@ -64,7 +64,8 @@ function pickAbVariant(contactId: string): "a" | "b" {
 }
 
 async function hydrateProductBlocks(
-  sb: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  sb: SupabaseClient<any, any, any>,
   userId: string,
   blocks: Block[],
 ): Promise<Block[]> {
@@ -213,7 +214,8 @@ async function resolveContacts(
 }
 
 async function getLatestCartContextByCustomer(
-  sb: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  sb: SupabaseClient<any, any, any>,
   storeId: string | null | undefined,
   customerIds: string[],
 ) {
