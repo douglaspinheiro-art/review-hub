@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- mocks parciais de useInfiniteQuery */
+// @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
+/* mocks parciais de useInfiniteQuery */
 import type { ComponentType } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -128,8 +129,7 @@ function renderInbox(InboxCmp: ComponentType) {
 describe("Inbox", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(useConversations).mockReturnValue(convInfiniteEmpty as any);
+    vi.mocked(useConversations).mockReturnValue(convInfiniteEmpty as ReturnType<typeof useConversations>);
   });
 
   it("renderiza título e filtros de status", () => {
@@ -163,8 +163,7 @@ describe("Inbox", () => {
       fetchNextPage: vi.fn(),
       hasNextPage: false,
       isFetchingNextPage: false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as ReturnType<typeof useConversations>);
 
     renderInbox(Inbox);
 

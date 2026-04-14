@@ -1,4 +1,4 @@
-// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
+// @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { MessageCircle, WifiOff, Settings, Sparkles, User, Zap as ZapIcon, RotateCcw, CheckCheck, AlertCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -286,7 +286,7 @@ export default function Inbox() {
     refetch: refetchMessages,
   } = useMessages(selectedId, messageLimitCapped, { realtimeDegraded: messagesRealtimeDegraded });
 
-  const messages = liveMessages.length > 0 ? liveMessages : (chatBundle?.messages ?? []);
+  const messages = useMemo(() => liveMessages.length > 0 ? liveMessages : (chatBundle?.messages ?? []), [liveMessages, chatBundle?.messages]);
 
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
@@ -345,7 +345,7 @@ export default function Inbox() {
     } finally {
       setLoadingAi(false);
     }
-  }, [selectedId, messages, loadingAi]);
+  }, [selectedId, messages, loadingAi, user?.id]);
 
   useEffect(() => {
     setLiveMessagesRt("unknown");
@@ -415,7 +415,7 @@ export default function Inbox() {
         void ch.unsubscribe().then(() => supabase.removeChannel(ch));
       }
     };
-  }, [queryClient, activeStoreHint, storeScopeReady]);
+  }, [queryClient, activeStoreHint, storeScopeReady, storeScope?.effectiveUserId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -1,4 +1,4 @@
-// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
+// @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
 import {
   TrendingUp, Sparkles, ArrowUpRight, Info, ShieldCheck, Loader2, RefreshCw, AlertCircle,
 } from "lucide-react";
