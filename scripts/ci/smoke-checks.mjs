@@ -28,6 +28,8 @@ try {
   mustExist("src/components/BetaLimitedPageGuard.tsx");
   mustExist("src/lib/beta-scope.ts");
   mustExist("supabase/migrations/20260407174500_create_client_error_events.sql");
+  mustExist("supabase/functions/webhook-refunds/index.ts");
+  mustExist("supabase/functions/webhook-orders/index.ts");
   mustExist("docs/deploy-rollback-runbook.md");
   mustExist("docs/staging-go-no-go.md");
 

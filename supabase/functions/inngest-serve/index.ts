@@ -176,8 +176,100 @@ const dispatchNewsletter = inngest.createFunction(
   }
 );
 
+// ── Webhook Processing (Durable) ──────────────────────────────────────────────
+const processWebhookJob = inngest.createFunction(
+  {
+    id: "process-webhook-job",
+    retries: 5,
+    concurrency: { limit: 10 },
+  },
+  { event: "webhook/job.queued" },
+  async ({ event, step }) => {
+    const { job_id, store_id } = event.data as {
+      job_id: string;
+      store_id: string;
+    };
+
+    const supabase = getServiceClient();
+
+    // Step 1: Claim the job
+    const job = await step.run("claim-job", async () => {
+      const { data } = await supabase
+        .from("webhook_queue")
+        .update({ status: "processing", updated_at: new Date().toISOString() })
+        .eq("id", job_id)
+        .eq("status", "pending")
+        .select("id, store_id, user_id, platform, payload_normalized, attempts")
+        .maybeSingle();
+      if (!data) throw new Error(`Job ${job_id} already claimed or not found`);
+      return data;
+    });
+
+    // Step 2: Validate + upsert
+    const customerId = await step.run("upsert-cart", async () => {
+      const normalized = job.payload_normalized as Record<string, unknown>;
+      const { data, error } = await supabase.rpc("upsert_cart_with_customer", {
+        p_user_id: job.user_id,
+        p_store_id: job.store_id,
+        p_phone: normalized.customer_phone as string,
+        p_email: (normalized.customer_email as string | null) ?? null,
+        p_name: (normalized.customer_name as string | null) ?? null,
+        p_external_id: String(normalized.external_id),
+        p_source: job.platform,
+        p_cart_value: normalized.cart_value ?? null,
+        p_cart_items: normalized.cart_items ?? null,
+        p_recovery_url: normalized.recovery_url ?? null,
+        p_raw_payload: normalized,
+        p_utm_source: normalized.utm_source ?? null,
+        p_utm_medium: normalized.utm_medium ?? null,
+        p_utm_campaign: normalized.utm_campaign ?? null,
+        p_shipping_value: normalized.shipping_value ?? null,
+        p_shipping_zip_code: normalized.shipping_zip_code ?? null,
+        p_payment_failure_reason: normalized.payment_failure_reason ?? null,
+        p_inventory_status: normalized.inventory_status ?? null,
+        p_abandon_step: normalized.abandon_step ?? null,
+      });
+      if (error) throw error;
+      return data as string;
+    });
+
+    // Step 3: Trigger flow engine
+    await step.run("trigger-flow", async () => {
+      const normalized = job.payload_normalized as Record<string, unknown>;
+      const event = normalized.abandon_step === "payment" ? "payment_pending" : "cart_abandoned";
+      const { error } = await supabase.functions.invoke("flow-engine", {
+        body: {
+          event,
+          store_id: job.store_id,
+          customer_id: customerId,
+          payload: {
+            recovery_url: normalized.recovery_url ?? "",
+            cart_value: normalized.cart_value,
+            shipping_value: normalized.shipping_value,
+          },
+        },
+        headers: {
+          "x-internal-secret": Deno.env.get("FLOW_ENGINE_SECRET") ?? "",
+        },
+      });
+      if (error) throw error;
+    });
+
+    // Step 4: Mark completed
+    await step.run("mark-completed", async () => {
+      await supabase.from("webhook_queue").update({
+        status: "completed",
+        processed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", job_id);
+    });
+
+    return { job_id, store_id, customerId };
+  }
+);
+
 // ── Serve handler ─────────────────────────────────────────────────────────────
 export default serve({
   client: inngest,
-  functions: [dispatchCampaign, dispatchNewsletter],
+  functions: [dispatchCampaign, dispatchNewsletter, processWebhookJob],
 });
