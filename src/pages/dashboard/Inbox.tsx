@@ -20,6 +20,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { assertAiRateLimit, RateLimitError } from "@/lib/rate-limiter";
 import { ContactInfoSidebar } from "@/components/dashboard/ContactInfoSidebar";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import type { Database } from "@/integrations/supabase/types";
@@ -318,6 +319,7 @@ export default function Inbox() {
     setLoadingAi(true);
     setAiSuggestion(null);
     try {
+      assertAiRateLimit(user?.id ?? "anon");
       const { data, error } = await supabase.functions.invoke("ai-reply-suggest", {
         body: { conversation_id: selectedId },
       });

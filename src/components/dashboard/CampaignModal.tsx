@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
+import { assertAiRateLimit, RateLimitError } from "@/lib/rate-limiter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -638,6 +639,7 @@ export default function CampaignModal({
   async function generateAiCopy() {
     setAiLoading(true);
     try {
+      assertAiRateLimit(user?.id ?? "anon");
       const objectiveMap: Record<FormData["objective"], "recuperar_carrinho" | "boas_vindas" | "reativacao" | "upsell"> = {
         recovery: "recuperar_carrinho",
         rebuy: "reativacao",
