@@ -40,7 +40,7 @@ export interface NormalizedCartPayload {
   abandon_step: string | null;
 }
 
-type SignatureSource = "shopify" | "woocommerce" | "nuvemshop" | "vtex" | "tray" | "yampi";
+type SignatureSource = "shopify" | "woocommerce" | "nuvemshop" | "vtex" | "tray" | "yampi" | "shopee";
 
 interface IntegrationRow {
   id: string;
@@ -78,6 +78,7 @@ const SOURCE_ALIASES: Record<SignatureSource, string[]> = {
   vtex: ["vtex"],
   tray: ["tray"],
   yampi: ["yampi"],
+  shopee: ["shopee"],
 };
 
 function readString(value: unknown): string | null {
@@ -375,7 +376,7 @@ export function detectSource(req: Request, payload: unknown): string {
   // Explicit platform field (some integrators send this)
   if (typeof p?.platform === "string" && p.platform) {
     const pl = p.platform.toLowerCase();
-    if (["shopify", "nuvemshop", "vtex", "woocommerce", "tray", "yampi", "magento"].includes(pl)) {
+    if (["shopify", "nuvemshop", "vtex", "woocommerce", "tray", "yampi", "magento", "shopee"].includes(pl)) {
       return pl;
     }
   }
@@ -400,6 +401,13 @@ export function detectSource(req: Request, payload: unknown): string {
     (p as { OrderFormId?: unknown })?.OrderFormId != null ||
     ((p as { Domain?: unknown })?.Domain != null && (p as { orderId?: unknown })?.orderId != null)
   ) return "vtex";
+
+  // Shopee: order_sn + shop_id (Shopee Partner API naming convention)
+  if (
+    (p as { order_sn?: unknown })?.order_sn != null &&
+    (p as { shop_id?: unknown })?.shop_id != null
+  ) return "shopee";
+  if (ua.includes("shopee")) return "shopee";
 
   // Tray: `products` array + `url` at top level (their cart webhook shape)
   if (Array.isArray((p as { products?: unknown })?.products) &&
@@ -772,6 +780,39 @@ function normalizeMagento(p: AnyRecord): NormalizedCartPayload {
   };
 }
 
+function normalizeShopee(p: AnyRecord): NormalizedCartPayload {
+  // Shopee doesn't have native abandoned cart webhooks.
+  // This normalizer handles cart-like payloads from custom integrations.
+  const buyer = (p.buyer ?? p.customer ?? {}) as AnyRecord;
+  const items: NormalizedItem[] = ((p.items || p.order_items || []) as AnyRecord[]).map((item) => ({
+    id: toStr(item.item_id || item.id),
+    name: toStr(item.item_name || item.name),
+    quantity: toInt(item.model_quantity_purchased || item.quantity),
+    price: toFloat(item.model_discounted_price || item.item_price || item.price),
+    sku: toStr(item.item_sku || item.sku),
+    inventory_quantity: null,
+    category: null,
+  }));
+
+  return {
+    external_id: toStr(p.order_sn || p.id),
+    customer_name: toStr(buyer.buyer_username || buyer.name || p.buyer_username),
+    customer_phone: normalizePhone(toStr(buyer.phone || buyer.cellphone || p.recipient_phone || "")),
+    customer_email: toStr(buyer.email) || undefined,
+    cart_value: toFloat(p.total_amount || p.escrow_amount || p.total),
+    cart_items: items,
+    recovery_url: null,
+    utm_source: "shopee",
+    utm_medium: null,
+    utm_campaign: null,
+    shipping_value: toFloat(p.actual_shipping_fee || p.shipping_fee),
+    shipping_zip_code: null,
+    payment_failure_reason: null,
+    inventory_status: items.map((i) => ({ sku: i.sku, qty: null })),
+    abandon_step: null,
+  };
+}
+
 export function normalizePayload(source: string, p: unknown): NormalizedCartPayload {
   const payload = (p ?? {}) as AnyRecord;
   switch (source) {
@@ -782,6 +823,7 @@ export function normalizePayload(source: string, p: unknown): NormalizedCartPayl
     case "tray":        return normalizeTray(payload);
     case "yampi":       return normalizeYampi(payload);
     case "magento":     return normalizeMagento(payload);
+    case "shopee":      return normalizeShopee(payload);
     default:            return normalizeCustom(payload);
   }
 }
