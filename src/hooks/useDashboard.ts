@@ -1626,6 +1626,7 @@ export function useDashboardSnapshot(days = 30) {
       const storeId = scope?.activeStoreId ?? null;
       if (!storeId) throw new Error("Loja não encontrada");
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return invokeCachedRpc<any>("get_dashboard_snapshot", {
         p_store_id: storeId,
         p_period_days: days
