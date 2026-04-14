@@ -13,7 +13,7 @@ async function signHmacBase64(secret: string, body: Uint8Array): Promise<string>
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, body);
+  const signature = await crypto.subtle.sign("HMAC", key, body.buffer as ArrayBuffer);
   return btoa(String.fromCharCode(...new Uint8Array(signature)));
 }
 

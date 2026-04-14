@@ -192,7 +192,7 @@ async function fetchVTEX(config: Record<string, string>) {
 
   const base = `https://${account}.vtexcommercestable.com.br/api`;
   const headers = { "X-VTEX-API-AppKey": appKey, "X-VTEX-API-AppToken": appToken };
-  const since = thirtyDaysAgo().toISOString().split("T")[0];
+  const since = thirtyDaysAgo().split("T")[0];
   const today = new Date().toISOString().split("T")[0];
 
   // OMS List orders

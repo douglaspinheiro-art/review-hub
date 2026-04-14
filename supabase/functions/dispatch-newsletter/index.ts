@@ -12,7 +12,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z, errorResponse, jsonResponse, validateBrowserOrigin, checkDistributedRateLimit, rateLimitedResponse, timingSafeEqual } from "../_shared/edge-utils.ts";
 import { emailSchema, rejectIfBodyTooLarge, uuidSchema } from "../_shared/validation.ts";
 import {
@@ -64,7 +64,8 @@ function pickAbVariant(contactId: string): "a" | "b" {
 }
 
 async function hydrateProductBlocks(
-  sb: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  sb: SupabaseClient<any, any, any>,
   userId: string,
   blocks: Block[],
 ): Promise<Block[]> {
@@ -150,7 +151,8 @@ async function buildSignedUnsubscribeUrl(appUrl: string, userId: string, contact
 }
 
 async function resolveContacts(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
   userId: string,
   mode: string,
   campaignId: string,
@@ -213,7 +215,8 @@ async function resolveContacts(
 }
 
 async function getLatestCartContextByCustomer(
-  sb: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  sb: SupabaseClient<any, any, any>,
   storeId: string | null | undefined,
   customerIds: string[],
 ) {
@@ -232,8 +235,8 @@ async function getLatestCartContextByCustomer(
     .in("customer_id", customerIds)
     .order("created_at", { ascending: false });
   for (const row of (carts ?? []) as Array<Record<string, unknown>>) {
-    if (!byCustomer.has(row.customer_id)) {
-      byCustomer.set(row.customer_id, {
+    if (!byCustomer.has(row.customer_id as string)) {
+      byCustomer.set(row.customer_id as string, {
         cart_value: row.cart_value ?? null,
         recovery_url: row.recovery_url ?? null,
         utm_source: row.utm_source ?? null,

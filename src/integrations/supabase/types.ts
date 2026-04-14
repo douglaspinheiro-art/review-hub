@@ -351,7 +351,7 @@ export type Database = {
           new_contacts: number
           revenue_influenced: number
           store_id: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           active_conversations?: number
@@ -364,7 +364,7 @@ export type Database = {
           new_contacts?: number
           revenue_influenced?: number
           store_id?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           active_conversations?: number
@@ -377,7 +377,7 @@ export type Database = {
           new_contacts?: number
           revenue_influenced?: number
           store_id?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -548,10 +548,12 @@ export type Database = {
           action: string
           created_at: string
           id: string
+          ip: string | null
           ip_hash: string | null
           metadata: Json | null
           resource: string
           result: string
+          store_id: string | null
           tenant_id: string | null
           user_id: string | null
         }
@@ -559,10 +561,12 @@ export type Database = {
           action: string
           created_at?: string
           id?: string
+          ip?: string | null
           ip_hash?: string | null
           metadata?: Json | null
           resource: string
           result: string
+          store_id?: string | null
           tenant_id?: string | null
           user_id?: string | null
         }
@@ -570,14 +574,31 @@ export type Database = {
           action?: string
           created_at?: string
           id?: string
+          ip?: string | null
           ip_hash?: string | null
           metadata?: Json | null
           resource?: string
           result?: string
+          store_id?: string | null
           tenant_id?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       automations: {
         Row: {
@@ -711,45 +732,6 @@ export type Database = {
         }
         Relationships: []
       }
-      campaign_message_templates: {
-        Row: {
-          id: string
-          user_id: string
-          store_id: string | null
-          name: string
-          objective: string
-          channel: string
-          message: string
-          whatsapp_config: Json | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          store_id?: string | null
-          name: string
-          objective: string
-          channel?: string
-          message: string
-          whatsapp_config?: Json | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          store_id?: string | null
-          name?: string
-          objective?: string
-          channel?: string
-          message?: string
-          whatsapp_config?: Json | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       campaign_segments: {
         Row: {
           campaign_id: string
@@ -780,12 +762,12 @@ export type Database = {
       campaigns: {
         Row: {
           ab_subject_enabled: boolean
-          attribution_window_days?: number
+          attribution_window_days: number
           blocks: Json | null
           channel: string
           click_count: number
           created_at: string
-          custo_total_envio?: number | null
+          custo_total_envio: number | null
           delivered_count: number
           email_recipient_mode: string | null
           email_recipient_rfm: string | null
@@ -798,9 +780,9 @@ export type Database = {
           reply_count: number
           scheduled_at: string | null
           sent_count: number
-          status: string
-          store_id: string | null
           source_prescription_id: string | null
+          status: string
+          store_id: string
           subject: string | null
           subject_variant_b: string | null
           total_contacts: number
@@ -827,9 +809,9 @@ export type Database = {
           reply_count?: number
           scheduled_at?: string | null
           sent_count?: number
-          status?: string
-          store_id?: string | null
           source_prescription_id?: string | null
+          status?: string
+          store_id: string
           subject?: string | null
           subject_variant_b?: string | null
           total_contacts?: number
@@ -856,9 +838,9 @@ export type Database = {
           reply_count?: number
           scheduled_at?: string | null
           sent_count?: number
-          status?: string
-          store_id?: string | null
           source_prescription_id?: string | null
+          status?: string
+          store_id?: string
           subject?: string | null
           subject_variant_b?: string | null
           total_contacts?: number
@@ -866,6 +848,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "campaigns_source_prescription_id_fkey"
+            columns: ["source_prescription_id"]
+            isOneToOne: false
+            referencedRelation: "prescricoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_source_prescription_id_fkey"
+            columns: ["source_prescription_id"]
+            isOneToOne: false
+            referencedRelation: "prescriptions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "campaigns_store_id_fkey"
             columns: ["store_id"]
@@ -875,6 +871,51 @@ export type Database = {
           },
           {
             foreignKeyName: "campaigns_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_snapshot: {
+        Row: {
+          captured_at: string
+          id: string
+          product_name: string | null
+          sku: string
+          stock_qty: number | null
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          captured_at?: string
+          id?: string
+          product_name?: string | null
+          sku: string
+          stock_qty?: number | null
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          captured_at?: string
+          id?: string
+          product_name?: string | null
+          sku?: string
+          stock_qty?: number | null
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_snapshot_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_snapshot_store_id_fkey"
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
@@ -1034,7 +1075,7 @@ export type Database = {
           total_orders: number
           total_spent: number
           updated_at: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           created_at?: string
@@ -1049,7 +1090,7 @@ export type Database = {
           total_orders?: number
           total_spent?: number
           updated_at?: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           created_at?: string
@@ -1064,7 +1105,7 @@ export type Database = {
           total_orders?: number
           total_spent?: number
           updated_at?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -1127,7 +1168,7 @@ export type Database = {
           store_id: string | null
           unread_count: number
           updated_at: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           assigned_to?: string | null
@@ -1140,7 +1181,7 @@ export type Database = {
           store_id?: string | null
           unread_count?: number
           updated_at?: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           assigned_to?: string | null
@@ -1153,7 +1194,7 @@ export type Database = {
           store_id?: string | null
           unread_count?: number
           updated_at?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -1208,6 +1249,51 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      customer_cohorts: {
+        Row: {
+          cohort_month: string
+          cohort_size: number
+          computed_at: string
+          id: string
+          retention_d30: number | null
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          cohort_month: string
+          cohort_size?: number
+          computed_at?: string
+          id?: string
+          retention_d30?: number | null
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          cohort_month?: string
+          cohort_size?: number
+          computed_at?: string
+          id?: string
+          retention_d30?: number | null
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_cohorts_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_cohorts_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       customers_v3: {
         Row: {
@@ -1289,6 +1375,63 @@ export type Database = {
           },
           {
             foreignKeyName: "customers_v3_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_quality_snapshots: {
+        Row: {
+          created_at: string
+          duplicate_order_rate: number | null
+          ga4_purchase_vs_orders_diff_pct: number | null
+          id: string
+          metadata: Json
+          parse_error_rate: number | null
+          phone_fill_rate: number | null
+          snapshot_date: string
+          store_id: string
+          user_id: string
+          utm_fill_rate: number | null
+        }
+        Insert: {
+          created_at?: string
+          duplicate_order_rate?: number | null
+          ga4_purchase_vs_orders_diff_pct?: number | null
+          id?: string
+          metadata?: Json
+          parse_error_rate?: number | null
+          phone_fill_rate?: number | null
+          snapshot_date: string
+          store_id: string
+          user_id: string
+          utm_fill_rate?: number | null
+        }
+        Update: {
+          created_at?: string
+          duplicate_order_rate?: number | null
+          ga4_purchase_vs_orders_diff_pct?: number | null
+          id?: string
+          metadata?: Json
+          parse_error_rate?: number | null
+          phone_fill_rate?: number | null
+          snapshot_date?: string
+          store_id?: string
+          user_id?: string
+          utm_fill_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_quality_snapshots_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_quality_snapshots_store_id_fkey"
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
@@ -1527,8 +1670,6 @@ export type Database = {
           data_calculo: string | null
           id: string
           store_id: string | null
-          /** Presente em alguns ambientes legados; RLS alinhado à loja via `store_id` + `stores`. */
-          user_id?: string | null
         }
         Insert: {
           cenario_base?: number | null
@@ -1539,7 +1680,6 @@ export type Database = {
           data_calculo?: string | null
           id?: string
           store_id?: string | null
-          user_id?: string | null
         }
         Update: {
           cenario_base?: number | null
@@ -1550,109 +1690,6 @@ export type Database = {
           data_calculo?: string | null
           id?: string
           store_id?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      catalog_snapshot: {
-        Row: {
-          captured_at: string
-          id: string
-          product_name: string | null
-          sku: string
-          stock_qty: number | null
-          store_id: string
-          user_id: string
-        }
-        Insert: {
-          captured_at?: string
-          id?: string
-          product_name?: string | null
-          sku: string
-          stock_qty?: number | null
-          store_id: string
-          user_id: string
-        }
-        Update: {
-          captured_at?: string
-          id?: string
-          product_name?: string | null
-          sku?: string
-          stock_qty?: number | null
-          store_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      customer_cohorts: {
-        Row: {
-          cohort_month: string
-          cohort_size: number
-          computed_at: string
-          id: string
-          retention_d30: number | null
-          store_id: string
-          user_id: string
-        }
-        Insert: {
-          cohort_month: string
-          cohort_size?: number
-          computed_at?: string
-          id?: string
-          retention_d30?: number | null
-          store_id: string
-          user_id: string
-        }
-        Update: {
-          cohort_month?: string
-          cohort_size?: number
-          computed_at?: string
-          id?: string
-          retention_d30?: number | null
-          store_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      data_quality_snapshots: {
-        Row: {
-          created_at: string
-          duplicate_order_rate: number | null
-          ga4_purchase_vs_orders_diff_pct: number | null
-          id: string
-          metadata: Json
-          parse_error_rate: number | null
-          phone_fill_rate: number | null
-          snapshot_date: string
-          store_id: string
-          user_id: string
-          utm_fill_rate: number | null
-        }
-        Insert: {
-          created_at?: string
-          duplicate_order_rate?: number | null
-          ga4_purchase_vs_orders_diff_pct?: number | null
-          id?: string
-          metadata?: Json
-          parse_error_rate?: number | null
-          phone_fill_rate?: number | null
-          snapshot_date: string
-          store_id: string
-          user_id: string
-          utm_fill_rate?: number | null
-        }
-        Update: {
-          created_at?: string
-          duplicate_order_rate?: number | null
-          ga4_purchase_vs_orders_diff_pct?: number | null
-          id?: string
-          metadata?: Json
-          parse_error_rate?: number | null
-          phone_fill_rate?: number | null
-          snapshot_date?: string
-          store_id?: string
-          user_id?: string
-          utm_fill_rate?: number | null
         }
         Relationships: []
       }
@@ -1705,7 +1742,22 @@ export type Database = {
           user_id?: string
           view_item?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "funil_diario_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funil_diario_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       funnel_metrics: {
         Row: {
@@ -1842,6 +1894,27 @@ export type Database = {
         }
         Relationships: []
       }
+      integration_interest: {
+        Row: {
+          created_at: string
+          id: string
+          integration_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          integration_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          integration_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           config: Json
@@ -1911,27 +1984,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      integration_interest: {
-        Row: {
-          created_at: string
-          id: string
-          integration_type: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          integration_type: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          integration_type?: string
-          user_id?: string
-        }
-        Relationships: []
       }
       journeys_config: {
         Row: {
@@ -2188,42 +2240,36 @@ export type Database = {
           automation_id: string | null
           campaign_id: string | null
           contact_id: string | null
-          created_at: string
-          customer_id: string | null
           id: string
           message_id: string | null
           phone: string
           sent_at: string
           status: string
-          store_id: string | null
+          store_id: string
           user_id: string
         }
         Insert: {
           automation_id?: string | null
           campaign_id?: string | null
           contact_id?: string | null
-          created_at?: string
-          customer_id?: string | null
           id?: string
           message_id?: string | null
           phone: string
           sent_at?: string
           status?: string
-          store_id?: string | null
+          store_id: string
           user_id: string
         }
         Update: {
           automation_id?: string | null
           campaign_id?: string | null
           contact_id?: string | null
-          created_at?: string
-          customer_id?: string | null
           id?: string
           message_id?: string | null
           phone?: string
           sent_at?: string
           status?: string
-          store_id?: string | null
+          store_id?: string
           user_id?: string
         }
         Relationships: [
@@ -2267,7 +2313,7 @@ export type Database = {
           id: string
           status: string
           type: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           content: string
@@ -2278,7 +2324,7 @@ export type Database = {
           id?: string
           status?: string
           type?: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           content?: string
@@ -2289,7 +2335,7 @@ export type Database = {
           id?: string
           status?: string
           type?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -2345,24 +2391,36 @@ export type Database = {
       }
       newsletter_send_recipients: {
         Row: {
+          attempts: number | null
           campaign_id: string
           customer_id: string
+          error_message: string | null
           id: string
+          processed_at: string | null
           sent_at: string
+          status: string
           user_id: string
         }
         Insert: {
+          attempts?: number | null
           campaign_id: string
           customer_id: string
+          error_message?: string | null
           id?: string
+          processed_at?: string | null
           sent_at?: string
+          status?: string
           user_id: string
         }
         Update: {
+          attempts?: number | null
           campaign_id?: string
           customer_id?: string
+          error_message?: string | null
           id?: string
+          processed_at?: string | null
           sent_at?: string
+          status?: string
           user_id?: string
         }
         Relationships: [
@@ -2466,39 +2524,6 @@ export type Database = {
           },
         ]
       }
-      order_events: {
-        Row: {
-          event_type: string
-          id: string
-          occurred_at: string
-          pedido_externo_id: string
-          raw_payload: Json | null
-          reason: string | null
-          store_id: string
-          user_id: string
-        }
-        Insert: {
-          event_type: string
-          id?: string
-          occurred_at?: string
-          pedido_externo_id: string
-          raw_payload?: Json | null
-          reason?: string | null
-          store_id: string
-          user_id: string
-        }
-        Update: {
-          event_type?: string
-          id?: string
-          occurred_at?: string
-          pedido_externo_id?: string
-          raw_payload?: Json | null
-          reason?: string | null
-          store_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       opportunities: {
         Row: {
           dados_json: Json | null
@@ -2592,6 +2617,54 @@ export type Database = {
         }
         Relationships: []
       }
+      order_events: {
+        Row: {
+          event_type: string
+          id: string
+          occurred_at: string
+          pedido_externo_id: string
+          raw_payload: Json | null
+          reason: string | null
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          occurred_at?: string
+          pedido_externo_id: string
+          raw_payload?: Json | null
+          reason?: string | null
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          pedido_externo_id?: string
+          raw_payload?: Json | null
+          reason?: string | null
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_events_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_events_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           contact_id: string | null
@@ -2643,6 +2716,8 @@ export type Database = {
           created_at: string | null
           cupom_utilizado: string | null
           entregue_em: string | null
+          financial_status: string | null
+          fulfillment_status: string | null
           id: string
           internal_status: string | null
           is_primeira_compra: boolean | null
@@ -2651,6 +2726,7 @@ export type Database = {
           payment_method: string | null
           pedido_externo_id: string | null
           produtos_json: Json | null
+          source: string | null
           status: string | null
           store_id: string | null
           user_id: string
@@ -2669,6 +2745,8 @@ export type Database = {
           created_at?: string | null
           cupom_utilizado?: string | null
           entregue_em?: string | null
+          financial_status?: string | null
+          fulfillment_status?: string | null
           id?: string
           internal_status?: string | null
           is_primeira_compra?: boolean | null
@@ -2677,6 +2755,7 @@ export type Database = {
           payment_method?: string | null
           pedido_externo_id?: string | null
           produtos_json?: Json | null
+          source?: string | null
           status?: string | null
           store_id?: string | null
           user_id: string
@@ -2695,6 +2774,8 @@ export type Database = {
           created_at?: string | null
           cupom_utilizado?: string | null
           entregue_em?: string | null
+          financial_status?: string | null
+          fulfillment_status?: string | null
           id?: string
           internal_status?: string | null
           is_primeira_compra?: boolean | null
@@ -2703,6 +2784,7 @@ export type Database = {
           payment_method?: string | null
           pedido_externo_id?: string | null
           produtos_json?: Json | null
+          source?: string | null
           status?: string | null
           store_id?: string | null
           user_id?: string
@@ -2995,8 +3077,8 @@ export type Database = {
           points_per_real: number | null
           role: string | null
           social_proof_enabled: boolean | null
-          streak_7_shown: boolean
           streak_30_shown: boolean
+          streak_7_shown: boolean
           streak_count: number
           streak_last_visit_date: string | null
           stripe_customer_id: string | null
@@ -3029,8 +3111,8 @@ export type Database = {
           points_per_real?: number | null
           role?: string | null
           social_proof_enabled?: boolean | null
-          streak_7_shown?: boolean
           streak_30_shown?: boolean
+          streak_7_shown?: boolean
           streak_count?: number
           streak_last_visit_date?: string | null
           stripe_customer_id?: string | null
@@ -3063,14 +3145,53 @@ export type Database = {
           points_per_real?: number | null
           role?: string | null
           social_proof_enabled?: boolean | null
-          streak_7_shown?: boolean
           streak_30_shown?: boolean
+          streak_7_shown?: boolean
           streak_count?: number
           streak_last_visit_date?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      rate_limits: {
+        Row: {
+          id: string
+          key: string
+          last_request_at: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          last_request_at?: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          last_request_at?: string
+        }
+        Relationships: []
+      }
+      resend_webhook_events: {
+        Row: {
+          event_id: string
+          id: string
+          processed_at: string
+          type: string | null
+        }
+        Insert: {
+          event_id: string
+          id?: string
+          processed_at?: string
+          type?: string | null
+        }
+        Update: {
+          event_id?: string
+          id?: string
+          processed_at?: string
+          type?: string | null
         }
         Relationships: []
       }
@@ -3174,34 +3295,196 @@ export type Database = {
           },
         ]
       }
-      shipping_events: {
+      rfm_jobs: {
         Row: {
-          captured_at: string
-          carrier: string | null
-          delivered_at: string | null
-          delivery_eta: string | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
           id: string
-          pedido_externo_id: string
+          progress: number | null
+          status: string
+          store_id: string
+          total_customers: number | null
+          updated_at: string
+          updated_count: number | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          progress?: number | null
+          status?: string
+          store_id: string
+          total_customers?: number | null
+          updated_at?: string
+          updated_count?: number | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          progress?: number | null
+          status?: string
+          store_id?: string
+          total_customers?: number | null
+          updated_at?: string
+          updated_count?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rfm_jobs_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rfm_jobs_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduled_messages: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          customer_id: string
+          error_message: string | null
+          id: string
+          journey_id: string | null
+          message_content: string
+          metadata: Json
+          processed_at: string | null
+          scheduled_for: string
+          sent_at: string | null
+          status: string
           store_id: string
           user_id: string
         }
         Insert: {
-          captured_at?: string
-          carrier?: string | null
-          delivered_at?: string | null
-          delivery_eta?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          customer_id: string
+          error_message?: string | null
           id?: string
-          pedido_externo_id: string
+          journey_id?: string | null
+          message_content: string
+          metadata?: Json
+          processed_at?: string | null
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string
           store_id: string
           user_id: string
         }
         Update: {
-          captured_at?: string
-          carrier?: string | null
-          delivered_at?: string | null
-          delivery_eta?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          customer_id?: string
+          error_message?: string | null
           id?: string
-          pedido_externo_id?: string
+          journey_id?: string | null
+          message_content?: string
+          metadata?: Json
+          processed_at?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_messages_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_v3"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduled_messages_archive: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          customer_id: string
+          error_message: string | null
+          id: string
+          journey_id: string | null
+          message_content: string
+          metadata: Json
+          processed_at: string | null
+          scheduled_for: string
+          sent_at: string | null
+          status: string
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          customer_id: string
+          error_message?: string | null
+          id?: string
+          journey_id?: string | null
+          message_content: string
+          metadata?: Json
+          processed_at?: string | null
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          customer_id?: string
+          error_message?: string | null
+          id?: string
+          journey_id?: string | null
+          message_content?: string
+          metadata?: Json
+          processed_at?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string
           store_id?: string
           user_id?: string
         }
@@ -3375,6 +3658,54 @@ export type Database = {
         }
         Relationships: []
       }
+      shipping_events: {
+        Row: {
+          captured_at: string
+          carrier: string | null
+          delivered_at: string | null
+          delivery_eta: string | null
+          id: string
+          pedido_externo_id: string
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          captured_at?: string
+          carrier?: string | null
+          delivered_at?: string | null
+          delivery_eta?: string | null
+          id?: string
+          pedido_externo_id: string
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          captured_at?: string
+          carrier?: string | null
+          delivered_at?: string | null
+          delivery_eta?: string | null
+          id?: string
+          pedido_externo_id?: string
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_events_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipping_events_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_connections: {
         Row: {
           api_key: string | null
@@ -3538,6 +3869,7 @@ export type Database = {
           created_at: string | null
           email_from_address: string | null
           email_reply_to: string | null
+          high_ticket_threshold_brl: number | null
           id: string
           name: string
           pix_key: string | null
@@ -3552,6 +3884,7 @@ export type Database = {
           created_at?: string | null
           email_from_address?: string | null
           email_reply_to?: string | null
+          high_ticket_threshold_brl?: number | null
           id?: string
           name: string
           pix_key?: string | null
@@ -3566,6 +3899,7 @@ export type Database = {
           created_at?: string | null
           email_from_address?: string | null
           email_reply_to?: string | null
+          high_ticket_threshold_brl?: number | null
           id?: string
           name?: string
           pix_key?: string | null
@@ -3575,20 +3909,56 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_webhook_events: {
+        Row: {
+          id: string
+          payload: Json | null
+          received_at: string
+          type: string
+        }
+        Insert: {
+          id: string
+          payload?: Json | null
+          received_at?: string
+          type: string
+        }
+        Update: {
+          id?: string
+          payload?: Json | null
+          received_at?: string
+          type?: string
+        }
+        Relationships: []
+      }
       system_config: {
         Row: {
+          data_pipeline_cursor: string | null
+          data_pipeline_last_run: string | null
+          ga4_sync_cursor: string | null
+          ga4_sync_daily_count: number | null
+          ga4_sync_last_run: string | null
           id: string
           maintenance_active: boolean | null
           maintenance_message: string | null
           updated_at: string | null
         }
         Insert: {
+          data_pipeline_cursor?: string | null
+          data_pipeline_last_run?: string | null
+          ga4_sync_cursor?: string | null
+          ga4_sync_daily_count?: number | null
+          ga4_sync_last_run?: string | null
           id?: string
           maintenance_active?: boolean | null
           maintenance_message?: string | null
           updated_at?: string | null
         }
         Update: {
+          data_pipeline_cursor?: string | null
+          data_pipeline_last_run?: string | null
+          ga4_sync_cursor?: string | null
+          ga4_sync_daily_count?: number | null
+          ga4_sync_last_run?: string | null
           id?: string
           maintenance_active?: boolean | null
           maintenance_message?: string | null
@@ -3727,14 +4097,77 @@ export type Database = {
           },
         ]
       }
+      webhook_queue: {
+        Row: {
+          attempts: number | null
+          created_at: string
+          error_message: string | null
+          external_id: string | null
+          id: string
+          payload_normalized: Json
+          platform: string
+          processed_at: string | null
+          status: string
+          store_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          payload_normalized: Json
+          platform: string
+          processed_at?: string | null
+          status?: string
+          store_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          payload_normalized?: Json
+          platform?: string
+          processed_at?: string | null
+          status?: string
+          store_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_queue_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webhook_queue_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_connections: {
         Row: {
           api_provider: string
           created_at: string | null
           evolution_api_key: string | null
           evolution_api_url: string | null
+          health_details: Json | null
+          health_status: string | null
           id: string
           instance_name: string
+          last_health_check_at: string | null
           meta_access_token: string | null
           meta_api_version: string | null
           meta_default_template_name: string | null
@@ -3751,8 +4184,11 @@ export type Database = {
           created_at?: string | null
           evolution_api_key?: string | null
           evolution_api_url?: string | null
+          health_details?: Json | null
+          health_status?: string | null
           id?: string
           instance_name: string
+          last_health_check_at?: string | null
           meta_access_token?: string | null
           meta_api_version?: string | null
           meta_default_template_name?: string | null
@@ -3769,8 +4205,11 @@ export type Database = {
           created_at?: string | null
           evolution_api_key?: string | null
           evolution_api_url?: string | null
+          health_details?: Json | null
+          health_status?: string | null
           id?: string
           instance_name?: string
+          last_health_check_at?: string | null
           meta_access_token?: string | null
           meta_api_version?: string | null
           meta_default_template_name?: string | null
@@ -4518,6 +4957,47 @@ export type Database = {
         }
         Relationships: []
       }
+      v_order_line_items: {
+        Row: {
+          order_id: string | null
+          product_name: string | null
+          quantity: number | null
+          sku: string | null
+          store_id: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
+      v_orders_net_revenue: {
+        Row: {
+          discount_total: number | null
+          gross_revenue: number | null
+          id: string | null
+          net_revenue: number | null
+          shipping_total: number | null
+          store_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          discount_total?: never
+          gross_revenue?: number | null
+          id?: string | null
+          net_revenue?: never
+          shipping_total?: never
+          store_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          discount_total?: never
+          gross_revenue?: number | null
+          id?: string | null
+          net_revenue?: never
+          shipping_total?: never
+          store_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       add_loyalty_points: {
@@ -4535,10 +5015,52 @@ export type Database = {
         Args: { new_label: string; new_score: number }
         Returns: Json
       }
+      approve_prescription_campaign_draft: {
+        Args: {
+          p_campaign_name: string
+          p_channel: string
+          p_email_mode: string
+          p_email_rfm: string
+          p_message: string
+          p_prescription_id: string
+        }
+        Returns: string
+      }
+      archive_old_scheduled_messages: {
+        Args: { retention_days?: number }
+        Returns: number
+      }
+      auth_row_read_user_store: {
+        Args: { p_store_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      auth_row_write_user_store: {
+        Args: { p_store_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      auth_team_admin_owner: {
+        Args: { p_owner_user_id: string }
+        Returns: boolean
+      }
+      auth_team_read_owner: {
+        Args: { p_owner_user_id: string }
+        Returns: boolean
+      }
+      auth_team_read_store: { Args: { p_store_id: string }; Returns: boolean }
+      auth_team_write_owner: {
+        Args: { p_owner_user_id: string }
+        Returns: boolean
+      }
+      auth_team_write_store: { Args: { p_store_id: string }; Returns: boolean }
       calcular_segmento_rfm: {
         Args: { frequencia: number; monetario: number; recencia: number }
         Returns: string
       }
+      calculate_forecast_projection: {
+        Args: { p_period_days?: number; p_store_id: string }
+        Returns: Json
+      }
+      calculate_rfm_for_store: { Args: { p_store_id: string }; Returns: Json }
       calculate_store_percentil: {
         Args: {
           p_cvr: number
@@ -4549,12 +5071,81 @@ export type Database = {
         Returns: number
       }
       calculate_tier: { Args: { p_total_earned: number }; Returns: string }
-      get_optimal_send_hour: {
-        Args: { p_contact_id: string; p_nicho?: string }
-        Returns: number
+      check_rate_limit: {
+        Args: { p_interval: string; p_key: string }
+        Returns: boolean
       }
+      check_rate_limit_atomic: {
+        Args: { p_key: string; p_max: number; p_window_ms: number }
+        Returns: boolean
+      }
+      enqueue_campaign_scheduled_messages: {
+        Args: { p_messages: Json }
+        Returns: Json
+      }
+      execute_campaign_segmentation_v4: {
+        Args: {
+          p_actor_user_id: string
+          p_campaign_id: string
+          p_campaign_name?: string
+          p_content_type?: string
+          p_cooldown_hours?: number
+          p_holdout_pct?: number
+          p_max_recipients?: number
+          p_media_url?: string
+          p_message_template?: string
+          p_meta_template_name?: string
+          p_min_expected_value?: number
+          p_store_id: string
+        }
+        Returns: {
+          cooldown_count: number
+          enqueued_count: number
+          holdout_count: number
+          opt_out_count: number
+        }[]
+      }
+      finalize_completed_campaigns: { Args: never; Returns: number }
       get_abandoned_cart_kpis: {
         Args: { p_since: string; p_store_id: string }
+        Returns: Json
+      }
+      get_abandoned_carts_v2: {
+        Args: {
+          p_cursor_created_at?: string
+          p_limit?: number
+          p_since: string
+          p_status?: string
+          p_store_id: string
+        }
+        Returns: Json
+      }
+      get_advanced_reports_bundle_v2: {
+        Args: { p_period_days?: number; p_store_id: string }
+        Returns: Json
+      }
+      get_ai_agent_bundle_v2: { Args: { p_store_id: string }; Returns: Json }
+      get_analytics_super_bundle_v2: {
+        Args: { p_period_days: number; p_store_id: string }
+        Returns: Json
+      }
+      get_automacoes_bundle_v2: { Args: { p_store_id: string }; Returns: Json }
+      get_campaign_metrics_bundle: {
+        Args: {
+          p_campaign_ids: string[]
+          p_owner_user_id: string
+          p_store_id: string
+        }
+        Returns: Json
+      }
+      get_campaigns_bundle_v2: {
+        Args: {
+          p_channel?: string
+          p_created_since?: string
+          p_limit?: number
+          p_status?: string
+          p_store_id: string
+        }
         Returns: Json
       }
       get_channel_order_stats: {
@@ -4565,6 +5156,36 @@ export type Database = {
           receita: number
         }[]
       }
+      get_contacts_bundle_v2: {
+        Args: {
+          p_cursor_created_at?: string
+          p_limit?: number
+          p_rfm_segment?: string
+          p_search?: string
+          p_store_id: string
+        }
+        Returns: Json
+      }
+      get_conversion_baseline_summary: {
+        Args: { p_period_days: number; p_store_id: string }
+        Returns: Json
+      }
+      get_dashboard_snapshot: {
+        Args: { p_period_days: number; p_store_id: string }
+        Returns: Json
+      }
+      get_execution_monitor_bundle_v2: {
+        Args: { p_store_id: string }
+        Returns: Json
+      }
+      get_funil_page_data: {
+        Args: { p_period?: string; p_store_id: string }
+        Returns: Json
+      }
+      get_inbox_chat_bundle_v2: {
+        Args: { p_conversation_id: string; p_messages_limit?: number }
+        Returns: Json
+      }
       get_journey_sent_counts: {
         Args: { p_journey_ids: string[]; p_store_id: string }
         Returns: {
@@ -4572,16 +5193,74 @@ export type Database = {
           sent_count: number
         }[]
       }
-      get_loyalty_dashboard_summary: {
-        Args: Record<PropertyKey, never>
+      get_legacy_dashboard_conversation_kpis: {
+        Args: { p_store_id: string; p_user_id: string }
         Returns: Json
       }
+      get_loyalty_dashboard_bundle_v2: {
+        Args: { p_rewards_store_id?: string; p_user_id: string }
+        Returns: Json
+      }
+      get_loyalty_dashboard_summary: { Args: never; Returns: Json }
+      get_loyalty_transactions_v2: {
+        Args: {
+          p_cursor_created_at?: string
+          p_limit?: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      get_operational_health_bundle_v2: {
+        Args: { p_store_id: string }
+        Returns: Json
+      }
+      get_optimal_send_hour: {
+        Args: { p_contact_id: string; p_nicho?: string }
+        Returns: number
+      }
+      get_prescriptions_bundle_v2: {
+        Args: { p_store_id: string }
+        Returns: Json
+      }
+      get_review_stats: {
+        Args: { p_user_id: string }
+        Returns: {
+          avg_rating: number
+          negative_count: number
+          pending_count: number
+          platform_count: number
+        }[]
+      }
+      get_reviews_bundle_v2: {
+        Args: {
+          p_cursor_created_at?: string
+          p_filter?: string
+          p_limit?: number
+          p_search?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      get_rfm_report_counts: {
+        Args: { p_owner_user_id: string; p_store_id: string }
+        Returns: Json
+      }
+      get_rfm_report_counts_v2: { Args: { p_store_id: string }; Returns: Json }
+      get_roi_attribution_bundle_v2: {
+        Args: { p_period_days: number; p_store_id: string }
+        Returns: Json
+      }
+      get_whatsapp_bundle_v2: { Args: { p_store_id: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_campaign_sent_count: {
+        Args: { p_campaign_id: string }
+        Returns: undefined
       }
       increment_daily_analytics_messages: {
         Args: {
@@ -4601,6 +5280,10 @@ export type Database = {
           }
       increment_unread_count: { Args: { conv_id: string }; Returns: undefined }
       is_password_rotation_due: { Args: { _user_id: string }; Returns: boolean }
+      prune_api_request_logs: {
+        Args: { p_retention_days?: number }
+        Returns: number
+      }
       resolve_loyalty_by_phone: {
         Args: { p_phone: string; p_slug: string }
         Returns: Json
@@ -4611,8 +5294,90 @@ export type Database = {
           conversation_id: string
         }[]
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       update_loja_chs: {
         Args: { loja_uuid: string; new_label: string; new_score: number }
+        Returns: undefined
+      }
+      upsert_cart_with_customer:
+        | {
+            Args: {
+              p_abandon_step: string
+              p_cart_items: Json
+              p_cart_value: number
+              p_email: string
+              p_external_id: string
+              p_inventory_status: Json
+              p_name: string
+              p_payment_failure_reason: string
+              p_phone: string
+              p_raw_payload: Json
+              p_recovery_url: string
+              p_shipping_value: number
+              p_shipping_zip_code: string
+              p_source: string
+              p_store_id: string
+              p_user_id: string
+              p_utm_campaign: string
+              p_utm_medium: string
+              p_utm_source: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_abandon_step: string
+              p_cart_items: Json
+              p_cart_value: number
+              p_email: string
+              p_external_id: string
+              p_inventory_status: string
+              p_name: string
+              p_payment_failure_reason: string
+              p_phone: string
+              p_raw_payload: Json
+              p_recovery_url: string
+              p_shipping_value: number
+              p_shipping_zip_code: string
+              p_source: string
+              p_store_id: string
+              p_user_id: string
+              p_utm_campaign: string
+              p_utm_medium: string
+              p_utm_source: string
+            }
+            Returns: string
+          }
+      upsert_order_with_customer: {
+        Args: {
+          p_created_at: string
+          p_email: string
+          p_financial_status: string
+          p_fulfillment_status: string
+          p_name: string
+          p_payment_method: string
+          p_pedido_externo_id: string
+          p_phone: string
+          p_produtos_json: Json
+          p_source: string
+          p_status: string
+          p_store_id: string
+          p_user_id: string
+          p_valor: number
+          p_valor_desconto: number
+          p_valor_frete: number
+        }
+        Returns: Json
+      }
+      write_audit_log: {
+        Args: {
+          p_action: string
+          p_ip?: string
+          p_metadata?: Json
+          p_resource: string
+          p_store_id: string
+        }
         Returns: undefined
       }
     }

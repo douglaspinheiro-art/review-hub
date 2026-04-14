@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyCronSecret } from "../_shared/edge-utils.ts";
 import { metaGraphSendText } from "../_shared/meta-graph-send.ts";
 
@@ -31,7 +31,8 @@ type WaConnRow = {
 };
 
 async function resolveStoreId(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
   row: SettingsPulse
 ): Promise<{ storeId: string | null; storeName: string; chs: number }> {
   if (row.store_id) {
