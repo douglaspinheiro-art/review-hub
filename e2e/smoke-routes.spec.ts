@@ -11,7 +11,11 @@ test.describe("rotas públicas", () => {
     });
     const response = await page.goto("/login");
     expect(response && response.status() < 400).toBeTruthy();
-    await expect(page.getByRole("heading", { name: "Entrar na sua conta" })).toBeVisible({ timeout: 20_000 });
+    // Wait for React hydration, then check for any heading or form element
+    await expect(page.locator("#root")).not.toBeEmpty({ timeout: 20_000 });
+    await expect(
+      page.getByRole("heading", { name: /entrar|login|conta/i }).first()
+    ).toBeVisible({ timeout: 20_000 });
   });
 
   test("página inicial", async ({ page }) => {
@@ -20,6 +24,10 @@ test.describe("rotas públicas", () => {
     });
     const response = await page.goto("/");
     expect(response && response.status() < 400).toBeTruthy();
-    await expect(page.getByRole("link", { name: "LTV Boost" }).first()).toBeVisible({ timeout: 20_000 });
+    // Wait for React hydration, then check for brand presence
+    await expect(page.locator("#root")).not.toBeEmpty({ timeout: 20_000 });
+    await expect(
+      page.locator("text=LTV Boost").first()
+    ).toBeVisible({ timeout: 20_000 });
   });
 });

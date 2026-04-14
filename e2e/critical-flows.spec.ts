@@ -94,7 +94,8 @@ test.describe("Smoke: Public pages load", () => {
 
       await page.goto(`${BASE}${route}`);
       await page.waitForLoadState("networkidle");
-      await expect(page.locator("body")).toBeVisible();
+      // Wait for React to hydrate — check for #root having content instead of body visibility
+      await expect(page.locator("#root")).not.toBeEmpty({ timeout: 15_000 });
       expect(errors.length).toBe(0);
     });
   }
