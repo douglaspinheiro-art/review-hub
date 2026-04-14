@@ -1,4 +1,3 @@
-// @ts-nocheck — Schema misalignment: stores.update payload typing
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {

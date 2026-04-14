@@ -1,4 +1,3 @@
-// @ts-nocheck — Schema misalignment: ROI attribution bundle properties
 import { useState } from "react";
 import {
   DollarSign, TrendingUp, ShoppingCart, Zap, Target,

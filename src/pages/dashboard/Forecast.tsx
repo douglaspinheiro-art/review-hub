@@ -1,4 +1,3 @@
-// @ts-nocheck — Schema misalignment: forecast_snapshots.user_id column
 import {
   TrendingUp, Sparkles, ArrowUpRight, Info, ShieldCheck, Loader2, RefreshCw, AlertCircle,
 } from "lucide-react";

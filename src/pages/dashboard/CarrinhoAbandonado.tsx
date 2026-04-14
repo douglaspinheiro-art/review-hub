@@ -1,4 +1,3 @@
-// @ts-nocheck — Schema misalignment: abandoned_carts RPC kpi typing
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {

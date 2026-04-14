@@ -1,4 +1,3 @@
-// @ts-nocheck — Schema misalignment: useExecutionMonitor missing import, user scope
 import {
   Zap,
   MessageCircle,
