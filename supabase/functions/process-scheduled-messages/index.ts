@@ -306,8 +306,11 @@ serve(async (req) => {
     .order("created_at", { ascending: true })
     .limit(capWebhooks);
 
-  for (const job of (pendingWebhooks ?? [])) {
-    try {
+  // Process webhook jobs in parallel batches of MAX_PARALLEL_WEBHOOKS
+  const allJobs = pendingWebhooks ?? [];
+  for (let batchStart = 0; batchStart < allJobs.length; batchStart += MAX_PARALLEL_WEBHOOKS) {
+    const batch = allJobs.slice(batchStart, batchStart + MAX_PARALLEL_WEBHOOKS);
+    const results = await Promise.allSettled(batch.map(async (job) => {
       const { data: claim } = await supabase
         .from("webhook_queue")
         .update({ status: "processing", updated_at: new Date().toISOString() })
@@ -315,7 +318,7 @@ serve(async (req) => {
         .eq("status", "pending")
         .select("id")
         .maybeSingle();
-      if (!claim) continue;
+      if (!claim) return "skipped";
 
       const normalized = job.payload_normalized as Record<string, unknown> | null;
       const storeId = job.store_id;
@@ -332,14 +335,10 @@ serve(async (req) => {
           attempts: webhookMaxAttempts,
           updated_at: new Date().toISOString(),
         }).eq("id", job.id);
-        totalErrors++;
         webhookDeadLetter++;
-        continue;
+        throw new Error("invalid_payload");
       }
 
-      // Atomic upsert: customer + cart in a single Postgres transaction via RPC.
-      // Prevents the previous two-step pattern where a failed cart insert left an
-      // orphaned customer row and no recovery automation was triggered.
       const { data: customerId, error: upsertErr } = await supabase.rpc("upsert_cart_with_customer", {
         p_user_id:                userId,
         p_store_id:               storeId,
@@ -393,33 +392,42 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       }).eq("id", job.id);
 
-      totalProcessed++;
-      webhookProcessed++;
-    } catch (e) {
-      const err = e as Error;
-      console.error(`Webhook job ${job.id} error:`, err.message);
-      const prev = Number((job as { attempts?: number }).attempts ?? 0);
-      const next = prev + 1;
-      if (next >= webhookMaxAttempts) {
-        await supabase.from("webhook_queue").update({
-          status: "dead_letter",
-          error_message: err.message,
-          attempts: next,
-          updated_at: new Date().toISOString(),
-        }).eq("id", job.id);
-      } else {
-        // Exponential backoff: 2^attempts * 30s (30s, 60s, 120s, 240s, ...)
-        const backoffMs = Math.min(Math.pow(2, next) * 30_000, 3_600_000); // max 1 hour
-        const nextRetryAt = new Date(Date.now() + backoffMs).toISOString();
-        await supabase.from("webhook_queue").update({
-          status: "pending",
-          error_message: err.message,
-          attempts: next,
-          next_retry_at: nextRetryAt,
-          updated_at: new Date().toISOString(),
-        }).eq("id", job.id);
+      return "ok";
+    }));
+
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value === "ok") {
+        totalProcessed++;
+        webhookProcessed++;
+      } else if (r.status === "rejected") {
+        const job = batch[i];
+        const err = r.reason as Error;
+        if (err.message !== "invalid_payload") {
+          console.error(`Webhook job ${job.id} error:`, err.message);
+          const prev = Number((job as { attempts?: number }).attempts ?? 0);
+          const next = prev + 1;
+          if (next >= webhookMaxAttempts) {
+            await supabase.from("webhook_queue").update({
+              status: "dead_letter",
+              error_message: err.message,
+              attempts: next,
+              updated_at: new Date().toISOString(),
+            }).eq("id", job.id);
+          } else {
+            const backoffMs = Math.min(Math.pow(2, next) * 30_000, 3_600_000);
+            const nextRetryAt = new Date(Date.now() + backoffMs).toISOString();
+            await supabase.from("webhook_queue").update({
+              status: "pending",
+              error_message: err.message,
+              attempts: next,
+              next_retry_at: nextRetryAt,
+              updated_at: new Date().toISOString(),
+            }).eq("id", job.id);
+          }
+        }
+        totalErrors++;
       }
-      totalErrors++;
     }
   }
   } // end enabledQueues.has("webhooks")
