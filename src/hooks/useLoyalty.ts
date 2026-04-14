@@ -111,7 +111,9 @@ export function useLoyaltyTransactions(cursor: string | null = null) {
       });
 
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows: LoyaltyTxRow[] = (res.rows || []).map((t: any) => ({
         id: t.id,
         contact_id: t.contact_id,

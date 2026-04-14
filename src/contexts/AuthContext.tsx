@@ -75,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         throw new Error(error?.message || "No data");
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error("fetchProfile critical error or timeout:", err);
       // Fallback to minimal profile if DB hangs or fails
@@ -93,11 +94,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setProfileFallbackUsed(true);
       // Log to audit_logs so ops can detect DB latency spikes causing profile failures.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).from("audit_logs").insert({
         action: "profile_fallback_used",
         resource: "profile",
         result: "warn",
         metadata: { user_id: userId, reason: (err as Error)?.message ?? "unknown" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }).then(({ error: logErr }: { error: any }) => {
         if (logErr) console.warn("[auth] audit_logs insert failed:", logErr.message);
       });

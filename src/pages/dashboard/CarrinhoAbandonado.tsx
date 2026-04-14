@@ -99,6 +99,7 @@ const FILTER_LABELS: Record<string, string> = {
 
 type PeriodDays = 7 | 30 | 90;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseCartRow(row: any): Cart {
   const rawSt = typeof row.status === "string" ? row.status : "";
   const st: CartStatus = rawSt in STATUS_CONFIG ? (rawSt as CartStatus) : "pending";

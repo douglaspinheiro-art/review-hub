@@ -165,6 +165,7 @@ export async function fetchDashboardStatsLegacyData(
   const revenueLast30 = analytics.reduce((s, d) => s + Number(d.revenue_influenced), 0);
   const newContactsLast30 = analytics.reduce((s, d) => s + d.new_contacts, 0);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const revenuePrev = ((analyticsPrevRes.status === "fulfilled" ? analyticsPrevRes.value.data : null) ?? []).reduce((s: number, d: any) => s + Number(d.revenue_influenced), 0);
   const revGrowth = revenuePrev > 0 ? Math.round(((revenueLast30 - revenuePrev) / revenuePrev) * 100) : 0;
 
@@ -432,6 +433,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
         });
 
         if (error) throw error;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rows = (data as any[]) || [];
 
         // Fetch winner variants for AB tests if needed
@@ -443,6 +445,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
             .select("id,winner_variant")
             .in("id", abTestIds);
           winnersByTestId = new Map(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ((abTests ?? []) as any[]).map((t) => [t.id, t.winner_variant ?? null]),
           );
         }
@@ -572,6 +575,7 @@ function escapeIlikePattern(s: string): string {
 }
 
 export type ContactsQueryResult = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   contacts: any[];
   totalCount: number;
   nextCursor: string | null;
@@ -615,6 +619,7 @@ export function useContacts(options: UseContactsOptions = {}) {
         });
 
         if (error) throw error;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const res = data as any;
         const rows = res.rows || [];
         const lastRow = rows[rows.length - 1];
@@ -768,9 +773,13 @@ export const INBOX_MESSAGES_DEFAULT_LIMIT = 200;
 export const INBOX_MESSAGES_LOAD_STEP = 100;
 
 export type InboxChatBundle = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   conversation: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   contact: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   messages: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   notes: any[];
 };
 
@@ -791,6 +800,7 @@ export function useInboxChatBundle(conversationId: string | null, limit = 50) {
       });
 
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as any;
       if (res.error) throw new Error(res.error);
 
@@ -1193,6 +1203,7 @@ export function useROIAttribution(days = 30) {
       });
 
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as any;
 
       return {
@@ -1200,6 +1211,7 @@ export function useROIAttribution(days = 30) {
         revGrowth: Number(res.rev_growth_pct ?? 0),
         roas: res.roas != null ? Number(res.roas) : null,
         totalSpendBrl: Number(res.total_spend ?? 0),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         byCampaign: (res.by_campaign || []) as any[],
         sourceBreakdown: res.source_breakdown,
         cartStats: res.cart_stats,
@@ -1235,9 +1247,12 @@ export function useExecutionMonitor() {
         p_store_id: storeId,
       });
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as any;
       return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         prescriptions: (res.prescriptions || []) as any[],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         campaigns: (res.campaigns || []) as any[],
       };
     },
@@ -1264,6 +1279,7 @@ export function useAdvancedReports(days = 30) {
         p_period_days: days
       });
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as any;
       return {
         heatmap: {
@@ -1574,11 +1590,14 @@ export function useAnalyticsSuperBundle(days = 30) {
       });
 
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as any;
       
       // We return the types expected by the individual hooks to maintain compatibility
       return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         snapshot: res.snapshot as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         baseline: res.baseline as any,
       };
     },

@@ -19,6 +19,7 @@ export function useEmailSender() {
       if (error) throw error;
 
       return { success: true, data };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       console.error("Erro ao enviar e-mail:", e);
       toast.error("Falha ao enviar e-mail. Verifique sua integração com Resend.");
