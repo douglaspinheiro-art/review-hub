@@ -34,7 +34,7 @@ function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
   const isManutencao = config?.maintenance_active ?? false;
 
   if (isManutencao && !isAdmin) {
-    return <TelaManutencao mensagem={config?.maintenance_message ?? null} />;
+    return <TelaManutencao mensagem={config?.maintenance_message ?? undefined} />;
   }
 
   return <>{children}</>;
