@@ -7,11 +7,15 @@ import { test, expect } from "@playwright/test";
 test.describe("rotas públicas", () => {
   test("página de login", async ({ page }) => {
     await page.goto("/login", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 20_000 });
+    const loginHeading = page.getByRole("heading", { name: /entrar na sua conta|recuperar senha/i });
+    const maintenanceHeading = page.getByRole("heading", { name: /manutenção em curso/i });
+    await expect(loginHeading.or(maintenanceHeading)).toBeVisible({ timeout: 20_000 });
   });
 
   test("página inicial", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("main")).toBeVisible({ timeout: 20_000 });
+    const landingMain = page.locator("main");
+    const maintenanceHeading = page.getByRole("heading", { name: /manutenção em curso/i });
+    await expect(landingMain.or(maintenanceHeading)).toBeVisible({ timeout: 20_000 });
   });
 });

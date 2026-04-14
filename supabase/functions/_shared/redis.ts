@@ -21,7 +21,7 @@ export async function getCache<T>(key: string): Promise<T | null> {
   }
 }
 
-export async function setCache(key: string, value: any, expireSeconds = 300): Promise<void> {
+export async function setCache<T>(key: string, value: T, expireSeconds = 300): Promise<void> {
   const url = Deno.env.get("UPSTASH_REDIS_REST_URL");
   const token = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
   if (!url || !token) return;
@@ -53,7 +53,7 @@ export async function setCache(key: string, value: any, expireSeconds = 300): Pr
 /** 
  * Alternative: Simple SET using path params which is very robust on Upstash 
  */
-export async function setCacheSimple(key: string, value: any, expireSeconds = 300): Promise<void> {
+export async function setCacheSimple<T>(key: string, value: T, expireSeconds = 300): Promise<void> {
   const url = Deno.env.get("UPSTASH_REDIS_REST_URL");
   const token = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
   if (!url || !token) return;
