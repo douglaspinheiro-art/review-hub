@@ -5171,7 +5171,7 @@ export type Database = {
         Returns: Json
       }
       get_dashboard_snapshot: {
-        Args: { p_period_days: number; p_store_id: string }
+        Args: { p_period_days?: number; p_store_id: string }
         Returns: Json
       }
       get_execution_monitor_bundle_v2: {
