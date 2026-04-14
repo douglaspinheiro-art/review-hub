@@ -1855,6 +1855,8 @@ export type Database = {
           type: string
           updated_at: string
           user_id: string
+          webhook_secret: string | null
+          webhook_token: string | null
         }
         Insert: {
           config?: Json
@@ -1868,6 +1870,8 @@ export type Database = {
           type: string
           updated_at?: string
           user_id: string
+          webhook_secret?: string | null
+          webhook_token?: string | null
         }
         Update: {
           config?: Json
@@ -1881,6 +1885,8 @@ export type Database = {
           type?: string
           updated_at?: string
           user_id?: string
+          webhook_secret?: string | null
+          webhook_token?: string | null
         }
         Relationships: [
           {

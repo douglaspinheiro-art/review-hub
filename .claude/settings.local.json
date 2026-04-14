@@ -28,7 +28,16 @@
       "Bash(npx supabase:*)",
       "Read(//c/Users/Douglas - Performanc/AppData/Roaming/supabase/**)",
       "Read(//c/Users/Douglas - Performanc/.supabase/**)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(node:*)",
+      "Bash(awk '/^export default function Inbox/,/^}$/' \"C:\\\\Users\\\\Douglas - Performanc\\\\Documents\\\\Whats\\\\review-hub\\\\src\\\\pages\\\\dashboard\\\\Inbox.tsx\")",
+      "Bash(npm test:*)",
+      "Bash(ls -1 supabase/migrations/*.sql)",
+      "Bash(wc -l \"C:\\\\Users\\\\Douglas - Performanc\\\\Documents\\\\Whats\\\\review-hub/src/pages/dashboard\"/*.tsx)",
+      "Bash(node_modules/.bin/supabase --version)",
+      "Bash(awk '{print $3}')",
+      "Bash(awk '$2 == \"\" || $2 == \"|\" {print}')",
+      "Bash(awk -F'|' '$2 ~ /^\\\\s*$/ {print $1}')"
     ]
   }
 }

@@ -14,8 +14,11 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const _allowedOrigin = Deno.env.get("ALLOWED_ORIGIN");
 if (!_allowedOrigin) {
-  // Log to Supabase Function logs so ops can detect misconfiguration
-  console.warn("[edge-utils] ALLOWED_ORIGIN não está configurado — usando wildcard '*'. Defina ALLOWED_ORIGIN em produção.");
+  // Log to Supabase Function logs so ops can detect misconfiguration.
+  // In production, set ALLOWED_ORIGIN to your app domain (e.g. https://app.ltvboost.com.br).
+  // Webhook-facing functions (webhook-cart, integration-gateway) intentionally
+  // don't use corsHeaders — they manage their own CORS to allow platform origins.
+  console.warn("[edge-utils] ALLOWED_ORIGIN não está configurado — usando wildcard '*'. Defina ALLOWED_ORIGIN em produção para funções browser-facing.");
 }
 
 export const corsHeaders = {

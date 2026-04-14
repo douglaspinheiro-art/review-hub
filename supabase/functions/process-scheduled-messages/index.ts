@@ -16,7 +16,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, timingSafeEqual } from "../_shared/edge-utils.ts";
-import { outboundSendText, outboundSendEvolution, outboundSendMetaTemplate } from "../_shared/whatsapp-outbound.ts";
+import { outboundSendText, outboundSendMetaTemplate } from "../_shared/whatsapp-outbound.ts";
 import { sendEmail } from "../_shared/resend-email.ts";
 import { renderBlocksToHTML } from "../_shared/newsletter-html.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
@@ -27,13 +27,13 @@ import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 const BATCH_SIZE = 500; // raised from 100 → 500 (parallel processing makes this safe)
 
 /** Max concurrent stores processed simultaneously in the WA queue.
- *  Set to 50 so 100 stores complete in ≤2 batches (~8 min) instead of 10 batches (~40 min).
- *  Supabase Edge Functions have 512 MB RAM; each store coroutine is I/O-bound (Meta API
- *  awaits), so 50 concurrent coroutines stay well within memory limits. */
-// 20 parallel stores × 5 concurrent DB queries = 100 connections max.
-// PgBouncer default pool is 60 connections per edge function instance;
-// multiple concurrent instances could saturate it at higher parallelism.
-const MAX_PARALLEL_STORES = 20;
+ *  Capped at 10 to prevent PgBouncer saturation at 100+ stores.
+ *  Rationale: 10 stores × 5 concurrent DB queries = 50 connections per instance.
+ *  PgBouncer default pool is 60 connections per edge function instance; at 20 parallel
+ *  stores two overlapping cron invocations would exhaust the pool (20×5×2 = 200 > 60).
+ *  At 10 stores × 2 overlapping = 100 connections — within the safe range.
+ *  Throughput: 10 stores × avg 50 msgs = 500 msgs/batch → ~1,000 msgs/min at 2-min cron. */
+const MAX_PARALLEL_STORES = 10;
 
 /** Max retry attempts for Meta Cloud API calls (429 / 5xx). */
 const META_MAX_RETRIES = 3;
@@ -219,6 +219,22 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
+  // ── Optional queue selector ────────────────────────────────────────────────
+  // Body: { "queues": ["webhooks", "wa", "email"] } — default: all queues.
+  // Allows independent cron schedules per queue to prevent timeout at scale.
+  // Example pg_cron: high-frequency "wa" + "webhooks" every 1 min,
+  //                  lower-frequency "email" every 5 min.
+  let enabledQueues = new Set(["webhooks", "wa", "email"]);
+  try {
+    const bodyText = await req.text();
+    if (bodyText) {
+      const body = JSON.parse(bodyText) as { queues?: unknown };
+      if (Array.isArray(body.queues) && body.queues.length > 0) {
+        enabledQueues = new Set(body.queues.map((q) => String(q).toLowerCase()));
+      }
+    }
+  } catch { /* no body or invalid JSON — process all queues */ }
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -271,7 +287,10 @@ serve(async (req) => {
   let waProcessed = 0;
   let emailProcessed = 0;
 
+  console.log(JSON.stringify({ tag: "process-scheduled-messages", component: "start", queues: [...enabledQueues], request_id: requestId }));
+
   // ── 1. WEBHOOK QUEUE ─────────────────────────────────────────────────────────
+  if (enabledQueues.has("webhooks")) {
   const webhookMaxAttempts = readWebhookMaxAttempts();
 
   const { data: pendingWebhooks } = await supabase
@@ -393,8 +412,10 @@ serve(async (req) => {
       totalErrors++;
     }
   }
+  } // end enabledQueues.has("webhooks")
 
   // ── 2. WHATSAPP QUEUE — parallel per-store processing ────────────────────────
+  if (enabledQueues.has("wa")) {
   const { data: pendingWA } = await supabase
     .from("scheduled_messages")
     .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone)")
@@ -433,8 +454,10 @@ serve(async (req) => {
       }
     }
   }
+  } // end enabledQueues.has("wa")
 
   // ── 3. EMAIL QUEUE ────────────────────────────────────────────────────────────
+  if (enabledQueues.has("email")) {
   const { data: pendingEmail } = await supabase
     .from("newsletter_send_recipients")
     .select(
@@ -495,6 +518,7 @@ serve(async (req) => {
       totalErrors++;
     }
   }
+  } // end enabledQueues.has("email")
 
   // ── 4. POST-PROCESSING (Campaign Cleanup) ─────────────────────────────────────
   const { data: finalizedN, error: finalizeErr } = await supabase.rpc("finalize_completed_campaigns");

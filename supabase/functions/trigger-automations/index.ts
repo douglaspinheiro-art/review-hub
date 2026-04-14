@@ -70,7 +70,23 @@ serve(async (req) => {
 
     const results = [];
     const cadenceMinutes = [60, 12 * 60, 48 * 60];
-    const highTicketThreshold = Number(Deno.env.get("HIGH_TICKET_THRESHOLD_BRL") ?? "800");
+    const globalHighTicketThreshold = Number(Deno.env.get("HIGH_TICKET_THRESHOLD_BRL") ?? "800");
+
+    // Fetch per-store high_ticket_threshold_brl overrides in one batch query.
+    // Stores without a value fall back to the global env var.
+    const uniqueStoreIds = [...new Set((pendingCarts || []).map((c) => c.store_id))];
+    const { data: storeConfigs } = uniqueStoreIds.length > 0
+      ? await supabase
+          .from("stores")
+          .select("id, high_ticket_threshold_brl")
+          .in("id", uniqueStoreIds)
+      : { data: [] as Array<{ id: string; high_ticket_threshold_brl: number | null }> };
+    const storeThresholds = new Map(
+      (storeConfigs ?? []).map((s) => [
+        s.id,
+        s.high_ticket_threshold_brl != null ? Number(s.high_ticket_threshold_brl) : globalHighTicketThreshold,
+      ]),
+    );
 
     for (const cart of (pendingCarts || [])) {
       // Atomic claim to avoid duplicate processing across concurrent workers.
@@ -140,7 +156,7 @@ serve(async (req) => {
             cart_id: cart.id,
             recovery_url: safeRecoveryUrl(cart.recovery_url),
             cart_value: cart.cart_value,
-            escalation_recommended: Number(cart.cart_value ?? 0) >= highTicketThreshold,
+            escalation_recommended: Number(cart.cart_value ?? 0) >= (storeThresholds.get(cart.store_id) ?? globalHighTicketThreshold),
           },
         }));
 
@@ -167,7 +183,7 @@ serve(async (req) => {
           cart_id: cart.id,
           status: "success",
           cadence_queued: cadenceMinutes.length,
-          escalation_recommended: Number(cart.cart_value ?? 0) >= highTicketThreshold,
+          escalation_recommended: Number(cart.cart_value ?? 0) >= (storeThresholds.get(cart.store_id) ?? globalHighTicketThreshold),
         });
       } else {
         await supabase

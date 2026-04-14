@@ -90,7 +90,6 @@ if (!customer) {
 const processed = [];
 for (const journey of journeys) {
   const config = (journey.config_json || {}) as Record<string, any>;
-...
       let message = config.message_template || "Olá {{nome}}, temos uma oferta especial para você!";
       const val = Number((payload as any)?.cart_value || 0);
       const ship = Number((payload as any)?.shipping_value || 0);
@@ -107,10 +106,20 @@ for (const journey of journeys) {
         .replace("{{nome}}", customer.name || "você")
         .replace("{{link}}", (payload as any)?.recovery_url || "");
 
-      const { data: sched, error: schedErr } = await (supabase as any).from("scheduled_messages").insert({
-        user_id: store.user_id, store_id, customer_id: customer.id, journey_id: journey.id,
-        message_content: finalMessage, scheduled_for: scheduledFor, status: "pending",
-      }).select("id").single();
+      // Idempotent insert: if a pending message already exists for this
+      // (store_id, customer_id, journey_id) the unique index prevents duplicates.
+      // This handles the case where flow-engine is invoked from multiple cron paths.
+      const { data: sched, error: schedErr } = await (supabase as any)
+        .from("scheduled_messages")
+        .upsert(
+          {
+            user_id: store.user_id, store_id, customer_id: customer.id, journey_id: journey.id,
+            message_content: finalMessage, scheduled_for: scheduledFor, status: "pending",
+          },
+          { onConflict: "store_id,customer_id,journey_id", ignoreDuplicates: true },
+        )
+        .select("id")
+        .maybeSingle();
 
       if (!schedErr && sched) processed.push(sched.id);
     }

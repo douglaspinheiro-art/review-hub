@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkDistributedRateLimit, getClientIp, rateLimitedResponseWithRetry } from "../_shared/edge-utils.ts";
 
 function corsHeaders(): Record<string, string> {
   return {
@@ -162,6 +163,24 @@ async function testTwilio(config: Record<string, string>): Promise<{ ok: boolean
   }
 }
 
+async function testMagento(config: Record<string, string>): Promise<{ ok: boolean; detail: string }> {
+  const baseUrl = config.base_url?.replace(/\/$/, "");
+  const token = config.access_token;
+  if (!baseUrl || !token) return { ok: false, detail: "URL base e Access Token são obrigatórios" };
+
+  try {
+    const res = await fetch(`${baseUrl}/rest/V1/store/storeConfigs`, {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    });
+    if (!res.ok) return { ok: false, detail: `Magento 2 retornou ${res.status}. Verifique o token de integração.` };
+    const data = await res.json();
+    const storeUrl = (data as Array<{ base_link_url?: string }>)?.[0]?.base_link_url || baseUrl;
+    return { ok: true, detail: `Magento 2 conectado: ${storeUrl}` };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
+  }
+}
+
 serve(async (req) => {
   const cors = corsHeaders();
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -190,6 +209,15 @@ serve(async (req) => {
     });
   }
 
+  // Rate limit: 10 connection-test attempts per user per minute.
+  // Prevents credential brute-force through the validate endpoint with a valid JWT.
+  const supabaseSvc = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+  const ip = getClientIp(req);
+  const rl = await checkDistributedRateLimit(supabaseSvc, `validate-integration:${user.id}:${ip}`, 10, 60_000);
+  if (!rl.allowed) {
+    return rateLimitedResponseWithRetry(rl.retryAfterSeconds);
+  }
+
   try {
     const { type, config } = await req.json();
 
@@ -212,6 +240,7 @@ serve(async (req) => {
       case "mailchimp": result = await testMailchimp(config); break;
       case "zenvia": result = await testZenvia(config); break;
       case "twilio": result = await testTwilio(config); break;
+      case "magento": result = await testMagento(config); break;
       case "dizy": result = { ok: true, detail: "Dizy Commerce configurado" }; break;
       case "google_my_business": result = { ok: true, detail: "Place ID salvo" }; break;
       case "reclame_aqui": result = { ok: true, detail: "ID da empresa salvo" }; break;

@@ -27,11 +27,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external_id_unique
   WHERE external_id IS NOT NULL;
 
 -- ── 3. Missing indexes on hot query paths ────────────────────
-CREATE INDEX IF NOT EXISTS idx_message_sends_customer_id
-  ON public.message_sends (customer_id);
+CREATE INDEX IF NOT EXISTS idx_message_sends_contact_id
+  ON public.message_sends (contact_id);
 
 CREATE INDEX IF NOT EXISTS idx_messages_conv_sent
-  ON public.messages (conversation_id, sent_at DESC NULLS LAST);
+  ON public.messages (conversation_id, created_at DESC NULLS LAST);
 
 CREATE INDEX IF NOT EXISTS idx_abandoned_carts_store_status
   ON public.abandoned_carts (store_id, status);
