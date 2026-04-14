@@ -6,12 +6,12 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("rotas públicas", () => {
   test("página de login", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 20_000 });
   });
 
   test("página inicial", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("body")).toBeVisible();
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("main")).toBeVisible({ timeout: 20_000 });
   });
 });

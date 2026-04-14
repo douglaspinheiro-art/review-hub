@@ -82,7 +82,19 @@ export default function Login() {
     setRecoverySent(true);
   }
 
-  if (authLoading) return null;
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-4 text-center">
+          <h1 className="text-2xl font-bold">Entrar na sua conta</h1>
+          <div className="inline-flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Carregando autenticação...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
