@@ -7,8 +7,6 @@
 
 import { supabase } from "./supabase";
 
-const INNGEST_GATEWAY_URL = "https://connector-gateway.lovable.dev/inngest";
-
 interface EnqueueResult {
   success: boolean;
   error?: string;
@@ -20,7 +18,7 @@ interface EnqueueResult {
 export async function enqueueCampaignDispatch(campaignId: string): Promise<EnqueueResult> {
   try {
     // Try Inngest first
-    const { data, error } = await supabase.functions.invoke("enqueue-inngest-event", {
+    const { error } = await supabase.functions.invoke("enqueue-inngest-event", {
       body: {
         event_name: "campaign/dispatch.requested",
         event_data: { campaign_id: campaignId },
@@ -50,7 +48,7 @@ export async function enqueueNewsletterDispatch(
   recipientRfm?: string
 ): Promise<EnqueueResult> {
   try {
-    const { data, error } = await supabase.functions.invoke("enqueue-inngest-event", {
+    const { error } = await supabase.functions.invoke("enqueue-inngest-event", {
       body: {
         event_name: "newsletter/dispatch.requested",
         event_data: {
