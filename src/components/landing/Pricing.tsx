@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useInView } from "@/hooks/useInView";
 import { Button } from "@/components/ui/button";
-import { Check, ArrowRight, Zap } from "lucide-react";
+import { Check, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BUNDLES, PLANS, getAnnualPrice } from "@/lib/pricing-constants";
 

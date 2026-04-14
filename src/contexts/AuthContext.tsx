@@ -53,8 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from("profiles")
         .select(PROFILE_SESSION_SELECT)
         .eq("id", userId)
-        .single()
-        .abortSignal(controller.signal);
+        .single();
 
       clearTimeout(timeoutId);
 
@@ -94,9 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setProfileFallbackUsed(true);
       // Log to audit_logs so ops can detect DB latency spikes causing profile failures.
-      supabase.from("audit_logs").insert({
+      (supabase as any).from("audit_logs").insert({
         action: "profile_fallback_used",
-        resource_type: "profile",
+        resource: "profile",
         result: "warn",
         metadata: { user_id: userId, reason: (err as Error)?.message ?? "unknown" },
       }).then(({ error: logErr }) => {

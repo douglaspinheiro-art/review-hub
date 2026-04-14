@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { useInView } from "@/hooks/useInView";
 import {
-  Megaphone, Mail, Smartphone, Brain, FlaskConical,
-  BarChart3, Target, Route, LineChart,
-  MessageSquare, Tags, Users, HeadphonesIcon,
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";

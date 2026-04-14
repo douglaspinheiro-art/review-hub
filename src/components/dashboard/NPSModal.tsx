@@ -26,7 +26,7 @@ export function NPSModal({ onClose }: NPSModalProps) {
     setSubmitting(true);
 
     try {
-      await supabase.from("nps_responses").insert({
+      await (supabase as any).from("nps_responses").insert({
         user_id: user?.id ?? null,
         score: selected,
         comment: comment.trim() || null,
