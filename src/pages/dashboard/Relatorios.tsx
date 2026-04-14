@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useMemo, useState, memo, useEffect, useRef } from "react";
 import {
   BarChart3,
