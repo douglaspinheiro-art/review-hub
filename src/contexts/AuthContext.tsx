@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resource: "profile",
         result: "warn",
         metadata: { user_id: userId, reason: (err as Error)?.message ?? "unknown" },
-      }).then(({ error: logErr }) => {
+      }).then(({ error: logErr }: { error: any }) => {
         if (logErr) console.warn("[auth] audit_logs insert failed:", logErr.message);
       });
       // Auto-retry with exponential backoff (30s, 60s, 120s, …, capped at 5 min)
