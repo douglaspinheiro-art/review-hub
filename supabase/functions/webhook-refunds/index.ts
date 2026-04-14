@@ -59,6 +59,9 @@ function detectRefundSource(req: Request, payload: unknown): string {
   if (req.headers.get("x-linkedstore-token") || req.headers.get("x-notification-token")) return "nuvemshop";
   if ((p as { OrderFormId?: unknown })?.OrderFormId != null) return "vtex";
   if ((p as { increment_id?: unknown })?.increment_id != null) return "magento";
+  // Shopee: order_sn + shop_id or refund_sn
+  if ((p as { order_sn?: unknown })?.order_sn != null || (p as { refund_sn?: unknown })?.refund_sn != null) return "shopee";
+  if (ua.includes("shopee")) return "shopee";
   const qs = new URL(req.url).searchParams.get("platform") ?? "";
   if (qs) return qs.toLowerCase();
   return "custom";
@@ -116,6 +119,16 @@ function normalizeRefund(source: string, payload: unknown): NormalizedRefund {
         amount: toFloat(p.grand_total || p.base_grand_total),
         reason: toStr(p.customer_note) || undefined,
         is_full_refund: false,
+      };
+    }
+    case "shopee": {
+      // Shopee refund: { order_sn, refund_sn, refund_amount, reason, ... }
+      return {
+        order_external_id: toStr(p.order_sn || p.order_id),
+        refund_id: toStr(p.refund_sn || p.refund_id || p.id),
+        amount: toFloat(p.refund_amount || p.amount),
+        reason: toStr(p.reason || p.dispute_reason) || undefined,
+        is_full_refund: !!(p as { full_refund?: boolean }).full_refund,
       };
     }
     default: {

@@ -5082,6 +5082,14 @@ export type Database = {
         Args: { p_key: string; p_max: number; p_window_ms: number }
         Returns: boolean
       }
+      decrypt_integration_config: {
+        Args: { encrypted: string; encryption_key: string }
+        Returns: Json
+      }
+      encrypt_integration_config: {
+        Args: { encryption_key: string; plain_config: Json }
+        Returns: string
+      }
       enqueue_campaign_scheduled_messages: {
         Args: { p_messages: Json }
         Returns: Json

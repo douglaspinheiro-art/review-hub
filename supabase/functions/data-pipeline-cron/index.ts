@@ -191,27 +191,208 @@ async function jobCohorts(supabase: any, stores: any[]) {
 }
 
 const CATALOG_BATCH_SIZE = 500;
+const CATALOG_API_PAGE_SIZE = 100;
 
+/**
+ * Fetches products from the e-commerce platform API and upserts into catalog_snapshot.
+ * Falls back to local `produtos` table if no integration is found.
+ */
 async function jobCatalog(supabase: any, stores: any[]) {
   for (const st of stores) {
     const sid = st.id as string;
-    const { data: products } = await supabase.from("produtos").select("sku, nome, estoque").eq("store_id", sid);
-    const captured = new Date().toISOString();
-    const rows = (products ?? []).map((p: any) => ({
-      store_id: sid,
-      user_id: st.user_id,
-      sku: (p.sku as string) || "unknown",
-      product_name: (p.nome as string) || null,
-      stock_qty: p.estoque != null ? Number(p.estoque) : null,
-      captured_at: captured,
-    }));
 
-    // Batch insert in chunks to avoid exceeding Supabase request body limits.
+    // Try to fetch from e-commerce API first
+    const { data: integration } = await supabase
+      .from("integrations")
+      .select("type, config")
+      .eq("store_id", sid)
+      .eq("is_active", true)
+      .in("type", ["shopify", "woocommerce", "nuvemshop", "magento", "yampi", "tray", "shopee"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const captured = new Date().toISOString();
+    let rows: any[] = [];
+
+    if (integration) {
+      try {
+        rows = await fetchCatalogFromPlatform(integration.type, integration.config, sid, st.user_id, captured);
+      } catch (e) {
+        console.warn(`Catalog API fetch failed for store ${sid} (${integration.type}): ${(e as Error).message}`);
+        // Fall back to local produtos table
+        rows = await fetchCatalogFromLocal(supabase, sid, st.user_id, captured);
+      }
+    } else {
+      rows = await fetchCatalogFromLocal(supabase, sid, st.user_id, captured);
+    }
+
+    // Batch insert in chunks
     for (let i = 0; i < rows.length; i += CATALOG_BATCH_SIZE) {
       const batch = rows.slice(i, i + CATALOG_BATCH_SIZE);
       await supabase.from("catalog_snapshot").insert(batch);
     }
   }
+}
+
+async function fetchCatalogFromLocal(supabase: any, storeId: string, userId: string, captured: string): Promise<any[]> {
+  const { data: products } = await supabase.from("produtos").select("sku, nome, estoque").eq("store_id", storeId);
+  return (products ?? []).map((p: any) => ({
+    store_id: storeId,
+    user_id: userId,
+    sku: (p.sku as string) || "unknown",
+    product_name: (p.nome as string) || null,
+    stock_qty: p.estoque != null ? Number(p.estoque) : null,
+    captured_at: captured,
+  }));
+}
+
+async function fetchCatalogFromPlatform(
+  type: string,
+  config: Record<string, string>,
+  storeId: string,
+  userId: string,
+  captured: string,
+): Promise<any[]> {
+  switch (type) {
+    case "shopify": return fetchShopifyCatalog(config, storeId, userId, captured);
+    case "woocommerce": return fetchWooCommerceCatalog(config, storeId, userId, captured);
+    case "nuvemshop": return fetchNuvemshopCatalog(config, storeId, userId, captured);
+    case "magento": return fetchMagentoCatalog(config, storeId, userId, captured);
+    default: return [];
+  }
+}
+
+async function fetchShopifyCatalog(config: Record<string, string>, storeId: string, userId: string, captured: string): Promise<any[]> {
+  const shop = config.shop_url?.replace(/\/$/, "");
+  const token = config.access_token;
+  if (!shop || !token) return [];
+
+  const headers = { "X-Shopify-Access-Token": token, "Content-Type": "application/json" };
+  let allProducts: any[] = [];
+  let url: string | null = `https://${shop}/admin/api/2024-01/products.json?fields=id,title,variants,status&limit=250`;
+
+  while (url && allProducts.length < 10_000) {
+    const res = await fetch(url, { headers });
+    if (!res.ok) break;
+    const { products } = await res.json();
+    allProducts = allProducts.concat(products ?? []);
+    const linkHeader = res.headers.get("link") ?? "";
+    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    url = nextMatch ? nextMatch[1] : null;
+  }
+
+  const rows: any[] = [];
+  for (const p of allProducts) {
+    const variants = p.variants ?? [{ id: p.id, sku: "", inventory_quantity: null }];
+    for (const v of variants) {
+      rows.push({
+        store_id: storeId,
+        user_id: userId,
+        sku: v.sku || String(v.id),
+        product_name: p.title,
+        stock_qty: v.inventory_quantity ?? null,
+        captured_at: captured,
+      });
+    }
+  }
+  return rows;
+}
+
+async function fetchWooCommerceCatalog(config: Record<string, string>, storeId: string, userId: string, captured: string): Promise<any[]> {
+  const siteUrl = config.site_url?.replace(/\/$/, "");
+  const ck = config.consumer_key;
+  const cs = config.consumer_secret;
+  if (!siteUrl || !ck || !cs) return [];
+
+  const auth = btoa(`${ck}:${cs}`);
+  const headers = { Authorization: `Basic ${auth}` };
+  let allProducts: any[] = [];
+  let page = 1;
+
+  while (allProducts.length < 10_000) {
+    const res = await fetch(`${siteUrl}/wp-json/wc/v3/products?per_page=${CATALOG_API_PAGE_SIZE}&page=${page}&_fields=id,name,sku,stock_quantity`, { headers });
+    if (!res.ok) break;
+    const products = await res.json();
+    if (!Array.isArray(products) || products.length === 0) break;
+    allProducts = allProducts.concat(products);
+    if (products.length < CATALOG_API_PAGE_SIZE) break;
+    page++;
+  }
+
+  return allProducts.map((p: any) => ({
+    store_id: storeId,
+    user_id: userId,
+    sku: p.sku || String(p.id),
+    product_name: p.name,
+    stock_qty: p.stock_quantity ?? null,
+    captured_at: captured,
+  }));
+}
+
+async function fetchNuvemshopCatalog(config: Record<string, string>, storeId: string, userId: string, captured: string): Promise<any[]> {
+  const nsUserId = config.user_id;
+  const token = config.access_token;
+  if (!nsUserId || !token) return [];
+
+  const headers = {
+    "Authentication": `bearer ${token}`,
+    "User-Agent": "LTV Boost (suporte@ltvboost.com.br)",
+  };
+
+  const res = await fetch(`https://api.tiendanube.com/v1/${nsUserId}/products?per_page=200&fields=id,name,variants`, { headers });
+  if (!res.ok) return [];
+  const products = await res.json();
+
+  const rows: any[] = [];
+  for (const p of (Array.isArray(products) ? products : [])) {
+    const variants = p.variants ?? [{ sku: "", stock: null }];
+    for (const v of variants) {
+      rows.push({
+        store_id: storeId,
+        user_id: userId,
+        sku: v.sku || String(p.id),
+        product_name: p.name?.pt || p.name?.es || String(p.id),
+        stock_qty: v.stock ?? null,
+        captured_at: captured,
+      });
+    }
+  }
+  return rows;
+}
+
+async function fetchMagentoCatalog(config: Record<string, string>, storeId: string, userId: string, captured: string): Promise<any[]> {
+  const baseUrl = (config.base_url || config.api_url || "").replace(/\/$/, "");
+  const token = config.access_token || config.integration_token;
+  if (!baseUrl || !token) return [];
+
+  const base = `${baseUrl.startsWith("https://") ? baseUrl : `https://${baseUrl}`}/rest/V1`;
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  let allProducts: any[] = [];
+  let page = 1;
+
+  while (allProducts.length < 10_000) {
+    const res = await fetch(
+      `${base}/products?searchCriteria[pageSize]=${CATALOG_API_PAGE_SIZE}&searchCriteria[currentPage]=${page}&fields=items[sku,name,extension_attributes[stock_item[qty]]],total_count`,
+      { headers },
+    );
+    if (!res.ok) break;
+    const data = await res.json();
+    const items = data.items || [];
+    allProducts = allProducts.concat(items);
+    if (items.length < CATALOG_API_PAGE_SIZE || allProducts.length >= (data.total_count || 0)) break;
+    page++;
+  }
+
+  return allProducts.map((p: any) => ({
+    store_id: storeId,
+    user_id: userId,
+    sku: p.sku || "unknown",
+    product_name: p.name || null,
+    stock_qty: p.extension_attributes?.stock_item?.qty ?? null,
+    captured_at: captured,
+  }));
 }
 
 serve(async (req) => {

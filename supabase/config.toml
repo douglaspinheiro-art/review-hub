@@ -165,3 +165,11 @@ verify_jwt = false
 # Enqueue Inngest event — proxy autenticado por JWT do usuário.
 [functions.enqueue-inngest-event]
 verify_jwt = true
+
+# Bulk import de contatos — autenticado por JWT do usuário.
+[functions.bulk-import-contacts]
+verify_jwt = true
+
+# Registro automático de webhooks — autenticado por JWT do usuário.
+[functions.register-webhooks]
+verify_jwt = true
