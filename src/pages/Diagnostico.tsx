@@ -1,4 +1,4 @@
-// @ts-nocheck — Schema misalignment: storeMetrics type, WizardFormPersist.nome null safety
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {

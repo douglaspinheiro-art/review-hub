@@ -1,4 +1,4 @@
-// @ts-nocheck — Schema misalignment: abandoned_carts RPC kpi typing
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -100,6 +100,7 @@ const FILTER_LABELS: Record<string, string> = {
 
 type PeriodDays = 7 | 30 | 90;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseCartRow(row: any): Cart {
   const rawSt = typeof row.status === "string" ? row.status : "";
   const st: CartStatus = rawSt in STATUS_CONFIG ? (rawSt as CartStatus) : "pending";

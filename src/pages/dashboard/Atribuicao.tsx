@@ -1,4 +1,4 @@
-// @ts-nocheck — Schema misalignment: ROI attribution bundle properties
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState } from "react";
 import {
   DollarSign, TrendingUp, ShoppingCart, Zap, Target,

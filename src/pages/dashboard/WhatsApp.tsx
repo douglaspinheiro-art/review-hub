@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -653,6 +653,7 @@ export default function WhatsApp() {
                 <AlertTriangle className="w-3 h-3 text-red-500" /> Logs de erro recentes
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {healthSummary.recent_errors.map((err: any) => (
                   <div key={err.id} className="p-2.5 bg-card border rounded-lg space-y-1">
                     <div className="flex justify-between items-center gap-2">

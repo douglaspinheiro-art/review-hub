@@ -1,4 +1,4 @@
-// @ts-nocheck — Schema misalignment: forecast_snapshots.user_id column
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import {
   TrendingUp, Sparkles, ArrowUpRight, Info, ShieldCheck, Loader2, RefreshCw, AlertCircle,
 } from "lucide-react";

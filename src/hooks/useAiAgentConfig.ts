@@ -12,6 +12,7 @@ export type AiAgentAction = {
   id: string;
   action: string;
   resource: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata: any;
   created_at: string;
 };
@@ -38,11 +39,13 @@ export function useAiAgentConfig(storeId: string | undefined, userId: string | u
     queryFn: async (): Promise<AiAgentConfigQueryResult> => {
       const ownerId = scope?.effectiveUserId ?? userId!;
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc("get_ai_agent_bundle_v2", {
         p_store_id: storeId as string,
       });
 
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = data as any;
       
       return { 

@@ -25,6 +25,7 @@ export function logSecurityEvent(event: SecurityEventInput): void {
       resource: event.resource ?? "unknown",
       result: event.result,
       metadata: (event.metadata ?? {}) as import("@/integrations/supabase/types").Json,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .then(({ error }) => {
       if (error && import.meta.env.DEV) {

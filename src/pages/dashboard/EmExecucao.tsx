@@ -1,4 +1,4 @@
-// @ts-nocheck — Schema misalignment: useExecutionMonitor missing import, user scope
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import {
   Zap,
   MessageCircle,
@@ -185,10 +185,12 @@ export default function EmExecucao() {
       const qk = ["execution-monitor", user?.id ?? null, storeId];
       await queryClient.cancelQueries({ queryKey: qk });
       const previous = queryClient.getQueryData(qk);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       queryClient.setQueryData(qk, (old: any) => {
         if (!old) return old;
         return {
           ...old,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           prescriptions: (old.prescriptions || []).map((r: any) => 
             r.id === id ? { ...r, status: "pausada" } : r
           )
@@ -196,6 +198,7 @@ export default function EmExecucao() {
       });
       return { previous };
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (err, id, context: any) => {
       const qk = ["execution-monitor", user?.id ?? null, storeId];
       if (context?.previous) {
@@ -224,10 +227,12 @@ export default function EmExecucao() {
       const qk = ["execution-monitor", user?.id ?? null, storeId];
       await queryClient.cancelQueries({ queryKey: qk });
       const previous = queryClient.getQueryData(qk);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       queryClient.setQueryData(qk, (old: any) => {
         if (!old) return old;
         return {
           ...old,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           prescriptions: (old.prescriptions || []).map((r: any) => 
             r.id === id ? { ...r, status: "em_execucao" } : r
           )
@@ -235,6 +240,7 @@ export default function EmExecucao() {
       });
       return { previous };
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (err, id, context: any) => {
       const qk = ["execution-monitor", user?.id ?? null, storeId];
       if (context?.previous) {

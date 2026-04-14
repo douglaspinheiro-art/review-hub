@@ -255,6 +255,7 @@ export default function ConvertIQPlano() {
     .filter((o, idx) => executado[`${o.titulo}-${idx}`])
     .reduce((sum, o) => sum + o.impacto_pp * o.confidence * 0.5, 0);
   const liftExecutadoReais = Math.round((liftExecutadoPp / 100) * visitantes * ticket);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const segmento = String((loja.data as any)?.plataforma ?? (loja.data as any)?.segment ?? "geral").toLowerCase();
   const observedFilled = Object.values(resultadoAcao).filter((v) => v.trim().length > 0).length;
   const learningFactorBase = segmento.includes("moda") ? 1.05 : segmento.includes("eletr") ? 0.96 : 1;

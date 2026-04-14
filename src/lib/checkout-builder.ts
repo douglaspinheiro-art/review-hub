@@ -66,17 +66,19 @@ export function buildMagicLink({
   if (isRebuy)       finalUrl.searchParams.set('checkout_step', 'payment');
 
   switch (platform) {
-    case 'nuvemshop':
+    case 'nuvemshop': {
       if (isRebuy) return finalUrl.toString();
       const nuvemItems = cartItems.map(item => `${item.id}:${item.quantity}`).join(',');
       return `${baseUrl}/cart/add/${nuvemItems}/?${finalUrl.searchParams.toString()}`;
+    }
 
-    case 'shopify':
+    case 'shopify': {
       const shopifyItems = cartItems.map(item => `${item.id}:${item.quantity}`).join(',');
       const shopifyBase = isRebuy ? `${baseUrl}/checkout` : `${baseUrl}/cart/${shopifyItems}`;
       const url = new URL(shopifyBase);
       finalUrl.searchParams.forEach((v, k) => url.searchParams.set(k, v));
       return url.toString();
+    }
 
     case 'woocommerce':
       if (cartItems.length > 0) {

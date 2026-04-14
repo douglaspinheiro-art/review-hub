@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {

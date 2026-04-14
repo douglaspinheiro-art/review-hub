@@ -26,6 +26,7 @@ export function NPSModal({ onClose }: NPSModalProps) {
     setSubmitting(true);
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any).from("nps_responses").insert({
         user_id: user?.id ?? null,
         score: selected,

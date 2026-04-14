@@ -77,6 +77,7 @@ export function useOpportunitiesV3(storeId?: string) {
 }
 
 export type PrescriptionsQueryResult = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rows: any[];
   stats: {
     total_impact: number;

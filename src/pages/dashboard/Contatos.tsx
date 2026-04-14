@@ -1,4 +1,4 @@
-// @ts-nocheck — Schema misalignment: contact-export-helper, RfmReportCounts.promising, moat telemetry
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import {

@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

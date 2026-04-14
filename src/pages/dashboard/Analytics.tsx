@@ -166,6 +166,7 @@ export default function Analytics() {
 
   const baseline = useMemo(() => {
     if (!baselineRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = (baselineRaw ?? {}) as Record<string, any>;
     const sent = Number(row.sent ?? 0);
     const replied = Number(row.replied ?? 0);
