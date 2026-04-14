@@ -6,16 +6,20 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("rotas públicas", () => {
   test("página de login", async ({ page }) => {
-    const response = await page.goto("/login", { waitUntil: "domcontentloaded" });
+    page.on("pageerror", (err) => {
+      console.log("PAGE ERROR:", err);
+    });
+    const response = await page.goto("/login");
     expect(response && response.status() < 400).toBeTruthy();
-    await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator("#root").locator("*").first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Entrar na sua conta" })).toBeVisible({ timeout: 20_000 });
   });
 
   test("página inicial", async ({ page }) => {
-    const response = await page.goto("/", { waitUntil: "domcontentloaded" });
+    page.on("pageerror", (err) => {
+      console.log("PAGE ERROR:", err);
+    });
+    const response = await page.goto("/");
     expect(response && response.status() < 400).toBeTruthy();
-    await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator("#root").locator("*").first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("link", { name: "LTV Boost" }).first()).toBeVisible({ timeout: 20_000 });
   });
 });
