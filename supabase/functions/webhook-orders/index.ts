@@ -376,6 +376,39 @@ function normalizeCustomOrder(p: AnyRecord): NormalizedOrder {
   };
 }
 
+function normalizeShopeeOrder(p: AnyRecord): NormalizedOrder {
+  // Shopee Partner API: order_sn, order_status, buyer_username, item_list, total_amount
+  const buyer = (p.buyer ?? p.customer ?? {}) as AnyRecord;
+  const status = toStr(p.order_status || p.status || "").toLowerCase();
+  const items: AnyRecord[] = (p.item_list || p.items || p.order_items || []) as AnyRecord[];
+  const produtos = items.map((item) => ({
+    sku: toStr(item.item_sku || item.sku || item.item_id),
+    nome: toStr(item.item_name || item.name),
+    qtd: toInt(item.model_quantity_purchased || item.quantity),
+    price: toFloat(item.model_discounted_price || item.item_price || item.price),
+  }));
+
+  const paidStatuses = ["ready_to_ship", "shipped", "completed", "to_confirm_receive"];
+
+  return {
+    external_id: toStr(p.order_sn || p.id),
+    customer_phone: normalizePhone(toStr(buyer.phone || buyer.cellphone || p.recipient_phone || "")),
+    customer_email: toStr(buyer.email) || undefined,
+    customer_name: toStr(buyer.buyer_username || buyer.name || p.buyer_username),
+    valor: toFloat(p.total_amount || p.escrow_amount),
+    valor_desconto: toFloat(p.voucher_absorbed || p.seller_discount || 0),
+    valor_frete: toFloat(p.actual_shipping_fee || p.estimated_shipping_fee || 0),
+    status,
+    financial_status: paidStatuses.includes(status) ? "paid" : "pending",
+    fulfillment_status: status === "completed" ? "fulfilled" : "unfulfilled",
+    payment_method: toStr(p.payment_method) || undefined,
+    produtos_json: produtos,
+    created_at: p.create_time ? new Date(Number(p.create_time) * 1000).toISOString() : undefined,
+    is_paid: paidStatuses.includes(status),
+    is_delivered: status === "completed",
+  };
+}
+
 function normalizeOrder(source: string, p: unknown): NormalizedOrder {
   const payload = (p ?? {}) as AnyRecord;
   switch (source) {
@@ -386,6 +419,7 @@ function normalizeOrder(source: string, p: unknown): NormalizedOrder {
     case "magento":     return normalizeMagento2Order(payload);
     case "tray":        return normalizeTrayOrder(payload);
     case "yampi":       return normalizeYampiOrder(payload);
+    case "shopee":      return normalizeShopeeOrder(payload);
     default:            return normalizeCustomOrder(payload);
   }
 }
@@ -400,6 +434,10 @@ function detectOrderSource(req: Request, payload: unknown): string {
       (p as { orderId?: unknown })?.orderId != null) return "vtex";
   if ((p as { customer_firstname?: unknown })?.customer_firstname != null ||
       (p as { increment_id?: unknown })?.increment_id != null) return "magento";
+  // Shopee: order_sn + shop_id
+  if ((p as { order_sn?: unknown })?.order_sn != null &&
+      (p as { shop_id?: unknown })?.shop_id != null) return "shopee";
+  if (ua.includes("shopee")) return "shopee";
   const qs = new URL(req.url).searchParams.get("platform") ?? "";
   if (qs) return qs.toLowerCase();
   return "custom";
