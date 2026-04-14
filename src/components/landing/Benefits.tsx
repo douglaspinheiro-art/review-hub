@@ -1,5 +1,5 @@
 import { useInView } from "@/hooks/useInView";
-import { Repeat, Heart, Rocket, Eye, ArrowUpRight } from "lucide-react";
+import { Repeat, Heart, Rocket, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const benefits = [

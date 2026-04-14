@@ -365,10 +365,13 @@ export default function AutomacaoModal({ storeId, onClose }: AutomacaoModalProps
                   </div>
 
                   <Textarea
-                    ref={textareaRef}
                     placeholder={`Olá {{name}}, temos uma oferta especial para você! 🎁\n\nAcesse: {{magic_link}}`}
                     rows={6}
                     {...register("message_template")}
+                    ref={(el) => {
+                      register("message_template").ref(el);
+                      (textareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+                    }}
                     className={cn("font-mono text-sm resize-none", errors.message_template && "border-destructive")}
                   />
                   {errors.message_template && (

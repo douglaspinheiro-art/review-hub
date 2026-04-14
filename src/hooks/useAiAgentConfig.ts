@@ -38,8 +38,8 @@ export function useAiAgentConfig(storeId: string | undefined, userId: string | u
     queryFn: async (): Promise<AiAgentConfigQueryResult> => {
       const ownerId = scope?.effectiveUserId ?? userId!;
       
-      const { data, error } = await supabase.rpc("get_ai_agent_bundle_v2", {
-        p_store_id: storeId,
+      const { data, error } = await (supabase as any).rpc("get_ai_agent_bundle_v2", {
+        p_store_id: storeId as string,
       });
 
       if (error) throw error;

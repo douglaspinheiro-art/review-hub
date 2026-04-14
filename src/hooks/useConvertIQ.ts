@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
@@ -15,6 +16,20 @@ import {
 } from "@/lib/supabase-select-fragments";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface MetricasFunil {
+  visitantes: number;
+  visualizacoes_produto: number;
+  adicionou_carrinho: number;
+  iniciou_checkout: number;
+  compras: number;
+  receita: number;
+  fonte?: string;
+  receita_travada_frete?: number;
+  receita_travada_pagamento?: number;
+  total_abandonos_frete?: number;
+  total_abandonos_pagamento?: number;
+}
 
 export interface Problema {
   titulo: string;

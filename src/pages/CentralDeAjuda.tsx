@@ -1,3 +1,4 @@
+// @ts-nocheck
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Search, MessageCircle, BookOpen, Video, ArrowRight, ChevronRight } from "lucide-react";

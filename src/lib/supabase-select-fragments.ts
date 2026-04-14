@@ -4,7 +4,7 @@
  */
 
 export const CAMPAIGN_LIST_SELECT =
-  "id,name,status,channel,message,subject,subject_variant_b,preheader,ab_subject_enabled,blocks,created_at,updated_at,scheduled_at,sent_count,delivered_count,read_count,click_count,reply_count,total_contacts,store_id,user_id,source_prescription_id,attribution_window_days,custo_total_envio,email_recipient_mode,email_recipient_rfm,email_recipient_tag,tags,ab_test_id";
+  "id,name,status,channel,message,subject,subject_variant_b,preheader,ab_subject_enabled,blocks,created_at,updated_at,scheduled_at,sent_count,delivered_count,read_count,click_count,reply_count,total_contacts,store_id,user_id,source_prescription_id,attribution_window_days,custo_total_envio,email_recipient_mode,email_recipient_rfm,email_recipient_tag";
 
 export const CAMPAIGN_MESSAGE_TEMPLATE_SELECT =
   "id,user_id,store_id,name,objective,channel,message,whatsapp_config,created_at,updated_at";

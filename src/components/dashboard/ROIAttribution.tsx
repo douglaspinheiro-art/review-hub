@@ -1,4 +1,4 @@
-import React from "react";
+// React namespace import removed — unused
 import { DollarSign, TrendingUp, Zap, ArrowUpRight, BarChart3, PieChart } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

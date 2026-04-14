@@ -3,7 +3,7 @@ import {
   ArrowRight, PauseCircle, Clock 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+// cn removed — unused
 
 interface CancellationModalProps {
   onClose: () => void;
