@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  TrendingUp, Monitor, Smartphone, AlertTriangle,
+  TrendingUp, Monitor, Smartphone, AlertTriangle, AlertCircle,
   RefreshCw, Calendar, Pencil, Sparkles,
   Loader2, ChevronRight, Package, TrendingDown, BarChart3,
 } from "lucide-react";
@@ -17,16 +17,19 @@ import {
 } from "recharts";
 import {
   useLoja, useConvertIQConfig, useFunilPageMetricas, useLatestDiagnostico,
-  useDiagnosticos, useSaveLoja, useSaveMetricas, useGerarDiagnostico,
-  useMetricasEnriquecidas, useDataHealth,
-  calcFunil, MOCK_METRICAS, EMPTY_FUNIL_METRICAS, MOCK_CONFIG, MetricasFunil,
+  useDiagnosticos, useSaveLoja, useSaveMetricas, useGerarDiagnostico, useClaudeCircuitBreaker,
+  useMetricasEnriquecidas, useDataHealth, useFunilBff,
+  calcFunil, EMPTY_FUNIL_METRICAS, MOCK_CONFIG, MetricasFunil,
   recoveryPctOfRevenue, isFunilGa4SnapshotRecent, funilGa4StaleHint,
 } from "@/hooks/useConvertIQ";
 import { useProductsV3 as useProdutosV3, useMetricsV3 } from "@/hooks/useLTVBoost";
+import { useAuth } from "@/hooks/useAuth";
+import { useQueryClient } from "@tanstack/react-query";
 import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
 import type { Database } from "@/lib/database.types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isDashboardPathBlockedInBetaScope } from "@/lib/beta-scope";
+import { RouteErrorBoundary } from "@/components/ErrorBoundary";
 
 type Periodo = "7d" | "30d" | "90d";
 
@@ -68,10 +71,15 @@ function DiagLoadingOverlayPending() {
   const [step, setStep] = useState(0);
 
   useEffect(() => {
+    // Use a class instead of inline style to avoid conflicts with other scroll-lock consumers
+    document.body.classList.add("overflow-hidden");
     const id = window.setInterval(() => {
       setStep((s) => (s + 1) % DIAG_STEP_LABELS.length);
     }, 2800);
-    return () => window.clearInterval(id);
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+      window.clearInterval(id);
+    };
   }, []);
 
   return (
@@ -307,59 +315,52 @@ function FunilKpiSkeleton() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Funil() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [periodo, setPeriodo] = useState<Periodo>("30d");
   const [showManual, setShowManual] = useState(false);
 
-  // Várias queries em paralelo; em lojas muito grandes considerar lazy-load de secções abaixo da dobra.
-  const loja      = useLoja();
-  const config    = useConvertIQConfig();
-  const funilMetricas = useFunilPageMetricas(loja.data?.id ?? null, periodo);
-  const enriched  = useMetricasEnriquecidas(loja.data?.id ?? null, periodo);
-  const dataHealth = useDataHealth(loja.data?.id ?? null, periodo);
-  const lastDiag  = useLatestDiagnostico(loja.data?.id ?? null);
-  const allDiags  = useDiagnosticos(loja.data?.id ?? null);
-  const produtosQuery = useProdutosV3(loja.data?.id, { pageSize: 400 });
-  const metricsV3 = useMetricsV3(loja.data?.id);
-  const saveMet   = useSaveMetricas();
+  const loja = useLoja();
+  const store = loja.data as StoreRow | null | undefined;
+  const config = useConvertIQConfig();
+  const bff = useFunilBff(loja.data?.id ?? null, periodo);
+  const saveMet = useSaveMetricas();
   const gerarDiag = useGerarDiagnostico();
+  const { user } = useAuth();
+  const claudeCb = useClaudeCircuitBreaker(user?.id);
 
-  const pageM = funilMetricas.data;
+  // Map BFF data to previous variables for minimal code change
+  const pageM = bff.data?.funil_metricas;
+  const enrichedData = bff.data?.enriquecidas;
+  const dataHealthData = bff.data?.data_health;
+  const lastDiagData = bff.data?.ultimo_diagnostico;
+  const allDiagsData = bff.data?.historico_diagnosticos;
+  const produtosQueryData = bff.data?.produtos;
+  const metricsV3Data = bff.data?.metrics_v3;
+
   const isMock = !!loja.data && pageM?.source === "none";
 
+  // Ponto #9: Simplify refetch logic
   const refetchQueries = () => {
-    funilMetricas.refetch();
-    enriched.refetch();
-    dataHealth.refetch();
-    produtosQuery.refetch();
-    metricsV3.refetch();
-    lastDiag.refetch();
-    allDiags.refetch();
+    void queryClient.invalidateQueries({ queryKey: ["funil-bff", loja.data?.id, periodo] });
   };
 
-  const queryErrorParts = [
-    funilMetricas.isError && "funil",
-    enriched.isError && "métricas enriquecidas",
-    dataHealth.isError && "saúde dos dados",
-    produtosQuery.isError && "produtos",
-    metricsV3.isError && "métricas dispositivo",
-    lastDiag.isError && "último diagnóstico",
-    allDiags.isError && "histórico de diagnósticos",
-  ].filter(Boolean) as string[];
+  const hasQueryError = bff.isError;
+  const queryErrorParts = bff.isError ? ["dados do funil"] : [];
 
-  const hasQueryError = queryErrorParts.length > 0;
-
-  // Enriched data handling
-  const recFrete = enriched.data?.receita_travada_frete ?? MOCK_METRICAS.receita_travada_frete ?? 0;
-  const recPag   = enriched.data?.receita_travada_pagamento ?? MOCK_METRICAS.receita_travada_pagamento ?? 0;
-  const totalF   = enriched.data?.total_abandonos_frete ?? MOCK_METRICAS.total_abandonos_frete ?? 0;
-  const totalP   = enriched.data?.total_abandonos_pagamento ?? MOCK_METRICAS.total_abandonos_pagamento ?? 0;
+  // Enriched data handling.
+  // Never fall back to MOCK values for monetary impact — use 0 instead so users
+  // can't mistake fabricated revenue numbers for real data on their store.
+  const recFrete = enrichedData?.receita_travada_frete ?? 0;
+  const recPag   = enrichedData?.receita_travada_pagamento ?? 0;
+  const totalF   = enrichedData?.total_abandonos_frete ?? 0;
+  const totalP   = enrichedData?.total_abandonos_pagamento ?? 0;
 
   const baseMetricas: MetricasFunil =
     loja.data && pageM?.metricas
       ? pageM.metricas
-      : MOCK_METRICAS;
+      : EMPTY_FUNIL_METRICAS;
 
-  const raw: MetricasFunil = {
+  const raw = useMemo((): MetricasFunil => ({
     ...baseMetricas,
     receita_travada_frete: recFrete,
     receita_travada_pagamento: recPag,
@@ -371,20 +372,30 @@ export default function Funil() {
         : pageM?.source === "manual"
           ? "real"
           : (baseMetricas.fonte ?? "mockado"),
-  };
+  }), [baseMetricas, recFrete, recPag, totalF, totalP, pageM?.source]);
 
-  const meta   = Number(config.data?.meta_conversao ?? MOCK_CONFIG.meta_conversao);
-  const store = loja.data as StoreRow | null | undefined;
-  const ticket = Number(
-    (store as StoreRow & { ticket_medio?: number })?.ticket_medio ?? MOCK_CONFIG.ticket_medio,
+  // Use explicit numeric defaults — not MOCK_CONFIG — to avoid confusion with mock values.
+  const meta = Number(config.data?.meta_conversao ?? 2.5);
+  // ticket_medio is not yet stored on the stores row; use the configured default.
+  // Update this when a stores.average_ticket column is added.
+  const ticket = Number(bff.data?.settings?.average_ticket ?? 250);
+  // Ponto #4: Memoize calcFunil and derived metrics
+  const { taxaConversao, perdaMensal, etapas, maiorGargalo } = useMemo(
+    () => calcFunil(raw, meta, ticket),
+    [raw, meta, ticket]
   );
-  const { taxaConversao, perdaMensal, etapas, maiorGargalo } = calcFunil(raw, meta, ticket);
 
-  const maxDropIdx = etapas.reduce((mi, e, i) => i > 0 && e.dropPct > (etapas[mi]?.dropPct ?? 0) ? i : mi, 1);
+  const maxDropIdx = useMemo(
+    () => etapas.reduce((mi, e, i) => i > 0 && e.dropPct > (etapas[mi]?.dropPct ?? 0) ? i : mi, 1),
+    [etapas]
+  );
 
-  const recoveryPct = recoveryPctOfRevenue(recFrete, recPag, raw.receita);
+  const recoveryPct = useMemo(
+    () => recoveryPctOfRevenue(recFrete, recPag, raw.receita),
+    [recFrete, recPag, raw.receita]
+  );
 
-  const diagsForChart = [...(allDiags.data ?? [])].reverse();
+  const diagsForChart = [...(allDiagsData ?? [])].reverse();
   const chartData =
     diagsForChart.length >= 2
       ? diagsForChart.map((d) => ({
@@ -401,25 +412,28 @@ export default function Funil() {
     isFunilGa4SnapshotRecent(pageM.lastIngestedAt ?? null);
 
   const showDeviceBreakdown =
-    !!metricsV3.data &&
-    (metricsV3.data.mobile_visitors > 0 || metricsV3.data.desktop_visitors > 0);
+    !!metricsV3Data &&
+    ((metricsV3Data.mobile_visitors ?? 0) > 0 || (metricsV3Data.desktop_visitors ?? 0) > 0);
 
-  const mobileCvr = metricsV3.data?.mobile_cvr ?? 0;
-  const desktopCvr = metricsV3.data?.desktop_cvr ?? 0;
+  const mobileCvr = metricsV3Data?.mobile_cvr ?? 0;
+  const desktopCvr = metricsV3Data?.desktop_cvr ?? 0;
   const deviceGapPp = showDeviceBreakdown ? mobileCvr - desktopCvr : 0;
   const showMobileGapAlert =
     showDeviceBreakdown && desktopCvr > 0 && mobileCvr > 0 && mobileCvr < desktopCvr / 1.2;
   const mobileRecoveryHint =
     perdaMensal > 0 ? Math.round(perdaMensal * 0.15) : 0;
 
-  // CVR drop alert: compare latest vs previous diagnostic
-  const cvrDrop = (allDiags.data ?? []).length >= 2
-    ? Number(allDiags.data![0].taxa_conversao) - Number(allDiags.data![1].taxa_conversao)
+  // Ponto #7: Fix unsafe non-null assertion
+  const cvrDrop = (allDiagsData ?? []).length >= 2
+    ? Number(allDiagsData?.[0]?.taxa_conversao ?? 0) - Number(allDiagsData?.[1]?.taxa_conversao ?? 0)
     : 0;
-  const showCvrAlert = cvrDrop < 0 && Math.abs(cvrDrop) / Number(allDiags.data![1]?.taxa_conversao ?? 1) > 0.15;
+  const showCvrAlert =
+    cvrDrop < 0 &&
+    !!allDiagsData?.[1]?.taxa_conversao &&
+    Math.abs(cvrDrop) / Number(allDiagsData?.[1]?.taxa_conversao ?? 1) > 0.15;
 
   // Top 5 products with worst conversion and best revenue
-  const produtosList = (produtosQuery.data?.rows ?? []) as Array<{
+  const produtosList = (produtosQueryData ?? []) as Array<{
     id: string; nome: string; sku?: string; preco?: number;
     estoque?: number; taxa_conversao_produto?: number; receita_30d?: number;
   }>;
@@ -440,7 +454,7 @@ export default function Funil() {
     if (!loja.data) return;
     await saveMet.mutateAsync({ lojaId: loja.data.id, metricas: m });
     setShowManual(false);
-    funilMetricas.refetch();
+    void queryClient.invalidateQueries({ queryKey: ["funil-bff", loja.data?.id, periodo] });
   }
 
   const campanhasBlocked = isDashboardPathBlockedInBetaScope("/dashboard/campanhas");
@@ -467,8 +481,44 @@ export default function Funil() {
   }
 
   return (
+    <RouteErrorBoundary routeLabel="Funil">
     <div className="space-y-8 pb-10">
       {gerarDiag.isPending && <DiagLoadingOverlayPending />}
+
+      {/* M10: Circuit breaker banner when Claude API is tripped */}
+      {claudeCb.tripped && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 animate-in fade-in duration-300">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-amber-600 dark:text-amber-400">Diagnóstico IA temporariamente desativado</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              5 falhas consecutivas detectadas. O serviço será reativado em {claudeCb.secondsLeft}s. Verifique a secret <code className="text-[10px] bg-muted px-1 py-0.5 rounded">ANTHROPIC_API_KEY</code> no Supabase.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* C5: error card when diagnosis times out or fails */}
+      {gerarDiag.isError && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl bg-destructive/10 border border-destructive/30 animate-in fade-in duration-300">
+          <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-destructive">Diagnóstico indisponível</p>
+            <p className="text-xs text-muted-foreground mt-0.5 break-words">
+              {(gerarDiag.error as Error)?.message ?? "Ocorreu um erro. Tente novamente."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+            onClick={handleGerar}
+          >
+            Tentar novamente
+          </Button>
+        </div>
+      )}
 
       {showManual && (
         <ManualModal
@@ -517,8 +567,9 @@ export default function Funil() {
               <Pencil className="w-3.5 h-3.5" /> Editar dados
             </Button>
           )}
-          <Button size="sm" className="h-9 font-bold gap-1.5 rounded-xl shadow-lg shadow-primary/20" onClick={handleGerar} disabled={gerarDiag.isPending || !loja.data}>
-            <Sparkles className="w-3.5 h-3.5" /> Diagnóstico IA
+          <Button size="sm" className="h-9 font-bold gap-1.5 rounded-xl shadow-lg shadow-primary/20" onClick={handleGerar} disabled={gerarDiag.isPending || !loja.data || claudeCb.tripped}>
+            <Sparkles className="w-3.5 h-3.5" />
+            {claudeCb.tripped ? `IA indisponível (${claudeCb.secondsLeft}s)` : "Diagnóstico IA"}
           </Button>
         </div>
       </div>
@@ -548,18 +599,18 @@ export default function Funil() {
           <TrendingDown className="w-5 h-5 text-red-500 shrink-0" />
           <div className="flex-1">
             <p className="text-sm font-bold text-red-500">
-              Alerta: sua taxa de conversão caiu {Math.abs(cvrDrop).toFixed(2)}pp ({(Math.abs(cvrDrop) / Number(allDiags.data![1].taxa_conversao) * 100).toFixed(0)}%) em relação ao último diagnóstico
+              Alerta: sua taxa de conversão caiu {Math.abs(cvrDrop).toFixed(2)}pp ({(Math.abs(cvrDrop) / Number(allDiagsData?.[1]?.taxa_conversao ?? 1) * 100).toFixed(0)}%) em relação ao último diagnóstico
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">Gere um novo diagnóstico com IA para identificar a causa</p>
           </div>
-          <Button size="sm" variant="outline" className="shrink-0 font-bold rounded-xl border-red-500/40 text-red-500 hover:bg-red-500/10" onClick={handleGerar} disabled={gerarDiag.isPending}>
+          <Button size="sm" variant="outline" className="shrink-0 font-bold rounded-xl border-red-500/40 text-red-500 hover:bg-red-500/10" onClick={handleGerar} disabled={gerarDiag.isPending || claudeCb.tripped}>
             <Sparkles className="w-3.5 h-3.5 mr-1" /> Diagnosticar
           </Button>
         </div>
       )}
 
       {/* KPI cards */}
-      {loja.data && funilMetricas.isPending && !funilMetricas.data ? (
+      {loja.data && bff.isLoading && !pageM ? (
         <FunilKpiSkeleton />
       ) : (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -615,22 +666,22 @@ export default function Funil() {
             <div className="text-right">
               <p className={cn(
                 "text-3xl font-black font-mono",
-                (dataHealth.data?.score ?? 0) >= 85 ? "text-emerald-500" : (dataHealth.data?.score ?? 0) >= 65 ? "text-amber-500" : "text-red-500"
+                (dataHealthData?.score ?? 0) >= 85 ? "text-emerald-500" : (dataHealthData?.score ?? 0) >= 65 ? "text-amber-500" : "text-red-500"
               )}>
-                {dataHealth.isLoading ? "..." : `${dataHealth.data?.score ?? 0}`}
+                {bff.isLoading ? "..." : `${dataHealthData?.score ?? 0}`}
               </p>
               <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
-                {dataHealth.data?.status === "saudavel" ? "Saudável" : dataHealth.data?.status === "atencao" ? "Atenção" : "Crítico"}
+                {dataHealthData?.status === "saudavel" ? "Saudável" : dataHealthData?.status === "atencao" ? "Atenção" : "Crítico"}
               </p>
             </div>
           </div>
 
           <div className="grid md:grid-cols-4 gap-3 mb-4">
             {[
-              { label: "Cobertura de eventos", value: dataHealth.data?.coberturaEventos ?? 0 },
-              { label: "Estabilidade tracking", value: dataHealth.data?.estabilidadeTracking ?? 0 },
-              { label: "Consistência de fontes", value: dataHealth.data?.consistenciaFontes ?? 0 },
-              { label: "Deduplicação", value: dataHealth.data?.deduplicacao ?? 0 },
+              { label: "Cobertura de eventos", value: dataHealthData?.coberturaEventos ?? 0 },
+              { label: "Estabilidade tracking", value: dataHealthData?.estabilidadeTracking ?? 0 },
+              { label: "Consistência de fontes", value: dataHealthData?.consistenciaFontes ?? 0 },
+              { label: "Deduplicação", value: dataHealthData?.deduplicacao ?? 0 },
             ].map((item) => (
               <div key={item.label} className="rounded-xl border p-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{item.label}</p>
@@ -649,12 +700,12 @@ export default function Funil() {
           </div>
 
           <div className="space-y-2">
-            {(dataHealth.data?.alertas ?? []).length === 0 ? (
+            {(dataHealthData?.alertas ?? []).length === 0 ? (
               <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
                 Sem alertas críticos de dados no período.
               </p>
             ) : (
-              (dataHealth.data?.alertas ?? []).map((a) => (
+              (dataHealthData?.alertas ?? []).map((a) => (
                 <div key={a.id} className={cn(
                   "rounded-xl border px-3 py-2 text-sm",
                   a.severidade === "critico"
@@ -670,11 +721,11 @@ export default function Funil() {
             )}
           </div>
 
-          {(dataHealth.data?.canais?.length ?? 0) > 0 && (
+          {(dataHealthData?.canais?.length ?? 0) > 0 && (
             <div className="mt-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Data Health por canal</p>
               <div className="grid md:grid-cols-3 gap-3">
-                {(dataHealth.data?.canais ?? []).slice(0, 3).map((c) => (
+                {(dataHealthData?.canais ?? []).slice(0, 3).map((c) => (
                   <div key={c.canal} className="rounded-xl border p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold uppercase">{c.canal}</p>
@@ -694,11 +745,11 @@ export default function Funil() {
             </div>
           )}
 
-          {(dataHealth.data?.etapas?.length ?? 0) > 0 && (
+          {(dataHealthData?.etapas?.length ?? 0) > 0 && (
             <div className="mt-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Data Health por etapa</p>
               <div className="grid md:grid-cols-4 gap-3">
-                {(dataHealth.data?.etapas ?? []).map((e) => (
+                {(dataHealthData?.etapas ?? []).map((e) => (
                   <div key={e.etapa} className="rounded-xl border p-3">
                     <p className="text-xs font-bold uppercase">{e.etapa}</p>
                     <p className={cn(
@@ -715,22 +766,22 @@ export default function Funil() {
 
           <div className={cn(
             "mt-4 rounded-xl border p-3 text-xs",
-            dataHealth.data?.recomendacoesConfiaveis ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"
+            dataHealthData?.recomendacoesConfiaveis ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"
           )}>
             <p className="font-bold">
-              {dataHealth.data?.recomendacoesConfiaveis
+              {dataHealthData?.recomendacoesConfiaveis
                 ? "Quality Gate ativo: recomendações críticas liberadas."
-                : `Quality Gate: score abaixo de ${dataHealth.data?.scoreMinimoRecomendacao ?? 70}; recomendações críticas devem ser revisadas manualmente.`}
+                : `Quality Gate: score abaixo de ${dataHealthData?.scoreMinimoRecomendacao ?? 70}; recomendações críticas devem ser revisadas manualmente.`}
             </p>
           </div>
         </div>
       )}
 
-      {loja.data && dataHealth.data?.metricContract && (
+      {loja.data && dataHealthData?.metricContract && (
         <div className="bg-card border rounded-2xl p-6">
           <h3 className="font-black text-base uppercase tracking-tighter mb-4">Contrato canônico de métricas</h3>
           <div className="grid md:grid-cols-3 gap-3">
-            {dataHealth.data.metricContract.map((m) => (
+            {dataHealthData.metricContract.map((m) => (
               <div key={m.metrica} className="rounded-xl border p-3">
                 <p className="text-xs font-bold">{m.metrica}</p>
                 <p className="text-xs text-muted-foreground mt-1">{m.definicao}</p>
@@ -820,8 +871,8 @@ export default function Funil() {
             <h3 className="font-black text-base uppercase tracking-tighter flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-primary" /> Funil Visual
             </h3>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => funilMetricas.refetch()}>
-              <RefreshCw className={cn("w-3.5 h-3.5", funilMetricas.isFetching && "animate-spin")} />
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => refetchQueries()}>
+              <RefreshCw className={cn("w-3.5 h-3.5", bff.isFetching && "animate-spin")} />
               Atualizar
             </Button>
           </div>
@@ -969,7 +1020,7 @@ export default function Funil() {
 
       {/* Último Diagnóstico IA */}
       {loja.data && (
-        lastDiag.data ? (
+        lastDiagData ? (
           <div className="bg-card border rounded-2xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -977,13 +1028,13 @@ export default function Funil() {
                 <h3 className="font-black text-sm uppercase tracking-tighter">Último Diagnóstico IA</h3>
               </div>
               <span className="text-xs text-muted-foreground">
-                {new Date(lastDiag.data.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                {new Date(lastDiagData.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{lastDiag.data.resumo}</p>
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{lastDiagData.resumo}</p>
             <div className="flex items-center gap-3">
               <span className="text-xs font-black px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 uppercase tracking-widest">
-                Score {lastDiag.data.score}/100
+                Score {lastDiagData.score}/100
               </span>
               <Link
                 to="/dashboard/funil/diagnostico"
@@ -1083,5 +1134,6 @@ export default function Funil() {
         As métricas de perda, recuperação e conversão apresentadas são estimativas com base nos dados sincronizados ou inseridos por si; não constituem aconselhamento financeiro nem garantia de resultados.
       </p>
     </div>
+    </RouteErrorBoundary>
   );
 }

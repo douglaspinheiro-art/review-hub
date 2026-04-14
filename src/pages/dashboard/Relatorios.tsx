@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, memo, useEffect, useRef } from "react";
 import {
   BarChart3,
   PieChart,
@@ -36,6 +36,9 @@ import {
   ZAxis,
   Cell,
 } from "recharts";
+
+// M1: Memoized chart wrappers — prevent re-renders on unrelated state changes (period toggle, copy state, etc.)
+const MemoScatterChart = memo(ScatterChart);
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
@@ -104,20 +107,26 @@ function buildShareText(p: SharePayload) {
   );
 }
 
-function publicSiteBase(): string {
+const PUBLIC_SITE_BASE = (() => {
   const env =
     (import.meta.env.VITE_APP_URL as string | undefined) ||
     (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined);
   if (env && /^https?:\/\//i.test(env.trim())) return env.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin;
   return "";
-}
+})();
 
 export default function Relatorios() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    if (copiedLinkTimerRef.current) clearTimeout(copiedLinkTimerRef.current);
+  }, []);
 
   const loja = useLoja();
   const storeId = (loja.data as { id?: string } | null)?.id;
@@ -130,16 +139,23 @@ export default function Relatorios() {
     refetch: refetchSnapshot 
   } = useDashboardSnapshot(period);
 
-  const { data: cohorts = [], isLoading: cohortsLoading, refetch: refetchCohorts } = useCustomerCohorts();
+  const {
+    data: reportsBundle,
+    isLoading: reportsLoading,
+    refetch: refetchReports
+  } = useAdvancedReports(period);
 
-  /** Heatmap já vem agregado no RPC `get_dashboard_snapshot` (sem segunda query de milhares de linhas). */
+  const cohorts = reportsBundle?.cohorts ?? [];
+  const cohortsLoading = reportsLoading;
+
+  /** Heatmap já vem agregado no RPC `get_advanced_reports_bundle_v2` (BFF Consolidation). */
   const heatmap = useMemo(() => {
-    const h = snapshot?.heatmap;
+    const h = reportsBundle?.heatmap;
     if (!h) return null;
     const cells = (h.cells && typeof h.cells === "object" ? h.cells : {}) as Record<string, number>;
-    const max = Number(h.max_val ?? 0);
+    const max = Number(h.max ?? 0);
     return { cells, max };
-  }, [snapshot?.heatmap]);
+  }, [reportsBundle?.heatmap]);
 
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;
@@ -176,7 +192,8 @@ export default function Relatorios() {
   );
 
   const textoWA = useMemo(() => buildShareText(sharePayload), [sharePayload]);
-  const shareableUrl = `${publicSiteBase()}/relatorio-anual?from=dashboard&period=${period}`;
+  // Points to the dashboard itself — the /relatorio-anual public route does not exist yet.
+  const shareableUrl = `${publicSiteBase()}/dashboard/relatorios?period=${period}`;
 
   const retentionNodes = useMemo(
     () =>
@@ -217,13 +234,15 @@ export default function Relatorios() {
   const copyTexto = () => {
     void navigator.clipboard.writeText(textoWA);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const copyLink = () => {
     void navigator.clipboard.writeText(shareableUrl);
     setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+    if (copiedLinkTimerRef.current) clearTimeout(copiedLinkTimerRef.current);
+    copiedLinkTimerRef.current = setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const hasSparseData =
@@ -243,6 +262,19 @@ export default function Relatorios() {
           <p className="text-muted-foreground text-sm mt-1">
             Visão consolidada com dados da sua conta (analytics diários, clientes e envios).
           </p>
+          {/* H5: data freshness timestamp — shows when the snapshot was last computed */}
+          {snapshot?.timestamp && (
+            <p className="text-[11px] text-muted-foreground mt-1 font-mono">
+              Dados calculados às{" "}
+              {new Date(snapshot.timestamp).toLocaleString("pt-BR", {
+                timeZone: "America/Sao_Paulo",
+                hour: "2-digit",
+                minute: "2-digit",
+                day: "2-digit",
+                month: "2-digit",
+              })}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 mr-2">
@@ -264,13 +296,16 @@ export default function Relatorios() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button variant="outline" size="sm" className="h-10 font-bold gap-2 rounded-xl" disabled>
-                    <Download className="w-4 h-4" /> Exportar PDF
-                  </Button>
-                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-10 font-bold gap-2 rounded-xl border-dashed opacity-60"
+                  onClick={() => toast.info("Exportação em PDF", { description: "Estamos finalizando esta função. Você receberá um aviso no e-mail assim que estiver disponível!" })}
+                >
+                  <Download className="w-4 h-4" /> PDF em breve
+                </Button>
               </TooltipTrigger>
-              <TooltipContent>Exportação PDF em breve.</TooltipContent>
+              <TooltipContent>Clique para ser avisado do lançamento.</TooltipContent>
             </Tooltip>
           </TooltipProvider>
           <Button
@@ -351,8 +386,18 @@ export default function Relatorios() {
                 <MetricCard
                   label="Receita influenciada"
                   value={revenueFmt}
-                  trend={snapshot?.prev_revenue ? Math.round(((snapshot.analytics.total_revenue - snapshot.prev_revenue) / Math.max(1, snapshot.prev_revenue)) * 100) : undefined}
-                  trendLabel={snapshot?.prev_revenue ? `vs período anterior (${periodPhrase})` : undefined}
+                  // Only show trend when there is a non-zero prior period — a zero
+                  // baseline would produce +∞% which is misleading for new stores.
+                  trend={
+                    snapshot?.prev_revenue && snapshot.prev_revenue > 0
+                      ? Math.round(((snapshot.analytics.total_revenue - snapshot.prev_revenue) / snapshot.prev_revenue) * 100)
+                      : undefined
+                  }
+                  trendLabel={
+                    snapshot?.prev_revenue && snapshot.prev_revenue > 0
+                      ? `vs período anterior (${periodPhrase})`
+                      : undefined
+                  }
                   icon={TrendingUp}
                   tooltip="Soma de receita influenciada em analytics_daily no período."
                 />
@@ -496,7 +541,7 @@ export default function Relatorios() {
                 <>
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                      <MemoScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
                         <XAxis
                           type="number"
@@ -534,7 +579,7 @@ export default function Relatorios() {
                             <Cell key={entry.key} fill={entry.fill} fillOpacity={0.65} stroke={entry.fill} />
                           ))}
                         </Scatter>
-                      </ScatterChart>
+                      </MemoScatterChart>
                     </ResponsiveContainer>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">

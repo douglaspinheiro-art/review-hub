@@ -11,6 +11,7 @@ import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import AdminStaffRoute from "./components/AdminStaffRoute.tsx";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
 import { useIsAdmin } from "@/hooks/useAdminCheck";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
 import TelaManutencao from "./components/TelaManutencao";
 import { DemoProvider } from "./contexts/DemoContext.tsx";
 import { AuthProvider } from "./contexts/AuthContext.tsx";
@@ -49,6 +50,20 @@ function DashboardRoute({ children, requiredPlan, routeLabel }: { children: Reac
       </DashboardLayout>
     </ProtectedRoute>
   );
+}
+
+/**
+ * Blocks team collaborators (non-owners) from accessing owner-only routes such
+ * as billing and API keys. Sidebar hides these links, but a direct URL would
+ * bypass that. Redirects to /dashboard with a warning toast.
+ */
+function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { data: teamAccess, isLoading } = useTeamAccess();
+  if (isLoading) return null;
+  if (teamAccess?.mode === "collaborator") {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
 }
 
 function DemoBanner() {
@@ -241,8 +256,8 @@ const App = () => (
           <Route path="/dashboard/configuracoes" element={<DashboardRoute routeLabel="Configurações da Conta"><Configuracoes /></DashboardRoute>} />
           <Route path="/dashboard/planos" element={<DashboardRoute routeLabel="Planos e preços"><PlanosPage embedInDashboard /></DashboardRoute>} />
           <Route path="/dashboard/planos/simulador" element={<DashboardRoute routeLabel="Simulador de impacto"><PlanosPage embedInDashboard defaultTab="simulador" /></DashboardRoute>} />
-          <Route path="/dashboard/billing" element={<DashboardRoute routeLabel="Fatura e Assinatura"><Billing /></DashboardRoute>} />
-          <Route path="/dashboard/api-keys" element={<DashboardRoute routeLabel="Chaves de API" requiredPlan="scale"><ApiKeys /></DashboardRoute>} />
+          <Route path="/dashboard/billing" element={<DashboardRoute routeLabel="Fatura e Assinatura"><OwnerOnlyRoute><Billing /></OwnerOnlyRoute></DashboardRoute>} />
+          <Route path="/dashboard/api-keys" element={<DashboardRoute routeLabel="Chaves de API" requiredPlan="scale"><OwnerOnlyRoute><ApiKeys /></OwnerOnlyRoute></DashboardRoute>} />
           <Route path="/dashboard/white-label" element={<DashboardRoute routeLabel="Painel White Label" requiredPlan="scale"><WhiteLabel /></DashboardRoute>} />
           <Route path="/dashboard/integracoes" element={<DashboardRoute routeLabel="Ecossistema de Integrações"><Integracoes /></DashboardRoute>} />
           <Route path="/dashboard/equipe" element={<DashboardRoute routeLabel="Membros da Equipe" requiredPlan="growth"><Equipe /></DashboardRoute>} />

@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { logQueryTiming } from "@/lib/query-page-telemetry";
 import {
   CHANNELS_LIST_SELECT,
@@ -69,7 +69,8 @@ export function useOpportunitiesV3(storeId?: string) {
         .from("opportunities")
         .select(OPPORTUNITIES_LIST_SELECT)
         .eq("store_id", storeId)
-        .order("detected_at", { ascending: false });
+        .order("detected_at", { ascending: false })
+        .limit(500);
       if (error) throw error;
       return data;
     },
@@ -77,22 +78,29 @@ export function useOpportunitiesV3(storeId?: string) {
   });
 }
 
-const PRESCRIPTIONS_PAGE_SIZE = 50;
+export type PrescriptionsQueryResult = {
+  rows: any[];
+  stats: {
+    total_impact: number;
+    pending_count: number;
+    pending_value: number;
+  };
+};
+
+import { invokeCachedRpc } from "@/lib/cached-rpc";
 
 export function usePrescriptionsV3(storeId?: string) {
   return useQuery({
     queryKey: ["prescriptions_v3", storeId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("prescriptions")
-        .select(PRESCRIPTIONS_WITH_OPPORTUNITY_SELECT)
-        .eq("store_id", storeId)
-        .order("created_at", { ascending: false })
-        .limit(PRESCRIPTIONS_PAGE_SIZE);
-      if (error) throw error;
-      return data;
+    queryFn: async (): Promise<PrescriptionsQueryResult> => {
+      if (!storeId) return { rows: [], stats: { total_impact: 0, pending_count: 0, pending_value: 0 } };
+      
+      return invokeCachedRpc<PrescriptionsQueryResult>("get_prescriptions_bundle_v2", {
+        p_store_id: storeId,
+      });
     },
     enabled: !!storeId,
+    refetchInterval: 60_000,
   });
 }
 
@@ -127,7 +135,7 @@ export function useUpdatePrescriptionStatus(storeId?: string) {
       const prev = queryClient.getQueryData(["prescriptions_v3", storeId]);
       queryClient.setQueryData<Array<{ id: string; status?: string | null }>>(
         ["prescriptions_v3", storeId],
-        (old = []) => old.map(r => r.id === id ? { ...r, status } : r),
+        (old) => Array.isArray(old) ? old.map(r => r.id === id ? { ...r, status } : r) : old,
       );
       return { prev };
     },
@@ -172,14 +180,14 @@ function normalizeProductsV3Options(optionsOrFilter?: string | UseProductsV3Opti
     return {
       filter: typeof optionsOrFilter === "string" ? optionsOrFilter : "todos",
       page: 0,
-      pageSize: 60,
+      pageSize: 10, // Ponto #3: Reduzido de 60 para 10
       search: "",
     };
   }
   return {
     filter: optionsOrFilter.filter ?? "todos",
     page: optionsOrFilter.page ?? 0,
-    pageSize: Math.min(200, Math.max(12, optionsOrFilter.pageSize ?? 48)),
+    pageSize: Math.min(100, Math.max(4, optionsOrFilter.pageSize ?? 10)), // Ponto #3: Máximo reduzido para 100 e default para 10
     search: (optionsOrFilter.search ?? "").trim(),
   };
 }
@@ -232,12 +240,13 @@ export type CanaisPageData = {
 /** Canais da loja atual + agregação de pedidos (`orders_v3`) por `canal_id` nos últimos 90 dias. */
 export function useCanaisPageData(fetchEnabled: boolean) {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
   return useQuery({
-    queryKey: ["canais-page-data", user?.id],
-    enabled: fetchEnabled && !!user?.id,
+    queryKey: ["canais-page-data", user?.id, scope?.activeStoreId ?? null],
+    enabled: fetchEnabled && !!user?.id && scope?.ready === true,
     queryFn: async (): Promise<CanaisPageData> => {
       const t0 = performance.now();
-      const { storeId } = await getCurrentUserAndStore();
+      const storeId = scope?.activeStoreId ?? null;
       if (!storeId) {
         return { storeId: null, channels: [], statsByChannelId: {} };
       }
@@ -246,7 +255,8 @@ export function useCanaisPageData(fetchEnabled: boolean) {
         .from("channels")
         .select(CHANNELS_LIST_SELECT)
         .eq("store_id", storeId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(100);
       if (chRes.error) throw chRes.error;
 
       const statsByChannelId: Record<string, { pedidos: number; receita: number }> = {};
@@ -267,7 +277,8 @@ export function useCanaisPageData(fetchEnabled: boolean) {
           .from("orders_v3")
           .select("canal_id, valor")
           .eq("store_id", storeId)
-          .gte("created_at", since);
+          .gte("created_at", since)
+          .limit(5000);
         if (ordRes.error) throw ordRes.error;
         for (const row of ordRes.data ?? []) {
           const cid = row.canal_id;

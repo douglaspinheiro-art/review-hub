@@ -46,10 +46,20 @@ Deno.serve(async (req) => {
     return new Response("Method Not Allowed", { status: 405, headers: cors });
   }
 
+  // Fail-closed: if META_APP_SECRET is not configured, return 503 so monitoring
+  // alerts on misconfiguration rather than silently accepting unsigned payloads.
+  if (!appSecret) {
+    console.error("[meta-whatsapp-webhook] META_APP_SECRET is not configured — rejecting request");
+    return new Response(JSON.stringify({ error: "Service misconfigured" }), {
+      status: 503,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+
   const rawBody = await req.text();
   const sig = req.headers.get("x-hub-signature-256") ?? "";
 
-  if (!appSecret || !(await verifyMetaSignature(rawBody, sig, appSecret))) {
+  if (!(await verifyMetaSignature(rawBody, sig, appSecret))) {
     return new Response(JSON.stringify({ error: "Invalid signature" }), {
       status: 401,
       headers: { ...cors, "Content-Type": "application/json" },
@@ -122,15 +132,33 @@ Deno.serve(async (req) => {
             messageContent = `[${msgType}]`;
           }
 
-          await persistInboundWhatsAppMessage(supabase, {
-            user_id: connection.user_id as string,
-            store_id: connection.store_id as string,
-            phone: from.replace(/\D/g, ""),
-            messageContent,
-            messageType: msgType === "text" ? "text" : msgType,
-            external_id: msgId,
-            pushName: contactName,
-          });
+          try {
+            await persistInboundWhatsAppMessage(supabase, {
+              user_id: connection.user_id as string,
+              store_id: connection.store_id as string,
+              phone: from.replace(/\D/g, ""),
+              messageContent,
+              messageType: msgType === "text" ? "text" : msgType,
+              external_id: msgId,
+              pushName: contactName,
+            });
+          } catch (persistErr) {
+            // Log but don't rethrow — return 200 to Meta to acknowledge receipt.
+            // Failed messages are logged for manual retry via webhook_logs.
+            console.error("[CRON_ALERT][meta-whatsapp-webhook] persistInboundWhatsAppMessage failed", {
+              msgId,
+              store_id: connection.store_id,
+              error: String(persistErr),
+            });
+            await supabase.from("webhook_logs").insert({
+              store_id: connection.store_id as string,
+              user_id: connection.user_id as string,
+              type: "meta_cloud_inbound",
+              payload: { msgId, from, msgType },
+              status: "failed",
+              error_message: String(persistErr),
+            }).then(() => {/* fire-and-forget logging — ignore secondary errors */});
+          }
         }
       }
     }

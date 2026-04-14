@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-import { corsHeaders, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import { corsHeaders, checkRateLimit, rateLimitedResponse, anthropicFetch } from "../_shared/edge-utils.ts";
 import { ANALYTICS_DAILY_WEEK_SELECT } from "../_shared/db-select-fragments.ts";
 
 const BodySchema = z.object({ store_id: z.string().uuid() });
@@ -45,10 +45,11 @@ serve(async (req) => {
     const system = `Você é um consultor de e-commerce sênior. Resuma o desempenho semanal em 3-4 frases impactantes. Destaque o faturamento influenciado e o engajamento com os contatos. Seja encorajador e profissional.`;
     const user = `Dados da semana:\n- Mensagens enviadas: ${totals.sent}\n- Receita influenciada: R$ ${totals.revenue.toFixed(2)}\n- Novos contatos: ${totals.new_contacts}\n\nEscreva o resumo semanal para o lojista:`;
 
-    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 500, system, messages: [{ role: "user", content: user }] }),
+    const aiResponse = await anthropicFetch(ANTHROPIC_API_KEY, {
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 500,
+      system,
+      messages: [{ role: "user", content: user }],
     });
 
     const aiData = await aiResponse.json();

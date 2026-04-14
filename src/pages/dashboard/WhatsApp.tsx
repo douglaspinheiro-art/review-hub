@@ -152,26 +152,35 @@ export default function WhatsApp() {
   const connectionsEnabled = !!user && !storeListLoading && (lojas.length === 0 || !!selectedStoreId);
 
   const {
-    data: connections = [],
+    data: bundle = { connections: [], health: { recent_errors: [], total_connected: 0 } },
     isLoading,
     isError,
     error: connectionsError,
     refetch: refetchConnections,
   } = useQuery({
-    queryKey: ["whatsapp_connections", user?.id ?? "", selectedStoreId],
+    queryKey: ["whatsapp_bundle_v2", user?.id ?? "", selectedStoreId],
     queryFn: async () => {
-      let query = supabase
-        .from("whatsapp_connections")
-        .select(connectionSelect)
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false });
-      query = selectedStoreId ? query.eq("store_id", selectedStoreId) : query.is("store_id", null);
-      const { data, error } = await query;
+      if (!selectedStoreId) return { connections: [], health: { recent_errors: [], total_connected: 0 } };
+      
+      const { data, error } = await supabase.rpc("get_whatsapp_bundle_v2", {
+        p_store_id: selectedStoreId,
+      });
+
       if (error) throw error;
-      return data as unknown as Connection[];
+      const res = data as {
+        connections?: Connection[];
+        health?: { recent_errors: unknown[]; total_connected: number };
+      };
+      return {
+        connections: (res.connections || []) as Connection[],
+        health: res.health || { recent_errors: [], total_connected: 0 },
+      };
     },
     enabled: connectionsEnabled,
   });
+
+  const connections = bundle.connections;
+  const healthSummary = bundle.health;
 
   const apiFormHydrateKey = useMemo(() => {
     const c = connections.find((x) => x.id === selectedApiConnectionId);
@@ -209,6 +218,22 @@ export default function WhatsApp() {
       openApiConfig();
     }
   }, [showApiConfig, openApiConfig]);
+
+  /** Validate WhatsApp connection fields before sending to the database. */
+  const validateConnectionForm = (): string | null => {
+    const name = instanceName.trim();
+    if (!name) return "O nome da instância é obrigatório.";
+    if (name.length < 2) return "O nome da instância deve ter ao menos 2 caracteres.";
+    const phoneId = metaPhoneNumberId.trim();
+    if (phoneId && !/^\d{10,}$/.test(phoneId)) {
+      return "O Phone Number ID deve conter apenas dígitos (ex: 123456789012345).";
+    }
+    const token = metaAccessToken.trim();
+    if (token && token.length < 20) {
+      return "O Access Token parece inválido — tokens Meta geralmente começam com 'EAA' e têm 100+ caracteres.";
+    }
+    return null;
+  };
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
@@ -523,6 +548,11 @@ export default function WhatsApp() {
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter" && instanceName.trim() && !createMutation.isPending) {
+                  const validationError = validateConnectionForm();
+                  if (validationError) {
+                    toast({ title: "Dados inválidos", description: validationError, variant: "destructive" });
+                    return;
+                  }
                   createMutation.mutate(instanceName);
                 }
               }}
@@ -561,7 +591,14 @@ export default function WhatsApp() {
             </div>
           <div className="flex gap-2">
             <Button
-              onClick={() => createMutation.mutate(instanceName)}
+              onClick={() => {
+                const validationError = validateConnectionForm();
+                if (validationError) {
+                  toast({ title: "Dados inválidos", description: validationError, variant: "destructive" });
+                  return;
+                }
+                createMutation.mutate(instanceName);
+              }}
               disabled={
                 !instanceName.trim() ||
                 createMutation.isPending ||
@@ -608,7 +645,33 @@ export default function WhatsApp() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
+          {healthSummary.recent_errors.length > 0 && (
+            <Card className="p-4 bg-muted/30 border border-border/50 rounded-xl">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
+                <AlertTriangle className="w-3 h-3 text-red-500" /> Logs de erro recentes
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {healthSummary.recent_errors.map((err: any) => (
+                  <div key={err.id} className="p-2.5 bg-card border rounded-lg space-y-1">
+                    <div className="flex justify-between items-center gap-2">
+                      <Badge variant="outline" className="text-[8px] h-3.5 px-1 uppercase font-bold border-red-500/20 text-red-600 bg-red-500/5">
+                        {err.event_type.replace('whatsapp.', '')}
+                      </Badge>
+                      <span className="text-[8px] text-muted-foreground">
+                        {new Date(err.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-medium leading-tight text-foreground truncate">
+                      {err.error_message || "Erro no processamento"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <div className="space-y-3">
           {connections.map((conn) => {
             const cfg = STATUS_CONFIG[conn.status] ?? STATUS_CONFIG.disconnected;
             const showMetaWebhook = metaShowsWebhookHelp(conn);
@@ -724,6 +787,7 @@ export default function WhatsApp() {
               </div>
             );
           })}
+        </div>
         </div>
       )}
 

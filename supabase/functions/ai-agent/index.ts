@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { verifyJwt, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import { verifyJwt, checkDistributedRateLimit, rateLimitedResponse, anthropicFetch } from "../_shared/edge-utils.ts";
 import { AI_AGENT_CONFIG_SELECT } from "../_shared/db-select-fragments.ts";
 
 const corsHeaders = {
@@ -29,11 +29,11 @@ serve(async (req) => {
     }
     const { conversation_id, message_content, store_id } = parsed.data;
 
-    if (!checkRateLimit(`ai-agent:${auth.userId}:${store_id}`, 20, 60_000)) {
-      return rateLimitedResponse();
-    }
-
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+
+    // Distributed rate limit — enforced across all instances, not per-instance.
+    const { allowed } = await checkDistributedRateLimit(supabase, `ai-agent:${auth.userId}:${store_id}`, 20, 60_000);
+    if (!allowed) return rateLimitedResponse();
 
     const { data: store } = await supabase.from("stores").select("name, segment, user_id").eq("id", store_id).single();
 
@@ -60,10 +60,11 @@ Personalidade da marca: ${personality}.
 Contexto do segmento: ${store?.segment}.
 Instruções: Nunca invente informações. Se não souber algo, direcione para um humano.`;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 1000, system, messages: [{ role: "user", content: message_content }] }),
+    const response = await anthropicFetch(ANTHROPIC_API_KEY, {
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 1000,
+      system,
+      messages: [{ role: "user", content: message_content }],
     });
 
     const data = await response.json();
@@ -71,7 +72,7 @@ Instruções: Nunca invente informações. Se não souber algo, direcione para u
     const replyText = data.content[0].text as string;
 
     await supabase.from("messages").insert({
-      conversation_id, content: replyText, direction: "outbound", status: "pending", type: "text", user_id: store.user_id
+      conversation_id, content: replyText, direction: "outbound", status: "pending", type: "text", user_id: auth.userId
     });
 
     return new Response(JSON.stringify({ reply: replyText }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

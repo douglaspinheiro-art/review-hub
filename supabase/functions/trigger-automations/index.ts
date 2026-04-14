@@ -6,9 +6,27 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders } from "../_shared/edge-utils.ts";
+import { corsHeaders, timingSafeEqual } from "../_shared/edge-utils.ts";
 import { ABANDONED_CARTS_TRIGGER_SELECT } from "../_shared/db-select-fragments.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
+
+/**
+ * Validates a recovery URL before embedding it in customer-facing messages.
+ * Prevents phishing: a malformed or attacker-controlled URL in the cart record
+ * (e.g. injected via a spoofed webhook) could embed phishing links in WhatsApp messages.
+ * Returns the URL string if valid, or empty string to silently suppress it.
+ */
+function safeRecoveryUrl(raw: string | null | undefined): string {
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    // Only allow https:// URLs to prevent javascript:/data:/http:// phishing vectors.
+    if (url.protocol !== "https:") return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
 
 function isAuthorized(req: Request): boolean {
   // Only the dedicated TRIGGER_AUTOMATIONS_SECRET is accepted.
@@ -21,7 +39,7 @@ function isAuthorized(req: Request): boolean {
   }
   const authHeader = req.headers.get("authorization") ?? "";
   const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  return bearer === cronSecret;
+  return timingSafeEqual(bearer, cronSecret);
 }
 
 serve(async (req) => {
@@ -79,7 +97,7 @@ serve(async (req) => {
         store_id: cart.store_id,
         customer_id: cart.customer_id,
         payload: {
-          recovery_url: cart.recovery_url ?? "",
+          recovery_url: safeRecoveryUrl(cart.recovery_url),
           cart_value: cart.cart_value,
           shipping_value: (cart as { shipping_value?: number | null }).shipping_value ?? 0,
         },
@@ -110,17 +128,17 @@ serve(async (req) => {
           journey_id: cart.automation_id,
           message_content:
             idx === 0
-              ? `Oi! Seu carrinho ainda está te esperando. Finalize aqui: ${cart.recovery_url ?? ""}`
+              ? `Oi! Seu carrinho ainda está te esperando. Finalize aqui: ${safeRecoveryUrl(cart.recovery_url)}`
               : idx === 1
-                ? `Ainda quer seus itens? Posso te ajudar com frete, tamanho ou pagamento. ${cart.recovery_url ?? ""}`
-                : `Último lembrete: reservamos seu carrinho por pouco tempo. ${cart.recovery_url ?? ""}`,
+                ? `Ainda quer seus itens? Posso te ajudar com frete, tamanho ou pagamento. ${safeRecoveryUrl(cart.recovery_url)}`
+                : `Último lembrete: reservamos seu carrinho por pouco tempo. ${safeRecoveryUrl(cart.recovery_url)}`,
           scheduled_for: new Date(Date.now() + minutes * 60 * 1000).toISOString(),
           status: "pending",
           metadata: {
             cadence_step: idx + 1,
             cadence_total: cadenceMinutes.length,
             cart_id: cart.id,
-            recovery_url: cart.recovery_url,
+            recovery_url: safeRecoveryUrl(cart.recovery_url),
             cart_value: cart.cart_value,
             escalation_recommended: Number(cart.cart_value ?? 0) >= highTicketThreshold,
           },

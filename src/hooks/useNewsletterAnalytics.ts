@@ -9,18 +9,22 @@ export type NewsletterCampaignStats = {
   topLinks: { url: string; count: number }[];
 };
 
-export function useNewsletterCampaignStats(campaignId: string | undefined, channel?: string | null) {
+export function useNewsletterCampaignStats(campaignId: string | undefined, channel?: string | null, userId?: string | null, storeId?: string | null) {
   return useQuery({
-    queryKey: ["newsletter-campaign-stats", campaignId],
+    queryKey: ["newsletter-campaign-stats", campaignId, userId ?? null, storeId ?? null],
     queryFn: async (): Promise<NewsletterCampaignStats> => {
       if (!campaignId) {
         return { totalOpens: 0, uniqueOpeners: 0, totalClicks: 0, uniqueClickers: 0, topLinks: [] };
       }
 
+      // Limit to 10k rows to prevent memory exhaustion on large campaigns.
+      // Aggregation at this scale is good enough for UI display; exact counts
+      // should come from a server-side RPC if precision is needed.
       const { data: events, error } = await supabase
         .from("email_engagement_events")
         .select("event_type,customer_id,link_url")
-        .eq("campaign_id", campaignId);
+        .eq("campaign_id", campaignId)
+        .limit(10_000);
 
       if (error) throw error;
 

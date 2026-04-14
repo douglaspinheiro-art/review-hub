@@ -28,6 +28,7 @@ import { ProblemCard, type ProblemProps } from "@/components/dashboard/ProblemCa
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { ROIAttribution } from "@/components/dashboard/ROIAttribution";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,13 +36,13 @@ import { useProblems, useDashboardHomeStats, useConversionBaseline, type Opportu
 import { useEngagementTracking } from "@/hooks/useEngagementTracking";
 import { useLoja } from "@/hooks/useConvertIQ";
 import { usePrescriptionsPendingStats } from "@/hooks/useLTVBoost";
-import { predictNextOrder } from "@/lib/ltv-predictor";
 import { buildChurnRiskSnapshot, buildRevenueActions, summarizeBenchmark } from "@/lib/revenue-orchestrator";
 import { getMoatSignals, trackMoatEvent } from "@/lib/moat-telemetry";
 import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
 import { ECOMMERCE_PLATFORM_CHIPS } from "@/lib/ecommerce-platforms";
 import { PLANS } from "@/lib/pricing-constants";
+import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import type { Json } from "@/integrations/supabase/types";
 
 function dadosJsonObject(dados: Json | null | undefined): Record<string, unknown> {
@@ -83,7 +84,6 @@ function asProblemStatus(raw: string | null | undefined): ProblemProps["status"]
   return "novo";
 }
 
-/** Mapeia linha `opportunities` (+ campos opcionais em `dados_json`) para props do cartão. */
 function opportunityRowToProblemProps(row: OpportunityRow): ProblemProps {
   const j = dadosJsonObject(row.dados_json);
   return {
@@ -132,10 +132,8 @@ export default function Dashboard() {
   } = useDashboardHomeStats(period);
   const { data: baseline } = useConversionBaseline(period);
 
-  // Use real data only — no mock fallbacks
   const revenueRecovered = statsData?.revenueLast30 ?? 0;
   const revenueGrowth = statsData?.revGrowth ?? 0;
-  const hasData = revenueRecovered > 0 || openOpportunitiesCount > 0 || pendingRxCount > 0;
 
   const { data: whatsappConnections = [] } = useQuery({
     queryKey: ["whatsapp_connections_status", user?.id ?? null],
@@ -180,7 +178,7 @@ export default function Dashboard() {
       await queryClient.invalidateQueries({ queryKey: ["whatsapp_connections_status"] });
       toast.success("Canais sincronizados.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível sincronizar. Verifique a edge `sincronizar-canal`.");
+      toast.error(e instanceof Error ? e.message : "Não foi possível sincronizar.");
     } finally {
       setIsSyncing(false);
     }
@@ -189,7 +187,6 @@ export default function Dashboard() {
   const [funnelSectionOpen, setFunnelSectionOpen] = useState(true);
   const [activitySectionOpen, setActivitySectionOpen] = useState(false);
 
-  // Server-side engagement tracking (streak, NPS, milestone) — cross-device
   const {
     streak,
     streakMilestone,
@@ -200,18 +197,32 @@ export default function Dashboard() {
     dismissStreakMilestone,
   } = useEngagementTracking(user?.id ?? null);
 
-  /** ROI vs custo fixo estimado do plano (COGS interno — ver `pricing-constants`). */
-  const roi = revenueRecovered > 0 ? (revenueRecovered / Math.max(monthlyToolEstimate, 1)).toFixed(1) : "0";
+  const roi = useMemo(() => 
+    revenueRecovered > 0 ? (revenueRecovered / Math.max(monthlyToolEstimate, 1)).toFixed(1) : "0"
+  , [revenueRecovered, monthlyToolEstimate]);
   
-  const stats = [
-    { label: "LTV Boost ROI",  value: `${roi}x`,  trend: revenueGrowth, icon: Zap, color: "text-emerald-500" },
-    { label: "Recuperado",     value: `R$ ${revenueRecovered.toLocaleString("pt-BR")}`, trend: revenueGrowth, icon: DollarSign, color: "text-primary" },
+  const stats = useMemo(() => [
+    { 
+      label: "LTV Boost ROI",  
+      value: `${roi}x`,  
+      trend: revenueGrowth, 
+      icon: Zap, 
+      color: "text-emerald-500",
+      tooltip: "Retorno sobre o investimento do plano mensal (Recuperado / Custo do Plano)."
+    },
+    { 
+      label: "Recuperado",     
+      value: `R$ ${revenueRecovered.toLocaleString("pt-BR")}`, 
+      trend: revenueGrowth, 
+      icon: DollarSign, 
+      color: "text-primary",
+      tooltip: "Receita Influenciada: Vendas atribuídas a contatos que interagiram com suas campanhas ou automações."
+    },
     { label: "Conversão",      value: `${(statsData?.conversionRate ?? 0).toFixed(2)}%`, trend: 0, icon: TrendingUp },
     { label: "Novos Clientes", value: (statsData?.newContactsLast30 ?? 0).toLocaleString("pt-BR"), trend: 0, icon: Users },
-  ];
+  ], [roi, revenueGrowth, revenueRecovered, statsData]);
 
   const conversionRate = Number(statsData?.conversionRate ?? 0);
-  // Use store's configured target; fall back to sector default of 2.5
   const conversionTarget = Number((lojaDash.data as { meta_conversao?: number } | null)?.meta_conversao ?? 2.5);
   const conversionGap = Math.max(0, conversionTarget - conversionRate);
   const conversionProgress = Math.min(100, Math.round((conversionRate / conversionTarget) * 100));
@@ -219,7 +230,8 @@ export default function Dashboard() {
   const projectedBaseRevenue = Number(statsData?.revenueLast30 ?? 0);
   const projectedWithBoostRevenue = projectedBaseRevenue + estimatedIncrementalRevenue;
   const dormantCustomers = Number(statsData?.atRiskCount ?? 0);
-  const orchestratorContext = {
+
+  const orchestratorContext = useMemo(() => ({
     pendingCount,
     pendingValue,
     openConversations: statsData?.openConversations ?? 0,
@@ -228,21 +240,24 @@ export default function Dashboard() {
     revenueLast30: statsData?.revenueLast30 ?? 0,
     revGrowth: statsData?.revGrowth ?? 0,
     avgReadRate: statsData?.avgReadRate ?? 0,
-  };
-  const dailyActions = buildRevenueActions(orchestratorContext);
-  const benchmark = summarizeBenchmark(orchestratorContext);
-  const churnRisk = buildChurnRiskSnapshot(orchestratorContext);
-  const moatSignals = getMoatSignals();
-  const retentionGraph = buildRetentionGraph({
+    chs: statsData?.chs ?? 0,
+  }), [pendingCount, pendingValue, statsData]);
+
+  const dailyActions = useMemo(() => buildRevenueActions(orchestratorContext), [orchestratorContext]);
+  const benchmark = useMemo(() => summarizeBenchmark(orchestratorContext), [orchestratorContext]);
+  const churnRisk = useMemo(() => buildChurnRiskSnapshot(orchestratorContext), [orchestratorContext]);
+  const moatSignals = useMemo(() => getMoatSignals(), []);
+  const retentionGraph = useMemo(() => buildRetentionGraph({
     recoveredRevenue: orchestratorContext.revenueLast30,
     activeOpportunities: orchestratorContext.activeOpportunities,
     unreadConversations: orchestratorContext.totalUnread,
-    chs: statsData?.chs ?? 0,
-  });
-  const propensity = getPropensityOutput(retentionGraph);
+    chs: orchestratorContext.chs,
+  }), [orchestratorContext]);
+  const propensity = useMemo(() => getPropensityOutput(retentionGraph), [retentionGraph]);
 
-  const periodPhrase =
-    period === 7 ? "últimos 7 dias" : period === 30 ? "últimos 30 dias" : "últimos 90 dias";
+  const periodPhrase = useMemo(() => 
+    period === 7 ? "últimos 7 dias" : period === 30 ? "últimos 30 dias" : "últimos 90 dias"
+  , [period]);
 
   const dashboardStory = useMemo(() => {
     if (!isWhatsAppConnected) {
@@ -259,7 +274,7 @@ export default function Dashboard() {
         : `${pendingCount} ${pendingCount === 1 ? "recomendação aguardando você" : "recomendações aguardando você"}`;
       return {
         title,
-        body: `Estimamos cerca de R$ ${pendingValue.toLocaleString("pt-BR")} em impacto ainda não capturado. Nos ${periodPhrase}, você já registrou R$ ${revenueRecovered.toLocaleString("pt-BR")} em receita influenciada — a próxima aprovação pode aumentar esse número.`,
+        body: `Estimamos cerca de R$ ${pendingValue.toLocaleString("pt-BR")} em impacto ainda não capturado. Nos ${periodPhrase}, você já registrou R$ ${revenueRecovered.toLocaleString("pt-BR")} em receita influenciada.`,
         ctaLabel: "Revisar prescrições",
         ctaPath: "/dashboard/prescricoes" as const,
       };
@@ -267,23 +282,26 @@ export default function Dashboard() {
     if (revenueRecovered > 0) {
       return {
         title: "Sua operação está gerando resultado",
-        body: `Nos ${periodPhrase}, a receita influenciada soma R$ ${revenueRecovered.toLocaleString("pt-BR")}. As seções abaixo mostram onde apertar o funil e qual ação priorizar hoje.`,
+        body: `Nos ${periodPhrase}, a receita influenciada soma R$ ${revenueRecovered.toLocaleString("pt-BR")}.`,
         ctaLabel: "Ver prescrições",
         ctaPath: "/dashboard/prescricoes" as const,
       };
     }
     return {
       title: "Comece a encher este painel com ação",
-      body: `Todos os números desta página usam os ${periodPhrase}. Integre a loja, conecte o WhatsApp e aprove as primeiras prescrições para ver receita e oportunidades aqui.`,
+      body: `Todos os números desta página usam os ${periodPhrase}. Integre a loja e conecte o WhatsApp para começar.`,
       ctaLabel: "Abrir prescrições",
       ctaPath: "/dashboard/prescricoes" as const,
     };
   }, [isWhatsAppConnected, pendingCount, pendingValue, revenueRecovered, periodPhrase, queueIsPrescriptions]);
 
+  if (statsLoading && !statsData) {
+    return <DashboardSkeleton />;
+  }
+
   return (
     <>
       <div className="space-y-10 pb-28 md:pb-20">
-        {/* NPS Modal */}
         {showNPS && <NPSModal onClose={dismissNPS} />}
 
         {streakMilestone && (
@@ -305,21 +323,13 @@ export default function Dashboard() {
           </div>
         )}
 
-        {statsLoading && !statsData && (
-          <div className="text-sm text-muted-foreground flex items-center gap-2" role="status" aria-live="polite">
-            <RefreshCw className="w-4 h-4 animate-spin shrink-0" aria-hidden />
-            Carregando indicadores da operação…
-          </div>
-        )}
-
-        {/* Título + período (toda a página respeita este intervalo) */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-border/10 pb-6">
           <div className="space-y-1">
             <h1 className="text-3xl md:text-4xl font-black font-syne tracking-tighter uppercase italic">
               Radar de <span className="text-primary">Lucro</span>
             </h1>
             <p className="text-sm text-muted-foreground max-w-xl">
-              Resumo da sua operação de e-commerce. Os blocos abaixo usam sempre os <span className="font-semibold text-foreground">{periodPhrase}</span>.
+              Resumo da sua operação de e-commerce nos <span className="font-semibold text-foreground">{periodPhrase}</span>.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -351,7 +361,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Narrativa: situação → próximo passo */}
         <Card className="p-6 md:p-8 rounded-2xl border-primary/20 bg-gradient-to-br from-primary/[0.06] via-card to-card shadow-sm">
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <div className={cn(
@@ -398,7 +407,6 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* Alertas contextuais (urgência antes do onboarding genérico) */}
         {isNewSetup && !isFirstWeek && (
           <NewSetupBanner
             isWhatsAppConnected={isWhatsAppConnected}
@@ -427,7 +435,6 @@ export default function Dashboard() {
           />
         )}
 
-        {/* Checklist de ativação — só aparece para usuários não-ativados */}
         <ActivationChecklist />
         <QuickStartPlaybooks />
 
@@ -496,7 +503,6 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {/* Revenue OS diário */}
         <Card className="p-6 rounded-3xl border-primary/20 bg-card/60">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
             <div>
@@ -631,13 +637,13 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* Seção principal: CHS + Métricas */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 space-y-6">
             <div>
               <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50 mb-2">Saúde da sua base de clientes</p>
             </div>
             <div onClick={() => navigate("/dashboard/funil")} className="cursor-pointer group">
+              <ErrorBoundary>
               <CHSGauge
                 score={statsData?.chs ?? 0}
                 label={statsData?.chsLabel ?? "Sem dados"}
@@ -645,6 +651,7 @@ export default function Dashboard() {
                 historico={statsData?.chsHistory}
                 className="h-full border-none shadow-2xl shadow-primary/5 bg-card/50 backdrop-blur-xl group-hover:scale-[1.02] transition-transform duration-500"
               />
+              </ErrorBoundary>
             </div>
 
             <Card className="p-6 bg-primary border-none shadow-2xl shadow-primary/20 relative overflow-hidden group">
@@ -672,12 +679,13 @@ export default function Dashboard() {
           </div>
 
           <div className="lg:col-span-8 space-y-8">
-            {/* ROI Attribution Dash (V4) */}
-            <ROIAttribution 
-              revenue={revenueRecovered} 
-              growth={revenueGrowth} 
-              period={period} 
-            />
+            <ErrorBoundary>
+              <ROIAttribution
+                revenue={revenueRecovered}
+                growth={revenueGrowth}
+                period={period}
+              />
+            </ErrorBoundary>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {stats.map((s) => (
@@ -687,6 +695,7 @@ export default function Dashboard() {
                   value={s.value}
                   trend={s.trend}
                   icon={s.icon}
+                  tooltip={s.tooltip}
                   className={cn(
                     "border-none bg-card/50 shadow-xl shadow-black/5 hover:bg-card transition-all",
                     s.color
@@ -695,7 +704,6 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {/* Oportunidade de Ouro */}
             <div className="bg-[#0A0A0F] border border-white/5 rounded-3xl p-8 relative overflow-hidden shadow-2xl">
               <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full -mr-32 -mt-32 blur-[80px]" />
               <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
@@ -725,9 +733,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Cards: clientes hibernando + CTA */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
               <div className="bg-card/50 border border-border/10 rounded-2xl p-6 relative overflow-hidden group hover:border-primary/30 transition-all">
                 <div className="flex items-center justify-between mb-4">
                   <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -775,14 +781,15 @@ export default function Dashboard() {
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-10 pt-2">
-        {/* Feed de atividade em tempo real */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-4">
             <div>
               <h2 className="text-2xl font-black font-syne tracking-tighter uppercase italic">Capturas <span className="text-primary">ao vivo</span></h2>
               <p className="text-xs text-muted-foreground mt-1">Ações automáticas executadas pela IA agora mesmo.</p>
             </div>
-            <ActivityFeed />
+            <ErrorBoundary>
+              <ActivityFeed />
+            </ErrorBoundary>
           </div>
           <div className="space-y-4">
             <div>
@@ -830,7 +837,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Radar de Oportunidades */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
@@ -844,7 +850,6 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-2 space-y-4">
-              {/* LTV Predictor Summary Card */}
               <div className="bg-gradient-to-br from-indigo-500/10 to-primary/5 border border-primary/20 rounded-2xl p-6 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
                   <TrendingUp className="w-24 h-24 text-primary" />
@@ -904,7 +909,6 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-6">
-              {/* Partner logos trust signal */}
               <div className="bg-card/30 border border-border/20 rounded-2xl p-4 space-y-3">
                 <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">Integra com</p>
                 <div className="flex flex-wrap gap-2">
@@ -922,7 +926,6 @@ export default function Dashboard() {
         </Collapsible>
       </div>
 
-      {/* CTA fixo mobile — sempre acessível sem scroll */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-background/90 backdrop-blur-lg border-t border-border z-50">
         <Button
           className="w-full h-14 font-black bg-primary text-primary-foreground rounded-2xl shadow-lg shadow-primary/20 gap-2 text-sm"

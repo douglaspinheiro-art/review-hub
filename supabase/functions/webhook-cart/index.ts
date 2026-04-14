@@ -10,6 +10,7 @@ import {
   errorResponse,
   getClientIp,
   rateLimitedResponseWithRetry,
+  timingSafeEqual,
   z,
 } from "../_shared/edge-utils.ts";
 import { writeAuditLog } from "../_shared/audit.ts";
@@ -69,19 +70,14 @@ Deno.serve(async (req) => {
   if (!parsedReq.ok) return parsedReq.response;
 
   const expectedSecret = Deno.env.get("WEBHOOK_CART_SECRET") ?? "";
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const providedSecret = req.headers.get("x-webhook-secret") ?? "";
-  const authHeader = req.headers.get("authorization") ?? "";
-  const providedBearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const isServiceCall = serviceRole && providedBearer === serviceRole;
 
-  if (expectedSecret) {
-    if (providedSecret !== expectedSecret && !isServiceCall) {
-      return new Response(JSON.stringify({ error: "Unauthorized webhook" }), { status: 401, headers: corsHeaders });
-    }
-  } else if (!isServiceCall) {
-    // Fail-closed when secret is not configured.
-    return new Response(JSON.stringify({ error: "Webhook secret is not configured" }), { status: 401, headers: corsHeaders });
+  if (!expectedSecret) {
+    // Fail-closed: secret not configured → reject all requests.
+    return new Response(JSON.stringify({ error: "Webhook secret is not configured" }), { status: 503, headers: corsHeaders });
+  }
+  if (!timingSafeEqual(providedSecret, expectedSecret)) {
+    return new Response(JSON.stringify({ error: "Unauthorized webhook" }), { status: 401, headers: corsHeaders });
   }
 
   const url = new URL(req.url);
@@ -136,18 +132,28 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Store not found" }), { status: 404, headers: corsHeaders });
   }
 
-  // 3. Enqueue for background processing
-  const { error: queueError } = await supabase.from("webhook_queue").insert({
+  // 3. Enqueue for background processing.
+  // Use ignoreDuplicates:true (INSERT ... ON CONFLICT DO NOTHING) to be proactively idempotent.
+  // A reactive check (catch 23505 after INSERT) has a race window where two simultaneous
+  // deliveries of the same webhook can both succeed before the constraint fires.
+  const { data: queued, error: queueError } = await supabase.from("webhook_queue").upsert({
     store_id: storeId,
     user_id: store.user_id,
+    external_id: String(normalized.external_id),
     platform: source,
     payload_normalized: normalized as Record<string, unknown>,
     status: "pending",
-  });
+  }, { onConflict: "store_id,external_id", ignoreDuplicates: true }).select("id").maybeSingle();
 
   if (queueError) {
     console.error(`[${requestId}] Queue error:`, queueError);
     return errorResponse("Failed to enqueue webhook", 500);
+  }
+
+  if (!queued) {
+    // Row already existed — idempotent duplicate delivery.
+    console.log(`[${requestId}] Webhook for external_id ${normalized.external_id} already exists (idempotency ok).`);
+    return new Response(JSON.stringify({ ok: true, message: "Webhook already received" }), { status: 202, headers: corsHeaders });
   }
 
   console.log(

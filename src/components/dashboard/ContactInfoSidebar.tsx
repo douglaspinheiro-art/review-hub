@@ -16,7 +16,7 @@ import { buildMagicLink, EcommercePlatform } from "@/lib/checkout-builder";
 import { generatePixPayload } from "@/lib/pix-generator";
 import { sendTextForConnection, type ConnRow } from "@/lib/meta-whatsapp-client";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 
 interface Contact {
   id: string;
@@ -42,6 +42,7 @@ function normalizePhone(phone: string): string {
 
 export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarProps) {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
   const [showCheckout, setShowCheckout] = useState(false);
   const [showPix, setShowPix] = useState(false);
 
@@ -62,7 +63,8 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
   const { data: conn } = useQuery<ConnRow | null>({
     queryKey: ["wpp-conn-sidebar", user?.id ?? null],
     queryFn: async () => {
-      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      const storeId = scope?.activeStoreId ?? null;
+      const effectiveUserId = scope?.effectiveUserId ?? null;
       if (!effectiveUserId) return null;
       let q = supabase
         .from("whatsapp_connections")

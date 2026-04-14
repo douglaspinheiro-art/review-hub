@@ -208,8 +208,9 @@ export function verifyCronSecret(req: Request): Response | null {
     logCronAlert({ component: "verifyCronSecret", error: "CRON_SECRET_missing" });
     return errorResponse("CRON_SECRET is not configured on this server", 500);
   }
-  const authHeader = req.headers.get("Authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const providedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+  if (!timingSafeEqual(providedToken, cronSecret)) {
     logCronAlert({ component: "verifyCronSecret", error: "unauthorized_cron_invocation" });
     return errorResponse("Unauthorized", 401);
   }
@@ -228,6 +229,51 @@ export function validateBrowserOrigin(req: Request): Response | null {
     return errorResponse("Forbidden origin", 403);
   }
   return null;
+}
+
+// ── Anthropic API fetch with timeout ─────────────────────────────────────────
+/**
+ * Wraps fetch to the Anthropic Messages API with a 25-second timeout.
+ * Prevents edge function slots from hanging indefinitely on slow AI responses.
+ */
+export async function anthropicFetch(
+  apiKey: string,
+  body: Record<string, unknown>,
+  timeoutMs = 25_000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Constant-time string comparison to prevent timing-based brute-force on secrets.
+ * Uses `crypto.subtle.timingSafeEqual` (available in Deno) which does not
+ * short-circuit on the first differing byte.
+ * Returns false immediately when lengths differ (length leakage is acceptable
+ * because secret lengths are fixed and publicly known from config).
+ */
+export function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  // @ts-ignore — crypto.subtle.timingSafeEqual is available in Deno 1.x
+  return crypto.subtle.timingSafeEqual(ab, bb);
 }
 
 export { z };

@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-import { corsHeaders } from "../_shared/edge-utils.ts";
+import { corsHeaders, timingSafeEqual } from "../_shared/edge-utils.ts";
 
 const BodySchema = z.object({
   order_id: z.string().min(1),
@@ -35,8 +35,8 @@ serve(async (req) => {
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const expectedSecret = Deno.env.get("CONVERSION_ATTRIBUTION_SECRET") ?? "";
     const authorized =
-      (serviceRole && authHeader === `Bearer ${serviceRole}`) ||
-      (expectedSecret && internalSecret === expectedSecret);
+      (serviceRole && timingSafeEqual(authHeader, `Bearer ${serviceRole}`)) ||
+      (expectedSecret && timingSafeEqual(internalSecret, expectedSecret));
     if (!authorized) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }

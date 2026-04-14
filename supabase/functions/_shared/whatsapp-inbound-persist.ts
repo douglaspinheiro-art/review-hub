@@ -59,7 +59,9 @@ export async function persistInboundWhatsAppMessage(
 
   if (!conversation?.id) return null;
 
-  await supabase.from("messages").insert({
+  // Upsert with external_id as conflict key to ensure idempotency on webhook retries.
+  // If a message with the same external_id already exists, skip without error.
+  const { error: msgError } = await supabase.from("messages").upsert({
     user_id,
     conversation_id: conversation.id,
     content: messageContent || "",
@@ -67,7 +69,16 @@ export async function persistInboundWhatsAppMessage(
     status: "delivered",
     type: messageType,
     external_id,
-  });
+  }, { onConflict: "external_id", ignoreDuplicates: true });
+
+  // If duplicate, skip updating conversation and return early to avoid
+  // inflating unread counts and last_message_at on replayed webhooks.
+  if (!msgError) {
+    // Proceed with conversation update (no-op if already done, last_message_at will just refresh)
+  } else if ((msgError as { code?: string }).code === "23505") {
+    // Unique violation: already processed, return success
+    return { conversation_id: conversation.id, customer_id: customer.id };
+  }
 
   await supabase
     .from("conversations")

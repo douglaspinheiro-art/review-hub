@@ -40,6 +40,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- SECURITY DEFINER rationale: has_role() must read public.user_roles on behalf of the
+-- calling user. Without SECURITY DEFINER, the function would run with the caller's
+-- privileges — if the caller has no SELECT grant on user_roles (e.g. anon role), the
+-- check silently returns false instead of raising. SECURITY DEFINER + SET search_path
+-- pins the execution context to 'public' to prevent search_path hijacking attacks.
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
 RETURNS boolean
 LANGUAGE sql
@@ -56,6 +61,11 @@ AS $$
 $$;
 
 -- 3. Auto-create store on new user signup
+-- SECURITY DEFINER rationale: handle_new_user_store() is an auth trigger that fires
+-- as the NEW auth.users row is being inserted. At that moment, the calling context has
+-- no authenticated session yet (auth.uid() is NULL). SECURITY DEFINER lets the function
+-- execute with superuser-like privileges so it can INSERT into public.stores.
+-- SET search_path pins execution to 'public' to prevent search_path injection.
 CREATE OR REPLACE FUNCTION public.handle_new_user_store()
 RETURNS trigger
 LANGUAGE plpgsql

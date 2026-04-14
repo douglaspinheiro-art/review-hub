@@ -6,6 +6,7 @@ import {
   errorResponse,
   getClientIp,
   rateLimitedResponseWithRetry,
+  timingSafeEqual,
 } from "../_shared/edge-utils.ts";
 import { validateRequest } from "../_shared/validation.ts";
 
@@ -37,7 +38,7 @@ serve(async (req) => {
 
   const expectedSecret = Deno.env.get("INTEGRATION_GATEWAY_SECRET") ?? "";
   const providedSecret = req.headers.get("x-webhook-secret") ?? "";
-  if (!expectedSecret || providedSecret !== expectedSecret) {
+  if (!expectedSecret || !timingSafeEqual(providedSecret, expectedSecret)) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...cors, "Content-Type": "application/json" } });
   }
 

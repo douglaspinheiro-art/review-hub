@@ -13,7 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { z, errorResponse, validateBrowserOrigin, checkRateLimit } from "../_shared/edge-utils.ts";
+import { z, errorResponse, jsonResponse, validateBrowserOrigin, checkDistributedRateLimit, rateLimitedResponse, timingSafeEqual } from "../_shared/edge-utils.ts";
 import { emailSchema, rejectIfBodyTooLarge, uuidSchema } from "../_shared/validation.ts";
 import {
   type Block,
@@ -262,14 +262,27 @@ async function sendEmail(
   };
   if (replyTo) body.reply_to = replyTo;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
+  // 15s timeout — a hanging Resend response would otherwise hold the edge function
+  // open until Supabase kills it (~120s), leaving newsletters permanently in "sending".
+  const resendCtrl = new AbortController();
+  const resendTimer = setTimeout(() => resendCtrl.abort(), 15_000);
+  let res: Response;
+  try {
+    res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: resendCtrl.signal,
+    });
+  } catch (fetchErr) {
+    const isTimeout = (fetchErr as Error)?.name === "AbortError";
+    throw new Error(isTimeout ? "Resend API timeout (15s) — retentará na próxima execução" : String(fetchErr));
+  } finally {
+    clearTimeout(resendTimer);
+  }
   if (!res.ok) {
     const errBody = await res.text();
     throw new Error(`Resend error ${res.status}: ${errBody}`);
@@ -301,11 +314,16 @@ async function pMap<T, R>(
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  // Validate origin before responding to OPTIONS — returning "*" on preflight
+  // before the check allows CSRF from any cross-origin page.
   const originCheck = validateBrowserOrigin(req);
   if (originCheck) return originCheck;
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const oversized = rejectIfBodyTooLarge(req, 64 * 1024);
   if (oversized) return oversized;
+
+  // Hoisted so the catch block can reset campaign status on error.
+  let campaign_id = "";
 
   try {
     const rawBody = await req.json();
@@ -315,14 +333,15 @@ serve(async (req) => {
     }
     const body = parsedBody.data;
     const {
-      campaign_id,
+      campaign_id: parsedCampaignId,
       recipient_mode: bodyRecipientMode,
       recipient_tag: bodyRecipientTag,
       recipient_rfm: bodyRecipientRfm,
       test_email,
     } = body;
+    campaign_id = parsedCampaignId;
 
-    if (!campaign_id) throw new Error("campaign_id obrigatório");
+    if (!campaign_id) return errorResponse("campaign_id obrigatório", 400);
     if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY não configurado");
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -332,7 +351,7 @@ serve(async (req) => {
     const providedInternal = req.headers.get("x-internal-secret") ?? "";
     const authHeader = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
     const internalOk =
-      Boolean(internalSecret && providedInternal === internalSecret) &&
+      Boolean(internalSecret && timingSafeEqual(providedInternal, internalSecret)) &&
       authHeader === SUPABASE_SERVICE_KEY;
 
     let userId: string;
@@ -348,6 +367,16 @@ serve(async (req) => {
         throw new Error("Campanha não é e-mail");
       }
       userId = (campRow as { user_id: string }).user_id;
+      // Audit log every internal dispatch so secret-leak abuse is detectable.
+      sb.from("audit_logs").insert({
+        action: "newsletter_internal_dispatch",
+        resource_type: "campaign",
+        resource_id: campaign_id,
+        result: "info",
+        metadata: { campaign_user_id: userId, triggered_by: "internal_secret" },
+      }).then(({ error: logErr }) => {
+        if (logErr) console.warn("[dispatch-newsletter] audit_log insert failed:", logErr.message);
+      });
     } else {
       const jwt = authHeader;
       const { data: { user }, error: authErr } = await sb.auth.getUser(jwt);
@@ -355,12 +384,8 @@ serve(async (req) => {
       userId = user.id;
     }
 
-    if (!checkRateLimit(`dispatch-newsletter:${userId}`, 20, 60_000)) {
-      return new Response(JSON.stringify({ error: "Muitas solicitações. Tente novamente em um minuto." }), {
-        status: 429,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const { allowed: rlAllowed } = await checkDistributedRateLimit(sb, `dispatch-newsletter:${userId}`, 20, 60_000);
+    if (!rlAllowed) return rateLimitedResponse();
 
     const { data: campaign, error: campErr } = await sb
       .from("campaigns")
@@ -432,16 +457,15 @@ serve(async (req) => {
     const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeId, contacts.map((c) => c.id));
     const sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
     if (!isTest) {
-      // 1. Clear existing recipients for this campaign to avoid duplicates if re-dispatched
-      await sb.from("newsletter_send_recipients").delete().eq("campaign_id", campaign_id);
-
       const realContacts = contacts.filter((c) => c.id !== "test");
       if (realContacts.length > 0) {
-        // 2. Enqueue recipients in chunks to avoid large payload issues
+        // Upsert recipients in chunks — idempotent: if dispatch is retried after a partial
+        // failure, existing rows are preserved and new ones are added without data loss.
+        // (Previous DELETE+INSERT pattern could lose all recipients if INSERT timed out.)
         const CHUNK_SIZE = 1000;
         for (let i = 0; i < realContacts.length; i += CHUNK_SIZE) {
           const chunk = realContacts.slice(i, i + CHUNK_SIZE);
-          const { error: insErr } = await sb.from("newsletter_send_recipients").insert(
+          const { error: upsertErr } = await sb.from("newsletter_send_recipients").upsert(
             chunk.map((c) => ({
               campaign_id,
               customer_id: c.id,
@@ -449,8 +473,9 @@ serve(async (req) => {
               subject_variant: abEnabled ? pickAbVariant(c.id) : "a",
               status: "pending",
             })),
+            { onConflict: "campaign_id,customer_id", ignoreDuplicates: true },
           );
-          if (insErr) throw insErr;
+          if (upsertErr) throw upsertErr;
         }
       }
 
@@ -499,6 +524,16 @@ serve(async (req) => {
   } catch (err: unknown) {
     const requestId = crypto.randomUUID();
     console.error(`[${requestId}] dispatch-newsletter error:`, err);
+    // Reset campaign status from "running" → "pending" so the user can retry.
+    // campaign_id is accessible via the outer closure when the request was valid.
+    if (typeof campaign_id === "string" && campaign_id.length > 0) {
+      const sb2 = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      await sb2
+        .from("campaigns")
+        .update({ status: "pending" })
+        .eq("id", campaign_id)
+        .eq("status", "running"); // Only reset if still "running" — don't disturb completed campaigns.
+    }
     return new Response(JSON.stringify({ error: "Internal server error", request_id: requestId }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

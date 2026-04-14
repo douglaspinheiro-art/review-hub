@@ -2,25 +2,43 @@
  * LTV Boost v4 — Worker: Process Queued Messages (WhatsApp & Email)
  * Invocado por cron com `x-internal-secret` / Bearer = PROCESS_SCHEDULED_MESSAGES_SECRET.
  *
- * Filas (cada uma até BATCH_SIZE por execução):
- * 1. webhook_queue — ingestão de carrinho / webhooks
+ * Filas (cada uma até cap por execução):
+ * 1. webhook_queue   — ingestão de carrinho / webhooks
  * 2. scheduled_messages — WhatsApp (campanhas/jornadas); claim atómico pending→processing
+ *    ↳ Paralelismo: mensagens agrupadas por store_id; lojas processadas em paralelo.
+ *    ↳ Retry Meta API: até 3 tentativas com backoff exponencial em 429/5xx.
  * 3. newsletter_send_recipients — e-mail em massa; claim atómico pending→processing
  *
  * Observabilidade: resposta JSON inclui `request_id`, `elapsed_ms`, contagens agregadas.
- * Retries: falhas marcam `failed` + `error_message` na linha; reprocessar exige job manual ou nova fila.
- * Throughput newsletter: ~ BATCH_SIZE e-mails por invocação; espaçar crons ou aumentar BATCH_SIZE com cuidado ao rate limit do Resend.
+ * Throughput alvo: ~1 000 msg/run (10 lojas × 100 msg) vs 100 msg/run anterior.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/edge-utils.ts";
+import { corsHeaders, timingSafeEqual } from "../_shared/edge-utils.ts";
 import { outboundSendText, outboundSendEvolution, outboundSendMetaTemplate } from "../_shared/whatsapp-outbound.ts";
 import { sendEmail } from "../_shared/resend-email.ts";
 import { renderBlocksToHTML } from "../_shared/newsletter-html.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
-const BATCH_SIZE = 100;
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+/** Messages claimed per cron run per queue. */
+const BATCH_SIZE = 500; // raised from 100 → 500 (parallel processing makes this safe)
+
+/** Max concurrent stores processed simultaneously in the WA queue.
+ *  Set to 50 so 100 stores complete in ≤2 batches (~8 min) instead of 10 batches (~40 min).
+ *  Supabase Edge Functions have 512 MB RAM; each store coroutine is I/O-bound (Meta API
+ *  awaits), so 50 concurrent coroutines stay well within memory limits. */
+// 20 parallel stores × 5 concurrent DB queries = 100 connections max.
+// PgBouncer default pool is 60 connections per edge function instance;
+// multiple concurrent instances could saturate it at higher parallelism.
+const MAX_PARALLEL_STORES = 20;
+
+/** Max retry attempts for Meta Cloud API calls (429 / 5xx). */
+const META_MAX_RETRIES = 3;
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function readQueueCap(envName: string, fallback: number, hardMax: number): number {
   const raw = Deno.env.get(envName);
@@ -32,6 +50,13 @@ function readQueueCap(envName: string, fallback: number, hardMax: number): numbe
 function readWebhookMaxAttempts(): number {
   const n = Number(Deno.env.get("WEBHOOK_QUEUE_MAX_ATTEMPTS") ?? "5");
   return Number.isFinite(n) && n >= 1 ? Math.min(50, Math.floor(n)) : 5;
+}
+
+function readAntiSpamDelayMs(): number {
+  const raw = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_ANTI_SPAM_MS");
+  const n = raw == null || raw === "" ? 350 : Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 350;
+  return Math.min(8000, n);
 }
 
 async function invokeFlowEngineWithRetry(
@@ -50,12 +75,136 @@ async function invokeFlowEngineWithRetry(
   return last!;
 }
 
-function readAntiSpamDelayMs(): number {
-  const raw = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_ANTI_SPAM_MS");
-  const n = raw == null || raw === "" ? 350 : Number(raw);
-  if (!Number.isFinite(n) || n < 0) return 350;
-  return Math.min(8000, n);
+/**
+ * Send a WhatsApp message with exponential backoff retry on 429 / 5xx.
+ * Returns the result or throws on terminal failure.
+ */
+async function sendWaWithRetry(
+  waRow: Parameters<typeof outboundSendText>[0],
+  e164: string,
+  content: string,
+  metadata: Record<string, unknown>,
+): Promise<unknown> {
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < META_MAX_RETRIES; attempt++) {
+    try {
+      if (metadata.content_type === "template" && metadata.meta_template_name) {
+        return await outboundSendMetaTemplate(waRow, e164, String(metadata.meta_template_name), "pt_BR", [content]);
+      }
+      return await outboundSendText(waRow, e164, content);
+    } catch (e) {
+      lastErr = e as Error;
+      const msg = lastErr.message ?? "";
+      // Determine if this error is retryable (rate limit or server error from Meta)
+      const isRateLimit = msg.includes("429") || msg.toLowerCase().includes("rate");
+      const isServerErr = /\b5\d{2}\b/.test(msg);
+      if (!isRateLimit && !isServerErr) throw lastErr; // non-retryable (e.g. bad phone number)
+      if (attempt < META_MAX_RETRIES - 1) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt), 8_000);
+        console.warn(`[wa-retry] attempt ${attempt + 1}/${META_MAX_RETRIES}, delay ${delayMs}ms — ${msg.slice(0, 120)}`);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastErr ?? new Error("Max retries exceeded");
 }
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type WaMessage = {
+  id: string;
+  store_id: string;
+  message_content: string;
+  metadata: Record<string, unknown> | null;
+  campaign_id: string | null;
+  status: string;
+  scheduled_for: string;
+  customers_v3: { phone: string };
+};
+
+type WaConnection = {
+  id: string;
+  instance_name: string | null;
+  meta_phone_number_id: string | null;
+  meta_access_token: string | null;
+  meta_api_version: string | null;
+  store_id: string;
+  status: string;
+};
+
+// ── Per-store WA processor ─────────────────────────────────────────────────────
+
+async function processStoreWaMessages(
+  supabase: ReturnType<typeof createClient>,
+  storeId: string,
+  msgs: WaMessage[],
+  antiSpamDelayMs: number,
+): Promise<{ processed: number; errors: number }> {
+  let processed = 0;
+  let errors = 0;
+
+  // Fetch WhatsApp connection once per store (not once per message)
+  const { data: conn } = await supabase
+    .from("whatsapp_connections")
+    .select("id, instance_name, meta_phone_number_id, meta_access_token, meta_api_version, store_id, status")
+    .eq("store_id", storeId)
+    .eq("status", "connected")
+    .limit(1)
+    .maybeSingle() as { data: WaConnection | null };
+
+  for (const msg of msgs) {
+    try {
+      // Atomic claim — skip if already claimed by another worker
+      const { data: claim } = await supabase
+        .from("scheduled_messages")
+        .update({ status: "processing", processed_at: new Date().toISOString() })
+        .eq("id", msg.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+      if (!claim) continue;
+
+      if (!conn) throw new Error("No active WhatsApp connection");
+
+      const phone = (msg.customers_v3.phone || "").replace(/\D/g, "");
+      const e164 = phone.startsWith("55") ? phone : `55${phone}`;
+      const waRow = {
+        provider: "meta_cloud",
+        instance_name: conn.instance_name,
+        meta_phone_number_id: conn.meta_phone_number_id,
+        meta_access_token: conn.meta_access_token,
+        meta_api_version: conn.meta_api_version,
+      };
+
+      const metadata = (msg.metadata || {}) as Record<string, unknown>;
+      await sendWaWithRetry(waRow, e164, msg.message_content, metadata);
+
+      await supabase
+        .from("scheduled_messages")
+        .update({ status: "sent", sent_at: new Date().toISOString(), processed_at: new Date().toISOString() })
+        .eq("id", msg.id);
+
+      if (msg.campaign_id) {
+        await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: msg.campaign_id });
+      }
+
+      processed++;
+      if (antiSpamDelayMs > 0) await new Promise((r) => setTimeout(r, antiSpamDelayMs));
+    } catch (e) {
+      const err = e as Error;
+      console.error(`[wa] msg ${msg.id} store ${storeId} error:`, err.message);
+      await supabase
+        .from("scheduled_messages")
+        .update({ status: "failed", error_message: err.message.slice(0, 500) })
+        .eq("id", msg.id);
+      errors++;
+    }
+  }
+
+  return { processed, errors };
+}
+
+// ── Main handler ───────────────────────────────────────────────────────────────
 
 serve(async (req) => {
   const startedAt = Date.now();
@@ -63,12 +212,17 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const internalSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET");
-  const providedSecret = req.headers.get("x-internal-secret") || req.headers.get("authorization")?.replace("Bearer ", "");
-  if (!internalSecret || providedSecret !== internalSecret) {
+  const providedSecret =
+    req.headers.get("x-internal-secret") ||
+    req.headers.get("authorization")?.replace("Bearer ", "");
+  if (!internalSecret || !timingSafeEqual(providedSecret ?? "", internalSecret)) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
   const APP_URL = Deno.env.get("APP_URL") || "https://app.ltvboost.com.br";
   const ANTI_SPAM_DELAY_MS = readAntiSpamDelayMs();
 
@@ -76,15 +230,48 @@ serve(async (req) => {
   let totalProcessed = 0;
   let totalErrors = 0;
   let campaignsFinalized = 0;
-  const capWebhooks = readQueueCap("PROCESS_SCHEDULED_MAX_WEBHOOK_JOBS", BATCH_SIZE, 500);
-  const capWa = readQueueCap("PROCESS_SCHEDULED_MAX_WA_MESSAGES", BATCH_SIZE, 500);
-  const capEmail = readQueueCap("PROCESS_SCHEDULED_MAX_EMAIL_RECIPIENTS", BATCH_SIZE, 500);
+
+  // ── 0. STUCK MESSAGE RECOVERY ─────────────────────────────────────────────────
+  // Reset rows stuck in "processing" for >15 min (worker killed mid-run by timeout).
+  // Without this, killed batches leave messages undelivered forever.
+  // 5 min was too aggressive at high load — at peak (20 stores × burst), legitimate
+  // in-progress messages were prematurely retried, causing duplicate sends.
+  const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const [stuckWaRes, stuckEmailRes, stuckWebhookRes] = await Promise.allSettled([
+    supabase
+      .from("scheduled_messages")
+      .update({ status: "pending", error_message: "recovered: stuck in processing" })
+      .eq("status", "processing")
+      .lt("processed_at", stuckCutoff),
+    supabase
+      .from("newsletter_send_recipients")
+      .update({ status: "pending" })
+      .eq("status", "processing")
+      .lt("processed_at", stuckCutoff),
+    supabase
+      .from("webhook_queue")
+      .update({ status: "pending" })
+      .eq("status", "processing")
+      .lt("updated_at", stuckCutoff),
+  ]);
+  const stuckWaErr = stuckWaRes.status === "rejected" ? String(stuckWaRes.reason) : null;
+  const stuckEmailErr = stuckEmailRes.status === "rejected" ? String(stuckEmailRes.reason) : null;
+  if (stuckWaErr || stuckEmailErr) {
+    console.warn(JSON.stringify({ tag: "CRON_ALERT", component: "stuck-recovery", wa_err: stuckWaErr, email_err: stuckEmailErr }));
+  } else {
+    console.log(JSON.stringify({ tag: "process-scheduled-messages", component: "stuck-recovery", ok: true, stuck_cutoff: stuckCutoff }));
+  }
+  void stuckWebhookRes; // best-effort; webhook_queue may not have processed_at column
+
+  const capWebhooks = readQueueCap("PROCESS_SCHEDULED_MAX_WEBHOOK_JOBS", BATCH_SIZE, 1000);
+  const capWa = readQueueCap("PROCESS_SCHEDULED_MAX_WA_MESSAGES", BATCH_SIZE, 2000);
+  const capEmail = readQueueCap("PROCESS_SCHEDULED_MAX_EMAIL_RECIPIENTS", BATCH_SIZE, 1000);
   let webhookProcessed = 0;
   let webhookDeadLetter = 0;
   let waProcessed = 0;
   let emailProcessed = 0;
 
-  // ── 1. WEBHOOK QUEUE (webhook_queue) ────────────────────────────────────────
+  // ── 1. WEBHOOK QUEUE ─────────────────────────────────────────────────────────
   const webhookMaxAttempts = readWebhookMaxAttempts();
 
   const { data: pendingWebhooks } = await supabase
@@ -96,10 +283,13 @@ serve(async (req) => {
 
   for (const job of (pendingWebhooks ?? [])) {
     try {
-      // Atomic claim
-      const { data: claim } = await supabase.from("webhook_queue")
+      const { data: claim } = await supabase
+        .from("webhook_queue")
         .update({ status: "processing", updated_at: new Date().toISOString() })
-        .eq("id", job.id).eq("status", "pending").select("id").maybeSingle();
+        .eq("id", job.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
       if (!claim) continue;
 
       const normalized = job.payload_normalized as Record<string, unknown> | null;
@@ -113,7 +303,7 @@ serve(async (req) => {
       if (!phoneOk || !extOk) {
         await supabase.from("webhook_queue").update({
           status: "dead_letter",
-          error_message: `invalid_payload: phone_ok=${phoneOk} external_id_ok=${extOk} (use webhook-cart normalized shape)`,
+          error_message: `invalid_payload: phone_ok=${phoneOk} external_id_ok=${extOk}`,
           attempts: webhookMaxAttempts,
           updated_at: new Date().toISOString(),
         }).eq("id", job.id);
@@ -122,48 +312,41 @@ serve(async (req) => {
         continue;
       }
 
-      // 1. Upsert Customer (v3 model)
-      const { data: customer } = await supabase.from("customers_v3").upsert({
-        user_id: userId,
-        store_id: storeId,
-        phone: normalized.customer_phone as string,
-        email: normalized.customer_email as string | undefined,
-        name: normalized.customer_name as string | undefined,
-      }, { onConflict: "store_id, phone" }).select("id").single();
+      // Atomic upsert: customer + cart in a single Postgres transaction via RPC.
+      // Prevents the previous two-step pattern where a failed cart insert left an
+      // orphaned customer row and no recovery automation was triggered.
+      const { data: customerId, error: upsertErr } = await supabase.rpc("upsert_cart_with_customer", {
+        p_user_id:                userId,
+        p_store_id:               storeId,
+        p_phone:                  normalized.customer_phone as string,
+        p_email:                  (normalized.customer_email as string | null) ?? null,
+        p_name:                   (normalized.customer_name as string | null) ?? null,
+        p_external_id:            String(normalized.external_id),
+        p_source:                 job.platform,
+        p_cart_value:             normalized.cart_value ?? null,
+        p_cart_items:             normalized.cart_items ?? null,
+        p_recovery_url:           normalized.recovery_url ?? null,
+        p_raw_payload:            normalized,
+        p_utm_source:             normalized.utm_source ?? null,
+        p_utm_medium:             normalized.utm_medium ?? null,
+        p_utm_campaign:           normalized.utm_campaign ?? null,
+        p_shipping_value:         normalized.shipping_value ?? null,
+        p_shipping_zip_code:      normalized.shipping_zip_code ?? null,
+        p_payment_failure_reason: normalized.payment_failure_reason ?? null,
+        p_inventory_status:       normalized.inventory_status ?? null,
+        p_abandon_step:           normalized.abandon_step ?? null,
+      });
 
-      if (!customer) throw new Error("Failed to upsert customer");
+      if (upsertErr) throw upsertErr;
+      if (!customerId) throw new Error("upsert_cart_with_customer returned no customer id");
+      const customer = { id: customerId as string };
 
-      // 2. Save Abandoned Cart
-      const { error: cartError } = await supabase.from("abandoned_carts").upsert({
-        user_id: userId,
-        store_id: storeId,
-        customer_id: customer.id,
-        external_id: String(normalized.external_id),
-        source: job.platform,
-        cart_value: normalized.cart_value,
-        cart_items: normalized.cart_items,
-        recovery_url: normalized.recovery_url,
-        status: "pending",
-        raw_payload: normalized, // In the queue we store normalized, but we can store raw too if needed
-        utm_source: normalized.utm_source,
-        utm_medium: normalized.utm_medium,
-        utm_campaign: normalized.utm_campaign,
-        shipping_value: normalized.shipping_value,
-        shipping_zip_code: normalized.shipping_zip_code,
-        payment_failure_reason: normalized.payment_failure_reason,
-        inventory_status: normalized.inventory_status,
-        abandon_step: normalized.abandon_step ?? null,
-      }, { onConflict: "store_id, external_id" });
-
-      if (cartError) throw cartError;
-
-      // 3. Trigger Flow Engine
       const paymentLike =
         normalized.abandon_step === "payment" ||
         (typeof normalized.payment_failure_reason === "string" &&
           normalized.payment_failure_reason.trim().length > 0);
       const event = paymentLike ? "payment_pending" : "cart_abandoned";
-      
+
       const flowRes = await invokeFlowEngineWithRetry(APP_URL, {
         event,
         store_id: storeId,
@@ -179,10 +362,10 @@ serve(async (req) => {
         throw new Error(`flow-engine ${flowRes.status}: ${detail.slice(0, 400)}`);
       }
 
-      await supabase.from("webhook_queue").update({ 
-        status: "completed", 
+      await supabase.from("webhook_queue").update({
+        status: "completed",
         processed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString() 
+        updated_at: new Date().toISOString(),
       }).eq("id", job.id);
 
       totalProcessed++;
@@ -211,7 +394,7 @@ serve(async (req) => {
     }
   }
 
-  // ── 2. WHATSAPP QUEUE (scheduled_messages) ──────────────────────────────────
+  // ── 2. WHATSAPP QUEUE — parallel per-store processing ────────────────────────
   const { data: pendingWA } = await supabase
     .from("scheduled_messages")
     .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone)")
@@ -222,58 +405,36 @@ serve(async (req) => {
     .order("scheduled_for", { ascending: true })
     .limit(capWa);
 
-  for (const msg of (pendingWA ?? [])) {
-    try {
-      // Atomic claim
-      const { data: claim } = await supabase.from("scheduled_messages")
-        .update({ status: "processing", processed_at: new Date().toISOString() })
-        .eq("id", msg.id).eq("status", "pending").select("id").maybeSingle();
-      if (!claim) continue;
+  // Group messages by store_id to enable parallel processing
+  const storeGroups = new Map<string, WaMessage[]>();
+  for (const msg of (pendingWA ?? []) as WaMessage[]) {
+    const list = storeGroups.get(msg.store_id) ?? [];
+    list.push(msg);
+    storeGroups.set(msg.store_id, list);
+  }
 
-      const { data: conn } = await supabase.from("whatsapp_connections")
-        .select("id, instance_name, meta_phone_number_id, meta_access_token, meta_api_version, store_id, status")
-        .eq("store_id", msg.store_id).eq("status", "connected").limit(1).maybeSingle();
-
-      if (!conn) throw new Error("No active connection");
-
-      const phone = (msg.customers_v3.phone || "").replace(/\D/g, "");
-      const e164 = phone.startsWith("55") ? phone : `55${phone}`;
-      const waRow = {
-        provider: "meta_cloud",
-        instance_name: conn.instance_name,
-        meta_phone_number_id: conn.meta_phone_number_id,
-        meta_access_token: conn.meta_access_token,
-        meta_api_version: conn.meta_api_version,
-      };
-
-      let result: unknown = null;
-      const metadata = (msg.metadata || {}) as Record<string, unknown>;
-      if (metadata.content_type === "template" && metadata.meta_template_name) {
-        result = await outboundSendMetaTemplate(waRow, e164, String(metadata.meta_template_name), "pt_BR", [msg.message_content]);
+  // Process stores in parallel batches of MAX_PARALLEL_STORES
+  const storeEntries = Array.from(storeGroups.entries());
+  for (let i = 0; i < storeEntries.length; i += MAX_PARALLEL_STORES) {
+    const batch = storeEntries.slice(i, i + MAX_PARALLEL_STORES);
+    const results = await Promise.allSettled(
+      batch.map(([sid, msgs]) =>
+        processStoreWaMessages(supabase, sid, msgs, ANTI_SPAM_DELAY_MS)
+      ),
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        waProcessed += result.value.processed;
+        totalProcessed += result.value.processed;
+        totalErrors += result.value.errors;
       } else {
-        result = await outboundSendText(waRow, e164, msg.message_content);
+        console.error("[wa-batch] store batch error:", result.reason);
+        totalErrors++;
       }
-
-      await supabase.from("scheduled_messages").update({ status: "sent", sent_at: new Date().toISOString(), processed_at: new Date().toISOString() }).eq("id", msg.id);
-
-      
-      // Update Campaign Counter
-      if (msg.campaign_id) {
-        await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: msg.campaign_id });
-      }
-
-      totalProcessed++;
-      waProcessed++;
-      if (ANTI_SPAM_DELAY_MS > 0) await new Promise((r) => setTimeout(r, ANTI_SPAM_DELAY_MS));
-    } catch (e) {
-      const err = e as Error;
-      console.error(`WA msg ${msg.id} error:`, err.message);
-      await supabase.from("scheduled_messages").update({ status: "failed", error_message: err.message }).eq("id", msg.id);
-      totalErrors++;
     }
   }
 
-  // ── 2. EMAIL QUEUE (newsletter_send_recipients) ──────────────────────────────
+  // ── 3. EMAIL QUEUE ────────────────────────────────────────────────────────────
   const { data: pendingEmail } = await supabase
     .from("newsletter_send_recipients")
     .select(
@@ -284,10 +445,13 @@ serve(async (req) => {
 
   for (const row of (pendingEmail ?? [])) {
     try {
-      // Atomic claim
-      const { data: claim } = await supabase.from("newsletter_send_recipients")
+      const { data: claim } = await supabase
+        .from("newsletter_send_recipients")
         .update({ status: "processing", processed_at: new Date().toISOString() })
-        .eq("id", row.id).eq("status", "pending").select("id").maybeSingle();
+        .eq("id", row.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
       if (!claim) continue;
 
       const campaign = row.campaigns;
@@ -301,7 +465,7 @@ serve(async (req) => {
       const unsubscribeUrl = `https://app.ltvboost.com.br/unsubscribe?sid=${row.id}`;
       const html = renderBlocksToHTML(campaign.blocks || [], {
         unsubscribeUrl,
-        mergeVars: { nome: customer.name || "Cliente", loja: store.name }
+        mergeVars: { nome: customer.name || "Cliente", loja: store.name },
       });
 
       await sendEmail({
@@ -310,10 +474,13 @@ serve(async (req) => {
         subject: row.subject_variant === "b" ? campaign.subject_variant_b : campaign.subject,
         html,
         reply_to: store.email_reply_to,
-        tags: [{ name: "campaign_id", value: campaign.id }]
+        tags: [{ name: "campaign_id", value: campaign.id }],
       });
 
-      await supabase.from("newsletter_send_recipients").update({ status: "sent", processed_at: new Date().toISOString() }).eq("id", row.id);
+      await supabase
+        .from("newsletter_send_recipients")
+        .update({ status: "sent", processed_at: new Date().toISOString() })
+        .eq("id", row.id);
       await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: campaign.id });
 
       totalProcessed++;
@@ -321,12 +488,15 @@ serve(async (req) => {
     } catch (e) {
       const err = e as Error;
       console.error(`Email row ${row.id} error:`, err.message);
-      await supabase.from("newsletter_send_recipients").update({ status: "failed", error_message: err.message }).eq("id", row.id);
+      await supabase
+        .from("newsletter_send_recipients")
+        .update({ status: "failed", error_message: err.message })
+        .eq("id", row.id);
       totalErrors++;
     }
   }
 
-  // ── 3. POST-PROCESSING (Campaign Cleanup) ──────────────────────────────────
+  // ── 4. POST-PROCESSING (Campaign Cleanup) ─────────────────────────────────────
   const { data: finalizedN, error: finalizeErr } = await supabase.rpc("finalize_completed_campaigns");
   if (finalizeErr) {
     console.error(JSON.stringify({
@@ -340,40 +510,26 @@ serve(async (req) => {
   }
 
   const elapsedMs = Date.now() - startedAt;
-  console.log(
-    JSON.stringify({
-      tag: "process-scheduled-messages",
-      request_id: requestId,
-      processed: totalProcessed,
-      errors: totalErrors,
-      elapsed_ms: elapsedMs,
-      campaigns_finalized: campaignsFinalized,
-      caps: { webhooks: capWebhooks, wa: capWa, email: capEmail },
-      breakdown: {
-        webhook_ok: webhookProcessed,
-        webhook_dead_letter: webhookDeadLetter,
-        wa_ok: waProcessed,
-        email_ok: emailProcessed,
-      },
-    }),
-  );
+  const logPayload = {
+    tag: "process-scheduled-messages",
+    request_id: requestId,
+    processed: totalProcessed,
+    errors: totalErrors,
+    elapsed_ms: elapsedMs,
+    campaigns_finalized: campaignsFinalized,
+    parallel_stores: storeGroups.size,
+    caps: { webhooks: capWebhooks, wa: capWa, email: capEmail },
+    breakdown: {
+      webhook_ok: webhookProcessed,
+      webhook_dead_letter: webhookDeadLetter,
+      wa_ok: waProcessed,
+      email_ok: emailProcessed,
+    },
+  };
+  console.log(JSON.stringify(logPayload));
 
   return new Response(
-    JSON.stringify({
-      ok: true,
-      request_id: requestId,
-      processed: totalProcessed,
-      errors: totalErrors,
-      elapsed_ms: elapsedMs,
-      campaigns_finalized: campaignsFinalized,
-      caps: { webhooks: capWebhooks, wa: capWa, email: capEmail },
-      breakdown: {
-        webhook_ok: webhookProcessed,
-        webhook_dead_letter: webhookDeadLetter,
-        wa_ok: waProcessed,
-        email_ok: emailProcessed,
-      },
-    }),
+    JSON.stringify({ ok: true, ...logPayload }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 });

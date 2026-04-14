@@ -20,6 +20,8 @@ import {
   GitBranch,
   Play,
   Store,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,7 +50,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { useAiAgentConfig, aiAgentConfigQueryKey } from "@/hooks/useAiAgentConfig";
 import { toast } from "sonner";
 import { isBetaLimitedScope } from "@/lib/beta-scope";
@@ -73,6 +75,7 @@ const PERSONA_ICONS: Record<string, LucideIcon> = {
 
 export default function AgenteIA() {
   const { user, profile } = useAuth();
+  const scope = useStoreScope();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -87,6 +90,7 @@ export default function AgenteIA() {
   const [iaMaxDiscount, setIaMaxDiscount] = useState([10]);
   const [socialProof, setSocialProof] = useState(true);
   const [pixKey, setPixKey] = useState("");
+  const [showPixKey, setShowPixKey] = useState(false);
 
   const presetsWithIcons = useMemo(
     () =>
@@ -99,9 +103,9 @@ export default function AgenteIA() {
 
   const storesQuery = useQuery({
     queryKey: ["agente-ia-stores", user?.id],
-    enabled: !!user,
+    enabled: !!user && scope?.ready === true,
     queryFn: async () => {
-      const { effectiveUserId } = await getCurrentUserAndStore();
+      const effectiveUserId = scope.effectiveUserId;
       if (!effectiveUserId) return [] as { id: string; name: string }[];
       const { data, error } = await supabase
         .from("stores")
@@ -120,14 +124,18 @@ export default function AgenteIA() {
 
   useEffect(() => {
     if (!lojas.length) return;
+    // Do not reset the selected store while a save is in progress — it would cause
+    // the in-flight mutation to target a stale storeId.
+    if (saving) return;
     setSelectedLoja((prev) => (prev && lojas.some((s) => s.id === prev) ? prev : lojas[0].id));
-  }, [lojas]);
+  }, [lojas, saving]);
 
   useEffect(() => {
     if (storesQuery.isError) toast.error("Não foi possível carregar as lojas.");
   }, [storesQuery.isError]);
 
   const aiConfigQuery = useAiAgentConfig(selectedLoja || undefined, user?.id);
+  const recentActions = aiConfigQuery.data?.recentActions ?? [];
 
   useEffect(() => {
     if (aiConfigQuery.isError) toast.error("Erro ao carregar configuração do agente.");
@@ -177,13 +185,33 @@ export default function AgenteIA() {
     toast.info(`Personalidade "${preset.nome}" aplicada.`);
   };
 
+  function handleDiscard() {
+    // Explicitly reset all form fields to the last confirmed saved values so
+    // there is no timing gap if aiConfigQuery is currently background-refetching.
+    const saved = aiConfigQuery.data;
+    if (saved?.row) {
+      setConfig({ ...saved.row });
+    } else if (saved?.ownerId && selectedLoja) {
+      setConfig({ ...buildNewStoreAiConfig(selectedLoja), user_id: saved.ownerId });
+    }
+    // Profile-level fields
+    if (profile) {
+      setIaNegotiation(profile.ia_negotiation_enabled ?? true);
+      setIaMaxDiscount([profile.ia_max_discount_pct ?? 10]);
+      setSocialProof(profile.social_proof_enabled ?? true);
+      setPixKey(profile.pix_key ?? "");
+    }
+    // Clearing isDirty also triggers the useEffect as a secondary sync
+    // in case saved data arrives after this tick.
+    setIsDirty(false);
+  }
+
   async function handleSave() {
     if (!user?.id || !selectedLoja) {
       toast.error("Selecione uma loja para salvar.");
       return;
     }
-    const { effectiveUserId } = await getCurrentUserAndStore();
-    const tenantOwnerId = effectiveUserId ?? user.id;
+    const tenantOwnerId = scope.effectiveUserId ?? user.id;
     if (!tenantOwnerId) {
       toast.error("Não foi possível identificar a conta da loja.");
       return;
@@ -244,7 +272,11 @@ export default function AgenteIA() {
     setSaving(false);
   }
 
-  const showInitialLoader = storeListLoading && !selectedLoja;
+  // Show loader only while scope is hydrating or stores query is in flight.
+  // If scope.ready is permanently false (hydration error), storesLoadError will eventually
+  // fire via the query's own retry mechanism, surfacing the error card below.
+  const scopeReady = scope?.ready === true;
+  const showInitialLoader = (!scopeReady || storeListLoading) && !selectedLoja && !storesLoadError;
   const modo = (config.modo === "piloto_automatico" ? "piloto_automatico" : "sugestao") as
     | "sugestao"
     | "piloto_automatico";
@@ -487,18 +519,29 @@ export default function AgenteIA() {
                     <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">
                       Chave PIX
                     </Label>
-                    <Input
-                      value={pixKey}
-                      onChange={(e) => {
-                        setPixKey(e.target.value);
-                        setIsDirty(true);
-                      }}
-                      placeholder="CNPJ, e-mail ou telefone"
-                      className={cn(
-                        "h-11 rounded-xl bg-background/50 font-mono text-sm",
-                        iaNegotiation && !pixKey.trim() && "border-amber-500",
-                      )}
-                    />
+                    <div className="relative">
+                      <Input
+                        type={showPixKey ? "text" : "password"}
+                        value={pixKey}
+                        onChange={(e) => {
+                          setPixKey(e.target.value);
+                          setIsDirty(true);
+                        }}
+                        placeholder="CNPJ, e-mail ou telefone"
+                        className={cn(
+                          "h-11 rounded-xl bg-background/50 font-mono text-sm pr-10",
+                          iaNegotiation && !pixKey.trim() && "border-amber-500",
+                        )}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPixKey((v) => !v)}
+                        aria-label={showPixKey ? "Ocultar chave PIX" : "Mostrar chave PIX"}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPixKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                     <p className="text-[10px] text-muted-foreground">
                       Visível para quem tiver acesso a esta conta no dashboard.
                     </p>
@@ -761,14 +804,25 @@ export default function AgenteIA() {
           <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
           <span className="text-xs font-bold text-amber-600 truncate">Mudanças não salvas</span>
         </div>
-        <Button
-          onClick={() => void handleSave()}
-          disabled={saving || !selectedLoja}
-          className="h-11 px-8 rounded-xl font-black text-xs uppercase tracking-widest gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/30 shrink-0"
-        >
-          {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Guardar
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={handleDiscard}
+            disabled={saving}
+            className="h-11 px-4 rounded-xl text-xs text-muted-foreground"
+          >
+            Descartar
+          </Button>
+          <Button
+            onClick={() => void handleSave()}
+            disabled={saving || !selectedLoja}
+            className="h-11 px-8 rounded-xl font-black text-xs uppercase tracking-widest gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/30"
+          >
+            {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Guardar
+          </Button>
+        </div>
       </div>
     </div>
   );

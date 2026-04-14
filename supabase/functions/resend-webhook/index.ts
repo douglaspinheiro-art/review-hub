@@ -44,6 +44,7 @@ serve(async (req) => {
   try {
     const payload = await req.json();
     const type = String(payload?.type ?? "");
+    const eventId = String(payload?.id ?? payload?.created_at ?? "");
     const data = payload?.data ?? {};
     const toRaw = data.to ?? data.email ?? [];
     const email = Array.isArray(toRaw) ? toRaw[0] : String(toRaw || "");
@@ -62,6 +63,20 @@ serve(async (req) => {
     }
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // Idempotency: skip if this event was already processed
+    if (eventId) {
+      const { error: dedupError } = await sb.from("resend_webhook_events").insert({
+        event_id: eventId,
+        type,
+      });
+      if (dedupError?.code === "23505") {
+        // Already processed — return 200 so Resend stops retrying
+        return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const patch: Record<string, string> = {};
     if (type.includes("bounced") || type.includes("hard_bounce") || type === "email.bounced") {
@@ -87,6 +102,7 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), { status: 500 });
+    console.error("resend-webhook error:", e);
+    return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500 });
   }
 });

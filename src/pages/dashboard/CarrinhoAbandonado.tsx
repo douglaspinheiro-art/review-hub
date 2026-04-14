@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import {
   Select,
   SelectContent,
@@ -28,20 +29,16 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { useToast } from "@/hooks/use-toast";
-import { sendTemplateForConnection, type ConnRow } from "@/lib/meta-whatsapp-client";
+import { useWhatsAppSender } from "@/hooks/useWhatsAppSender";
 import { cn } from "@/lib/utils";
 import {
   buildCartRecoveryMessage,
   normalizePhoneDigitsBr,
   parseSafeHttpUrl,
 } from "@/lib/carrinho-abandonado-helpers";
-
-const PAGE_SIZE = 20;
-
-const ABANDONED_CART_LIST_COLUMNS =
-  "id,store_id,user_id,status,cart_value,cart_items,customer_id,customer_name,customer_phone,customer_email,created_at,updated_at,recovery_url,message_sent_at,recovered_at,abandon_step,external_id";
+import { PAGE_SIZE_CARTS as PAGE_SIZE } from "@/lib/pagination-constants";
 
 type CartStatus = "pending" | "processing" | "message_sent" | "recovered" | "expired";
 
@@ -103,109 +100,61 @@ const FILTER_LABELS: Record<string, string> = {
 
 type PeriodDays = 7 | 30 | 90;
 
-function parseCartRow(row: Record<string, unknown>): Cart {
+function parseCartRow(row: any): Cart {
   const rawSt = typeof row.status === "string" ? row.status : "";
   const st: CartStatus = rawSt in STATUS_CONFIG ? (rawSt as CartStatus) : "pending";
   return {
     id: String(row.id),
-    customer_name: (row.customer_name as string | null) ?? null,
+    customer_name: row.customer_name ?? null,
     customer_phone: String(row.customer_phone ?? ""),
-    customer_email: (row.customer_email as string | null) ?? null,
-    customer_id: (row.customer_id as string | null) ?? null,
+    customer_email: row.customer_email ?? null,
+    customer_id: row.customer_id ?? null,
     cart_value: Number(row.cart_value ?? 0),
     source: String(row.source ?? ""),
     status: st,
-    message_sent_at: (row.message_sent_at as string | null) ?? null,
-    recovered_at: (row.recovered_at as string | null) ?? null,
+    message_sent_at: row.message_sent_at ?? null,
+    recovered_at: row.recovered_at ?? null,
     created_at: String(row.created_at ?? ""),
-    recovery_url: (row.recovery_url as string | null) ?? null,
-    abandon_step: (row.abandon_step as string | null) ?? null,
-    external_id: (row.external_id as string | null) ?? null,
-    store_id: (row.store_id as string | null) ?? null,
-    cart_items: Array.isArray(row.cart_items) ? (row.cart_items as Cart["cart_items"]) : [],
+    recovery_url: row.recovery_url ?? null,
+    abandon_step: row.abandon_step ?? null,
+    external_id: row.external_id ?? null,
+    store_id: row.store_id ?? null,
+    cart_items: Array.isArray(row.cart_items) ? row.cart_items : [],
   };
-}
-
-function extractCartIdsFromScheduledMetadata(rows: { metadata: unknown }[] | null): Set<string> {
-  const ids = new Set<string>();
-  for (const row of rows ?? []) {
-    const m = row.metadata as Record<string, unknown> | null;
-    const cid = m?.cart_id;
-    if (typeof cid === "string" && cid.length > 0) ids.add(cid);
-  }
-  return ids;
-}
-
-/** Evita um único `limit(3000)` no browser: pede ao PostgREST em páginas estáveis (`range`). */
-const SCHEDULED_METADATA_BATCH = 500;
-const SCHEDULED_METADATA_MAX_ROWS = 5000;
-
-async function fetchScheduledMetadataBatchesForCartHighlight(
-  effectiveUserId: string,
-  storeId: string | null,
-): Promise<{ metadata: unknown }[]> {
-  const acc: { metadata: unknown }[] = [];
-  for (let offset = 0; offset < SCHEDULED_METADATA_MAX_ROWS; offset += SCHEDULED_METADATA_BATCH) {
-    let q = supabase
-      .from("scheduled_messages")
-      .select("metadata")
-      .eq("user_id", effectiveUserId)
-      .eq("status", "pending")
-      .order("id", { ascending: true })
-      .range(offset, offset + SCHEDULED_METADATA_BATCH - 1);
-    if (storeId) q = q.eq("store_id", storeId);
-    const { data, error } = await q;
-    if (error) throw error;
-    const batch = data ?? [];
-    acc.push(...batch);
-    if (batch.length < SCHEDULED_METADATA_BATCH) break;
-  }
-  return acc;
 }
 
 export default function CarrinhoAbandonado() {
   const [filter, setFilter] = useState<string>("all");
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
-  const [page, setPage] = useState(0);
+  const [cursorIdx, setCursorIdx] = useState(0);
+  const [cursors, setCursorList] = useState<Array<string | null>>([null]);
   const [lojas, setLojas] = useState<{ id: string; name: string }[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>("");
   const [storeListLoading, setStoreListLoading] = useState(true);
 
   const { user } = useAuth();
+  const scope = useStoreScope();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const fetchLojas = useCallback(async () => {
-    if (!user?.id) return;
-    setStoreListLoading(true);
-    const { effectiveUserId } = await getCurrentUserAndStore();
-    if (!effectiveUserId) {
+  useEffect(() => {
+    async function fetchLojas() {
+      if (!user?.id) return;
+      const effectiveUserId = scope.effectiveUserId;
+      if (!effectiveUserId) return;
+      const { data } = await supabase.from("stores").select("id, name").eq("user_id", effectiveUserId).order("name");
+      if (data?.length) {
+        setLojas(data);
+        setSelectedStoreId((prev) => (prev && data.some((s) => s.id === prev) ? prev : data[0].id));
+      }
       setStoreListLoading(false);
-      setLojas([]);
-      setSelectedStoreId("");
-      return;
     }
-    const { data, error } = await supabase.from("stores").select("id, name").eq("user_id", effectiveUserId).order("name");
-    if (error) {
-      toast({ title: "Erro", description: "Não foi possível carregar as lojas.", variant: "destructive" });
-      setLojas([]);
-      setSelectedStoreId("");
-    } else if (data?.length) {
-      setLojas(data);
-      setSelectedStoreId((prev) => (prev && data.some((s) => s.id === prev) ? prev : data[0].id));
-    } else {
-      setLojas([]);
-      setSelectedStoreId("");
-    }
-    setStoreListLoading(false);
-  }, [user?.id, toast]);
-
-  useEffect(() => {
     void fetchLojas();
-  }, [fetchLojas]);
+  }, [user?.id, scope.effectiveUserId]);
 
   useEffect(() => {
-    setPage(0);
+    setCursorIdx(0);
+    setCursorList([null]);
   }, [filter, periodDays, selectedStoreId]);
 
   const sinceIso = useMemo(
@@ -213,282 +162,121 @@ export default function CarrinhoAbandonado() {
     [periodDays],
   );
 
-  const periodLabel = periodDays === 7 ? "Últimos 7 dias" : periodDays === 30 ? "Últimos 30 dias" : "Últimos 90 dias";
-
-  const scheduledCartIdsQuery = useQuery({
-    queryKey: ["scheduled_cart_recovery_ids", user?.id, selectedStoreId],
-    queryFn: async () => {
-      if (!user?.id) return new Set<string>();
-      const { storeId: defaultStoreId, effectiveUserId } = await getCurrentUserAndStore();
-      if (!effectiveUserId) return new Set<string>();
-      const sid = selectedStoreId || defaultStoreId || null;
-      const rows = await fetchScheduledMetadataBatchesForCartHighlight(effectiveUserId, sid);
-      return extractCartIdsFromScheduledMetadata(rows);
-    },
-    enabled: !!user?.id && !storeListLoading,
-  });
-
   const cartsQuery = useQuery({
-    queryKey: ["abandoned_carts", user?.id, selectedStoreId, filter, periodDays, page],
+    queryKey: ["abandoned_carts_v2", user?.id, selectedStoreId, filter, periodDays, cursors[cursorIdx]],
     queryFn: async () => {
-      const { effectiveUserId, storeId: defaultStoreId } = await getCurrentUserAndStore();
-      if (!effectiveUserId) throw new Error("Não autenticado");
-      const effectiveStoreId = selectedStoreId || defaultStoreId || null;
+      const effectiveStoreId = selectedStoreId || scope.activeStoreId;
+      if (!effectiveStoreId) return null;
 
-      let kpi = {
-        total: 0,
-        recovered: 0,
-        pending: 0,
-        totalValue: 0,
-        recoveredValue: 0,
-      };
-      if (effectiveStoreId) {
-        const rpc = await supabase.rpc("get_abandoned_cart_kpis", {
-          p_store_id: effectiveStoreId,
-          p_since: sinceIso,
-        });
-        if (!rpc.error && rpc.data && typeof rpc.data === "object" && !Array.isArray(rpc.data)) {
-          const o = rpc.data as Record<string, unknown>;
-          kpi = {
-            total: Number(o.total ?? 0),
-            recovered: Number(o.recovered ?? 0),
-            pending: Number(o.pending ?? 0),
-            totalValue: Number(o.total_value ?? 0),
-            recoveredValue: Number(o.recovered_value ?? 0),
-          };
-        } else {
-          const kpiBuilder = supabase.from("abandoned_carts").select("status,cart_value").gte("created_at", sinceIso);
-          const { data: kpiRows, error: kpiErr } = await kpiBuilder.eq("store_id", effectiveStoreId);
-          if (kpiErr) throw kpiErr;
-          const kr = kpiRows ?? [];
-          kpi = {
-            total: kr.length,
-            recovered: kr.filter((r) => r.status === "recovered").length,
-            pending: kr.filter((r) => r.status === "pending").length,
-            totalValue: kr.reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
-            recoveredValue: kr.filter((r) => r.status === "recovered").reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
-          };
-        }
-      } else {
-        const kpiBuilder = supabase.from("abandoned_carts").select("status,cart_value").gte("created_at", sinceIso);
-        const { data: kpiRows, error: kpiErr } = await kpiBuilder.eq("user_id", effectiveUserId);
-        if (kpiErr) throw kpiErr;
-        const kr = kpiRows ?? [];
-        kpi = {
-          total: kr.length,
-          recovered: kr.filter((r) => r.status === "recovered").length,
-          pending: kr.filter((r) => r.status === "pending").length,
-          totalValue: kr.reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
-          recoveredValue: kr.filter((r) => r.status === "recovered").reduce((s, r) => s + Number(r.cart_value ?? 0), 0),
-        };
-      }
+      const { data, error } = await supabase.rpc("get_abandoned_carts_v2", {
+        p_store_id: effectiveStoreId,
+        p_since: sinceIso,
+        p_status: filter,
+        p_cursor_created_at: cursors[cursorIdx],
+        p_limit: PAGE_SIZE
+      });
 
-      let listQ = supabase
-        .from("abandoned_carts")
-        .select(ABANDONED_CART_LIST_COLUMNS, { count: "exact" })
-        .gte("created_at", sinceIso)
-        .order("created_at", { ascending: false });
-      if (effectiveStoreId) listQ = listQ.eq("store_id", effectiveStoreId);
-      else listQ = listQ.eq("user_id", effectiveUserId);
-      if (filter !== "all") listQ = listQ.eq("status", filter);
-
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      const { data, error, count } = await listQ.range(from, to);
       if (error) throw error;
-
-      const rows = (data ?? []).map((r) => parseCartRow(r as Record<string, unknown>));
-
-      return { carts: rows, totalCount: count ?? 0, kpi };
+      const res = data as { rows?: unknown[]; total_count?: number; kpi?: unknown };
+      return {
+        carts: (res.rows || []).map(parseCartRow),
+        totalCount: Number(res.total_count ?? 0),
+        kpi: res.kpi,
+      };
     },
-    enabled: !!user?.id && !storeListLoading,
+    enabled: !!user?.id && !storeListLoading && (!!selectedStoreId || !!scope.activeStoreId),
+    staleTime: 30_000,
   });
 
-  const scheduledCartIds = scheduledCartIdsQuery.data ?? new Set<string>();
   const carts = cartsQuery.data?.carts ?? [];
   const totalCount = cartsQuery.data?.totalCount ?? 0;
-  const kpi = cartsQuery.data?.kpi ?? {
-    total: 0,
-    recovered: 0,
-    pending: 0,
-    totalValue: 0,
-    recoveredValue: 0,
-  };
-
-  const recoveryRate = kpi.total > 0 ? Math.round((kpi.recovered / kpi.total) * 100) : 0;
+  const kpi = cartsQuery.data?.kpi ?? { total: 0, recovered: 0, pending: 0, total_value: 0, recovered_value: 0 };
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const canPrev = page > 0;
-  const canNext = (page + 1) * PAGE_SIZE < totalCount;
+  const recoveryRate = kpi.total > 0 ? Math.round((kpi.recovered / kpi.total) * 100) : 0;
 
-  const pickWaConnection = async (uid: string, storeId: string | null): Promise<ConnRow> => {
-    const sel =
-      "id, instance_name, status, provider, meta_phone_number_id, meta_default_template_name, meta_api_version, store_id";
-    if (storeId) {
-      const { data: byStore, error: e1 } = await supabase
-        .from("whatsapp_connections")
-        .select(sel)
-        .eq("user_id", uid)
-        .eq("status", "connected")
-        .eq("provider", "meta_cloud")
-        .eq("store_id", storeId)
-        .limit(1)
-        .maybeSingle();
-      if (!e1 && byStore) return byStore as ConnRow;
-      throw new Error(
-        "Nenhuma conexão WhatsApp Meta Cloud ativa para esta loja. Conecte o número em Dashboard → WhatsApp para a mesma loja do carrinho.",
-      );
-    }
-    const { data: loose, error: e2 } = await supabase
-      .from("whatsapp_connections")
-      .select(sel)
-      .eq("user_id", uid)
-      .eq("status", "connected")
-      .eq("provider", "meta_cloud")
-      .is("store_id", null)
-      .limit(1)
-      .maybeSingle();
-    if (!e2 && loose) return loose as ConnRow;
-    const { data: anyConn, error: e3 } = await supabase
-      .from("whatsapp_connections")
-      .select(sel)
-      .eq("user_id", uid)
-      .eq("status", "connected")
-      .eq("provider", "meta_cloud")
-      .limit(1)
-      .maybeSingle();
-    if (e3 || !anyConn) {
-      throw new Error("Nenhuma conexão WhatsApp ativa. Conecte em Dashboard → WhatsApp.");
-    }
-    return anyConn as ConnRow;
-  };
+  const nextCursor = carts.length === PAGE_SIZE ? carts[carts.length - 1].created_at : null;
 
-  const assertMarketingAllowed = async (cart: Cart, storeId: string | null) => {
-    if (cart.customer_id) {
-      const { data: cu, error } = await supabase
-        .from("customers_v3")
-        .select("unsubscribed_at")
-        .eq("id", cart.customer_id)
-        .maybeSingle();
-      if (error) return;
-      if (cu?.unsubscribed_at) {
-        throw new Error("Cliente optou por sair das mensagens de marketing (e-mail/WhatsApp). Envio bloqueado.");
-      }
-    }
-    if (storeId) {
-      const phone = normalizePhoneDigitsBr(cart.customer_phone);
-      if (phone.length >= 12) {
-        const { data: cu } = await supabase
-          .from("customers_v3")
-          .select("unsubscribed_at")
-          .eq("store_id", storeId)
-          .eq("phone", phone)
-          .maybeSingle();
-        if (cu?.unsubscribed_at) {
-          throw new Error("Cliente optou por sair das mensagens de marketing (e-mail/WhatsApp). Envio bloqueado.");
-        }
-      }
-    }
-  };
+  const { sendMessage, sendTemplateButton, isReady: isWaReady } = useWhatsAppSender();
 
   const sendMutation = useMutation({
     mutationFn: async (cart: Cart) => {
-      if (!user?.id) throw new Error("Sessão expirada.");
-      const { storeId: defaultStoreId, effectiveUserId: tenantUid } = await getCurrentUserAndStore();
-      if (!tenantUid) throw new Error("Não autenticado.");
-      const storeId = cart.store_id ?? (selectedStoreId || defaultStoreId || null);
-
-      if (scheduledCartIds.has(cart.id)) {
-        throw new Error(
-          "Este carrinho já entrou na cadência automática (1h / 12h / 48h). Aguarde ou cancele as mensagens agendadas antes de enviar manualmente.",
-        );
+      if (!isWaReady) {
+        throw new Error("WhatsApp não está conectado ou configurado.");
       }
 
-      await assertMarketingAllowed(cart, storeId);
-
-      const waConns = await pickWaConnection(tenantUid, storeId);
-      if (!waConns.meta_phone_number_id?.trim()) {
-        throw new Error("Meta Cloud API: informe Phone number ID em Dashboard → WhatsApp → Configurar API.");
-      }
-      if (!waConns.meta_default_template_name?.trim()) {
-        throw new Error(
-          "Meta Cloud API: fora da janela de 24h é obrigatório um template aprovado. Defina o template padrão em Configurar API (variáveis compatíveis com o texto enviado).",
-        );
-      }
-
-      const safeUrl = parseSafeHttpUrl(cart.recovery_url);
-      if (!safeUrl) {
-        throw new Error(
-          "Meta Cloud: este carrinho não tem um link de recuperação (https) válido. Confirme o payload do webhook da loja.",
-        );
-      }
-
-      const value = cart.cart_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-      const name = cart.customer_name ?? "cliente";
-      const message = buildCartRecoveryMessage({
-        customerName: name,
-        cartValueFormatted: value,
-        recoveryUrl: safeUrl,
+      const recoveryUrl = parseSafeHttpUrl(cart.recovery_url);
+      const text = buildCartRecoveryMessage({
+        customerName: cart.customer_name || "cliente",
+        cartValueFormatted: cart.cart_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+        recoveryUrl: null, // Link goes in the button if possible
       });
 
-      const number = cart.customer_phone.replace(/\D/g, "").startsWith("55")
-        ? cart.customer_phone.replace(/\D/g, "")
-        : `55${cart.customer_phone.replace(/\D/g, "")}`;
+      let result;
+      if (recoveryUrl) {
+        result = await sendTemplateButton(cart.customer_phone, text, {
+          label: "Finalizar Compra",
+          url: recoveryUrl,
+        });
+      } else {
+        result = await sendMessage(cart.customer_phone, text);
+      }
 
-      await sendTemplateForConnection(waConns, {
-        number,
-        text: message,
-        buttons: [{ type: "url", displayText: "Retomar carrinho", content: safeUrl! }],
-      });
+      if (!result.success) {
+        throw new Error(result.error || "Falha ao enviar mensagem.");
+      }
 
-      let upd = supabase
+      const { error: updateError } = await supabase
         .from("abandoned_carts")
-        .update({ status: "message_sent", message_sent_at: new Date().toISOString() })
+        .update({
+          status: "message_sent",
+          message_sent_at: new Date().toISOString(),
+          external_id: result.external_id,
+        })
         .eq("id", cart.id);
-      if (storeId) upd = upd.eq("store_id", storeId);
-      const { error: updateErr } = await upd;
-      if (updateErr) throw updateErr;
+
+      if (updateError) throw updateError;
+      
+      return result;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["abandoned_carts"] });
-      void queryClient.invalidateQueries({ queryKey: ["scheduled_cart_recovery_ids"] });
-      toast({ title: "Mensagem enviada!", description: "O cliente foi notificado via WhatsApp." });
+      void queryClient.invalidateQueries({ queryKey: ["abandoned_carts_v2"] });
+      toast({ title: "Mensagem enviada!", description: "O cliente foi notificado." });
     },
-    onError: (err: Error) =>
+    onError: (err: Error) => {
       toast({
-        title: "Erro ao enviar",
-        description: err?.message ?? "Tente novamente.",
         variant: "destructive",
-      }),
+        title: "Erro ao enviar",
+        description: err.message,
+      });
+    }
   });
 
   const showInitialSkeleton = storeListLoading || (cartsQuery.isLoading && !cartsQuery.data);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Carrinhos Abandonados</h1>
+          <h1 className="text-2xl font-bold font-syne uppercase italic tracking-tighter">Carrinhos <span className="text-primary">Abandonados</span></h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Monitore e recupere clientes que abandonaram o carrinho ({periodLabel.toLowerCase()})
+            Recupere vendas perdidas com cadência inteligente.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {lojas.length > 1 && (
             <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[200px] h-9">
+              <SelectTrigger className="w-[180px] h-9 rounded-xl">
                 <SelectValue placeholder="Loja" />
               </SelectTrigger>
               <SelectContent>
                 {lojas.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
           <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v) as PeriodDays)}>
-            <SelectTrigger className="w-[140px] h-9">
+            <SelectTrigger className="w-[120px] h-9 rounded-xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -497,275 +285,152 @@ export default function CarrinhoAbandonado() {
               <SelectItem value="90">90 dias</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => void cartsQuery.refetch()}>
-            <RefreshCw className={cn("w-3.5 h-3.5", cartsQuery.isFetching && "animate-spin")} />
-            Atualizar
+          <Button variant="outline" size="sm" className="h-9 rounded-xl gap-2" onClick={() => void cartsQuery.refetch()}>
+            <RefreshCw className={cn("w-3.5 h-3.5", cartsQuery.isFetching && "animate-spin")} /> Atualizar
           </Button>
         </div>
       </div>
 
-      {cartsQuery.isError && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm">
-            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-            <span>{(cartsQuery.error as Error)?.message ?? "Não foi possível carregar os carrinhos."}</span>
-          </div>
-          <Button size="sm" variant="outline" onClick={() => void cartsQuery.refetch()}>
-            Tentar novamente
-          </Button>
-        </div>
-      )}
-
-      {/* KPIs — agregados no período (todas as situações) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {showInitialSkeleton
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="bg-card border rounded-xl p-4 space-y-2">
-                <Skeleton className="h-3 w-24" />
-                <Skeleton className="h-8 w-16" />
-                <Skeleton className="h-3 w-32" />
-              </div>
-            ))
+          ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)
           : [
-              { label: "Total de carrinhos", value: kpi.total, icon: ShoppingCart, sub: periodLabel },
-              {
-                label: "Recuperados",
-                value: kpi.recovered,
-                icon: CheckCircle,
-                sub: `${recoveryRate}% de recuperação`,
-                color: "text-green-600",
-              },
-              {
-                label: "Aguardando envio",
-                value: kpi.pending,
-                icon: Clock,
-                sub: "Status pendente",
-                color: "text-yellow-600",
-              },
-              {
-                label: "Receita recuperada",
-                value: kpi.recoveredValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-                icon: TrendingUp,
-                sub: `de ${kpi.totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} em valor de carrinho`,
-                color: "text-primary",
-              },
-            ].map(({ label, value, icon: Icon, sub, color }) => (
-              <div key={label} className="bg-card border rounded-xl p-4 space-y-1">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <Icon className={cn("w-4 h-4", color ?? "text-muted-foreground")} />
+              { label: "Total no período", value: kpi.total, icon: ShoppingCart, color: "text-foreground" },
+              { label: "Recuperados", value: kpi.recovered, icon: CheckCircle, color: "text-emerald-500", sub: `${recoveryRate}% taxa` },
+              { label: "Aguardando", value: kpi.pending, icon: Clock, color: "text-amber-500" },
+              { label: "Valor Recuperado", value: kpi.recovered_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), icon: TrendingUp, color: "text-primary", sub: `de ${kpi.total_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` },
+            ].map((item) => (
+              <div key={item.label} className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">{item.label}</p>
+                  <item.icon className={cn("w-3.5 h-3.5", item.color)} />
                 </div>
-                <p className={cn("text-2xl font-bold", color)}>{value}</p>
-                <p className="text-xs text-muted-foreground">{sub}</p>
+                <p className={cn("text-xl font-black", item.color)}>{item.value}</p>
+                {item.sub && <p className="text-[10px] text-muted-foreground font-medium mt-0.5">{item.sub}</p>}
               </div>
             ))}
       </div>
 
-      {/* Filters */}
       <div className="flex gap-2 flex-wrap items-center">
         {FILTERS.map((f) => (
           <button
             key={f}
-            type="button"
             onClick={() => setFilter(f)}
             className={cn(
-              "px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
-              filter === f
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card text-muted-foreground border-border hover:bg-muted",
+              "px-4 py-1.5 rounded-full text-xs font-bold border transition-all",
+              filter === f ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20" : "bg-card text-muted-foreground border-border hover:bg-muted"
             )}
           >
             {FILTER_LABELS[f]}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-          <Filter className="w-3.5 h-3.5" />
-          {totalCount} resultado{totalCount !== 1 ? "s" : ""}
+        <div className="ml-auto text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+          {totalCount} abandonos
         </div>
       </div>
 
-      {!showInitialSkeleton && !cartsQuery.isError && carts.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
-            <ShoppingCart className="w-7 h-7 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="font-medium">Nenhum carrinho encontrado</p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              Configure o webhook de carrinho abandonado na sua loja (URL com <code className="text-xs">store_id</code> da
-              LTV Boost). Em{" "}
-              <Link to="/dashboard/integracoes" className="text-primary underline font-medium">
-                Integrações
-              </Link>{" "}
-              você encontra os dados da loja e pode alinhar com o time de implantação.
-            </p>
-          </div>
+      {showInitialSkeleton ? (
+        <TableSkeleton columns={5} rows={8} />
+      ) : cartsQuery.isError ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center space-y-3">
+          <p className="text-sm font-medium text-destructive">Não foi possível carregar os carrinhos</p>
+          <p className="text-xs text-muted-foreground">{(cartsQuery.error as Error)?.message ?? "Tente novamente."}</p>
+          <Button variant="outline" size="sm" onClick={() => void cartsQuery.refetch()}>Tentar novamente</Button>
         </div>
-      )}
-
-      {!cartsQuery.isError && carts.length > 0 && (
+      ) : carts.length === 0 ? (
+        <div className="bg-card border border-dashed rounded-3xl py-20 text-center">
+          <ShoppingCart className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+          <p className="font-bold">Nenhum carrinho encontrado</p>
+          <p className="text-sm text-muted-foreground">Aguardando sinais do seu e-commerce.</p>
+        </div>
+      ) : (
         <div className="space-y-3">
           {carts.map((cart) => {
-              const cfg = STATUS_CONFIG[cart.status] ?? STATUS_CONFIG.expired;
-              const Icon = cfg.icon;
-              const items = Array.isArray(cart.cart_items) ? cart.cart_items : [];
-              const safeRecovery = parseSafeHttpUrl(cart.recovery_url);
-              const automationQueued = scheduledCartIds.has(cart.id);
-              return (
-                <div key={cart.id} className="bg-card border rounded-xl p-5 space-y-3">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold">{cart.customer_name ?? "Cliente"}</p>
-                        <Badge variant="outline" className={cn("text-xs gap-1", cfg.color)}>
-                          <Icon className={cn("w-3 h-3", cart.status === "processing" && "animate-spin")} />
-                          {cfg.label}
-                        </Badge>
-                        {automationQueued && cart.status === "pending" && (
-                          <Badge variant="secondary" className="text-xs">
-                            Cadência agendada
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">{cart.customer_phone}</p>
-                      {cart.customer_email && (
-                        <p className="text-xs text-muted-foreground">{cart.customer_email}</p>
-                      )}
-                      {cart.external_id && (
-                        <p className="text-[11px] text-muted-foreground">ID externo: {cart.external_id}</p>
-                      )}
+            const cfg = STATUS_CONFIG[cart.status] ?? STATUS_CONFIG.expired;
+            return (
+              <div key={cart.id} className="bg-card border border-border/40 rounded-2xl p-5 hover:border-primary/30 transition-colors shadow-sm group">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold">{cart.customer_name || "Cliente sem nome"}</p>
+                      <Badge variant="outline" className={cn("text-[9px] uppercase font-black tracking-widest", cfg.color)}>
+                        {cfg.label}
+                      </Badge>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold text-primary">
-                        {cart.cart_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </p>
-                      <p className="text-xs text-muted-foreground capitalize">{cart.source}</p>
-                    </div>
+                    <p className="text-xs text-muted-foreground font-mono">{cart.customer_phone}</p>
                   </div>
-
-                  {(cart.abandon_step || safeRecovery) && (
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {cart.abandon_step && (
-                        <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground">
-                          Etapa: {cart.abandon_step}
-                        </span>
-                      )}
-                      {safeRecovery && (
-                        <a
-                          href={safeRecovery}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-1 font-medium hover:underline"
-                        >
-                          Link de recuperação <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-                  {items.length > 0 && (
-                    <div className="bg-muted/40 rounded-lg px-3 py-2 text-sm space-y-1">
-                      {items.slice(0, 3).map((item, i) => (
-                        <div key={i} className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
-                            {item.qty}x {item.name}
-                          </span>
-                          <span className="font-medium text-xs">
-                            {(item.price * item.qty).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                          </span>
-                        </div>
-                      ))}
-                      {items.length > 3 && (
-                        <p className="text-xs text-muted-foreground">+{items.length - 3} itens</p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>
-                      Abandonado{" "}
-                      {new Date(cart.created_at).toLocaleString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    {cart.message_sent_at && (
-                      <span>
-                        Enviado{" "}
-                        {new Date(cart.message_sent_at).toLocaleString("pt-BR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    )}
+                  <div className="text-right">
+                    <p className="text-lg font-black text-primary">
+                      {cart.cart_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </p>
+                    <p className="text-[10px] uppercase font-black text-muted-foreground">{cart.source}</p>
                   </div>
-
-                  {cart.status === "pending" && (
-                    <div className="space-y-2">
-                      {automationQueued && (
-                        <p className="text-[11px] text-muted-foreground bg-muted/60 border rounded-md px-2 py-1">
-                          Cadência automática já enfileirada para este carrinho. O envio manual está desativado para
-                          evitar mensagens duplicadas.
-                        </p>
-                      )}
-                      {cart.cart_value >= 800 && (
-                        <p className="text-[11px] text-amber-700 bg-amber-500/10 border border-amber-500/20 rounded-md px-2 py-1">
-                          Carrinho de alto ticket: recomendamos handoff para atendimento humano se não converter na 3ª
-                          tentativa.
-                        </p>
-                      )}
-                      <Button
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => sendMutation.mutate(cart)}
-                        disabled={sendMutation.isPending || automationQueued}
-                      >
-                        {sendMutation.isPending ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Send className="w-3.5 h-3.5" />
-                        )}
-                        Enviar mensagem de recuperação
-                      </Button>
-                    </div>
-                  )}
                 </div>
-              );
+
+                <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                  <span>Abandonado em {new Date(cart.created_at).toLocaleString("pt-BR")}</span>
+                  <div className="flex gap-3">
+                    {cart.recovery_url && (
+                      <a href={cart.recovery_url} target="_blank" rel="noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                        Ver Carrinho <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-[10px] font-black uppercase tracking-widest gap-1 hover:bg-primary/10 hover:text-primary rounded-lg"
+                      onClick={() => sendMutation.mutate(cart)}
+                      disabled={(sendMutation.isPending && sendMutation.variables?.id === cart.id) || cart.status === "recovered" || !isWaReady}
+                    >
+                      {sendMutation.isPending && sendMutation.variables?.id === cart.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Send className="w-3 h-3" />
+                      )}
+                      Recuperar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
           })}
 
-          {totalCount > PAGE_SIZE && (
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <Button type="button" variant="outline" size="sm" disabled={!canPrev} onClick={() => setPage((p) => p - 1)}>
-                <ChevronLeft className="w-4 h-4" />
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl font-bold h-9"
+                disabled={cursorIdx === 0 || cartsQuery.isFetching}
+                onClick={() => setCursorIdx(i => i - 1)}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" /> Anterior
               </Button>
-              <span className="text-xs text-muted-foreground">
-                Página {page + 1} de {totalPages}
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                Página {cursorIdx + 1} de {totalPages}
               </span>
-              <Button type="button" variant="outline" size="sm" disabled={!canNext} onClick={() => setPage((p) => p + 1)}>
-                <ChevronRight className="w-4 h-4" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl font-bold h-9"
+                disabled={cursorIdx >= totalPages - 1 || cartsQuery.isFetching || !nextCursor}
+                onClick={() => {
+                  if (nextCursor && !cursors[cursorIdx + 1]) {
+                    setCursorList(prev => {
+                      const next = [...prev];
+                      next[cursorIdx + 1] = nextCursor;
+                      return next;
+                    });
+                  }
+                  setCursorIdx(i => i + 1);
+                }}
+              >
+                Próxima <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
           )}
         </div>
       )}
-
-      <div className="bg-muted/50 border rounded-xl p-4 text-sm text-muted-foreground space-y-1">
-        <p className="font-medium text-foreground">Como funciona a automação</p>
-        <p>Quando um carrinho é abandonado no seu e-commerce, o webhook envia os dados para o LTV Boost.</p>
-        <p>
-          A cadência padrão agenda 3 contatos automáticos: <strong>1h, 12h e 48h</strong> com personalização por valor
-          e comportamento.
-        </p>
-        <p>Para carrinhos de alto ticket, a 3ª etapa recomenda handoff para atendimento humano.</p>
-        <p className="text-xs mt-2">
-          Configure o segredo e a URL do webhook na documentação da sua plataforma, apontando para a Edge Function{" "}
-          <code className="text-xs">webhook-cart</code> com o <code className="text-xs">store_id</code> da loja.
-        </p>
-      </div>
     </div>
   );
 }

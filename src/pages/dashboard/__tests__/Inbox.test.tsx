@@ -70,6 +70,24 @@ vi.mock("@/lib/moat-telemetry", () => ({
   trackMoatEvent: vi.fn(),
 }));
 
+// useVirtualizer needs real DOM dimensions which JSDOM does not provide.
+// Mock it to always render all items so conversation list tests work.
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: ({ count, getItemKey }: { count: number; getItemKey: (i: number) => string | number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, i) => ({
+        index: i,
+        key: getItemKey ? getItemKey(i) : i,
+        start: i * 80,
+        size: 80,
+        lane: 0,
+      })),
+    getTotalSize: () => count * 80,
+    measureElement: () => undefined,
+    scrollToIndex: () => undefined,
+  }),
+}));
+
 vi.mock("@/lib/supabase", () => {
   const chain = {
     select: vi.fn().mockReturnThis(),

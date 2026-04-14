@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 
 export type TeamCollaboratorRole = "admin" | "operator" | "viewer";
 
@@ -11,19 +11,21 @@ export type TeamAccessState =
 
 export function useTeamAccess() {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
   return useQuery({
     queryKey: ["team_access", user?.id ?? null],
     queryFn: async (): Promise<TeamAccessState> => {
       if (!user) return { mode: "owner" };
-      const ctx = await getCurrentUserAndStore();
-      if (!ctx.userId || !ctx.effectiveUserId) return { mode: "owner" };
-      if (ctx.userId === ctx.effectiveUserId) return { mode: "owner" };
+      const userId = scope?.userId ?? null;
+      const effectiveUserId = scope?.effectiveUserId ?? null;
+      if (!userId || !effectiveUserId) return { mode: "owner" };
+      if (userId === effectiveUserId) return { mode: "owner" };
 
       const { data, error } = await supabase
         .from("team_members")
         .select("role")
         .eq("invited_user_id", user.id)
-        .eq("account_owner_id", ctx.effectiveUserId)
+        .eq("account_owner_id", effectiveUserId)
         .eq("status", "active")
         .maybeSingle();
 
@@ -34,7 +36,7 @@ export function useTeamAccess() {
       }
       return { mode: "collaborator", role: "operator" };
     },
-    enabled: !!user,
+    enabled: !!user && scope?.ready === true,
     staleTime: 60_000,
   });
 }

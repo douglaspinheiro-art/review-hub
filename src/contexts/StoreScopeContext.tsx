@@ -15,11 +15,20 @@ import { pickStoreIdFromList, readPersistedActiveStoreId, writePersistedActiveSt
 
 export type StoreOption = { id: string; name: string | null };
 
+type StoreQueryResult = {
+  stores: StoreOption[];
+  effectiveUserId: string;
+};
+
 type StoreScopeValue = {
   activeStoreId: string | null;
   storeOptions: StoreOption[];
   setActiveStoreId: (id: string) => void;
   ready: boolean;
+  /** The authenticated user's own ID. */
+  userId: string | null;
+  /** The data-owner ID: equals `userId` for account owners, or the owner's ID when the user is a team member. */
+  effectiveUserId: string | null;
 };
 
 const StoreScopeContext = createContext<StoreScopeValue | null>(null);
@@ -41,10 +50,10 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [activeStoreId, setActiveState] = useState<string | null>(null);
 
-  const { data: storeRows = [], isSuccess } = useQuery({
+  const { data: storeData, isSuccess } = useQuery({
     queryKey: ["dashboard-stores-list", user?.id ?? null],
     enabled: !!user && !isDemo,
-    queryFn: async (): Promise<StoreOption[]> => {
+    queryFn: async (): Promise<StoreQueryResult> => {
       const uid = user!.id;
       const { data: membership } = await supabase
         .from("team_members")
@@ -62,9 +71,15 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
         .eq("user_id", storesUserId)
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return (data ?? []) as StoreOption[];
+      return {
+        stores: (data ?? []) as StoreOption[],
+        effectiveUserId: storesUserId,
+      };
     },
   });
+
+  const storeRows = storeData?.stores ?? [];
+  const resolvedEffectiveUserId = storeData?.effectiveUserId ?? null;
 
   useEffect(() => {
     if (isDemo || !isSuccess) return;
@@ -82,11 +97,21 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
   const setActiveStoreId = useCallback(
     (id: string) => {
       if (!storeRows.some((s) => s.id === id)) return;
+      const previousStoreId = activeStoreId;
       writePersistedActiveStoreId(id);
       setActiveState(id);
-      void qc.invalidateQueries();
+      // Only invalidate queries scoped to the previous store.
+      // Queries keyed by the new storeId re-fetch automatically via queryKey change.
+      // A blanket invalidateQueries() fires all 50+ hooks simultaneously → DB pool exhaustion.
+      if (previousStoreId && previousStoreId !== id) {
+        void qc.invalidateQueries({
+          predicate: (query) =>
+            Array.isArray(query.queryKey) &&
+            (query.queryKey as unknown[]).some((k) => k === previousStoreId),
+        });
+      }
     },
-    [storeRows, qc],
+    [storeRows, qc, activeStoreId],
   );
 
   const value = useMemo((): StoreScopeValue => {
@@ -96,6 +121,8 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
         storeOptions: [],
         setActiveStoreId: () => {},
         ready: true,
+        userId: null,
+        effectiveUserId: null,
       };
     }
     return {
@@ -103,8 +130,10 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
       storeOptions: storeRows,
       setActiveStoreId,
       ready: isSuccess,
+      userId: user.id,
+      effectiveUserId: resolvedEffectiveUserId ?? user.id,
     };
-  }, [isDemo, user, activeStoreId, storeRows, setActiveStoreId, isSuccess]);
+  }, [isDemo, user, activeStoreId, storeRows, setActiveStoreId, isSuccess, resolvedEffectiveUserId]);
 
   return <StoreScopeContext.Provider value={value}>{children}</StoreScopeContext.Provider>;
 }

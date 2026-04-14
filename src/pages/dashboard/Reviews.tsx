@@ -87,6 +87,7 @@ function sanitizeIlikeTerm(raw: string): string {
 export default function Reviews() {
   const [filter, setFilter] = useState<"all" | "pending" | "negative">("all");
   const [page, setPage] = useState(0);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -120,7 +121,6 @@ export default function Reviews() {
       toast({ title: "Avaliações aprovadas com sucesso" });
       setSelectedIds([]);
       void queryClient.invalidateQueries({ queryKey: ["reviews"] });
-      void queryClient.invalidateQueries({ queryKey: ["reviews-stats"] });
     },
     onError: (e: Error) => toast({ title: "Erro ao aprovar em lote", description: e.message, variant: "destructive" }),
   });
@@ -147,6 +147,7 @@ export default function Reviews() {
 
   useEffect(() => {
     setPage(0);
+    setCursors([null]);
   }, [filter, debouncedSearch]);
 
   const apiBaseExample = useMemo(() => {
@@ -175,58 +176,42 @@ export default function Reviews() {
   }
 
   const {
-    data: listData,
+    data: bundleData,
     isLoading,
     isError,
     error,
     refetch,
+    isFetching,
   } = useQuery({
-    queryKey: ["reviews", user?.id, filter, page, debouncedSearch],
+    queryKey: ["reviews", user?.id, filter, page, cursors[page], debouncedSearch],
     queryFn: async () => {
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      const term = sanitizeIlikeTerm(debouncedSearch);
-      let q = supabase
-        .from("reviews")
-        .select(REVIEW_LIST_COLUMNS, { count: "exact" })
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-      if (filter === "pending") q = q.eq("status", "pending");
-      if (filter === "negative") q = q.lte("rating", 3);
-      if (term.length >= 2) {
-        const pat = `%${term}%`;
-        q = q.or(`reviewer_name.ilike.${pat},content.ilike.${pat}`);
-      }
-      const { data, error: qErr, count } = await q;
+      const { data, error: qErr } = await supabase.rpc("get_reviews_bundle_v2", {
+        p_user_id: user!.id,
+        p_filter: filter,
+        p_search: debouncedSearch.trim(),
+        p_cursor_created_at: cursors[page],
+        p_limit: PAGE_SIZE,
+      });
       if (qErr) throw qErr;
-      return { rows: (data ?? []) as ReviewRow[], total: count ?? 0 };
-    },
-    enabled: !!user,
-    staleTime: 60_000,
-  });
-
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ["reviews-stats", user?.id],
-    queryFn: async () => {
-      const { data, error: qErr } = await supabase.rpc("get_review_stats", { 
-        p_user_id: user!.id 
-      }).single();
-      if (qErr) throw qErr;
-      return data as { 
-        avg_rating: number; 
-        negative_count: number; 
-        pending_count: number; 
-        platform_count: number; 
+      const res = data as {
+        rows?: ReviewRow[];
+        total_count?: number;
+        stats?: { avg_rating: number; negative_count: number; pending_count: number; platform_count: number };
+      };
+      return {
+        rows: (res.rows ?? []) as ReviewRow[],
+        total: Number(res.total_count ?? 0),
+        stats: res.stats ?? { avg_rating: 0, negative_count: 0, pending_count: 0, platform_count: 0 },
       };
     },
     enabled: !!user,
     staleTime: 60_000,
   });
 
-  const reviews = listData?.rows ?? [];
-  const totalList = listData?.total ?? 0;
+  const reviews = bundleData?.rows ?? [];
+  const totalList = bundleData?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalList / PAGE_SIZE));
+  const stats = bundleData?.stats;
 
   const avg = stats?.avg_rating ?? null;
   const negative = stats?.negative_count ?? 0;
@@ -772,7 +757,18 @@ export default function Reviews() {
                     variant="outline"
                     size="sm"
                     disabled={page >= totalPages - 1}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => {
+                      const lastRow = reviews[reviews.length - 1];
+                      if (lastRow?.created_at) {
+                        const nextCursor = lastRow.created_at;
+                        setCursors((prev) => {
+                          const next = [...prev];
+                          next[page + 1] = nextCursor;
+                          return next;
+                        });
+                        setPage((p) => p + 1);
+                      }
+                    }}
                     className="gap-1"
                   >
                     Próxima

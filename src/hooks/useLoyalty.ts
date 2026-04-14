@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import type { Database } from "@/integrations/supabase/types";
 import { logQueryTiming } from "@/lib/query-page-telemetry";
 import { LOYALTY_REWARDS_SELECT } from "@/lib/supabase-select-fragments";
@@ -49,97 +50,39 @@ export interface LoyaltyTxRow {
   contactPhone: string;
 }
 
-async function fetchLoyaltyAggregatesLegacy(userId: string): Promise<Omit<RpcLoyaltySummary, "tier_counts"> & { tier_counts: Record<string, number> }> {
-  const { data: rows, error } = await supabase
-    .from("loyalty_points")
-    .select("points, total_earned, total_redeemed, tier")
-    .eq("user_id", userId);
-  if (error) throw error;
-  const list = rows ?? [];
-  const membersWithBalance = list.filter((r) => (r.points ?? 0) > 0).length;
-  const totalPointsBalance = list.reduce((s, r) => s + (r.points ?? 0), 0);
-  const totalEarnedSum = list.reduce((s, r) => s + (r.total_earned ?? 0), 0);
-  const totalRedeemedSum = list.reduce((s, r) => s + (r.total_redeemed ?? 0), 0);
-  const tierCounts: Record<string, number> = {};
-  for (const r of list) {
-    const t = (r.tier ?? "bronze").toLowerCase();
-    tierCounts[t] = (tierCounts[t] ?? 0) + 1;
-  }
-  return {
-    members_with_balance: membersWithBalance,
-    total_points_balance: totalPointsBalance,
-    total_earned_sum: totalEarnedSum,
-    total_redeemed_sum: totalRedeemedSum,
-    tier_counts: tierCounts,
-  };
-}
-
 async function fetchLoyaltyDashboard(
   userId: string,
   rewardsStoreIdHint: string | null,
 ): Promise<LoyaltyDashboardData> {
   const t0 = performance.now();
-  const [storesRes, profileRes] = await Promise.all([
-    supabase.from("stores").select("id,name").eq("user_id", userId).order("created_at", { ascending: true }),
-    supabase
-      .from("profiles")
-      .select("loyalty_program_name, loyalty_slug, points_per_real, loyalty_program_enabled, loyalty_points_ttl_days")
-      .eq("id", userId)
-      .single(),
-  ]);
-  if (profileRes.error) throw profileRes.error;
+  
+  const { data: bundle, error: bErr } = await supabase.rpc("get_loyalty_dashboard_bundle_v2", {
+    p_user_id: userId,
+    p_rewards_store_id: rewardsStoreIdHint,
+  });
 
-  const storesBrief = (storesRes.data ?? []) as { id: string; name: string }[];
+  if (bErr) throw bErr;
+  
+  const res = bundle as any;
+  const profile = res.profile;
+  const stats = res.stats || {};
+  const storesBrief = (res.stores || []) as { id: string; name: string }[];
   const storeIds = storesBrief.map((r) => r.id);
   const rewardStoreId =
     rewardsStoreIdHint && storeIds.includes(rewardsStoreIdHint) ? rewardsStoreIdHint : storeIds[0] ?? null;
 
-  let membersWithBalance = 0;
-  let totalPointsBalance = 0;
-  let totalEarnedSum = 0;
-  let totalRedeemedSum = 0;
-  let tierCounts: Record<string, number> = {};
-
-  const { data: rpcRaw, error: rpcErr } = await supabase.rpc("get_loyalty_dashboard_summary");
-  if (!rpcErr && rpcRaw != null && typeof rpcRaw === "object") {
-    const rpc = rpcRaw as RpcLoyaltySummary;
-    membersWithBalance = Number(rpc.members_with_balance ?? 0);
-    totalPointsBalance = Number(rpc.total_points_balance ?? 0);
-    totalEarnedSum = Number(rpc.total_earned_sum ?? 0);
-    totalRedeemedSum = Number(rpc.total_redeemed_sum ?? 0);
-    tierCounts = { ...(rpc.tier_counts ?? {}) };
-  } else {
-    const leg = await fetchLoyaltyAggregatesLegacy(userId);
-    membersWithBalance = Number(leg.members_with_balance ?? 0);
-    totalPointsBalance = Number(leg.total_points_balance ?? 0);
-    totalEarnedSum = Number(leg.total_earned_sum ?? 0);
-    totalRedeemedSum = Number(leg.total_redeemed_sum ?? 0);
-    tierCounts = leg.tier_counts;
-  }
-
-  let rewards: LoyaltyRewardRow[] = [];
-  if (rewardStoreId) {
-    const rw = await supabase
-      .from("loyalty_rewards")
-      .select(LOYALTY_REWARDS_SELECT)
-      .eq("store_id", rewardStoreId)
-      .order("custo_pontos", { ascending: true });
-    if (rw.error) console.warn("loyalty_rewards:", rw.error.message);
-    else if (rw.data) rewards = rw.data;
-  }
-
-  logQueryTiming("loyalty-dashboard", t0);
+  logQueryTiming("loyalty-dashboard-v2", t0);
   return {
     storeId: rewardStoreId,
     storeIds,
     storesBrief,
-    membersWithBalance,
-    totalPointsBalance,
-    totalEarnedSum,
-    totalRedeemedSum,
-    tierCounts,
-    profile: profileRes.data,
-    rewards,
+    membersWithBalance: Number(stats.members_with_balance ?? 0),
+    totalPointsBalance: Number(stats.total_points_balance ?? 0),
+    totalEarnedSum: Number(stats.total_earned_sum ?? 0),
+    totalRedeemedSum: Number(stats.total_redeemed_sum ?? 0),
+    tierCounts: stats.tier_counts || {},
+    profile: profile,
+    rewards: (res.rewards || []) as LoyaltyRewardRow[],
   };
 }
 
@@ -148,46 +91,47 @@ async function fetchLoyaltyDashboard(
  */
 export function useLoyaltyDashboard(rewardsStoreId: string | null = null) {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
   return useQuery({
-    queryKey: ["loyalty-dashboard", user?.id ?? null, rewardsStoreId],
-    enabled: !!user?.id,
+    queryKey: ["loyalty-dashboard", user?.id ?? null, scope?.activeStoreId ?? null, rewardsStoreId],
+    // Wait for scope to resolve so team members see the correct store's data.
+    enabled: !!user?.id && scope?.ready === true,
     queryFn: () => fetchLoyaltyDashboard(user!.id, rewardsStoreId),
     staleTime: 30_000,
+    gcTime: 30 * 60_000, // Keep cached 30 min so tab switches don't re-fetch.
+    retry: 1,
   });
 }
 
-export function useLoyaltyTransactions(page: number) {
+export function useLoyaltyTransactions(cursor: string | null = null) {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["loyalty-tx", user?.id ?? null, page],
+    queryKey: ["loyalty-tx", user?.id ?? null, cursor],
     enabled: !!user?.id,
     staleTime: 20_000,
+    gcTime: 10 * 60_000,
+    retry: 1,
     queryFn: async () => {
-      const from = page * LOYALTY_TX_PAGE_SIZE;
-      const to = from + LOYALTY_TX_PAGE_SIZE - 1;
-      const { data: txs, error, count } = await supabase
-        .from("loyalty_transactions")
-        .select("id, contact_id, points, reason, description, reference_id, created_at", { count: "exact" })
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false })
-        .range(from, to);
+      const { data, error } = await supabase.rpc("get_loyalty_transactions_v2", {
+        p_user_id: user!.id,
+        p_cursor_created_at: cursor,
+        p_limit: LOYALTY_TX_PAGE_SIZE,
+      });
+
       if (error) throw error;
-      const list = txs ?? [];
-      const contactIds = [...new Set(list.map((t) => t.contact_id))];
-      const contactMap: Record<string, { name: string; phone: string }> = {};
-      if (contactIds.length) {
-        const { data: contacts, error: cErr } = await supabase.from("contacts").select("id, name, phone").in("id", contactIds);
-        if (cErr) throw cErr;
-        for (const c of contacts ?? []) {
-          contactMap[c.id] = { name: c.name, phone: c.phone };
-        }
-      }
-      const rows: LoyaltyTxRow[] = list.map((t) => ({
-        ...t,
-        contactName: contactMap[t.contact_id]?.name ?? "—",
-        contactPhone: contactMap[t.contact_id]?.phone ?? "",
+      const res = data as any;
+      const rows: LoyaltyTxRow[] = (res.rows || []).map((t: any) => ({
+        id: t.id,
+        contact_id: t.contact_id,
+        points: t.points,
+        reason: t.reason,
+        description: t.description,
+        reference_id: t.reference_id,
+        created_at: t.created_at,
+        contactName: t.contact_name,
+        contactPhone: t.contact_phone,
       }));
-      return { rows, total: count ?? 0 };
+      return { rows, total: Number(res.total_count ?? 0) };
     },
   });
 }
@@ -222,22 +166,47 @@ export function useUpdateLoyaltyProfile() {
   });
 }
 
-/** Exporta até `maxRows` transações recentes para CSV (uso pontual). */
-export async function fetchLoyaltyTransactionsForExport(userId: string, maxRows: number): Promise<LoyaltyTxRow[]> {
-  const { data: txs, error } = await supabase
-    .from("loyalty_transactions")
-    .select("id, contact_id, points, reason, description, reference_id, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(maxRows);
-  if (error) throw error;
-  const list = txs ?? [];
+/** Exporta TODAS as transações em páginas de 1000 (sem limite artificial). */
+export async function fetchLoyaltyTransactionsForExport(
+  userId: string,
+  _maxRows: number,
+  onProgress?: (fetched: number) => void,
+): Promise<LoyaltyTxRow[]> {
+  const PAGE_SIZE = 1000;
+  const allTxs: typeof loyaltyTxColumns[] = [];
+  let page = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const { data: txs, error } = await supabase
+      .from("loyalty_transactions")
+      .select("id, contact_id, points, reason, description, reference_id, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (error) throw error;
+    const batch = txs ?? [];
+    allTxs.push(...(batch as typeof allTxs));
+    onProgress?.(allTxs.length);
+    hasMore = batch.length === PAGE_SIZE;
+    page++;
+  }
+
+  const list = allTxs as Array<{ id: string; contact_id: string; points: number; reason: string; description: string | null; reference_id: string | null; created_at: string }>;
   const contactIds = [...new Set(list.map((t) => t.contact_id))];
   const contactMap: Record<string, { name: string; phone: string }> = {};
   if (contactIds.length) {
-    const { data: contacts } = await supabase.from("contacts").select("id, name, phone").in("id", contactIds);
-    for (const c of contacts ?? []) {
-      contactMap[c.id] = { name: c.name, phone: c.phone };
+    // Batch contact lookups in groups of 500 to avoid URL length limits.
+    for (let i = 0; i < contactIds.length; i += 500) {
+      const { data: contacts } = await supabase
+        .from("contacts")
+        .select("id, name, phone")
+        .in("id", contactIds.slice(i, i + 500));
+      for (const c of contacts ?? []) {
+        contactMap[c.id] = { name: c.name, phone: c.phone };
+      }
     }
   }
   return list.map((t) => ({
@@ -246,3 +215,6 @@ export async function fetchLoyaltyTransactionsForExport(userId: string, maxRows:
     contactPhone: contactMap[t.contact_id]?.phone ?? "",
   }));
 }
+
+// Internal type placeholder — avoids a circular reference in the array push above.
+const loyaltyTxColumns = {} as { id: string; contact_id: string; points: number; reason: string; description: string | null; reference_id: string | null; created_at: string };

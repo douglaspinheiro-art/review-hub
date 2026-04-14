@@ -1,7 +1,8 @@
 import { useMemo, useCallback, type ElementType } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useContacts, useRfmReportCounts, getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useContacts, useRfmReportCounts } from "@/hooks/useDashboard";
+import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { useAuth } from "@/hooks/useAuth";
 import type { Database } from "@/integrations/supabase/types";
 import type { RfmEnglishSegment } from "@/lib/rfm-segments";
@@ -136,6 +137,7 @@ export default function RFM() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const scope = useStoreScope();
   const {
     data: contactsResult,
     isLoading,
@@ -152,7 +154,8 @@ export default function RFM() {
 
   const recalcRfm = useMutation({
     mutationFn: async () => {
-      const { userId, storeId } = await getCurrentUserAndStore();
+      const userId = scope.userId;
+      const storeId = scope.activeStoreId;
       if (!userId) throw new Error("Sessão inválida");
       if (!storeId) throw new Error("Nenhuma loja vinculada à conta.");
 
@@ -190,13 +193,23 @@ export default function RFM() {
   const { segments, maxFreq, maxMonetary, maxDaysInactive, monetaryById, segmentOf } = useMemo(() => {
     const ctx = computeRfmSampleContext(contacts);
 
-    const groups: Record<RFMSegment, Contact[]> = {
-      champions: [], loyal: [], at_risk: [], lost: [], new: [],
+    const groups: Record<string, Contact[]> = {
+      champions: [],
+      loyal: [],
+      promising: [],
+      at_risk: [],
+      lost: [],
+      new: [],
+      other: [],
     };
 
     contacts.forEach((c) => {
-      const seg = ctx.segmentOf(c);
-      groups[seg].push(c);
+      const seg = ctx.segmentOf(c) || "other";
+      if (groups[seg]) {
+        groups[seg].push(c);
+      } else {
+        groups[seg] = [c];
+      }
     });
 
     return { ...ctx, segments: groups, segmentOf: ctx.segmentOf };

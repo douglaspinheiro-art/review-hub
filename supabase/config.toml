@@ -7,6 +7,30 @@ verify_jwt = false
 [functions.data-pipeline-cron]
 verify_jwt = false
 
+# Webhook Meta Cloud — autenticação via x-hub-signature-256 (HMAC com META_APP_SECRET).
+[functions.meta-whatsapp-webhook]
+verify_jwt = false
+
+# Mensagens agendadas — autenticação via CRON_SECRET no handler.
+[functions.process-scheduled-messages]
+verify_jwt = false
+
+# Motor de jornadas — autenticação via FLOW_ENGINE_SECRET no handler.
+[functions.flow-engine]
+verify_jwt = false
+
+# Disparo de campanha — suporta Bearer JWT (usuário) ou DISPATCH_CAMPAIGN_SECRET (interno).
+[functions.dispatch-campaign]
+verify_jwt = false
+
+# Carrinho abandonado — autenticação via WEBHOOK_CART_SECRET ou JWT.
+[functions.webhook-cart]
+verify_jwt = false
+
+# Trigger de automações — autenticado via CRON_SECRET no handler.
+[functions.trigger-automations]
+verify_jwt = false
+
 # Validação de credenciais chamada só com sessão do cliente (invoke com JWT).
 [functions.validate-integration]
 verify_jwt = true
@@ -18,4 +42,109 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.stripe-webhook]
+verify_jwt = false
+
+# ── User-facing functions (called with Supabase JWT from the browser) ──────────
+
+[functions.send-email]
+verify_jwt = true
+
+[functions.ai-agent]
+verify_jwt = true
+
+[functions.ai-copy]
+verify_jwt = true
+
+[functions.ai-reply-suggest]
+verify_jwt = true
+
+[functions.buscar-ga4]
+verify_jwt = true
+
+[functions.gerar-diagnostico]
+verify_jwt = true
+
+[functions.fetch-store-metrics]
+verify_jwt = true
+
+[functions.calculate-rfm]
+verify_jwt = true
+
+[functions.unsubscribe-contact]
+verify_jwt = true
+
+[functions.dispatch-newsletter]
+verify_jwt = true
+
+[functions.meta-whatsapp-send]
+verify_jwt = true
+
+[functions.generate-api-key]
+verify_jwt = true
+
+[functions.export-contacts]
+verify_jwt = true
+
+[functions.get-cached-data]
+verify_jwt = true
+
+[functions.benchmark-setor]
+verify_jwt = true
+
+[functions.conversion-attribution]
+verify_jwt = true
+
+[functions.sincronizar-canal]
+verify_jwt = true
+
+[functions.integration-gateway]
+verify_jwt = true
+
+[functions.verify-domain]
+verify_jwt = true
+
+[functions.weekly-benchmark]
+verify_jwt = true
+
+[functions.verificar-frequencia]
+verify_jwt = true
+
+[functions.whatsapp-health-check]
+verify_jwt = true
+
+[functions.team-invite]
+verify_jwt = true
+
+[functions.team-accept-invite]
+verify_jwt = true
+
+# ── Cron / internal functions (no user JWT — authenticated by their own secrets) ─
+
+[functions.email-onboarding]
+verify_jwt = false
+
+[functions.enviar-pulse-semanal]
+verify_jwt = false
+
+[functions.relatorio-semanal]
+verify_jwt = false
+
+[functions.send-sms]
+verify_jwt = false
+
+# ── Inbound webhooks (third-party callbacks — no JWT) ─────────────────────────
+
+[functions.resend-webhook]
+verify_jwt = false
+
+[functions.meta-whatsapp-token]
+verify_jwt = false
+
+[functions.track-email-open]
+verify_jwt = false
+
+[functions.track-email-click]
+verify_jwt = false
+
+[functions.track-whatsapp-click]
 verify_jwt = false

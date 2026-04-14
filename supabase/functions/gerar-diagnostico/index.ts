@@ -2,8 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   verifyJwt,
-  checkRateLimit,
-  rateLimitedResponse,
   checkDistributedRateLimit,
   rateLimitedResponseWithRetry,
   corsHeaders as cors,
@@ -41,22 +39,25 @@ const DESCONTO_POR_SEGMENTO: Record<string, { tipo: string; valor: number; justi
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-
+  // Validate origin before OPTIONS response — prevents CSRF from any origin.
   const originCheck = validateBrowserOrigin(req);
   if (originCheck) return originCheck;
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const auth = await verifyJwt(req);
   if (!auth.ok) return auth.response;
-  if (!checkRateLimit(`gerar-diagnostico:${auth.userId}`, 8, 60_000)) {
-    return rateLimitedResponse();
-  }
 
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Distributed per-user burst guard (replaces in-memory checkRateLimit which is per-instance only).
+    const burst = await checkDistributedRateLimit(supabase, `gerar-diagnostico:burst:${auth.userId}`, 8, 60_000);
+    if (!burst.allowed) {
+      return rateLimitedResponseWithRetry(burst.retryAfterSeconds);
+    }
 
     const bodyJson = await req.json();
 
@@ -81,6 +82,40 @@ serve(async (req) => {
       typeof loja_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(loja_id)
         ? loja_id
         : null;
+
+    // Verify the authenticated user owns the store they are diagnosing.
+    // Without this check, any authenticated user could trigger AI diagnostics
+    // (and burn Anthropic API quota) for any store by providing its UUID.
+    if (storeUuid) {
+      const { data: ownedStore } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("id", storeUuid)
+        .eq("user_id", auth.userId)
+        .maybeSingle();
+      if (!ownedStore) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Forbidden" }),
+          { status: 403, headers: { ...cors, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Ponto #6: Add stricter per-store rate limit (1 req / 5 min)
+    if (storeUuid) {
+      const { data: isRateAllowed, error: rateError } = await supabase.rpc("check_rate_limit", {
+        p_key: `gerar-diagnostico:5min:${storeUuid}`,
+        p_interval: '5 minutes'
+      });
+      if (rateError) console.error("Rate limit check error:", rateError);
+      if (isRateAllowed === false) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Aguarde 5 minutos entre gerações de diagnóstico." }),
+          { status: 429, headers: { ...cors, "Content-Type": "application/json", "Retry-After": "300" } }
+        );
+      }
+    }
+
     const dayCap = Math.min(100, Math.max(1, Number(Deno.env.get("GERAR_DIAGNOSTICO_MAX_PER_STORE_PER_DAY") ?? "20") || 20));
     const rateKey = storeUuid ? `gerar-diagnostico:store:${storeUuid}` : `gerar-diagnostico:user:${auth.userId}`;
     const dist = await checkDistributedRateLimit(supabase, rateKey, dayCap, 86_400_000);
@@ -238,23 +273,46 @@ Gere 3 problemas priorizados por impacto, 2 oportunidades e 3 recomendações de
 Para cada prescrição, use o desconto mínimo necessário para o segmento alvo.
 NÃO repita abordagens de prescrições que não funcionaram.`;
 
-    // Anthropic call with exponential backoff on 429/5xx
-    async function callAnthropicWithRetry(maxRetries = 3): Promise<Response> {
+    // Anthropic call with per-attempt 25s timeout + exponential backoff on 429/5xx.
+    // Without an explicit signal, a hanging Anthropic response would hold the Edge
+    // Function open until Supabase's runtime kills it (~60-120s), giving the user no
+    // feedback. The AbortController gives us a clean, user-readable error at 25s.
+    const ANTHROPIC_TIMEOUT_MS = 25_000;
+
+    async function callAnthropicWithRetry(maxRetries = 1): Promise<Response> {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-3-5-sonnet-20241022",
-            max_tokens: 3000,
-            system,
-            messages: [{ role: "user", content: user }],
-          }),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
+        let res: Response;
+        try {
+          res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": KEY,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-3-5-sonnet-20241022",
+              max_tokens: 3000,
+              system,
+              messages: [{ role: "user", content: user }],
+            }),
+          });
+        } catch (err) {
+          clearTimeout(timeoutId);
+          if (err instanceof Error && err.name === "AbortError") {
+            console.warn(`[gerar-diagnostico] Anthropic fetch timed out after ${ANTHROPIC_TIMEOUT_MS}ms (attempt ${attempt + 1}/${maxRetries})`);
+            if (attempt < maxRetries - 1) {
+              await new Promise(r => setTimeout(r, 1_000));
+              continue;
+            }
+            throw new Error("A IA demorou mais do que o esperado. Tente novamente em alguns instantes.");
+          }
+          throw err;
+        }
+        clearTimeout(timeoutId);
         if (res.status === 429 || res.status >= 500) {
           const retryAfter = res.headers.get("retry-after");
           const waitMs = retryAfter

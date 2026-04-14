@@ -21,6 +21,7 @@ import { CAMPAIGN_LIST_SELECT } from "@/lib/supabase-select-fragments";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import ErrorBoundary from "@/components/ErrorBoundary";
 const BlockCanvas = lazy(() =>
   import("@/components/dashboard/newsletter/BlockCanvas").then((m) => ({ default: m.BlockCanvas })),
 );
@@ -131,6 +132,17 @@ export default function Newsletter() {
     }
   }, [selectedNewsletterStoreId]);
 
+  // Reset autosave state on store switch to prevent debounced saves targeting the
+  // wrong campaign (campaignId from previous store still in state during debounce window).
+  const prevStoreIdRef = useRef(selectedNewsletterStoreId);
+  useEffect(() => {
+    if (prevStoreIdRef.current && prevStoreIdRef.current !== selectedNewsletterStoreId) {
+      setCampaignId(null);
+      initialized.current = false;
+    }
+    prevStoreIdRef.current = selectedNewsletterStoreId;
+  }, [selectedNewsletterStoreId]);
+
   const storeRow =
     newsletterStores.find((s) => s.id === selectedNewsletterStoreId) ?? newsletterStores[0] ?? null;
 
@@ -195,7 +207,7 @@ export default function Newsletter() {
     onSuccess: () => {
       toast.success("Blocos salvos na biblioteca.");
       setSavedBlockName("");
-      queryClient.invalidateQueries({ queryKey: ["newsletter-saved-blocks"] });
+      queryClient.invalidateQueries({ queryKey: ["newsletter-saved-blocks", user?.id] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -324,7 +336,7 @@ export default function Newsletter() {
       user?.id,
       storeRow?.id,
     ],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!storeRow?.id) return 0;
       // customers_v3 pode não estar no tipo gerado do cliente
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -336,7 +348,8 @@ export default function Newsletter() {
         .not("email", "is", null)
         .is("unsubscribed_at", null)
         .is("email_hard_bounce_at", null)
-        .is("email_complaint_at", null);
+        .is("email_complaint_at", null)
+        .abortSignal(signal);
 
       if (recipientMode === "tag" && debouncedTag.trim()) {
         query = query.contains("tags", [debouncedTag.trim()]);
@@ -357,12 +370,13 @@ export default function Newsletter() {
 
   const { data: nonOpenersCount = 0, isFetching: nonOpenersFetching } = useQuery({
     queryKey: ["newsletter_non_openers_count", campaignId, user?.id, storeRow?.id],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!campaignId || !user) return 0;
       const { data: sentRows, error: e1 } = await supabase
         .from("newsletter_send_recipients")
         .select("customer_id")
-        .eq("campaign_id", campaignId);
+        .eq("campaign_id", campaignId)
+        .abortSignal(signal);
       if (e1) throw e1;
       const sentIds = [...new Set((sentRows ?? []).map((r: { customer_id: string }) => r.customer_id))];
       if (sentIds.length === 0) return 0;
@@ -370,7 +384,8 @@ export default function Newsletter() {
         .from("email_engagement_events")
         .select("customer_id")
         .eq("campaign_id", campaignId)
-        .eq("event_type", "open");
+        .eq("event_type", "open")
+        .abortSignal(signal);
       if (e2) throw e2;
       const opened = new Set((openRows ?? []).map((r: { customer_id: string }) => r.customer_id));
       const nonOpenerIds = sentIds.filter((cid) => !opened.has(cid));
@@ -378,12 +393,14 @@ export default function Newsletter() {
       const chunkSize = 200;
       let total = 0;
       for (let i = 0; i < nonOpenerIds.length; i += chunkSize) {
+        if (signal.aborted) break;
         const chunk = nonOpenerIds.slice(i, i + chunkSize);
         let qNon = supabase
           .from("customers_v3")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
-          .in("id", chunk);
+          .in("id", chunk)
+          .abortSignal(signal);
         if (storeRow?.id) qNon = qNon.eq("store_id", storeRow.id);
         const { count, error: e3 } = await qNon
           .not("email", "is", null)
@@ -419,6 +436,8 @@ export default function Newsletter() {
   const { data: newsletterStats, isFetching: newsletterStatsLoading } = useNewsletterCampaignStats(
     campaignId ?? undefined,
     statsChannel,
+    user?.id ?? null,
+    storeRow?.id ?? null,
   );
 
   const showNewsletterPerformance =
@@ -722,6 +741,22 @@ export default function Newsletter() {
       </div>
 
       {/* ── 3-column layout (canvas/palette lazy para reduzir bundle inicial) ── */}
+      <ErrorBoundary
+        fallback={
+          <div className="flex flex-1 items-center justify-center bg-muted/10">
+            <div className="text-center space-y-2">
+              <p className="text-sm text-destructive font-medium">Falha ao carregar o editor de newsletter.</p>
+              <button
+                type="button"
+                className="text-xs text-primary underline"
+                onClick={() => window.location.reload()}
+              >
+                Recarregar página
+              </button>
+            </div>
+          </div>
+        }
+      >
       <Suspense
         fallback={
           <div className="flex flex-1 items-center justify-center bg-muted/10">
@@ -931,6 +966,7 @@ export default function Newsletter() {
         </div>
       </div>
       </Suspense>
+      </ErrorBoundary>
 
       {/* ── Template picker modal ── */}
       {showTemplateModal && (

@@ -26,14 +26,26 @@ export async function sendEmail(payload: EmailPayload) {
   if (payload.reply_to) body.reply_to = payload.reply_to;
   if (payload.tags) body.tags = payload.tags;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
+  // 15s timeout — prevents edge functions from hanging if Resend is unresponsive.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  let res: Response;
+  try {
+    res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    const isTimeout = (err as Error)?.name === "AbortError";
+    throw new Error(isTimeout ? "Resend API timeout (15s)" : String(err));
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     const errBody = await res.text();

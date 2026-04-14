@@ -66,6 +66,9 @@ export function useEngagementTracking(userId: string | null): EngagementState & 
     if (!userId || initializedForRef.current === userId) return;
     initializedForRef.current = userId;
 
+    // Track timers outside the async IIFE so the useEffect cleanup can cancel them.
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
     void (async () => {
       const today = todayUtcDate();
       const yesterday = yesterdayUtcDate();
@@ -78,7 +81,7 @@ export function useEngagementTracking(userId: string | null): EngagementState & 
 
       if (error || !row) {
         // Columns may not exist yet (pre-migration). Fall back to localStorage.
-        fallbackToLocalStorage(setState);
+        fallbackToLocalStorage(setState, timers);
         return;
       }
 
@@ -98,7 +101,6 @@ export function useEngagementTracking(userId: string | null): EngagementState & 
         streak_last_visit_date: today,
       };
 
-      const timers: ReturnType<typeof setTimeout>[] = [];
       let newStreakMilestone: string | null = null;
 
       if (newStreak === 7 && !eng.streak_7_shown) {
@@ -140,31 +142,31 @@ export function useEngagementTracking(userId: string | null): EngagementState & 
       setState(s => ({ ...s, streak: newStreak }));
 
       if (newStreakMilestone) {
-        const t = setTimeout(() => setState(s => ({ ...s, streakMilestone: newStreakMilestone })), 800);
-        timers.push(t);
+        timers.push(setTimeout(() => setState(s => ({ ...s, streakMilestone: newStreakMilestone })), 800));
       }
       if (showNPS) {
-        const t = setTimeout(() => setState(s => ({ ...s, showNPS: true })), 5000);
-        timers.push(t);
+        timers.push(setTimeout(() => setState(s => ({ ...s, showNPS: true })), 5000));
       }
       if (showMilestone) {
-        const t = setTimeout(() => setState(s => ({ ...s, milestone: "R$ 1.000 recuperados" })), 1000);
-        timers.push(t);
+        timers.push(setTimeout(() => setState(s => ({ ...s, milestone: "R$ 1.000 recuperados" })), 1000));
       }
-
-      return () => timers.forEach(clearTimeout);
     })();
+
+    // Cleanup: cancel any pending milestone/NPS toasts on unmount or userId change.
+    return () => timers.forEach(clearTimeout);
   }, [userId]);
 
   return { ...state, dismissNPS, dismissMilestone, dismissStreakMilestone };
 }
 
 /** Fallback to localStorage when Supabase columns are not yet available (pre-migration). */
-function fallbackToLocalStorage(setState: React.Dispatch<React.SetStateAction<EngagementState>>) {
+function fallbackToLocalStorage(
+  setState: React.Dispatch<React.SetStateAction<EngagementState>>,
+  timers: ReturnType<typeof setTimeout>[],
+) {
   const today = new Date().toDateString();
   const lastVisit = localStorage.getItem("ltv_last_visit");
   const currentStreak = parseInt(localStorage.getItem("ltv_streak") || "0", 10);
-  const timers: ReturnType<typeof setTimeout>[] = [];
 
   if (lastVisit === today) {
     setState(s => ({ ...s, streak: currentStreak }));
@@ -214,5 +216,4 @@ function fallbackToLocalStorage(setState: React.Dispatch<React.SetStateAction<En
     }, 1000));
   }
 
-  // Note: timers cleanup not returned here (fallback path only runs once)
 }

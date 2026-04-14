@@ -11,70 +11,64 @@ import { useAuth } from "@/hooks/useAuth";
 
 // ─── Hook de status de ativação ───────────────────────────────────────────────
 
+type ActivationStatus = {
+  whatsappConnected: boolean;
+  campaignCreated: boolean;
+  automationActive: boolean;
+  hasContacts: boolean;
+};
+
 function useActivationStatus(userId: string | undefined) {
-  // WhatsApp conectado
-  const { data: whatsappConnected = false, isLoading: l1 } = useQuery({
-    queryKey: ["activation_whatsapp", userId],
-    queryFn: async () => {
-      const { count } = await supabase
-        .from("whatsapp_connections")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId!)
-        .eq("status", "connected");
-      return (count ?? 0) > 0;
-    },
-    enabled: !!userId,
-  });
+  // Single consolidated query — avoids 4 independent queries firing at different
+  // times and causing flickering completion counts (e.g. "3/4" then "2/4" then "4/4").
+  const { data, isLoading } = useQuery({
+    queryKey: ["activation_status_bundle", userId],
+    queryFn: async (): Promise<ActivationStatus> => {
+      const [waRes, campRes, storesRes, contactsRes] = await Promise.all([
+        supabase
+          .from("whatsapp_connections")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId!)
+          .eq("status", "connected"),
+        supabase
+          .from("campaigns")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId!),
+        supabase.from("stores").select("id").eq("user_id", userId!),
+        supabase
+          .from("customers_v3")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId!),
+      ]);
 
-  // Campanha criada
-  const { data: campaignCreated = false, isLoading: l2 } = useQuery({
-    queryKey: ["activation_campaign", userId],
-    queryFn: async () => {
-      const { count } = await supabase
-        .from("campaigns")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId!);
-      return (count ?? 0) > 0;
-    },
-    enabled: !!userId,
-  });
+      const storeIds = (storesRes.data ?? []).map((s) => s.id);
+      let automationActive = false;
+      if (storeIds.length > 0) {
+        const { count } = await supabase
+          .from("journeys_config")
+          .select("id", { count: "exact", head: true })
+          .in("store_id", storeIds)
+          .eq("ativa", true);
+        automationActive = (count ?? 0) > 0;
+      }
 
-  // Jornada ativa (motor real: journeys_config por loja)
-  const { data: automationActive = false, isLoading: l3 } = useQuery({
-    queryKey: ["activation_journeys", userId],
-    queryFn: async () => {
-      const { data: stores } = await supabase.from("stores").select("id").eq("user_id", userId!);
-      const ids = (stores ?? []).map((s) => s.id);
-      if (ids.length === 0) return false;
-      const { count } = await supabase
-        .from("journeys_config")
-        .select("id", { count: "exact", head: true })
-        .in("store_id", ids)
-        .eq("ativa", true);
-      return (count ?? 0) > 0;
+      return {
+        whatsappConnected: (waRes.count ?? 0) > 0,
+        campaignCreated: (campRes.count ?? 0) > 0,
+        automationActive,
+        hasContacts: (contactsRes.count ?? 0) > 0,
+      };
     },
     enabled: !!userId,
-  });
-
-  // Tem contatos
-  const { data: hasContacts = false, isLoading: l4 } = useQuery({
-    queryKey: ["activation_contacts", userId],
-    queryFn: async () => {
-      const { count } = await supabase
-        .from("customers_v3")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId!);
-      return (count ?? 0) > 0;
-    },
-    enabled: !!userId,
+    staleTime: 60_000,
   });
 
   return {
-    whatsappConnected,
-    campaignCreated,
-    automationActive,
-    hasContacts,
-    isLoading: l1 || l2 || l3 || l4,
+    whatsappConnected: data?.whatsappConnected ?? false,
+    campaignCreated: data?.campaignCreated ?? false,
+    automationActive: data?.automationActive ?? false,
+    hasContacts: data?.hasContacts ?? false,
+    isLoading,
   };
 }
 
@@ -83,12 +77,12 @@ function useActivationStatus(userId: string | undefined) {
 export function ActivationChecklist() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(() =>
-    localStorage.getItem("activation_checklist_collapsed") === "1"
-  );
-  const [dismissed, setDismissed] = useState(() =>
-    localStorage.getItem("activation_checklist_dismissed") === "1"
-  );
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("activation_checklist_collapsed") === "1"; } catch { return false; }
+  });
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem("activation_checklist_dismissed") === "1"; } catch { return false; }
+  });
 
   const { whatsappConnected, campaignCreated, automationActive, hasContacts, isLoading } =
     useActivationStatus(user?.id);
@@ -141,12 +135,12 @@ export function ActivationChecklist() {
   function toggleCollapse() {
     const next = !collapsed;
     setCollapsed(next);
-    localStorage.setItem("activation_checklist_collapsed", next ? "1" : "0");
+    try { localStorage.setItem("activation_checklist_collapsed", next ? "1" : "0"); } catch { /* private browsing */ }
   }
 
   function dismiss() {
     setDismissed(true);
-    localStorage.setItem("activation_checklist_dismissed", "1");
+    try { localStorage.setItem("activation_checklist_dismissed", "1"); } catch { /* private browsing */ }
   }
 
   return (

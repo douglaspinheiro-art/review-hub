@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react";
 import {
   Package,
   Star,
@@ -122,7 +122,7 @@ const ProductSkeleton = () => (
   </div>
 );
 
-const ProductCard = ({
+const ProductCard = memo(({
   p,
   onCriarCampanha,
   onPrescricaoSku,
@@ -147,7 +147,12 @@ const ProductCard = ({
       return;
     }
     const observer = new IntersectionObserver(
-      ([entry]) => setIsVisible(entry.isIntersecting),
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
       { rootMargin: "200px" }
     );
     observer.observe(el);
@@ -264,7 +269,7 @@ const ProductCard = ({
       )}
     </div>
   );
-};
+});
 
 const PAGE_SIZE = 48;
 

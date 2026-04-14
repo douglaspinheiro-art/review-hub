@@ -23,6 +23,7 @@ import {
 import { useIsAdmin } from "@/hooks/useAdminCheck";
 import { StoreScopeProvider } from "@/contexts/StoreScopeContext";
 import { StoreSwitcher } from "@/components/dashboard/StoreSwitcher";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const planLevels = { starter: 0, growth: 1, scale: 2, enterprise: 3 } as const;
 type MinPlan = keyof typeof planLevels;
@@ -137,7 +138,7 @@ function isActive(href: string, pathname: string) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
-  const { signOut, user, profile, isTrialActive } = useAuth();
+  const { signOut, user, profile, isTrialActive, profileFallbackUsed } = useAuth();
   const { data: teamAccess } = useTeamAccess();
   const { data: isPlatformStaff } = useIsAdmin();
 
@@ -354,98 +355,111 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <StoreScopeProvider>
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar desktop */}
-      <div className="hidden md:flex shrink-0">
-        <Sidebar />
-      </div>
-
-      {/* Mobile overlay */}
-      {open && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-64 z-50">
-            <Sidebar mobile />
+    <ErrorBoundary>
+      <StoreScopeProvider>
+        <div className="flex h-screen overflow-hidden bg-background">
+          {/* Sidebar desktop */}
+          <div className="hidden md:flex shrink-0">
+            <Sidebar />
           </div>
-        </div>
-      )}
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Topbar desktop */}
-        <div className="hidden md:flex h-14 shrink-0 items-center justify-between gap-3 px-6 border-b bg-card/50 backdrop-blur-sm">
-          <div className="flex items-center min-w-0 flex-1">
-            <StoreSwitcher />
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="sm" className="h-9 gap-2 text-muted-foreground font-bold text-xs" asChild>
-            <Link to="/central-de-ajuda">
-              <HelpCircle className="w-4 h-4" />
-              Ajuda
-            </Link>
-          </Button>
-          <NotificationBell />
-          </div>
-        </div>
-
-        {/* Topbar mobile */}
-        <div className="md:hidden h-14 flex items-center gap-3 px-4 border-b bg-card shrink-0 sticky top-0 z-30">
-          <Button variant="ghost" size="icon" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={open ? "Fechar menu" : "Abrir menu"}>
-            {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </Button>
-          <div className="flex-1 flex items-center gap-2 min-w-0">
-            <span className="font-black text-xs uppercase tracking-tighter italic truncate">LTV Boost</span>
-            {activeProfile && (
-              <Badge variant="outline" className={cn("shrink-0 text-[9px] font-black border-none", planColors[plan])}>
-                {isTrialActive ? "Trial" : planLabels[plan]}
-              </Badge>
-            )}
-            <StoreSwitcher />
-          </div>
-          <NotificationBell />
-        </div>
-
-        {/* Trial countdown bar */}
-        {isTrialActive && !isDemo && (
-          <div className={cn(
-            "shrink-0 px-6 py-2 flex items-center justify-between gap-4 border-b text-xs font-bold",
-            trialDaysLeft <= 2
-              ? "bg-red-500/10 border-red-500/20 text-red-600"
-              : trialDaysLeft <= 5
-              ? "bg-amber-500/10 border-amber-500/20 text-amber-600"
-              : "bg-primary/5 border-primary/10 text-primary"
-          )}>
-            <div className="flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 shrink-0" />
-              <span>
-                Acesso demonstração —{" "}
-                <span className="font-black">{trialDaysLeft} {trialDaysLeft === 1 ? "dia restante" : "dias restantes"}</span>.
-                {" "}Execute ações ilimitadas ao ativar um plano.
-              </span>
+          {/* Mobile overlay */}
+          {open && (
+            <div className="fixed inset-0 z-40 md:hidden">
+              <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
+              <div className="absolute left-0 top-0 h-full w-64 z-50">
+                <Sidebar mobile />
+              </div>
             </div>
-            <button
-              onClick={() => navigate("/upgrade")}
-              className="shrink-0 underline font-black hover:no-underline"
-            >
-              Ativar agora →
-            </button>
-          </div>
-        )}
+          )}
 
-        {isBetaLimitedScope && !isDemo && (
-          <div className="shrink-0 px-4 md:px-6 py-2 border-b bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300 text-[11px] md:text-xs font-semibold leading-snug">
-            {BETA_LIMITED_BANNER_PT}
-          </div>
-        )}
+          {/* Main */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Topbar desktop */}
+            <div className="hidden md:flex h-14 shrink-0 items-center justify-between gap-3 px-6 border-b bg-card/50 backdrop-blur-sm">
+              <div className="flex items-center min-w-0 flex-1">
+                <StoreSwitcher />
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="sm" className="h-9 gap-2 text-muted-foreground font-bold text-xs" asChild>
+                <Link to="/central-de-ajuda">
+                  <HelpCircle className="w-4 h-4" />
+                  Ajuda
+                </Link>
+              </Button>
+              <NotificationBell />
+              </div>
+            </div>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          <div className="max-w-7xl mx-auto">
-            <TeamCollaboratorPageGuard>{children}</TeamCollaboratorPageGuard>
+            {/* Topbar mobile */}
+            <div className="md:hidden h-14 flex items-center gap-3 px-4 border-b bg-card shrink-0 sticky top-0 z-30">
+              <Button variant="ghost" size="icon" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={open ? "Fechar menu" : "Abrir menu"}>
+                {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </Button>
+              <div className="flex-1 flex items-center gap-2 min-w-0">
+                <span className="font-black text-xs uppercase tracking-tighter italic truncate">LTV Boost</span>
+                {activeProfile && (
+                  <Badge variant="outline" className={cn("shrink-0 text-[9px] font-black border-none", planColors[plan])}>
+                    {isTrialActive ? "Trial" : planLabels[plan]}
+                  </Badge>
+                )}
+                <StoreSwitcher />
+              </div>
+              <NotificationBell />
+            </div>
+
+            {/* Trial countdown bar */}
+            {isTrialActive && !isDemo && (
+              <div className={cn(
+                "shrink-0 px-6 py-2 flex items-center justify-between gap-4 border-b text-xs font-bold",
+                trialDaysLeft <= 2
+                  ? "bg-red-500/10 border-red-500/20 text-red-600"
+                  : trialDaysLeft <= 5
+                  ? "bg-amber-500/10 border-amber-500/20 text-amber-600"
+                  : "bg-primary/5 border-primary/10 text-primary"
+              )}>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Acesso demonstração —{" "}
+                    <span className="font-black">{trialDaysLeft} {trialDaysLeft === 1 ? "dia restante" : "dias restantes"}</span>.
+                    {" "}Execute ações ilimitadas ao ativar um plano.
+                  </span>
+                </div>
+                <button
+                  onClick={() => navigate("/upgrade")}
+                  className="shrink-0 underline font-black hover:no-underline"
+                >
+                  Ativar agora →
+                </button>
+              </div>
+            )}
+
+            {isBetaLimitedScope && !isDemo && (
+              <div className="shrink-0 px-4 md:px-6 py-2 border-b bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300 text-[11px] md:text-xs font-semibold leading-snug">
+                {BETA_LIMITED_BANNER_PT}
+              </div>
+            )}
+
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">
+              {profileFallbackUsed && (
+                <div className="mb-4 rounded-md border border-yellow-500/50 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+                  Não foi possível carregar seu perfil. Algumas informações podem estar incompletas.{" "}
+                  <button
+                    className="underline hover:text-yellow-100"
+                    onClick={() => window.location.reload()}
+                  >
+                    Recarregar página
+                  </button>
+                </div>
+              )}
+              <div className="max-w-7xl mx-auto">
+                <TeamCollaboratorPageGuard>{children}</TeamCollaboratorPageGuard>
+              </div>
+            </main>
           </div>
-        </main>
-      </div>
-    </div>
-    </StoreScopeProvider>
+        </div>
+      </StoreScopeProvider>
+    </ErrorBoundary>
   );
 }

@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { verifyJwt } from "../_shared/edge-utils.ts";
+import { verifyJwt, checkDistributedRateLimit, rateLimitedResponseWithRetry } from "../_shared/edge-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -50,8 +50,26 @@ serve(async (req) => {
 
   const auth = await verifyJwt(req);
   if (!auth.ok) return auth.response;
+  const userId = auth.userId;
 
   try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // Rate limit: 10 msg/min per user
+    const { allowed, retryAfterSeconds } = await checkDistributedRateLimit(
+      supabase,
+      `send-sms:${userId}`,
+      10,
+      60000
+    );
+
+    if (!allowed) {
+      return rateLimitedResponseWithRetry(retryAfterSeconds);
+    }
+
     const body = await req.json();
     const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
@@ -61,11 +79,6 @@ serve(async (req) => {
       });
     }
     const { to, message } = parsed.data;
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
 
     const jwt = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
     const { data: { user } } = await supabase.auth.getUser(jwt);

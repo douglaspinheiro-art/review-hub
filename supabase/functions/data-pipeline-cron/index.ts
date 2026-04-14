@@ -1,8 +1,7 @@
 /**
  * Cron agregado: snapshots de qualidade de dados, coortes de clientes, espelho de catálogo.
+ * Refactor: processa em chunks de 10 lojas para evitar timeout.
  * POST /functions/v1/data-pipeline-cron
- * Body opcional: { "jobs": ["quality","cohorts","catalog"] } — default todas.
- * Authorization: Bearer CRON_SECRET
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -15,16 +14,15 @@ const cors = {
 };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const CHUNK_SIZE = 10;
 
 function weekAgoIso(): string {
   return new Date(Date.now() - WEEK_MS).toISOString();
 }
 
-async function jobQuality(supabase: ReturnType<typeof createClient>, snapshotDate: string) {
+async function jobQuality(supabase: any, snapshotDate: string, stores: any[]) {
   const since = weekAgoIso();
-  const { data: stores } = await supabase.from("stores").select("id, user_id");
-
-  for (const st of stores ?? []) {
+  for (const st of stores) {
     const sid = st.id as string;
     const { data: orders } = await supabase
       .from("orders_v3")
@@ -56,14 +54,14 @@ async function jobQuality(supabase: ReturnType<typeof createClient>, snapshotDat
     let phoneOk = 0;
     if (ids.length > 0) {
       const { data: custs } = await supabase.from("customers_v3").select("id, phone").in("id", ids);
-      const pmap = new Map((custs ?? []).map((c) => [c.id, c.phone as string | null]));
+      const pmap = new Map((custs ?? []).map((c: any) => [c.id, c.phone as string | null]));
       for (const o of list) {
         if (!o.cliente_id) continue;
         const ph = pmap.get(o.cliente_id)?.replace(/\D/g, "") ?? "";
         if (ph.length >= 12) phoneOk++;
       }
     }
-    const utmOk = list.filter((o) => o.utm_source && String(o.utm_source).trim().length > 0).length;
+    const utmOk = list.filter((o: any) => o.utm_source && String(o.utm_source).trim().length > 0).length;
 
     const { count: whTotal } = await supabase
       .from("webhook_logs")
@@ -109,28 +107,46 @@ async function jobQuality(supabase: ReturnType<typeof createClient>, snapshotDat
   }
 }
 
-async function jobCohorts(supabase: ReturnType<typeof createClient>) {
-  const { data: stores } = await supabase.from("stores").select("id, user_id");
+// Only look at the last 13 months to bound memory usage.
+// retention_d30 only needs first-order month + 30-day window, so 13 months is sufficient.
+const COHORT_WINDOW_DAYS = 13 * 31;
+const COHORT_PAGE_SIZE = 2000;
 
-  for (const st of stores ?? []) {
+async function jobCohorts(supabase: any, stores: any[]) {
+  const since = new Date(Date.now() - COHORT_WINDOW_DAYS * 86400000).toISOString();
+
+  for (const st of stores) {
     const sid = st.id as string;
-    const { data: ord } = await supabase
-      .from("orders_v3")
-      .select("cliente_id, created_at")
-      .eq("store_id", sid)
-      .not("cliente_id", "is", null)
-      .order("created_at", { ascending: true });
-
-    const rows = ord ?? [];
     const firstByCustomer = new Map<string, Date>();
     const ordersByCustomer = new Map<string, Date[]>();
 
-    for (const row of rows) {
-      const cid = row.cliente_id as string;
-      const d = new Date(row.created_at as string);
-      if (!firstByCustomer.has(cid)) firstByCustomer.set(cid, d);
-      if (!ordersByCustomer.has(cid)) ordersByCustomer.set(cid, []);
-      ordersByCustomer.get(cid)!.push(d);
+    // Paginated fetch to avoid loading millions of rows into memory at once.
+    let cursor: string | null = null;
+    while (true) {
+      let q = supabase
+        .from("orders_v3")
+        .select("id, cliente_id, created_at")
+        .eq("store_id", sid)
+        .not("cliente_id", "is", null)
+        .gte("created_at", since)
+        .order("id", { ascending: true })
+        .limit(COHORT_PAGE_SIZE);
+      if (cursor) q = q.gt("id", cursor);
+
+      const { data: page, error } = await q;
+      if (error) throw error;
+      const rows = page ?? [];
+
+      for (const row of rows) {
+        const cid = row.cliente_id as string;
+        const d = new Date(row.created_at as string);
+        if (!firstByCustomer.has(cid)) firstByCustomer.set(cid, d);
+        if (!ordersByCustomer.has(cid)) ordersByCustomer.set(cid, []);
+        ordersByCustomer.get(cid)!.push(d);
+      }
+
+      if (rows.length < COHORT_PAGE_SIZE) break;
+      cursor = rows[rows.length - 1].id as string;
     }
 
     const cohortMap = new Map<
@@ -148,6 +164,7 @@ async function jobCohorts(supabase: ReturnType<typeof createClient>) {
       c.firstDates.set(cid, first);
     }
 
+    const upsertRows: any[] = [];
     for (const [cohortMonth, { customers, firstDates }] of cohortMap) {
       let retained = 0;
       for (const cid of customers) {
@@ -157,38 +174,42 @@ async function jobCohorts(supabase: ReturnType<typeof createClient>) {
         if (dates.some((d) => d.getTime() > f.getTime() && d.getTime() <= end.getTime())) retained++;
       }
       const size = customers.size;
-      const retention_d30 = size > 0 ? Math.round((retained / size) * 10000) / 10000 : null;
+      upsertRows.push({
+        store_id: sid,
+        user_id: st.user_id,
+        cohort_month: cohortMonth,
+        cohort_size: size,
+        retention_d30: size > 0 ? Math.round((retained / size) * 10000) / 10000 : null,
+      });
+    }
 
-      await supabase.from("customer_cohorts").upsert(
-        {
-          store_id: sid,
-          user_id: st.user_id,
-          cohort_month: cohortMonth,
-          cohort_size: size,
-          retention_d30,
-        },
-        { onConflict: "store_id,cohort_month" },
-      );
+    // Batch upsert all cohort months for this store in one call.
+    if (upsertRows.length > 0) {
+      await supabase.from("customer_cohorts").upsert(upsertRows, { onConflict: "store_id,cohort_month" });
     }
   }
 }
 
-async function jobCatalog(supabase: ReturnType<typeof createClient>) {
-  const { data: stores } = await supabase.from("stores").select("id, user_id");
+const CATALOG_BATCH_SIZE = 500;
 
-  for (const st of stores ?? []) {
+async function jobCatalog(supabase: any, stores: any[]) {
+  for (const st of stores) {
     const sid = st.id as string;
     const { data: products } = await supabase.from("produtos").select("sku, nome, estoque").eq("store_id", sid);
     const captured = new Date().toISOString();
-    for (const p of products ?? []) {
-      await supabase.from("catalog_snapshot").insert({
-        store_id: sid,
-        user_id: st.user_id,
-        sku: (p.sku as string) || "unknown",
-        product_name: (p.nome as string) || null,
-        stock_qty: p.estoque != null ? Number(p.estoque) : null,
-        captured_at: captured,
-      });
+    const rows = (products ?? []).map((p: any) => ({
+      store_id: sid,
+      user_id: st.user_id,
+      sku: (p.sku as string) || "unknown",
+      product_name: (p.nome as string) || null,
+      stock_qty: p.estoque != null ? Number(p.estoque) : null,
+      captured_at: captured,
+    }));
+
+    // Batch insert in chunks to avoid exceeding Supabase request body limits.
+    for (let i = 0; i < rows.length; i += CATALOG_BATCH_SIZE) {
+      const batch = rows.slice(i, i + CATALOG_BATCH_SIZE);
+      await supabase.from("catalog_snapshot").insert(batch);
     }
   }
 }
@@ -206,14 +227,38 @@ serve(async (req) => {
   } catch { /* default */ }
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-  const snapshotDate = new Date().toISOString().slice(0, 10);
+  
+  // 1. Fetch cursor from system_config
+  const { data: config } = await supabase
+    .from("system_config")
+    .select("data_pipeline_cursor")
+    .limit(1)
+    .maybeSingle();
+  
+  const cursor = config?.data_pipeline_cursor;
 
+  // 2. Fetch chunk of stores
+  let query = supabase.from("stores").select("id, user_id").order("id", { ascending: true }).limit(CHUNK_SIZE);
+  if (cursor) {
+    query = query.gt("id", cursor);
+  }
+
+  const { data: stores, error: storesErr } = await query;
+  if (storesErr) throw storesErr;
+
+  if (!stores || stores.length === 0) {
+    // Pipeline finished for this cycle
+    await supabase.from("system_config").update({ data_pipeline_cursor: null, data_pipeline_last_run: new Date().toISOString() }).neq("id", "none");
+    return new Response(JSON.stringify({ ok: true, message: "Pipeline cycle completed" }), { headers: cors });
+  }
+
+  const snapshotDate = new Date().toISOString().slice(0, 10);
   const out: Record<string, string> = {};
   const jobErrors: Record<string, string> = {};
 
   if (jobs.includes("quality")) {
     try {
-      await jobQuality(supabase, snapshotDate);
+      await jobQuality(supabase, snapshotDate, stores);
       out.quality = "ok";
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -224,7 +269,7 @@ serve(async (req) => {
   }
   if (jobs.includes("cohorts")) {
     try {
-      await jobCohorts(supabase);
+      await jobCohorts(supabase, stores);
       out.cohorts = "ok";
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -235,7 +280,7 @@ serve(async (req) => {
   }
   if (jobs.includes("catalog")) {
     try {
-      await jobCatalog(supabase);
+      await jobCatalog(supabase, stores);
       out.catalog = "ok";
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -245,9 +290,34 @@ serve(async (req) => {
     }
   }
 
+  // 3. Update cursor
+  const lastStoreId = stores[stores.length - 1].id;
+  await supabase.from("system_config").update({ data_pipeline_cursor: lastStoreId }).neq("id", "none");
+
+  // 4. Trigger next chunk if needed
+  if (stores.length === CHUNK_SIZE) {
+    console.log(`CHUNK_COMPLETED: Triggering next chunk after store ${lastStoreId}`);
+    // Fire and forget call
+    fetch(req.url, {
+      method: "POST",
+      headers: {
+        "Authorization": req.headers.get("Authorization") ?? "",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ jobs }),
+    }).catch(err => console.error("Error triggering next chunk:", err));
+  }
+
   const ok = Object.keys(jobErrors).length === 0;
   return new Response(
-    JSON.stringify({ ok, snapshot_date: snapshotDate, jobs: out, job_errors: ok ? undefined : jobErrors }),
+    JSON.stringify({ 
+      ok, 
+      processed_count: stores.length, 
+      last_id: lastStoreId,
+      has_more: stores.length === CHUNK_SIZE,
+      jobs: out, 
+      job_errors: ok ? undefined : jobErrors 
+    }),
     { status: ok ? 200 : 500, headers: cors },
   );
 });

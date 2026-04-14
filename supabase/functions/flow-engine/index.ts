@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-import { corsHeaders } from "../_shared/edge-utils.ts";
+import { corsHeaders, checkDistributedRateLimit, rateLimitedResponse, timingSafeEqual } from "../_shared/edge-utils.ts";
 import {
   CUSTOMERS_V3_FLOW_SELECT,
   JOURNEYS_CONFIG_FLOW_SELECT,
@@ -37,8 +37,9 @@ serve(async (req) => {
     }
     const authHeader = req.headers.get("authorization") ?? "";
     const providedSecret = req.headers.get("x-internal-secret") ?? "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     const validInternal =
-      authHeader === `Bearer ${internalSecret}` || providedSecret === internalSecret;
+      timingSafeEqual(bearerToken, internalSecret) || timingSafeEqual(providedSecret, internalSecret);
     if (!validInternal) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -54,29 +55,42 @@ serve(async (req) => {
     const { event, store_id, customer_id, payload } = parsed.data;
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+
+    // Rate limit: max 120 flow-engine invocations per store per minute.
+    // Prevents campaign dispatch storms from overwhelming the function.
+    const { allowed: rlAllowed } = await checkDistributedRateLimit(
+      supabase,
+      `flow-engine:${store_id}`,
+      120,
+      60_000,
+    );
+    if (!rlAllowed) return rateLimitedResponse();
     const { data: store } = await supabase.from("stores").select(STORES_FLOW_SELECT).eq("id", store_id).single();
     if (!store) throw new Error("Store not found");
+const { data: journeys } = await supabase
+  .from("journeys_config")
+  .select(JOURNEYS_CONFIG_FLOW_SELECT)
+  .eq("store_id", store_id)
+  .eq("tipo_jornada", event)
+  .eq("ativa", true);
+if (!journeys || journeys.length === 0) {
+  return new Response(JSON.stringify({ ok: true, status: "no_active_journeys" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
 
-    const { data: journeys } = await supabase
-      .from("journeys_config")
-      .select(JOURNEYS_CONFIG_FLOW_SELECT)
-      .eq("store_id", store_id)
-      .eq("tipo_jornada", event)
-      .eq("ativa", true);
-    if (!journeys || journeys.length === 0) {
-      return new Response(JSON.stringify({ ok: true, status: "no_active_journeys" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+// Fix N+1: fetch customer once before the journey loop
+const { data: customer } = await supabase
+  .from("customers_v3")
+  .select(CUSTOMERS_V3_FLOW_SELECT)
+  .eq("id", customer_id)
+  .single();
+if (!customer) {
+  return new Response(JSON.stringify({ ok: false, status: "customer_not_found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
 
-    const processed = [];
-    for (const journey of journeys) {
-      const { data: customer } = await supabase
-        .from("customers_v3")
-        .select(CUSTOMERS_V3_FLOW_SELECT)
-        .eq("id", customer_id)
-        .single();
-      if (!customer) continue;
-
-      const config = (journey.config_json || {}) as Record<string, any>;
+const processed = [];
+for (const journey of journeys) {
+  const config = (journey.config_json || {}) as Record<string, any>;
+...
       let message = config.message_template || "Olá {{nome}}, temos uma oferta especial para você!";
       const val = Number((payload as any)?.cart_value || 0);
       const ship = Number((payload as any)?.shipping_value || 0);

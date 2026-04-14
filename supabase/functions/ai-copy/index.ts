@@ -4,12 +4,11 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 import {
   corsHeaders,
-  checkRateLimit,
   rateLimitedResponse,
-  getClientIp,
   verifyJwt,
   checkDistributedRateLimit,
   rateLimitedResponseWithRetry,
+  anthropicFetch,
 } from "../_shared/edge-utils.ts";
 
 const BodySchema = z.object({
@@ -42,15 +41,16 @@ serve(async (req) => {
     }
     const { type, objective, customer_name, product_name, discount_value, tone, brand_context } = parsed.data;
 
-    const clientIp = getClientIp(req);
-    if (!checkRateLimit(`ai-copy:${auth.userId}:${clientIp}`, 15, 60_000)) {
-      return rateLimitedResponse();
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
+
+    // Per-minute burst guard (distributed — works across all Edge Function instances).
+    const burst = await checkDistributedRateLimit(supabase, `ai-copy:burst:${auth.userId}`, 15, 60_000);
+    if (!burst.allowed) {
+      return rateLimitedResponse();
+    }
 
     const userRateKey = `ai-copy:user:${auth.userId}`;
     const dayCap = Math.min(200, Math.max(5, Number(Deno.env.get("AI_COPY_MAX_PER_USER_PER_DAY") ?? "50") || 50));
@@ -79,10 +79,11 @@ Contexto:
 
 Gere 3 variações curtas e eficazes.`;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 1000, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
+    const response = await anthropicFetch(ANTHROPIC_API_KEY, {
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
     });
 
     const data = await response.json();

@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, Component } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { TrendingUp, Send, Eye, DollarSign, Users, RefreshCw, BarChart3, AlertCircle } from "lucide-react";
-import { useConversionBaseline, useDashboardSnapshot } from "@/hooks/useDashboard";
+import { useAnalyticsSuperBundle } from "@/hooks/useDashboard";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+// ... (rest of imports)
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -22,6 +24,28 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+
+// Lightweight error boundary for individual charts — prevents one bad data point
+// from crashing the entire Analytics page.
+class ChartErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+          Dados indisponíveis
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const PERIODS = [
   { label: "7 dias", value: 7 as const },
@@ -126,21 +150,68 @@ export default function Analytics() {
   const { loading: authLoading } = useAuth();
 
   const {
-    data: snapshot,
-    isLoading: snapshotLoading,
-    isFetching: snapshotFetching,
-    isError: snapshotIsError,
-    error: snapshotQueryError,
-    refetch: refetchSnapshot,
-  } = useDashboardSnapshot(period);
+    data: bundle,
+    isLoading: bundleLoading,
+    isFetching: bundleFetching,
+    isError: bundleIsError,
+    error: bundleError,
+    refetch: refetchBundle,
+  } = useAnalyticsSuperBundle(period);
 
-  const {
-    data: baseline,
-    isFetching: isBaselineFetching,
-    isLoading: isBaselineLoading,
-    error: baselineError,
-    refetch: refetchBaseline,
-  } = useConversionBaseline(period);
+  const isBaselineLoading = bundleLoading;
+  const baselineError = bundleIsError;
+
+  const snapshot = bundle?.snapshot;
+  const baselineRaw = bundle?.baseline;
+
+  const baseline = useMemo(() => {
+    if (!baselineRaw) return null;
+    const row = (baselineRaw ?? {}) as Record<string, any>;
+    const sent = Number(row.sent ?? 0);
+    const replied = Number(row.replied ?? 0);
+    const delivered = Number(row.delivered ?? 0);
+    const read = Number(row.read ?? 0);
+    const conversions = Number(row.conversions ?? 0);
+    const revenue = Number(row.revenue ?? 0);
+    const prevSent = Number(row.prev_sent ?? 0);
+    const prevReply = Number(row.prev_replied ?? 0);
+    const replyRate = sent > 0 ? (replied / sent) * 100 : 0;
+    const deliveryRate = sent > 0 ? (delivered / sent) * 100 : 0;
+    const readRate = sent > 0 ? (read / sent) * 100 : 0;
+    const conversionRate = sent > 0 ? (conversions / sent) * 100 : 0;
+    const revenuePerMessage = sent > 0 ? revenue / sent : 0;
+    const prevReplyRate = prevSent > 0 ? (prevReply / prevSent) * 100 : 0;
+    const replyRateDelta = prevReplyRate > 0 ? ((replyRate - prevReplyRate) / prevReplyRate) * 100 : 0;
+    const tracked = Number(row.sla_tracked ?? 0);
+    const breached = Number(row.sla_breached ?? 0);
+    const slaCompliance = tracked > 0 ? ((tracked - breached) / tracked) * 100 : 100;
+    const priorityMix = {
+      urgent: Number(row.priority_urgent ?? 0),
+      high: Number(row.priority_high ?? 0),
+      normal: Number(row.priority_normal ?? 0),
+      low: Number(row.priority_low ?? 0),
+    };
+    return {
+      sent,
+      replied,
+      delivered,
+      read,
+      conversions,
+      revenue,
+      replyRate,
+      conversionRate,
+      deliveryRate,
+      readRate,
+      revenuePerMessage,
+      replyRateDelta,
+      sla: {
+        totalTracked: tracked,
+        breached,
+        compliance: slaCompliance,
+      },
+      priorityMix,
+    };
+  }, [baselineRaw]);
 
   const chartSeries = useMemo(() => {
     const parsed = parseSnapshotChartSeries(snapshot?.chart_series);
@@ -151,11 +222,11 @@ export default function Analytics() {
     );
   }, [snapshot?.chart_series]);
 
-  const showSkeleton = authLoading || snapshotLoading;
-  const refreshing = snapshotFetching || isBaselineFetching;
-  const snapshotError = snapshotIsError;
+  const showSkeleton = authLoading || bundleLoading;
+  const refreshing = bundleFetching;
+  const snapshotError = bundleIsError;
   const snapshotErrorMessage =
-    snapshotQueryError instanceof Error ? snapshotQueryError.message : "Não foi possível carregar as métricas.";
+    bundleError instanceof Error ? bundleError.message : "Não foi possível carregar as métricas.";
 
   const kpis = snapshot
     ? [
@@ -198,8 +269,7 @@ export default function Analytics() {
     : [];
 
   const handleRefresh = () => {
-    void refetchSnapshot();
-    void refetchBaseline();
+    void refetchBundle();
   };
 
   const hasRows = Boolean(snapshot && snapshot.analytics.total_sent > 0);
@@ -254,7 +324,7 @@ export default function Analytics() {
           <AlertTitle>Não foi possível carregar o painel</AlertTitle>
           <AlertDescription className="flex flex-col sm:flex-row sm:items-center gap-3 mt-2">
             <span className="text-sm">{snapshotErrorMessage}</span>
-            <Button type="button" variant="outline" size="sm" className="w-fit shrink-0" onClick={() => void refetchSnapshot()}>
+            <Button type="button" variant="outline" size="sm" className="w-fit shrink-0" onClick={() => void refetchBundle()}>
               Tentar novamente
             </Button>
           </AlertDescription>
@@ -310,6 +380,7 @@ export default function Analytics() {
             <p className="text-xs text-muted-foreground">Série diária a partir de analytics da loja (mesma base do snapshot).</p>
             {hasChartSeries ? (
               <div className="h-[260px] w-full">
+                <ChartErrorBoundary>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
@@ -329,6 +400,7 @@ export default function Analytics() {
                     <Line type="monotone" dataKey="messages_read" name="Lidas" stroke="#a855f7" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
+                </ChartErrorBoundary>
               </div>
             ) : (
               <div className="h-[200px] w-full rounded-lg border border-dashed flex items-center justify-center text-xs text-muted-foreground px-4 text-center">
@@ -344,6 +416,7 @@ export default function Analytics() {
             <p className="text-xs text-muted-foreground">Um ponto por dia no período selecionado.</p>
             {hasChartSeries ? (
               <div className="h-[220px] w-full">
+                <ChartErrorBoundary>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <defs>
@@ -379,6 +452,7 @@ export default function Analytics() {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
+                </ChartErrorBoundary>
               </div>
             ) : (
               <div className="h-[180px] w-full rounded-lg border border-dashed flex items-center justify-center text-xs text-muted-foreground px-4 text-center">

@@ -1,7 +1,6 @@
 /**
  * Cron: persiste métricas de funil GA4 em funil_diario por loja (stores com GA4 configurado).
- * POST /functions/v1/sync-funil-ga4
- * Authorization: Bearer CRON_SECRET
+ * Refactor: processa em chunks de 10 lojas e controla quota diária.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -12,6 +11,9 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Content-Type": "application/json",
 };
+
+const CHUNK_SIZE = 10;
+const MAX_GA4_REQUESTS_PER_DAY = 10000;
 
 type Periodo = "7d" | "30d" | "90d";
 
@@ -42,28 +44,27 @@ async function fetchGa4Slice(
   const baseUrl = `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`;
   const gaHeaders = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
 
+  const ga4Fetch = (body: unknown) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10_000);
+    return fetch(baseUrl, {
+      method: "POST",
+      headers: gaHeaders,
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
+  };
+
   const [sessionsRes, eventsRes, revenueRes] = await Promise.all([
-    fetch(baseUrl, {
-      method: "POST",
-      headers: gaHeaders,
-      body: JSON.stringify({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "sessions" }] }),
+    ga4Fetch({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "sessions" }] }),
+    ga4Fetch({
+      dateRanges: [{ startDate, endDate: "today" }],
+      metrics: [{ name: "eventCount" }],
+      dimensions: [{ name: "eventName" }],
     }),
-    fetch(baseUrl, {
-      method: "POST",
-      headers: gaHeaders,
-      body: JSON.stringify({
-        dateRanges: [{ startDate, endDate: "today" }],
-        metrics: [{ name: "eventCount" }],
-        dimensions: [{ name: "eventName" }],
-      }),
-    }),
-    fetch(baseUrl, {
-      method: "POST",
-      headers: gaHeaders,
-      body: JSON.stringify({
-        dateRanges: [{ startDate, endDate: "today" }],
-        metrics: [{ name: "purchaseRevenue" }],
-      }),
+    ga4Fetch({
+      dateRanges: [{ startDate, endDate: "today" }],
+      metrics: [{ name: "purchaseRevenue" }],
     }),
   ]);
 
@@ -112,27 +113,62 @@ serve(async (req) => {
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
-  const metricDate = new Date().toISOString().slice(0, 10);
-  const periodos: Periodo[] = ["7d", "30d", "90d"];
+  // 1. Fetch cursor and quota from system_config
+  const { data: config } = await supabase
+    .from("system_config")
+    .select("ga4_sync_cursor, ga4_sync_daily_count, ga4_sync_last_run")
+    .limit(1)
+    .maybeSingle();
 
-  const { data: stores, error: stErr } = await supabase
+  const now = new Date();
+  const lastRun = config?.ga4_sync_last_run ? new Date(config.ga4_sync_last_run) : null;
+  const isNewDay = !lastRun || lastRun.toISOString().slice(0, 10) !== now.toISOString().slice(0, 10);
+  
+  let dailyCount = isNewDay ? 0 : (config?.ga4_sync_daily_count ?? 0);
+  const cursor = config?.ga4_sync_cursor;
+
+  if (dailyCount >= MAX_GA4_REQUESTS_PER_DAY) {
+    return new Response(JSON.stringify({ ok: false, error: "Daily GA4 API quota exceeded" }), { status: 429, headers: cors });
+  }
+
+  // 2. Fetch chunk of stores
+  let query = supabase
     .from("stores")
     .select("id, user_id, ga4_property_id, ga4_access_token")
     .not("ga4_property_id", "is", null)
-    .not("ga4_access_token", "is", null);
+    .not("ga4_access_token", "is", null)
+    .order("id", { ascending: true })
+    .limit(CHUNK_SIZE);
+
+  if (cursor) {
+    query = query.gt("id", cursor);
+  }
+
+  const { data: stores, error: stErr } = await query;
 
   if (stErr) {
     logCronAlert({ component: "sync-funil-ga4", phase: "list_stores", error: stErr.message });
     return new Response(JSON.stringify({ ok: false, error: stErr.message }), { status: 500, headers: cors });
   }
 
+  if (!stores || stores.length === 0) {
+    // End of cycle
+    await supabase.from("system_config").update({ ga4_sync_cursor: null, ga4_sync_last_run: now.toISOString() }).neq("id", "none");
+    return new Response(JSON.stringify({ ok: true, message: "GA4 sync cycle completed" }), { headers: cors });
+  }
+
+  const metricDate = now.toISOString().slice(0, 10);
+  const periodos: Periodo[] = ["7d", "30d", "90d"];
   const results: { store_id: string; periodo: Periodo; ok: boolean; error?: string }[] = [];
 
-  for (const s of stores ?? []) {
+  let chunkRequests = 0;
+
+  for (const s of stores) {
     const pid = s.ga4_property_id as string;
     const tok = s.ga4_access_token as string;
     for (const periodo of periodos) {
       try {
+        chunkRequests += 3; // sessions, events, revenue API calls
         const m = await fetchGa4Slice(pid, tok, periodo);
         const days = periodoToDays(periodo);
         const since = startIsoForPeriod(days);
@@ -172,6 +208,27 @@ serve(async (req) => {
     }
   }
 
+  // 3. Update cursor and quota
+  const lastStoreId = stores[stores.length - 1].id;
+  dailyCount += chunkRequests;
+  await supabase.from("system_config").update({
+    ga4_sync_cursor: lastStoreId,
+    ga4_sync_daily_count: dailyCount,
+    ga4_sync_last_run: now.toISOString()
+  }).neq("id", "none");
+
+  // 4. Trigger next chunk if needed
+  if (stores.length === CHUNK_SIZE && dailyCount < MAX_GA4_REQUESTS_PER_DAY) {
+    console.log(`CHUNK_COMPLETED: Triggering next GA4 chunk after store ${lastStoreId}. Daily requests: ${dailyCount}`);
+    fetch(req.url, {
+      method: "POST",
+      headers: {
+        "Authorization": req.headers.get("Authorization") ?? "",
+        "Content-Type": "application/json",
+      },
+    }).catch(err => console.error("Error triggering next GA4 chunk:", err));
+  }
+
   const failed = results.filter((r) => !r.ok);
   if (failed.length > 0) {
     logCronAlert({
@@ -182,5 +239,11 @@ serve(async (req) => {
     });
   }
 
-  return new Response(JSON.stringify({ ok: true, metric_date: metricDate, results }), { headers: cors });
+  return new Response(JSON.stringify({ 
+    ok: true, 
+    metric_date: metricDate, 
+    processed_count: stores.length,
+    daily_requests: dailyCount,
+    has_more: stores.length === CHUNK_SIZE && dailyCount < MAX_GA4_REQUESTS_PER_DAY
+  }), { headers: cors });
 });

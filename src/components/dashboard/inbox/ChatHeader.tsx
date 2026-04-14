@@ -103,12 +103,15 @@ export function ChatHeader({
           <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
 
           <button
+            type="button"
             onClick={() => setShowSidebar(!showSidebar)}
             className={cn(
               "p-2 rounded-lg transition-colors",
               showSidebar ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"
             )}
             title="Ver informações do contato"
+            aria-label={showSidebar ? "Ocultar informações do contato" : "Ver informações do contato"}
+            aria-pressed={showSidebar}
           >
             <UserIcon className="w-5 h-5" />
           </button>

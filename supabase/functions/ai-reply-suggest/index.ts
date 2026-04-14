@@ -3,10 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import {
   corsHeaders,
-  checkRateLimit,
   getClientIp,
   checkDistributedRateLimit,
+  rateLimitedResponse,
   rateLimitedResponseWithRetry,
+  anthropicFetch,
 } from "../_shared/edge-utils.ts";
 
 const ConversationBodySchema = z.object({
@@ -68,13 +69,10 @@ serve(async (req) => {
       );
     }
 
-    const clientIp = getClientIp(req);
-    const rlKey = `ai-reply:${authData.user.id}:${clientIp}`;
-    if (!checkRateLimit(rlKey, 30, 60_000)) {
-      return new Response(JSON.stringify({ error: "Rate limit exceeded", request_id: requestId }), { status: 429, headers: JSON_HDR });
-    }
-
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+
+    const { allowed: rlAllowed } = await checkDistributedRateLimit(supabase, `ai-reply:${authData.user.id}`, 30, 60_000);
+    if (!rlAllowed) return rateLimitedResponse();
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
@@ -201,10 +199,11 @@ Contexto extra: ${context}
 Gere uma resposta ideal para publicar na avaliação.`;
     }
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 500, system, messages: [{ role: "user", content: user }] }),
+    const response = await anthropicFetch(ANTHROPIC_API_KEY, {
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 500,
+      system,
+      messages: [{ role: "user", content: user }],
     });
 
     const data = await response.json();

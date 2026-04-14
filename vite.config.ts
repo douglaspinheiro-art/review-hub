@@ -29,6 +29,9 @@ export default defineConfig(({ mode }) => ({
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
   },
   build: {
+    // Hidden source maps: uploaded to Sentry/error tracker but not served to browsers.
+    // Required for mapping production stack traces to original source code.
+    sourcemap: "hidden",
     rollupOptions: {
       output: {
         manualChunks: {
@@ -40,6 +43,11 @@ export default defineConfig(({ mode }) => ({
           "vendor-icons": ["lucide-react"],
           "vendor-sentry": ["@sentry/react"],
         },
+      },
+      treeshake: {
+        // Treat modules without explicit side-effect declarations as side-effect-free.
+        // Enables dead code elimination for unused exports in vendor bundles.
+        moduleSideEffects: false,
       },
     },
   },

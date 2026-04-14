@@ -133,7 +133,7 @@ export default function Atribuicao() {
 
   const isEmpty = !isLoading && !error && data && data.totalRevenue === 0;
 
-  const donutData = data
+  const donutData = data?.sourceBreakdown
     ? [
         { name: "Campanhas",   value: data.sourceBreakdown.campaigns },
         { name: "Automações",  value: data.sourceBreakdown.automations },

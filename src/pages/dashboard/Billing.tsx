@@ -10,7 +10,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { getCurrentUserAndStore, useDashboardHomeStats, useProblems } from "@/hooks/useDashboard";
+import { useDashboardHomeStats, useProblems } from "@/hooks/useDashboard";
+import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { CancellationModal } from "@/components/dashboard/CancellationModal";
 import { toast } from "sonner";
 import { PLAN_LIMITS, PLANS as PRICING_PLANS } from "@/lib/pricing-constants";
@@ -29,6 +30,7 @@ const supportWaHref = supportWaE164
 
 export default function Billing() {
   const { profile, user } = useAuth();
+  const scope = useStoreScope();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const currentPlan = profile?.plan ?? "starter";
@@ -40,8 +42,10 @@ export default function Billing() {
 
   const { data: usage } = useQuery({
     queryKey: ["billing_usage", user?.id],
+    enabled: !!user && scope?.ready === true,
     queryFn: async () => {
-      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      const storeId = scope.activeStoreId;
+      const effectiveUserId = scope.effectiveUserId;
       if (!effectiveUserId) throw new Error("Sessão inválida");
       const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
@@ -113,7 +117,6 @@ export default function Billing() {
         messagesSource: "legacy" as const,
       };
     },
-    enabled: !!user,
     staleTime: 60_000,
   });
 
@@ -499,9 +502,16 @@ export default function Billing() {
               </p>
             </div>
             <div className="bg-muted/30 rounded-xl p-4 space-y-1">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No plano Scale você teria</p>
-              <p className="text-2xl font-black">20.000 contatos</p>
-              <p className="text-xs text-muted-foreground">vs. {PLAN_LIMITS[currentPlan].contacts.toLocaleString("pt-BR")} no seu plano atual</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                {currentPlan === "starter" ? "No plano Growth você teria" : "No plano Scale você teria"}
+              </p>
+              <p className="text-2xl font-black">
+                {currentPlan === "starter" 
+                  ? PLAN_LIMITS.growth.contacts.toLocaleString("pt-BR")
+                  : PLAN_LIMITS.scale.contacts.toLocaleString("pt-BR")
+                } contatos
+              </p>
+              <p className="text-xs text-muted-foreground">vs. {limits.contacts.toLocaleString("pt-BR")} no seu plano atual</p>
             </div>
             <div className="flex gap-3">
               <Button className="flex-1 font-black" onClick={() => { setShowLimitModal(false); navigate("/dashboard/planos"); }}>

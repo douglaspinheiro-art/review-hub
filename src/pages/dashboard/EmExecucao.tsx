@@ -11,9 +11,11 @@ import {
   FlaskConical,
   Trophy,
   ExternalLink,
+  Pause,
+  Play,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -28,6 +30,7 @@ import {
 } from "@/lib/prescription-map";
 import { mockPrescricoes, mockLinkedCampaignsForExec } from "@/lib/mock-data";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 type CampaignRow = {
   id: string;
@@ -105,20 +108,15 @@ export default function EmExecucao() {
   const storeId = loja.data?.id as string | undefined;
 
   const {
-    data: rxRows = [],
-    isLoading: rxLoading,
-    isError: rxError,
-    error: rxErr,
-    refetch: refetchRx,
-  } = usePrescriptionsV3(isDemo ? undefined : storeId);
+    data: bundle,
+    isLoading: bundleLoading,
+    isError: bundleError,
+    error: bundleErr,
+    refetch: refetchBundle,
+  } = useExecutionMonitor();
 
-  const {
-    data: campaignsRaw = [],
-    isLoading: campLoading,
-    isError: campError,
-    error: campErr,
-    refetch: refetchCamp,
-  } = useCampaigns({ limit: 500 });
+  const rxRows = bundle?.prescriptions ?? [];
+  const campaignsRaw = bundle?.campaigns ?? [];
 
   const rows: PrescriptionRow[] = useMemo(() => {
     if (isDemo) return mockPrescricoes.map(mockPrescricaoToRow);
@@ -135,23 +133,31 @@ export default function EmExecucao() {
     return (campaignsRaw ?? []) as CampaignRow[];
   }, [isDemo, campaignsRaw]);
 
+  // Pre-built lookup map: prescription_id → linked campaign (eliminates O(n×m) filter per render)
+  const campaignByPrescriptionId = useMemo(() => {
+    const map = new Map<string, CampaignRow>();
+    for (const c of campaigns) {
+      if (!c.source_prescription_id) continue;
+      const existing = map.get(c.source_prescription_id);
+      if (!existing || campaignDispatchPriority(c.status) < campaignDispatchPriority(existing.status)) {
+        map.set(c.source_prescription_id, c);
+      }
+    }
+    return map;
+  }, [campaigns]);
+
   const cards = useMemo(
     () =>
       inProgress.map((rx) => ({
         rx,
-        campaign: pickLinkedCampaign(rx.id, campaigns),
+        campaign: campaignByPrescriptionId.get(rx.id) ?? null,
       })),
-    [inProgress, campaigns],
+    [inProgress, campaignByPrescriptionId],
   );
 
-  const isLoading = !isDemo && (rxLoading || campLoading);
-  const isError = !isDemo && (rxError || campError);
-  const errorMsg =
-    rxErr instanceof Error
-      ? rxErr.message
-      : campErr instanceof Error
-        ? campErr.message
-        : "Erro ao carregar dados";
+  const isLoading = !isDemo && bundleLoading;
+  const isError = !isDemo && bundleError;
+  const errorMsg = bundleErr instanceof Error ? bundleErr.message : "Erro ao carregar dados";
 
   const baseDash = isDemo ? "/demo" : "/dashboard";
 
@@ -160,12 +166,89 @@ export default function EmExecucao() {
       toast.info("Modo demonstração: dados locais.");
       return;
     }
-    void queryClient.invalidateQueries({ queryKey: ["prescriptions_v3", storeId] });
-    void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-    void refetchRx();
-    void refetchCamp();
+    // Ponto #10: remove explicit .refetch() after invalidateQueries
+    void queryClient.invalidateQueries({ queryKey: ["execution-monitor"] });
     toast.success("Métricas atualizadas.");
   };
+
+  // M8: Pause / resume a running prescription
+  const pauseMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("prescriptions")
+        .update({ status: "pausada" })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onMutate: async (id) => {
+      // Ponto #15: Optimistic update for consolidated bundle
+      const qk = ["execution-monitor", user?.id ?? null, storeId];
+      await queryClient.cancelQueries({ queryKey: qk });
+      const previous = queryClient.getQueryData(qk);
+      queryClient.setQueryData(qk, (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          prescriptions: (old.prescriptions || []).map((r: any) => 
+            r.id === id ? { ...r, status: "pausada" } : r
+          )
+        };
+      });
+      return { previous };
+    },
+    onError: (err, id, context: any) => {
+      const qk = ["execution-monitor", user?.id ?? null, storeId];
+      if (context?.previous) {
+        queryClient.setQueryData(qk, context.previous);
+      }
+      toast.error("Erro ao pausar prescrição.");
+    },
+    onSuccess: () => {
+      toast.success("Prescrição pausada.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["execution-monitor"] });
+    }
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("prescriptions")
+        .update({ status: "em_execucao" })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onMutate: async (id) => {
+      // Ponto #15: Optimistic update for consolidated bundle
+      const qk = ["execution-monitor", user?.id ?? null, storeId];
+      await queryClient.cancelQueries({ queryKey: qk });
+      const previous = queryClient.getQueryData(qk);
+      queryClient.setQueryData(qk, (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          prescriptions: (old.prescriptions || []).map((r: any) => 
+            r.id === id ? { ...r, status: "em_execucao" } : r
+          )
+        };
+      });
+      return { previous };
+    },
+    onError: (err, id, context: any) => {
+      const qk = ["execution-monitor", user?.id ?? null, storeId];
+      if (context?.previous) {
+        queryClient.setQueryData(qk, context.previous);
+      }
+      toast.error("Erro ao retomar prescrição.");
+    },
+    onSuccess: () => {
+      toast.success("Prescrição retomada.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["execution-monitor"] });
+    }
+  });
 
   return (
       <div className="space-y-8 pb-10">
@@ -275,6 +358,32 @@ export default function EmExecucao() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
+                        {/* M8: Pause / resume button */}
+                        {!isDemo && (
+                          rx.status === "pausada" ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 rounded-lg font-bold gap-2 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
+                              type="button"
+                              disabled={resumeMutation.isPending}
+                              onClick={() => resumeMutation.mutate(rx.id)}
+                            >
+                              <Play className="w-3.5 h-3.5" /> Retomar
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 rounded-lg font-bold gap-2 border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
+                              type="button"
+                              disabled={pauseMutation.isPending}
+                              onClick={() => pauseMutation.mutate(rx.id)}
+                            >
+                              <Pause className="w-3.5 h-3.5" /> Pausar
+                            </Button>
+                          )
+                        )}
                         <Button
                           variant="outline"
                           size="sm"

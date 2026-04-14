@@ -3,7 +3,6 @@ import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import type { Database } from "@/integrations/supabase/types";
 import { UI_NICHE_TO_SECTOR_DB, type BenchmarkNicheKey } from "@/lib/benchmark-niches";
@@ -135,18 +134,24 @@ export interface DataHealthReport {
   alertas: DataHealthAlert[];
 }
 
-export interface MetricasFunil {
-  visitantes: number;
-  visualizacoes_produto: number;
-  adicionou_carrinho: number;
-  iniciou_checkout: number;
-  compras: number;
-  receita: number;
-  fonte?: string;
-  receita_travada_frete?: number;
-  receita_travada_pagamento?: number;
-  total_abandonos_frete?: number;
-  total_abandonos_pagamento?: number;
+import { invokeCachedRpc } from "@/lib/cached-rpc";
+
+/**
+ * Funil Page BFF: Consolidates 9 queries into 1 (Ponto #8)
+ */
+export function useFunilBff(storeId: string | null, period = "30d") {
+  return useQuery({
+    queryKey: ["funil-bff", storeId, period],
+    queryFn: async () => {
+      if (!storeId) return null;
+      return invokeCachedRpc<any>("get_funil_page_data", {
+        p_store_id: storeId,
+        p_period: period
+      });
+    },
+    enabled: !!storeId,
+    staleTime: 60_000,
+  });
 }
 
 // ─── Mock fallback ────────────────────────────────────────────────────────────
@@ -195,23 +200,27 @@ async function getUid(): Promise<string | null> {
 /** Compute conversion % and drop % between steps */
 export function calcFunil(m: MetricasFunil, meta: number, ticket: number) {
   const { visitantes: v, visualizacoes_produto: vp, adicionou_carrinho: ac, iniciou_checkout: ic, compras: c } = m;
+  // Guard: b === 0 always returns 0.0 to prevent NaN / Infinity
   const pct = (a: number, b: number) => (b > 0 ? Number(((a / b) * 100).toFixed(1)) : 0);
   const taxaConversao = pct(c, v);
-  const perdaMensal = Math.max(0, Math.round(((meta / 100) - (taxaConversao / 100)) * v * ticket));
+  // Guard: meta or ticket <= 0 produces 0 loss instead of negative
+  const perdaMensal = (meta > 0 && ticket > 0 && v > 0)
+    ? Math.max(0, Math.round(((meta / 100) - (taxaConversao / 100)) * v * ticket))
+    : 0;
 
   const etapas = [
-    { label: "Visitantes",       valor: v,  barPct: 100,          dropPct: v  > 0  ? pct(v  - vp, v)  : 0, cor: "#3B82F6" },
-    { label: "Produto visto",    valor: vp, barPct: pct(vp, v),   dropPct: vp > 0  ? pct(vp - ac, vp) : 0, cor: "#6366F1" },
-    { label: "Adicionou carrinho",valor: ac, barPct: pct(ac, v),  dropPct: ac > 0  ? pct(ac - ic, ac) : 0, cor: "#F59E0B" },
-    { label: "Iniciou checkout", valor: ic, barPct: pct(ic, v),   dropPct: ic > 0  ? pct(ic - c,  ic) : 0, cor: "#EF4444" },
-    { label: "Pedido finalizado",valor: c,  barPct: pct(c,  v),   dropPct: 0,                              cor: "#DC2626" },
+    { label: "Visitantes",        valor: v,  barPct: 100,         dropPct: v  > 0 ? pct(v  - vp, v)  : 0, cor: "#3B82F6" },
+    { label: "Produto visto",     valor: vp, barPct: pct(vp, v),  dropPct: vp > 0 ? pct(vp - ac, vp) : 0, cor: "#6366F1" },
+    { label: "Adicionou carrinho",valor: ac, barPct: pct(ac, v),  dropPct: ac > 0 ? pct(ac - ic, ac) : 0, cor: "#F59E0B" },
+    { label: "Iniciou checkout",  valor: ic, barPct: pct(ic, v),  dropPct: ic > 0 ? pct(ic - c,  ic) : 0, cor: "#EF4444" },
+    { label: "Pedido finalizado", valor: c,  barPct: pct(c,  v),  dropPct: 0,                              cor: "#DC2626" },
   ];
 
   const drops = [
-    { label: "Visitantes → Produto",   drop: pct(v - vp, v) },
-    { label: "Produto → Carrinho",      drop: pct(vp - ac, vp) },
-    { label: "Carrinho → Checkout",     drop: pct(ac - ic, ac) },
-    { label: "Checkout → Pedido",       drop: pct(ic - c, ic) },
+    { label: "Visitantes → Produto", drop: pct(v - vp, v) },
+    { label: "Produto → Carrinho",   drop: pct(vp - ac, vp) },
+    { label: "Carrinho → Checkout",  drop: pct(ac - ic, ac) },
+    { label: "Checkout → Pedido",    drop: pct(ic - c, ic) },
   ];
   const maiorGargalo = drops.reduce((max, d) => d.drop > max.drop ? d : max, drops[0]);
 
@@ -230,20 +239,22 @@ export function useLoja() {
     queryFn: async () => {
       const uid = await getUid();
       if (!uid) return null;
-      const { storeId } = await getCurrentUserAndStore(storeHint);
+      const storeId = storeHint ?? null;
       if (!storeId) return null;
       const { data, error } = await supabase.from("stores").select(STORE_V3_PUBLIC_SELECT).eq("id", storeId).maybeSingle();
       if (error) throw error;
       return data ?? null;
     },
-    enabled: !!user,
+    // Wait for scope to resolve so we use the correct store for team members.
+    enabled: !!user && scope?.ready === true,
   });
 }
 
 /** Returns user's ConvertIQ config. */
 export function useConvertIQConfig() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["convertiq-config"],
+    queryKey: ["convertiq-config", user?.id ?? null],
     queryFn: async () => {
       const uid = await getUid();
       if (!uid) return null;
@@ -254,6 +265,8 @@ export function useConvertIQConfig() {
         .maybeSingle();
       return data ?? null;
     },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -326,6 +339,7 @@ export function useFunilPageMetricas(lojaId: string | null, periodo: "7d" | "30d
   return useQuery({
     queryKey: ["convertiq-funil-page-metricas", lojaId, periodo],
     enabled: !!lojaId,
+    staleTime: 60_000,
     queryFn: async (): Promise<FunilPageMetricasResult> => {
       const { data: gaRow, error: gaErr } = await supabase
         .from("funil_diario")
@@ -387,6 +401,7 @@ export function useLatestDiagnostico(lojaId: string | null) {
   return useQuery({
     queryKey: ["convertiq-last-diag", lojaId],
     enabled: !!lojaId,
+    staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("diagnostics")
@@ -407,6 +422,7 @@ export function useDiagnosticos(lojaId: string | null) {
   return useQuery({
     queryKey: ["convertiq-diags", lojaId],
     enabled: !!lojaId,
+    staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("diagnostics")
@@ -439,6 +455,8 @@ export function useSectorBenchmark(niche: BenchmarkNicheKey) {
       return data;
     },
     staleTime: 5 * 60_000,
+    gcTime: 60 * 60_000, // Sector benchmarks change rarely; keep cached 1 hour.
+    retry: 1,
   });
 }
 
@@ -526,6 +544,31 @@ export function useSaveMetricas() {
   });
 }
 
+// M10: Client-side circuit breaker for Claude API
+const CB_MAX_FAILURES = 5;
+const CB_COOLDOWN_MS = 5 * 60_000; // 5 minutes
+
+interface CircuitBreakerState { failures: number; until: number; }
+
+function getCbState(userId: string): CircuitBreakerState {
+  try {
+    const raw = localStorage.getItem(`claudeCb:${userId}`);
+    if (raw) return JSON.parse(raw) as CircuitBreakerState;
+  } catch { /* ignore */ }
+  return { failures: 0, until: 0 };
+}
+
+function setCbState(userId: string, state: CircuitBreakerState) {
+  try { localStorage.setItem(`claudeCb:${userId}`, JSON.stringify(state)); } catch { /* ignore */ }
+}
+
+export function useClaudeCircuitBreaker(userId: string | undefined) {
+  const state = userId ? getCbState(userId) : { failures: 0, until: 0 };
+  const tripped = state.until > Date.now();
+  const secondsLeft = tripped ? Math.ceil((state.until - Date.now()) / 1000) : 0;
+  return { tripped, secondsLeft, failures: state.failures };
+}
+
 /** Create a diagnostico row + call the edge function. */
 export function useGerarDiagnostico() {
   const qc = useQueryClient();
@@ -555,34 +598,70 @@ export function useGerarDiagnostico() {
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
 
-      const fnRes = await supabase.functions.invoke("gerar-diagnostico", {
-        body: { diagnostico_id: diagRow.id },
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      // C5: AbortController with 30s timeout — prevents hung diagnosis requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30_000);
 
-      if (fnRes.error) {
-        const name = (fnRes.error as { name?: string }).name;
-        const hint =
-          name === "FunctionsFetchError" || /fetch/i.test(fnRes.error.message)
-            ? " Verifique rede, CORS e se a edge `gerar-diagnostico` está deployada."
-            : "";
-        throw new Error(`${fnRes.error.message}${hint}`);
+      let fnRes: { success?: boolean; error?: string } | null = null;
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const res = await fetch(`${supabaseUrl}/functions/v1/gerar-diagnostico`, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ diagnostico_id: diagRow.id }),
+        });
+        clearTimeout(timeoutId);
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(errBody?.error ?? `HTTP ${res.status}`);
+        }
+        fnRes = await res.json() as { success?: boolean; error?: string };
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        if ((fetchErr as Error).name === "AbortError") {
+          throw new Error("O diagnóstico IA demorou mais de 30 s. Tente novamente.");
+        }
+        const msg = (fetchErr as Error).message ?? String(fetchErr);
+        const hint = /fetch|network|Failed/i.test(msg)
+          ? " Verifique rede, CORS e se a edge `gerar-diagnostico` está deployada."
+          : "";
+        throw new Error(`${msg}${hint}`);
       }
 
-      const body = fnRes.data as { success?: boolean; error?: string } | null;
-      if (body && typeof body === "object" && body.success === false && body.error) {
-        throw new Error(body.error);
+      if (fnRes && fnRes.success === false && fnRes.error) {
+        throw new Error(fnRes.error);
       }
 
       return diagRow.id as string;
     },
-    onSuccess: (_id, vars) => {
+    onSuccess: async (_id, vars) => {
       qc.invalidateQueries({ queryKey: ["convertiq-last-diag", vars.lojaId] });
       qc.invalidateQueries({ queryKey: ["convertiq-diags", vars.lojaId] });
+      // M10: reset circuit breaker on success
+      const uid = await getUid();
+      if (uid) setCbState(uid, { failures: 0, until: 0 });
     },
-    onError: (e) => {
+    onError: async (e) => {
       const msg = (e as Error).message;
       const isTimeout = /timed out|timeout|aborted/i.test(msg);
+
+      // M10: increment circuit breaker failure counter
+      const uid = await getUid();
+      if (uid) {
+        const prev = getCbState(uid);
+        const newFailures = prev.failures + 1;
+        const until = newFailures >= CB_MAX_FAILURES ? Date.now() + CB_COOLDOWN_MS : prev.until;
+        setCbState(uid, { failures: newFailures, until });
+        if (newFailures >= CB_MAX_FAILURES) {
+          toast.error("Diagnóstico IA temporariamente desativado após 5 falhas consecutivas. Aguarde 5 minutos.");
+          return;
+        }
+      }
+
       toast.error(
         isTimeout
           ? "O diagnóstico IA demorou demais. Tente de novo; se repetir, confira logs da edge e ANTHROPIC_API_KEY no Supabase."
@@ -684,6 +763,7 @@ export function useMetricasEnriquecidas(lojaId: string | null, periodo: "7d" | "
   return useQuery({
     queryKey: ["convertiq-enriched", lojaId, periodo],
     enabled: !!lojaId,
+    staleTime: 60_000,
     queryFn: async () => {
       const diasMap = { "7d": 7, "30d": 30, "90d": 90 };
       const since = new Date(Date.now() - diasMap[periodo] * 86400_000).toISOString();

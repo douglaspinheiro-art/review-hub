@@ -127,19 +127,29 @@ serve(async (req) => {
       <p><a href="${acceptUrl}">Aceitar convite</a></p>
       <p>O link expira em 7 dias. Se não tem conta, registe-se com o mesmo e-mail do convite antes de aceitar.</p>
     `;
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-      body: JSON.stringify({
-        from: "LTV Boost <notificacoes@ltvboost.com.br>",
-        to: [emailNorm],
-        subject: "Convite para equipa — LTV Boost",
-        html,
-      }),
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      console.error("team-invite resend:", t);
+    const resendCtrl = new AbortController();
+    const resendTimer = setTimeout(() => resendCtrl.abort(), 15_000);
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: "LTV Boost <notificacoes@ltvboost.com.br>",
+          to: [emailNorm],
+          subject: "Convite para equipa — LTV Boost",
+          html,
+        }),
+        signal: resendCtrl.signal,
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error("team-invite resend:", t);
+      }
+    } catch (fetchErr) {
+      const isTimeout = (fetchErr as Error)?.name === "AbortError";
+      console.error("team-invite resend:", isTimeout ? "timeout (15s)" : String(fetchErr));
+    } finally {
+      clearTimeout(resendTimer);
     }
   } else {
     console.warn("team-invite: RESEND_API_KEY missing — convite gravado sem e-mail.");

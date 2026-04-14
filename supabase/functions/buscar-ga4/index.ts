@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { verifyJwt, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import { verifyJwt, checkDistributedRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -19,9 +20,13 @@ serve(async (req: Request) => {
 
   const auth = await verifyJwt(req);
   if (!auth.ok) return auth.response;
-  if (!checkRateLimit(`buscar-ga4:${auth.userId}`, 40, 60_000)) {
-    return rateLimitedResponse();
-  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+  const { allowed: rlAllowed } = await checkDistributedRateLimit(supabase, `buscar-ga4:${auth.userId}`, 40, 60_000);
+  if (!rlAllowed) return rateLimitedResponse();
 
   try {
     const body = await req.json();
@@ -38,10 +43,18 @@ serve(async (req: Request) => {
     const gaHeaders = { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" };
     const baseUrl = `https://analyticsdata.googleapis.com/v1beta/properties/${ga4_property_id}:runReport`;
 
+    // 10s timeout per GA4 request to avoid hanging edge function slots
+    const ga4Fetch = (body: unknown) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10_000);
+      return fetch(baseUrl, { method: "POST", headers: gaHeaders, body: JSON.stringify(body), signal: ctrl.signal })
+        .finally(() => clearTimeout(timer));
+    };
+
     const [sessionsRes, eventsRes, revenueRes] = await Promise.all([
-      fetch(baseUrl, { method: "POST", headers: gaHeaders, body: JSON.stringify({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "sessions" }] }) }),
-      fetch(baseUrl, { method: "POST", headers: gaHeaders, body: JSON.stringify({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "eventCount" }], dimensions: [{ name: "eventName" }] }) }),
-      fetch(baseUrl, { method: "POST", headers: gaHeaders, body: JSON.stringify({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "purchaseRevenue" }] }) }),
+      ga4Fetch({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "sessions" }] }),
+      ga4Fetch({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "eventCount" }], dimensions: [{ name: "eventName" }] }),
+      ga4Fetch({ dateRanges: [{ startDate, endDate: "today" }], metrics: [{ name: "purchaseRevenue" }] }),
     ]);
 
     if (!sessionsRes.ok) { const _errText = await sessionsRes.text(); throw new Error(`GA4 API returned status ${sessionsRes.status}`); }

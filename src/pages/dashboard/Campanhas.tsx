@@ -10,15 +10,20 @@ import { useNewsletterCampaignStats } from "@/hooks/useNewsletterAnalytics";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { useLocation, useNavigate } from "react-router-dom";
 import CampaignModal, { CampaignPrefill } from "@/components/dashboard/CampaignModal";
 import { TrialGate } from "@/components/dashboard/TrialGate";
 import { isValidRfmQuerySegment } from "@/lib/rfm-segments";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
+import { RouteErrorBoundary } from "@/components/ErrorBoundary";
 
 const CAMPAIGN_PREFILL_TTL_MS = 60 * 60 * 1000;
 
@@ -224,15 +229,16 @@ export default function Campanhas() {
 
   const deleteMutation = useMutation({
     mutationFn: async (campaignId: string) => {
-      const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
+      // Soft-delete to preserve attribution data
+      const { error } = await supabase.from("campaigns").update({ status: "archived" }).eq("id", campaignId);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Campanha excluída." });
+      toast({ title: "Campanha arquivada." });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: () => {
-      toast({ title: "Erro ao excluir campanha", variant: "destructive" });
+      toast({ title: "Erro ao arquivar campanha", variant: "destructive" });
     },
     onSettled: () => setConfirmDeleteId(null),
   });
@@ -274,6 +280,7 @@ export default function Campanhas() {
   });
 
   return (
+    <RouteErrorBoundary routeLabel="Campanhas">
     <div className="space-y-6">
       {showModal && (
         <CampaignModal
@@ -420,19 +427,23 @@ export default function Campanhas() {
 
       {/* Loading skeleton */}
       {isLoading && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-card border rounded-xl p-5 space-y-4 animate-pulse">
+            <div key={i} className="bg-card/50 border border-border/40 rounded-2xl p-6 space-y-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-2 flex-1">
-                  <div className="h-4 bg-muted rounded w-1/3" />
-                  <div className="h-3 bg-muted rounded w-1/5" />
+                  <Skeleton className="h-6 w-1/3 rounded-lg" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-4 w-20 rounded-full" />
+                    <Skeleton className="h-4 w-24 rounded-full" />
+                  </div>
                 </div>
-                <div className="h-8 w-20 bg-muted rounded-lg" />
+                <Skeleton className="h-9 w-24 rounded-xl" />
               </div>
-              <div className="grid grid-cols-4 gap-4">
+              <Skeleton className="h-12 w-full rounded-xl" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[...Array(4)].map((_, j) => (
-                  <div key={j} className="h-14 bg-muted rounded-lg" />
+                  <Skeleton key={j} className="h-16 rounded-2xl" />
                 ))}
               </div>
             </div>
@@ -728,19 +739,31 @@ export default function Campanhas() {
                 {/* Métricas */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                   {(isEmail ? [
-                    { label: "Enviados",  value: c.sent_count.toLocaleString("pt-BR") },
-                    { label: "Abertos",   value: c.sent_count > 0 ? `${readRate}%` : "—" },
-                    { label: "Cliques",   value: c.sent_count > 0 ? `${clickRate}%` : "—" },
-                    { label: "Entregues", value: c.sent_count > 0 ? `${deliveryRate}%` : "—" },
+                    { label: "Enviados",  value: c.sent_count.toLocaleString("pt-BR"), tooltip: "Total de e-mails disparados pelo servidor." },
+                    { label: "Abertos",   value: c.sent_count > 0 ? `${readRate}%` : "—", tooltip: "Taxa de abertura baseada no rastreamento do pixel." },
+                    { label: "Cliques",   value: c.sent_count > 0 ? `${clickRate}%` : "—", tooltip: "Taxa de cliques únicos nos links rastreados." },
+                    { label: "Entregues", value: c.sent_count > 0 ? `${deliveryRate}%` : "—", tooltip: "E-mails que não retornaram erro (bounce) do servidor de destino." },
                   ] : [
-                    { label: "Enviados",  value: c.sent_count.toLocaleString("pt-BR") },
-                    { label: "Entregues", value: c.sent_count > 0 ? `${deliveryRate}%` : "—" },
-                    { label: "Lidos",     value: c.sent_count > 0 ? `${readRate}%` : "—" },
-                    { label: "Respostas", value: c.sent_count > 0 ? `${replyRate}%` : "—" },
-                  ]).map(({ label, value }) => (
-                    <div key={label} className="bg-muted/40 rounded-lg py-2">
+                    { label: "Enviados",  value: c.sent_count.toLocaleString("pt-BR"), tooltip: "Total de mensagens enviadas para a API do WhatsApp." },
+                    { label: "Entregues", value: c.sent_count > 0 ? `${deliveryRate}%` : "—", tooltip: "Confirmação de recebimento no aparelho do cliente (um tique)." },
+                    { label: "Lidos",     value: c.sent_count > 0 ? `${readRate}%` : "—", tooltip: "Confirmação de leitura pelo cliente (tiques azuis)." },
+                    { label: "Respostas", value: c.sent_count > 0 ? `${replyRate}%` : "—", tooltip: "Clientes que enviaram uma mensagem de volta após o disparo." },
+                  ]).map(({ label, value, tooltip }) => (
+                    <div key={label} className="bg-muted/40 rounded-lg py-2 px-1 relative group/metric">
                       <p className="text-lg font-bold">{value}</p>
-                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <div className="flex items-center justify-center gap-1">
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground/60">{label}</p>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="w-2.5 h-2.5 text-muted-foreground/30 hover:text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="text-[10px] max-w-[150px]">
+                              {tooltip}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -770,11 +793,14 @@ export default function Campanhas() {
         </div>
       )}
     </div>
+    </RouteErrorBoundary>
   );
 }
 
 function EmailCampaignStatsSnippet({ campaignId }: { campaignId: string }) {
-  const { data, isFetching } = useNewsletterCampaignStats(campaignId, "email");
+  const { user } = useAuth();
+  const scope = useStoreScopeOptional();
+  const { data, isFetching } = useNewsletterCampaignStats(campaignId, "email", user?.id ?? null, scope?.activeStoreId ?? null);
   if (isFetching && !data) {
     return (
       <p className="text-[10px] text-muted-foreground flex items-center gap-1.5">

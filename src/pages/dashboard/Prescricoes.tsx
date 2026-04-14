@@ -68,7 +68,10 @@ export default function Prescricoes() {
   const loja = useLoja();
   const storeId = loja.data?.id as string | undefined;
 
-  const { data: rxRows = [], isLoading, isError, error, refetch } = usePrescriptionsV3(isDemo ? undefined : storeId);
+  const { data: rxQuery, isLoading, isError, error, refetch } = usePrescriptionsV3(isDemo ? undefined : storeId);
+  const rxRows = rxQuery?.rows ?? [];
+  const rxStats = rxQuery?.stats;
+
   const updateStatus = useUpdatePrescriptionStatus(storeId);
 
   const rows: PrescriptionRow[] = useMemo(() => {
@@ -98,18 +101,21 @@ export default function Prescricoes() {
     });
   }, [filtered, sortCol, sortDir]);
 
-  const pendingPotentialSum = useMemo(
-    () =>
-      aguardando.reduce((a, r) => {
+  const pendingPotentialSum = useMemo(() => {
+    if (isDemo) {
+      return aguardando.reduce((a, r) => {
         const val = Number(r.estimated_potential ?? 0);
         return a + (Number.isFinite(val) ? val : 0);
-      }, 0),
-    [aguardando],
-  );
+      }, 0);
+    }
+    return rxStats?.pending_value ?? 0;
+  }, [isDemo, aguardando, rxStats]);
+
   const upsellDisplay = Math.min(
     Math.round(pendingPotentialSum > 0 ? pendingPotentialSum * 0.12 : 0),
     UPSELL_POTENTIAL_CAP,
   );
+
 
   const isStarter = profile?.plan === "starter";
   const isNotScale = profile?.plan !== "scale" && profile?.plan !== "enterprise";
@@ -162,7 +168,6 @@ export default function Prescricoes() {
       if (context?.prev) {
         queryClient.setQueryData(["prescriptions_v3", storeId], context.prev);
       }
-      console.error("Erro ao aprovar prescrição:", e);
       toast.error(
         "Não foi possível persistir a campanha: " + (e instanceof Error ? e.message : String(e)),
       );

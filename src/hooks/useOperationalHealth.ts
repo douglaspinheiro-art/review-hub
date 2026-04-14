@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import type { Database } from "@/integrations/supabase/types";
 import { DATA_QUALITY_SNAPSHOT_SELECT, FUNIL_DIARIO_SELECT } from "@/lib/supabase-select-fragments";
 
@@ -52,12 +52,13 @@ export const operationalHealthQueryKey = (userId: string | undefined) =>
 
 export function useOperationalHealth() {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
 
   return useQuery({
     queryKey: operationalHealthQueryKey(user?.id),
-    enabled: !!user?.id,
+    enabled: !!user?.id && scope?.ready === true,
     queryFn: async (): Promise<OperationalHealthResult> => {
-      const { storeId } = await getCurrentUserAndStore();
+      const storeId = scope?.activeStoreId ?? null;
       if (!storeId) {
         return {
           storeId: null,
@@ -68,52 +69,19 @@ export function useOperationalHealth() {
         };
       }
 
-      const since = new Date(Date.now() - WEBHOOK_LOOKBACK_H * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase.rpc("get_operational_health_bundle_v2", {
+        p_store_id: storeId,
+      });
 
-      const [funilRes, qualityRes, webhookRes] = await Promise.all([
-        supabase
-          .from("funil_diario")
-          .select(FUNIL_DIARIO_SELECT)
-          .eq("store_id", storeId)
-          .order("ingested_at", { ascending: false, nullsFirst: false })
-          .order("metric_date", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from("data_quality_snapshots")
-          .select(DATA_QUALITY_SNAPSHOT_SELECT)
-          .eq("store_id", storeId)
-          .order("snapshot_date", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from("webhook_logs")
-          .select("id, status, status_processamento, erro_mensagem, error_message, created_at")
-          .eq("store_id", storeId)
-          .gte("created_at", since)
-          .order("created_at", { ascending: false })
-          .limit(WEBHOOK_SAMPLE_LIMIT),
-      ]);
-
-      if (funilRes.error) throw funilRes.error;
-      if (qualityRes.error) throw qualityRes.error;
-      if (webhookRes.error) throw webhookRes.error;
-
-      const wh = webhookRes.data ?? [];
-      let webhookFailures48h = 0;
-      let webhookPendingStale48h = 0;
-      for (const row of wh) {
-        if (isWebhookFailure(row)) webhookFailures48h += 1;
-        else if (isWebhookPending(row)) webhookPendingStale48h += 1;
-      }
+      if (error) throw error;
+      const res = data as any;
 
       return {
         storeId,
-        latestFunil: funilRes.data as FunilDiarioRow | null,
-        latestQuality: qualityRes.data as DataQualityRow | null,
-        webhookFailures48h,
-        webhookPendingStale48h,
+        latestFunil: res.funil as FunilDiarioRow | null,
+        latestQuality: res.quality as DataQualityRow | null,
+        webhookFailures48h: Number(res.webhook_stats?.failures_48h ?? 0),
+        webhookPendingStale48h: Number(res.webhook_stats?.stale_48h ?? 0),
       };
     },
     staleTime: 30_000,

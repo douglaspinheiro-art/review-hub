@@ -57,12 +57,12 @@ const BodySchema = z.discriminatedUnion("kind", [
 ]);
 
 serve(async (req) => {
+  // Validate origin before OPTIONS response — prevents CSRF from any origin.
+  const originBlock = validateBrowserOrigin(req);
+  if (originBlock) return originBlock;
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-
-  const originBlock = validateBrowserOrigin(req);
-  if (originBlock) return originBlock;
 
   try {
     const authHeader = req.headers.get("authorization");

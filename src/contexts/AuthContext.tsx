@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { PROFILE_SESSION_SELECT } from "@/lib/supabase-select-fragments";
@@ -22,6 +22,10 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  profileFallbackUsed: boolean;
+  /** True when the profile is synthetic (DB timeout fallback). Plan-gated features
+   *  are unreliable while this is true — isPaid is forced false until real data loads. */
+  isProfileSynthetic: boolean;
   isTrialActive: boolean;
   isPaid: boolean;
   refetchProfile: () => Promise<void>;
@@ -35,18 +39,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileFallbackUsed, setProfileFallbackUsed] = useState(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryAttemptRef = useRef(0);
 
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select(PROFILE_SESSION_SELECT)
-      .eq("id", userId)
-      .single();
-    if (error && error.code !== "PGRST116") {
-      console.error("fetchProfile error:", error.message);
+    // 5s timeout to prevent hanging on DB/Network failure
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(PROFILE_SESSION_SELECT)
+        .eq("id", userId)
+        .single()
+        .abortSignal(controller.signal);
+
+      clearTimeout(timeoutId);
+
+      if (error && error.code !== "PGRST116") {
+        console.error("fetchProfile error:", error.message);
+      }
+      
+      if (data) {
+        setProfile(data as Profile);
+        // Real profile loaded — clear synthetic flag and any pending retry.
+        setProfileFallbackUsed(false);
+        retryAttemptRef.current = 0;
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
+      } else if (error?.code === "PGRST116") {
+        setProfile(null);
+      } else {
+        throw new Error(error?.message || "No data");
+      }
+    } catch (err: any) {
+      console.error("fetchProfile critical error or timeout:", err);
+      // Fallback to minimal profile if DB hangs or fails
+      setProfile({
+        id: userId,
+        full_name: "Usuário",
+        company_name: null,
+        plan: "starter",
+        role: "user",
+        trial_ends_at: null,
+        onboarding_completed: false,
+        ia_negotiation_enabled: false,
+        ia_max_discount_pct: 0,
+        social_proof_enabled: false,
+        pix_key: null,
+      });
+      setProfileFallbackUsed(true);
+      // Log to audit_logs so ops can detect DB latency spikes causing profile failures.
+      supabase.from("audit_logs").insert({
+        action: "profile_fallback_used",
+        resource_type: "profile",
+        result: "warn",
+        metadata: { user_id: userId, reason: (err as Error)?.message ?? "unknown" },
+      }).then(({ error: logErr }) => {
+        if (logErr) console.warn("[auth] audit_logs insert failed:", logErr.message);
+      });
+      // Auto-retry with exponential backoff (30s, 60s, 120s, …, capped at 5 min)
+      // so the user recovers automatically once DB stabilises, without a page refresh.
+      if (!retryTimerRef.current) {
+        const attempt = ++retryAttemptRef.current;
+        const delayMs = Math.min(30_000 * Math.pow(2, attempt - 1), 300_000);
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          fetchProfile(userId);
+        }, delayMs);
+      }
+    } finally {
+      setLoading(false);
     }
-    setProfile(data as Profile | null);
-    setLoading(false);
   }, []);
 
   const refetchProfile = useCallback(async () => {
@@ -54,15 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchProfile]);
 
   useEffect(() => {
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else setLoading(false);
-    });
-
-    // Listen for auth changes
+    // onAuthStateChange fires immediately with INITIAL_SESSION containing the current session,
+    // so a separate getSession() call is redundant and causes double profile fetches on startup.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -76,6 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
+  // Clean up retry timer when the provider unmounts (e.g. user logs out).
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, []);
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -84,13 +152,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ? new Date(profile.trial_ends_at) > new Date()
     : false;
 
-  const isPaid = !!profile && profile.plan !== "starter";
+  // Do NOT trust plan data from a synthetic profile — block premium features
+  // until the real profile loads (auto-retry fires every 30s after a DB failure).
+  const isPaid = !!profile && profile.plan !== "starter" && !profileFallbackUsed;
 
   const value = {
     user,
     session,
     profile,
     loading,
+    profileFallbackUsed,
+    isProfileSynthetic: profileFallbackUsed,
     isTrialActive,
     isPaid,
     refetchProfile,

@@ -26,14 +26,25 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     console.log(`[email-onboarding] RESEND_API_KEY not configured. Would send to: ${to}`);
     return;
   }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  let res: Response;
+  try {
+    res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    const isTimeout = (err as Error)?.name === "AbortError";
+    throw new Error(isTimeout ? "Resend API timeout (15s)" : String(err));
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Resend error ${res.status}: ${err}`);

@@ -7,7 +7,7 @@ import {
   sendFlowForConnection,
 } from "@/lib/meta-whatsapp-client";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 
 interface SendResult {
   success: boolean;
@@ -29,12 +29,14 @@ interface FlowPayload {
 
 export function useWhatsAppSender() {
   const { user } = useAuth();
+  const scope = useStoreScopeOptional();
 
   const { data: connection, isLoading } = useQuery<ConnRow | null>({
     queryKey: ["whatsapp_connection_active", user?.id],
     queryFn: async () => {
       if (!user) return null;
-      const { storeId, effectiveUserId } = await getCurrentUserAndStore();
+      const storeId = scope?.activeStoreId ?? null;
+      const effectiveUserId = scope?.effectiveUserId ?? null;
       if (!effectiveUserId) return null;
       // Do NOT select meta_access_token — credentials stay on the server (meta-whatsapp-send).
       let q = supabase
@@ -49,7 +51,7 @@ export function useWhatsAppSender() {
       if (error) throw error;
       return (data as ConnRow | null) ?? null;
     },
-    enabled: !!user,
+    enabled: !!user && scope?.ready === true,
     staleTime: 30_000,
   });
 

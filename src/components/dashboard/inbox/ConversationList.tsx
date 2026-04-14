@@ -1,9 +1,11 @@
-import { Search, Loader2, MessageCircle } from "lucide-react";
+import { useRef, memo } from "react";
+import { Search, Loader2, MessageCircle, CheckCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ConversationListItem, type ConversationRow } from "@/components/dashboard/ConversationListItem";
 import type { InboxAssigneeFilter } from "@/hooks/useDashboard";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -34,6 +36,8 @@ interface ConversationListProps {
   searchingHistory: boolean;
   debouncedSearch: string;
   profileName: string;
+  onMarkAllRead?: () => void;
+  markAllReadPending?: boolean;
 }
 
 const STATUS_FILTERS = [
@@ -49,7 +53,7 @@ const ASSIGNEE_FILTERS: { label: string; value: InboxAssigneeFilter }[] = [
   { label: "Sem responsável", value: "unassigned" },
 ];
 
-export function ConversationList({
+function ConversationListInner({
   conversations,
   selectedId,
   setSelectedId,
@@ -75,14 +79,43 @@ export function ConversationList({
   searchingHistory,
   debouncedSearch,
   profileName,
+  onMarkAllRead,
+  markAllReadPending,
 }: ConversationListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: conversations.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 84,
+    overscan: 8,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  });
+
+  const virtualItems = virtualizer.getVirtualItems();
+
   return (
     <div className={cn(
       "flex flex-col border-r bg-card w-full md:w-80 shrink-0",
       selectedId && "hidden md:flex"
     )}>
       <div className="p-4 border-b space-y-3">
-        <h1 className="font-semibold text-lg">Conversas</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-semibold text-lg">Conversas</h1>
+          {/* M9: Mark all as read */}
+          {onMarkAllRead && (
+            <button
+              type="button"
+              onClick={onMarkAllRead}
+              disabled={markAllReadPending}
+              title="Marcar todas como lidas"
+              aria-label="Marcar todas as conversas como lidas"
+              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <CheckCheck className="w-4 h-4" />
+            </button>
+          )}
+        </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -194,7 +227,7 @@ export function ConversationList({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {isLoading && (
           <div className="p-4 space-y-4">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -239,19 +272,32 @@ export function ConversationList({
             </div>
           </div>
         )}
-        {conversations.map((conv) => (
-          <ConversationListItem
-            key={conv.id}
-            conv={conv}
-            isSelected={selectedId === conv.id}
-            onClick={setSelectedId}
-          />
-        ))}
+
+        {/* Virtualized conversation rows — only renders visible items + overscan */}
+        {!isLoading && conversations.length > 0 && (
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
+            {virtualItems.map((vItem) => (
+              <div
+                key={conversations[vItem.index].id}
+                data-index={vItem.index}
+                ref={virtualizer.measureElement}
+                style={{ position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${vItem.start}px)` }}
+              >
+                <ConversationListItem
+                  conv={conversations[vItem.index]}
+                  isSelected={selectedId === conversations[vItem.index].id}
+                  onClick={setSelectedId}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
         {!isLoading && conversations.length > 0 && (
           <p className="px-3 py-2 text-[10px] text-muted-foreground text-center border-t border-border/50 bg-muted/20">
             {conversations.length}{" "}
             {conversations.length === 1 ? "conversa carregada" : "conversas carregadas"}
-            {hasNextConvPage ? " — use “Carregar mais conversas” para a página seguinte" : ""}
+            {hasNextConvPage ? ' — use "Carregar mais conversas" para a página seguinte' : ""}
           </p>
         )}
         {!isLoading && hasNextConvPage && (
@@ -272,3 +318,5 @@ export function ConversationList({
     </div>
   );
 }
+
+export const ConversationList = memo(ConversationListInner);

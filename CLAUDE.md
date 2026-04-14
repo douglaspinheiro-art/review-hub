@@ -26,6 +26,8 @@ npm run test:e2e              # Playwright (e2e/); CI usa preview em :4173 + PLA
 - **Migrações:** alinhar remoto com `npm run supabase:migration-list` / `supabase db push --linked` (ver `docs/supabase-migrations-sync.md`).
 - **Stripe:** deploy Edge `stripe-webhook` (sem JWT); secrets `STRIPE_WEBHOOK_SECRET`, opcional `STRIPE_PRICE_TO_PLAN` JSON; Checkout com `client_reference_id` = `profiles.id` e metadata `plan_tier` quando aplicável.
 - **Crons:** `CRON_SECRET`, `PROCESS_SCHEDULED_MESSAGES_SECRET` — rotacionar periodicamente; monitorizar logs com tag `CRON_ALERT`.
+  - `PROCESS_SCHEDULED_MESSAGES_SECRET` é aceito por `process-scheduled-messages` **e** por `dispatch-newsletter` (header `x-internal-secret`) para disparar newsletters em background. Escopo: apenas campanhas de e-mail já criadas pelo owner da loja. Se vazar, um atacante pode disparar newsletters de qualquer loja — rotacionar imediatamente e auditar `audit_logs` com `action = "newsletter_internal_dispatch"`.
+  - `DISPATCH_CAMPAIGN_SECRET` é aceito por `dispatch-campaign` para campanhas WhatsApp internas (cron/automations). Escopo: campanhas já vinculadas a uma loja. Rotacionar junto com `PROCESS_SCHEDULED_MESSAGES_SECRET`.
 - **Supabase:** plano pago com **PITR / backups** ativos para dados de clientes.
 - **LGPD:** bases legais e retenção documentadas; fluxo de exportação/eliminação de conta alinhado ao DPO (o `unsubscribe` e logs de auditoria já existem — rever políticas de retenção em `webhook_logs` / `api_request_logs`).
 

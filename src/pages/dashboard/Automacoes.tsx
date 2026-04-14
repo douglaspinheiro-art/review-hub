@@ -36,6 +36,7 @@ type JourneyRow = Database["public"]["Tables"]["journeys_config"]["Row"];
 type AutomacoesBundle = {
   journeys: JourneyRow[];
   sentByJourneyId: Record<string, number>;
+  whatsappOk: boolean;
 };
 
 const EMPTY_JOURNEYS: JourneyRow[] = [];
@@ -72,70 +73,32 @@ export default function Automacoes() {
   }, [fetchLojas]);
 
   const {
-    data,
+    data: bundle,
     isLoading: journeysLoading,
     isError: journeysError,
     error: journeysErrorObj,
     refetch: refetchJourneys,
   } = useQuery({
-    queryKey: ["automacoes_journeys", selectedStoreId],
+    queryKey: ["automacoes_bundle_v2", selectedStoreId],
     queryFn: async (): Promise<AutomacoesBundle> => {
-      const { data: journeys, error: jErr } = await supabase
-        .from("journeys_config")
-        .select(JOURNEYS_CONFIG_SELECT)
-        .eq("store_id", selectedStoreId)
-        .order("tipo_jornada");
-      if (jErr) throw jErr;
-
-      const jList = journeys ?? [];
-      const ids = jList.map((j) => j.id).filter(Boolean);
-      const sentByJourneyId: Record<string, number> = {};
-      if (ids.length) {
-        const rpc = await supabase.rpc("get_journey_sent_counts", {
-          p_store_id: selectedStoreId,
-          p_journey_ids: ids,
-        });
-        if (!rpc.error && Array.isArray(rpc.data)) {
-          for (const row of rpc.data) {
-            if (row.journey_id) sentByJourneyId[row.journey_id] = Number(row.sent_count ?? 0);
-          }
-        } else {
-          const { data: sentRows, error: sErr } = await supabase
-            .from("scheduled_messages")
-            .select("journey_id")
-            .eq("store_id", selectedStoreId)
-            .eq("status", "sent")
-            .in("journey_id", ids);
-          if (sErr) throw sErr;
-          for (const row of sentRows ?? []) {
-            const jid = row.journey_id as string | null;
-            if (!jid) continue;
-            sentByJourneyId[jid] = (sentByJourneyId[jid] ?? 0) + 1;
-          }
-        }
-      }
-      return { journeys: jList, sentByJourneyId };
+      const { data, error } = await supabase.rpc("get_automacoes_bundle_v2", {
+        p_store_id: selectedStoreId,
+      });
+      if (error) throw error;
+      const res = data as { journeys?: JourneyRow[]; counts?: Record<string, number>; whatsapp_connected?: boolean };
+      return {
+        journeys: (res.journeys || []) as JourneyRow[],
+        sentByJourneyId: (res.counts || {}) as Record<string, number>,
+        whatsappOk: !!res.whatsapp_connected,
+      };
     },
     enabled: !!selectedStoreId,
     retry: 1,
   });
 
-  const journeys = data?.journeys ?? EMPTY_JOURNEYS;
-  const sentByJourneyId = data?.sentByJourneyId ?? EMPTY_SENT;
-
-  const { data: whatsappOk = false } = useQuery({
-    queryKey: ["automacoes_whatsapp", selectedStoreId],
-    queryFn: async () => {
-      const { data: row } = await supabase
-        .from("whatsapp_connections")
-        .select("id")
-        .eq("store_id", selectedStoreId)
-        .eq("status", "connected")
-        .maybeSingle();
-      return !!row;
-    },
-    enabled: !!selectedStoreId,
-  });
+  const journeys = bundle?.journeys ?? EMPTY_JOURNEYS;
+  const sentByJourneyId = bundle?.sentByJourneyId ?? EMPTY_SENT;
+  const whatsappOk = bundle?.whatsappOk ?? false;
 
   const seedJourneysMutation = useMutation({
     mutationFn: async (storeId: string) => {
@@ -151,7 +114,7 @@ export default function Automacoes() {
       if (error) throw error;
     },
     onSuccess: (_, storeId) => {
-      queryClient.invalidateQueries({ queryKey: ["automacoes_journeys", storeId] });
+      queryClient.invalidateQueries({ queryKey: ["automacoes_bundle_v2", storeId] });
     },
     onError: (e: Error) => {
       toast.error(e.message || "Não foi possível criar as jornadas padrão.");
@@ -169,7 +132,7 @@ export default function Automacoes() {
     },
     onSuccess: (_, { ativa }) => {
       toast.success(ativa ? "Jornada ativada" : "Jornada pausada");
-      queryClient.invalidateQueries({ queryKey: ["automacoes_journeys", selectedStoreId] });
+      queryClient.invalidateQueries({ queryKey: ["automacoes_bundle_v2", selectedStoreId] });
     },
     onError: () => toast.error("Erro ao atualizar jornada"),
   });
@@ -186,7 +149,7 @@ export default function Automacoes() {
     },
     onSuccess: () => {
       toast.success("Fluxos core ativados: carrinho, pós-compra e reativação");
-      queryClient.invalidateQueries({ queryKey: ["automacoes_journeys", selectedStoreId] });
+      queryClient.invalidateQueries({ queryKey: ["automacoes_bundle_v2", selectedStoreId] });
     },
     onError: () => toast.error("Não foi possível ativar os fluxos core"),
   });

@@ -1,8 +1,42 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders as cors, checkRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import { corsHeaders as cors, checkDistributedRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
 
 const DAYS = 30;
+
+/**
+ * Validates a user-supplied API address to prevent SSRF attacks.
+ * Rejects hostnames/IPs that resolve to private, loopback, or link-local ranges.
+ * Only HTTPS addresses with public-looking hostnames are accepted.
+ */
+function assertSafeApiAddress(raw: string): void {
+  // Construct a full URL so we can inspect the hostname
+  const fullUrl = raw.startsWith("https://") ? raw : `https://${raw}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(fullUrl);
+  } catch {
+    throw new Error(`api_address inválido: "${raw}"`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  // Reject loopback
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    throw new Error("api_address aponta para loopback — não permitido");
+  }
+  // Reject link-local / metadata endpoints
+  if (host === "169.254.169.254" || host.endsWith(".169.254.169.254")) {
+    throw new Error("api_address aponta para metadata server — não permitido");
+  }
+  // Reject RFC-1918 private ranges (simple string prefix check)
+  const privatePatterns = [
+    /^10\.\d+\.\d+\.\d+$/,
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+    /^192\.168\.\d+\.\d+$/,
+  ];
+  if (privatePatterns.some((r) => r.test(host))) {
+    throw new Error("api_address aponta para endereço IP privado — não permitido");
+  }
+}
 
 function thirtyDaysAgo(): string {
   const d = new Date();
@@ -16,6 +50,8 @@ async function fetchShopify(config: Record<string, string>) {
   const token = config.access_token;
   if (!shop || !token) throw new Error("Credenciais Shopify incompletas");
 
+  // SSRF guard: shop_url is user-controlled — validate before fetching.
+  assertSafeApiAddress(shop);
   const base = `https://${shop}/admin/api/2024-01`;
   const headers = { "X-Shopify-Access-Token": token, "Content-Type": "application/json" };
   const since = thirtyDaysAgo();
@@ -93,6 +129,8 @@ async function fetchWooCommerce(config: Record<string, string>) {
   const cs = config.consumer_secret;
   if (!siteUrl || !ck || !cs) throw new Error("Credenciais WooCommerce incompletas");
 
+  // SSRF guard: site_url is user-controlled — validate before fetching.
+  assertSafeApiAddress(siteUrl);
   const auth = btoa(`${ck}:${cs}`);
   const base = `${siteUrl}/wp-json/wc/v3`;
   const headers = { Authorization: `Basic ${auth}` };
@@ -123,6 +161,7 @@ async function fetchTray(config: Record<string, string>) {
   const token = config.access_token;
   if (!apiAddress || !token) throw new Error("Credenciais Tray incompletas");
 
+  assertSafeApiAddress(apiAddress);
   const base = `https://${apiAddress}/web_api`;
   const since = thirtyDaysAgo().split("T")[0]; // yyyy-mm-dd
 
@@ -187,9 +226,8 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
     if (authErr || !user) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: cors });
 
-    if (!checkRateLimit(`fetch-store-metrics:${user.id}`, 24, 60_000)) {
-      return rateLimitedResponse();
-    }
+    const { allowed: rlAllowed } = await checkDistributedRateLimit(supabase, `fetch-store-metrics:${user.id}`, 24, 60_000);
+    if (!rlAllowed) return rateLimitedResponse();
 
     // Busca integração ativa de e-commerce
     const ECOMMERCE_TYPES = ["shopify", "nuvemshop", "woocommerce", "tray", "vtex"];

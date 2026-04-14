@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Loader2, Check, ShieldCheck, AlertCircle,
   BellRing, Smartphone, Mail, Clock, ShoppingBag,
-  Zap, MessageSquare, TrendingUp, CreditCard, Wifi, LogOut,
+  Zap, MessageSquare, TrendingUp, CreditCard, Wifi, LogOut, X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
@@ -74,6 +74,7 @@ function digitsOnly(s: string) {
 
 export default function Configuracoes() {
   const { user, profile, refetchProfile, signOut } = useAuth();
+  const scope = useStoreScope();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const baselineRef = useRef<FormBaseline | null>(null);
@@ -219,7 +220,7 @@ export default function Configuracoes() {
         throw new Error("Número do Pulse inválido: use DDD + número.");
       }
 
-      const { storeId } = await getCurrentUserAndStore();
+      const storeId = scope.activeStoreId;
 
       const [profileRes, configRes] = await Promise.all([
         supabase
@@ -367,14 +368,21 @@ export default function Configuracoes() {
                 Sair da conta
               </Button>
             </div>
-            <Button
-              onClick={() => saveMutation.mutate()}
-              className="font-bold h-11 rounded-xl px-8"
-              disabled={saveMutation.isPending || !canEditSettings}
-            >
-              {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Salvar Alterações
-            </Button>
+            <div className="flex gap-2">
+              {isDirty && (
+                <Button type="button" variant="ghost" className="h-11 rounded-xl px-4 text-muted-foreground" onClick={discardChanges} disabled={saveMutation.isPending}>
+                  <X className="w-4 h-4 mr-1.5" /> Descartar
+                </Button>
+              )}
+              <Button
+                onClick={() => saveMutation.mutate()}
+                className="font-bold h-11 rounded-xl px-8"
+                disabled={saveMutation.isPending || !canEditSettings}
+              >
+                {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Salvar Alterações
+              </Button>
+            </div>
           </div>
         </TabsContent>
 
@@ -477,7 +485,12 @@ export default function Configuracoes() {
               <Button disabled variant="outline" className="w-full rounded-xl text-xs font-bold h-11 border-dashed">Configurar Flows no Meta</Button>
             </div>
           </div>
-          <div className="flex justify-end pt-4">
+          <div className="flex justify-end gap-2 pt-4">
+            {isDirty && (
+              <Button type="button" variant="ghost" className="h-12 rounded-xl px-5 text-muted-foreground" onClick={discardChanges} disabled={saveMutation.isPending}>
+                <X className="w-4 h-4 mr-1.5" /> Descartar
+              </Button>
+            )}
             <Button
               onClick={() => saveMutation.mutate()}
               className="font-bold h-12 rounded-xl px-12 shadow-lg shadow-primary/20"
@@ -561,13 +574,20 @@ export default function Configuracoes() {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={() => saveMutation.mutate()}
-              className="w-full font-bold h-12 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-              disabled={saveMutation.isPending || !canEditSettings}
-            >
-              Salvar Regras de Proteção
-            </Button>
+            <div className="flex gap-2">
+              {isDirty && (
+                <Button type="button" variant="ghost" className="h-12 rounded-xl px-5 text-muted-foreground shrink-0" onClick={discardChanges} disabled={saveMutation.isPending}>
+                  <X className="w-4 h-4 mr-1.5" /> Descartar
+                </Button>
+              )}
+              <Button
+                onClick={() => saveMutation.mutate()}
+                className="flex-1 font-bold h-12 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                disabled={saveMutation.isPending || !canEditSettings}
+              >
+                Salvar Regras de Proteção
+              </Button>
+            </div>
           </div>
         </TabsContent>
 
@@ -648,13 +668,20 @@ export default function Configuracoes() {
                 </div>
               </div>
             </div>
-            <Button
-              onClick={() => saveMutation.mutate()}
-              className="w-full font-bold h-11 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-              disabled={saveMutation.isPending || !canEditSettings}
-            >
-              Salvar Pulse
-            </Button>
+            <div className="flex gap-2">
+              {isDirty && (
+                <Button type="button" variant="ghost" className="h-11 rounded-xl px-5 text-muted-foreground shrink-0" onClick={discardChanges} disabled={saveMutation.isPending}>
+                  <X className="w-4 h-4 mr-1.5" /> Descartar
+                </Button>
+              )}
+              <Button
+                onClick={() => saveMutation.mutate()}
+                className="flex-1 font-bold h-11 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                disabled={saveMutation.isPending || !canEditSettings}
+              >
+                Salvar Pulse
+              </Button>
+            </div>
           </div>
         </TabsContent>
 

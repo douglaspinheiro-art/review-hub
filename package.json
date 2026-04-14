@@ -29,6 +29,7 @@
     "supabase:sql:operational-blueprint": "npx supabase db query --linked -f supabase/migrations/20260410140000_operational_data_blueprint.sql",
     "release:check": "node scripts/ci/release-readiness.mjs",
     "ci:smoke": "npm run test:smoke-ui && npm run test && npx tsc --noEmit && npm run build",
+    "ci:security": "npm audit --production --audit-level=high",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"
   },
@@ -70,6 +71,7 @@
     "@sentry/react": "^8.55.1",
     "@supabase/supabase-js": "^2.102.1",
     "@tanstack/react-query": "^5.83.0",
+    "@tanstack/react-virtual": "^3.13.23",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

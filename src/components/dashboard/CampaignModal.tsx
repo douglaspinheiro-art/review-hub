@@ -14,6 +14,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -37,7 +47,7 @@ import { useProductsV3 as useProdutosV3, type ProductRow } from "@/hooks/useLTVB
 import type { Json } from "@/integrations/supabase/types";
 import { contactMatchesEnglishRfmSegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
 import { CAMPAIGN_LIST_SELECT, CAMPAIGN_MESSAGE_TEMPLATE_SELECT } from "@/lib/supabase-select-fragments";
-import { getCurrentUserAndStore } from "@/hooks/useDashboard";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 
 export type ProdutoParaCampanha = {
   id: string;
@@ -241,6 +251,7 @@ export default function CampaignModal({
   const [prodCoupon, setProdCoupon] = useState("");
 
   const { user, profile } = useAuth();
+  const scope = useStoreScopeOptional();
   const loja = useLoja();
   const lojaData = (loja.data as LojaExtended | null) ?? null;
   const produtosQuery = useProdutosV3(loja.data?.id ?? undefined, { pageSize: 150 });
@@ -253,7 +264,9 @@ export default function CampaignModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { register, handleSubmit, watch, setValue, trigger, reset, formState: { errors } } = useForm<FormData>({
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  const { register, handleSubmit, watch, setValue, trigger, reset, formState: { errors, isDirty } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       channel: whatsappOnly ? "whatsapp" : (prefill?.channel ?? "whatsapp"),
@@ -318,12 +331,44 @@ export default function CampaignModal({
     setStep(1);
   }, [editingCampaignId, editBundle, initialObjective, prefill?.objective, reset]);
 
+  // C7: Draft auto-save — persist form values to localStorage every 30 s (new campaigns only)
+  const draftKey = user?.id && !editingCampaignId ? `campaignDraft:${user.id}` : null;
+  const watchedValues = watch();
+
+  useEffect(() => {
+    if (!draftKey || !isDirty) return;
+    const saved = JSON.parse(localStorage.getItem(draftKey) ?? "null") as FormData | null;
+    if (saved && Object.keys(saved).length > 0) {
+      reset(saved, { keepDefaultValues: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]); // only on mount
+
+  useEffect(() => {
+    if (!draftKey || !isDirty) return;
+    const id = setInterval(() => {
+      localStorage.setItem(draftKey, JSON.stringify(watchedValues));
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [draftKey, isDirty, watchedValues]);
+
+  // C7: Guard close — show confirmation if form is dirty
+  const handleClose = () => {
+    if (isDirty && step > 0) {
+      setConfirmClose(true);
+    } else {
+      if (draftKey) localStorage.removeItem(draftKey);
+      onClose();
+    }
+  };
+
   const { data: segmentCounts = EMPTY_SEGMENT_COUNTS } = useQuery({
     queryKey: ["campaign_modal_segment_counts", loja.data?.id, user?.id],
     queryFn: async () => {
       const hintStoreId = loja.data?.id;
       if (!hintStoreId) return EMPTY_SEGMENT_COUNTS;
-      const { storeId, effectiveUserId } = await getCurrentUserAndStore(hintStoreId);
+      const storeId = scope?.activeStoreId ?? hintStoreId;
+      const effectiveUserId = scope?.effectiveUserId ?? null;
       if (!storeId || !effectiveUserId) return EMPTY_SEGMENT_COUNTS;
 
       const [{ data: rpcData, error: rpcErr }, { count: cartCount, error: cartErr }] = await Promise.all([
@@ -572,6 +617,7 @@ export default function CampaignModal({
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       void queryClient.invalidateQueries({ queryKey: ["campaign_edit_bundle", editingCampaignId] });
       void queryClient.invalidateQueries({ queryKey: ["prescriptions_v3"] });
+      if (draftKey) localStorage.removeItem(draftKey);
       onClose();
     },
     onError: (err: Error) => {
@@ -691,8 +737,34 @@ export default function CampaignModal({
   };
 
   return (
+    <>
+    {/* C7: Unsaved changes guard */}
+    <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Descartar alterações?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Há alterações não salvas nesta campanha. Se fechar agora, o progresso será perdido
+            {draftKey ? " (um rascunho automático pode ser restaurado na próxima vez que abrir o modal)" : ""}.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel type="button">Continuar editando</AlertDialogCancel>
+          <AlertDialogAction
+            type="button"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              if (draftKey) localStorage.removeItem(draftKey);
+              onClose();
+            }}
+          >
+            Descartar e fechar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#050508]/80 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-0 bg-[#050508]/80 backdrop-blur-md" onClick={handleClose} />
       
       <div className="relative bg-background border border-white/10 rounded-[2.5rem] shadow-2xl w-full max-w-5xl overflow-hidden max-h-[90vh] flex flex-col md:flex-row">
         {editLoading && (
@@ -1224,7 +1296,7 @@ export default function CampaignModal({
 
           {/* Wizard Footer */}
           <div className="p-8 border-t border-white/5 bg-muted/10 flex items-center justify-between shrink-0">
-            <Button variant="ghost" onClick={step === 0 ? onClose : () => setStep(s => s - 1)} className="rounded-xl font-black text-[10px] uppercase tracking-widest gap-2">
+            <Button variant="ghost" onClick={step === 0 ? handleClose : () => setStep(s => s - 1)} className="rounded-xl font-black text-[10px] uppercase tracking-widest gap-2">
               <ChevronLeft className="w-4 h-4" /> {step === 0 ? "Cancelar" : "Voltar"}
             </Button>
             {step < STEPS.length - 1 && (
@@ -1240,5 +1312,6 @@ export default function CampaignModal({
         </div>
       </div>
     </div>
+    </>
   );
 }

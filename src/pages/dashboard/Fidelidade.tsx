@@ -104,8 +104,11 @@ export default function Fidelidade() {
     if (rewardsStoreId && ids.includes(rewardsStoreId)) return;
     setRewardsStoreId(ids[0] ?? null);
   }, [dashboard.data?.storeIds, rewardsStoreId]);
+
   const [txPage, setTxPage] = useState(0);
-  const txQuery = useLoyaltyTransactions(txPage);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const txQuery = useLoyaltyTransactions(cursors[txPage] ?? null);
+  
   const updateProfile = useUpdateLoyaltyProfile();
 
   const [configOpen, setConfigOpen] = useState(false);
@@ -155,8 +158,11 @@ export default function Fidelidade() {
   async function handleExportCsv() {
     if (!user?.id) return;
     setExportBusy(true);
+    toast({ title: "Preparando exportação…", description: "Buscando todas as transações." });
     try {
-      const rows = await fetchLoyaltyTransactionsForExport(user.id, 2000);
+      const rows = await fetchLoyaltyTransactionsForExport(user.id, 0, (fetched) => {
+        toast({ title: `Exportando… ${fetched} transações carregadas` });
+      });
       const header = ["data", "cliente", "telefone", "pontos", "motivo", "descricao", "referencia"];
       const lines = [
         header.join(","),
@@ -179,7 +185,7 @@ export default function Fidelidade() {
       a.download = "fidelidade-transacoes.csv";
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: "CSV exportado", description: `${rows.length} linhas (máx. 2000).` });
+      toast({ title: "CSV exportado", description: `${rows.length} linhas exportadas.` });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro desconhecido";
       toast({ title: "Erro ao exportar", description: msg, variant: "destructive" });
@@ -692,7 +698,18 @@ export default function Fidelidade() {
                     variant="outline"
                     size="sm"
                     disabled={txPage >= totalPages - 1}
-                    onClick={() => setTxPage((p) => p + 1)}
+                    onClick={() => {
+                      const lastRow = txQuery.data!.rows[txQuery.data!.rows.length - 1];
+                      if (lastRow?.created_at) {
+                        const nextCursor = lastRow.created_at;
+                        setCursors((prev) => {
+                          const next = [...prev];
+                          next[txPage + 1] = nextCursor;
+                          return next;
+                        });
+                        setTxPage((p) => p + 1);
+                      }
+                    }}
                   >
                     Próxima
                   </Button>

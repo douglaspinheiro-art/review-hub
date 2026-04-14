@@ -1,3 +1,5 @@
+import { supabase } from "@/lib/supabase";
+
 type SecurityEventInput = {
   action: string;
   resource?: string;
@@ -7,11 +9,26 @@ type SecurityEventInput = {
 
 /**
  * Central logger for security-sensitive events.
- * Keep side effects lightweight on client; backend ingestion can be added later.
+ * Writes to the audit_logs table in production so auth failures and permission
+ * denials leave a traceable audit trail.
  */
-export function logSecurityEvent(event: SecurityEventInput) {
+export function logSecurityEvent(event: SecurityEventInput): void {
   if (import.meta.env.DEV) {
-    // Useful during development without introducing noisy production logs.
     console.info("[security-event]", event);
   }
+
+  // Fire-and-forget insert to audit_logs — do not await, never throw.
+  supabase
+    .from("audit_logs")
+    .insert({
+      action: event.action,
+      resource_type: event.resource ?? null,
+      result: event.result,
+      metadata: (event.metadata ?? {}) as Record<string, unknown>,
+    })
+    .then(({ error }) => {
+      if (error && import.meta.env.DEV) {
+        console.warn("[security-event] audit_logs insert failed:", error.message);
+      }
+    });
 }
