@@ -267,7 +267,7 @@ export function verifyNuvemshopToken(req: Request, secret: string): boolean {
   const a = enc.encode(header);
   const b = enc.encode(secret);
   if (a.length !== b.length) return false;
-  // @ts-ignore — available in Deno
+  // @ts-expect-error Deno runtime expõe timingSafeEqual em crypto.subtle.
   return crypto.subtle.timingSafeEqual(a, b);
 }
 

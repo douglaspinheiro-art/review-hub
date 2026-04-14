@@ -275,7 +275,7 @@ export function timingSafeEqual(a: string, b: string): boolean {
   const ab = enc.encode(a);
   const bb = enc.encode(b);
   if (ab.length !== bb.length) return false;
-  // @ts-ignore — crypto.subtle.timingSafeEqual is available in Deno 1.x
+  // @ts-expect-error Deno runtime expõe timingSafeEqual em crypto.subtle.
   return crypto.subtle.timingSafeEqual(ab, bb);
 }
 

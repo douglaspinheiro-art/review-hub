@@ -24,6 +24,8 @@ const BodySchema = z.object({
   payload: z.record(z.unknown()).optional(),
 });
 
+type FlowPayload = Record<string, unknown>;
+
 serve(async (req) => {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
@@ -53,6 +55,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Validation failed", details: parsed.error.flatten().fieldErrors }), { status: 400, headers: corsHeaders });
     }
     const { event, store_id, customer_id, payload } = parsed.data;
+    const flowPayload: FlowPayload = payload ?? {};
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
@@ -87,12 +90,15 @@ if (!customer) {
   return new Response(JSON.stringify({ ok: false, status: "customer_not_found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-const processed = [];
+const processed: string[] = [];
 for (const journey of journeys) {
-  const config = (journey.config_json || {}) as Record<string, any>;
-      let message = config.message_template || "Olá {{nome}}, temos uma oferta especial para você!";
-      const val = Number((payload as any)?.cart_value || 0);
-      const ship = Number((payload as any)?.shipping_value || 0);
+  const config = (journey.config_json ?? {}) as Record<string, unknown>;
+      const template = typeof config.message_template === "string"
+        ? config.message_template
+        : "Olá {{nome}}, temos uma oferta especial para você!";
+      let message = template;
+      const val = Number(flowPayload.cart_value ?? 0);
+      const ship = Number(flowPayload.shipping_value ?? 0);
 
       if (val > 0 && ship / val > 0.15) {
         message = `Oi {{nome}}! Vimos que o frete ficou um pouco alto. Liberamos FRETE GRÁTIS para você finalizar agora: {{link}}`;
@@ -100,16 +106,16 @@ for (const journey of journeys) {
         message = `Oi {{nome}}, nosso cliente VIP! Separamos seu carrinho com carinho. Use o cupom VIP10 para um mimo extra: {{link}}`;
       }
 
-      const delay = config.delay_minutes || 20;
+      const delay = Number(config.delay_minutes ?? 20);
       const scheduledFor = new Date(Date.now() + delay * 60 * 1000).toISOString();
       const finalMessage = message
         .replace("{{nome}}", customer.name || "você")
-        .replace("{{link}}", (payload as any)?.recovery_url || "");
+        .replace("{{link}}", typeof flowPayload.recovery_url === "string" ? flowPayload.recovery_url : "");
 
       // Idempotent insert: if a pending message already exists for this
       // (store_id, customer_id, journey_id) the unique index prevents duplicates.
       // This handles the case where flow-engine is invoked from multiple cron paths.
-      const { data: sched, error: schedErr } = await (supabase as any)
+      const { data: sched, error: schedErr } = await supabase
         .from("scheduled_messages")
         .upsert(
           {
@@ -128,8 +134,9 @@ for (const journey of journeys) {
       `[${requestId}] flow-engine ok event=${event} store=${store_id} scheduled=${processed.length} elapsed_ms=${Date.now() - startedAt}`,
     );
     return new Response(JSON.stringify({ ok: true, scheduled_messages: processed.length, request_id: requestId }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (err: any) {
-    console.error(`[${requestId}] flow-engine error:`, err?.message ?? err);
-    return new Response(JSON.stringify({ error: err.message, request_id: requestId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[${requestId}] flow-engine error:`, message);
+    return new Response(JSON.stringify({ error: message, request_id: requestId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
