@@ -1,10 +1,8 @@
-// @ts-nocheck
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  CheckCircle2, ArrowRight, Zap, TrendingUp,
-  AlertCircle, Shield, ShoppingBag, Users, Star,
-  Lock, ChevronDown, Smartphone, Monitor, Send, MessageCircle, Loader2
+  CheckCircle2, Zap, TrendingUp,
+  AlertCircle, Lock, Smartphone, Send, MessageCircle, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

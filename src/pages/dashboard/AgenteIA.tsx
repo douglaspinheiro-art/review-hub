@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck — Schema misalignment: profile columns
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -12,7 +12,6 @@ import {
   UserCheck,
   Headset,
   Target,
-  MessageSquare,
   Heart,
   CreditCard,
   TrendingUp,
@@ -136,7 +135,7 @@ export default function AgenteIA() {
   }, [storesQuery.isError]);
 
   const aiConfigQuery = useAiAgentConfig(selectedLoja || undefined, user?.id);
-  const recentActions = aiConfigQuery.data?.recentActions ?? [];
+  const _recentActions = aiConfigQuery.data?.recentActions ?? [];
 
   useEffect(() => {
     if (aiConfigQuery.isError) toast.error("Erro ao carregar configuração do agente.");

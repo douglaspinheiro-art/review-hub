@@ -24,8 +24,8 @@ export function logSecurityEvent(event: SecurityEventInput): void {
       action: event.action,
       resource: event.resource ?? "unknown",
       result: event.result,
-      metadata: (event.metadata ?? {}) as Record<string, unknown>,
-    })
+      metadata: (event.metadata ?? {}) as import("@/integrations/supabase/types").Json,
+    } as any)
     .then(({ error }) => {
       if (error && import.meta.env.DEV) {
         console.warn("[security-event] audit_logs insert failed:", error.message);

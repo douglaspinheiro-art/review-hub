@@ -1,9 +1,9 @@
-// @ts-nocheck
-import { useState, useEffect } from "react";
+// @ts-nocheck — Schema misalignment: stores.update payload typing
+import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2, Globe, ShoppingBag, Smartphone,
-  ArrowRight, Shield, AlertTriangle, Loader2,
+  ArrowRight, Loader2,
   Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ export default function Onboarding() {
   // Onboarding flow is active — no more blind redirect
 
   const [channels, setChannels] = useState<string[]>([]);
-  const [isSyncing, setIsSyncing] = useState<string | null>(null);
+  const [_isSyncing, setIsSyncing] = useState<string | null>(null);
   const [step, setStep] = useState(1); // 1: Channels, 2: WhatsApp, 3: Primeira Prescrição
   const [objective, setObjective] = useState<PrimaryObjective | null>(null);
   const [vertical, setVertical] = useState<EcommerceVertical | null>(null);
