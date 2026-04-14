@@ -151,7 +151,8 @@ async function buildSignedUnsubscribeUrl(appUrl: string, userId: string, contact
 }
 
 async function resolveContacts(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
   userId: string,
   mode: string,
   campaignId: string,
