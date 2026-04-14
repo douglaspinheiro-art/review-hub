@@ -97,8 +97,9 @@ verify_jwt = true
 [functions.sincronizar-canal]
 verify_jwt = true
 
+# Integration gateway — autenticação via INTEGRATION_GATEWAY_SECRET (x-webhook-secret header).
 [functions.integration-gateway]
-verify_jwt = true
+verify_jwt = false
 
 [functions.verify-domain]
 verify_jwt = true
