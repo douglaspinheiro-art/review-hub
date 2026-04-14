@@ -286,7 +286,7 @@ export default function Inbox() {
     refetch: refetchMessages,
   } = useMessages(selectedId, messageLimitCapped, { realtimeDegraded: messagesRealtimeDegraded });
 
-  const messages = liveMessages.length > 0 ? liveMessages : (chatBundle?.messages ?? []);
+  const messages = useMemo(() => liveMessages.length > 0 ? liveMessages : (chatBundle?.messages ?? []), [liveMessages, chatBundle?.messages]);
 
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
