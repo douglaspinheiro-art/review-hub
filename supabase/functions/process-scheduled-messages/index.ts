@@ -295,8 +295,9 @@ serve(async (req) => {
 
   const { data: pendingWebhooks } = await supabase
     .from("webhook_queue")
-    .select("id, store_id, user_id, platform, payload_normalized, status, attempts, created_at, updated_at")
+    .select("id, store_id, user_id, platform, payload_normalized, status, attempts, created_at, updated_at, next_retry_at")
     .eq("status", "pending")
+    .lte("next_retry_at", new Date().toISOString())
     .order("created_at", { ascending: true })
     .limit(capWebhooks);
 
@@ -402,10 +403,14 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         }).eq("id", job.id);
       } else {
+        // Exponential backoff: 2^attempts * 30s (30s, 60s, 120s, 240s, ...)
+        const backoffMs = Math.min(Math.pow(2, next) * 30_000, 3_600_000); // max 1 hour
+        const nextRetryAt = new Date(Date.now() + backoffMs).toISOString();
         await supabase.from("webhook_queue").update({
           status: "pending",
           error_message: err.message,
           attempts: next,
+          next_retry_at: nextRetryAt,
           updated_at: new Date().toISOString(),
         }).eq("id", job.id);
       }

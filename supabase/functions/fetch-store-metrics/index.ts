@@ -6,11 +6,8 @@ const DAYS = 30;
 
 /**
  * Validates a user-supplied API address to prevent SSRF attacks.
- * Rejects hostnames/IPs that resolve to private, loopback, or link-local ranges.
- * Only HTTPS addresses with public-looking hostnames are accepted.
  */
 function assertSafeApiAddress(raw: string): void {
-  // Construct a full URL so we can inspect the hostname
   const fullUrl = raw.startsWith("https://") ? raw : `https://${raw}`;
   let parsed: URL;
   try {
@@ -19,15 +16,12 @@ function assertSafeApiAddress(raw: string): void {
     throw new Error(`api_address inválido: "${raw}"`);
   }
   const host = parsed.hostname.toLowerCase();
-  // Reject loopback
   if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
     throw new Error("api_address aponta para loopback — não permitido");
   }
-  // Reject link-local / metadata endpoints
   if (host === "169.254.169.254" || host.endsWith(".169.254.169.254")) {
     throw new Error("api_address aponta para metadata server — não permitido");
   }
-  // Reject RFC-1918 private ranges (simple string prefix check)
   const privatePatterns = [
     /^10\.\d+\.\d+\.\d+$/,
     /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
@@ -44,41 +38,54 @@ function thirtyDaysAgo(): string {
   return d.toISOString();
 }
 
-// ─── Shopify ────────────────────────────────────────────────
+// ─── Shopify (paginated) ────────────────────────────────────────
 async function fetchShopify(config: Record<string, string>) {
   const shop = config.shop_url?.replace(/\/$/, "");
   const token = config.access_token;
   if (!shop || !token) throw new Error("Credenciais Shopify incompletas");
 
-  // SSRF guard: shop_url is user-controlled — validate before fetching.
   assertSafeApiAddress(shop);
   const base = `https://${shop}/admin/api/2024-01`;
   const headers = { "X-Shopify-Access-Token": token, "Content-Type": "application/json" };
   const since = thirtyDaysAgo();
 
-  // Pedidos últimos 30 dias (paginado até 250)
-  const ordersRes = await fetch(
-    `${base}/orders.json?status=any&financial_status=paid&created_at_min=${since}&limit=250&fields=total_price,created_at`,
-    { headers }
-  );
-  if (!ordersRes.ok) throw new Error(`Shopify orders: ${ordersRes.status} ${await ordersRes.text()}`);
-  const { orders } = await ordersRes.json();
+  // Paginated order fetch — follow Link: rel="next" headers
+  let allOrders: Array<Record<string, string>> = [];
+  let url: string | null =
+    `${base}/orders.json?status=any&financial_status=paid&created_at_min=${since}&limit=250&fields=total_price,created_at`;
 
-  const faturamento = orders.reduce((s: number, o: Record<string, string>) => s + parseFloat(o.total_price || "0"), 0);
-  const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
+  while (url && allOrders.length < 10_000) {
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get("retry-after") || "2");
+        await new Promise((r) => setTimeout(r, retryAfter * 1000));
+        continue;
+      }
+      throw new Error(`Shopify orders: ${res.status} ${await res.text()}`);
+    }
+    const { orders } = await res.json();
+    allOrders = allOrders.concat(orders ?? []);
 
-  // Total de clientes
+    // Parse Link header for pagination
+    const linkHeader = res.headers.get("link") ?? "";
+    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    url = nextMatch ? nextMatch[1] : null;
+  }
+
+  const faturamento = allOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
+  const ticketMedio = allOrders.length > 0 ? faturamento / allOrders.length : 0;
+
   const custRes = await fetch(`${base}/customers/count.json`, { headers });
   const { count: totalClientes = 0 } = custRes.ok ? await custRes.json() : {};
 
-  // Carrinhos abandonados últimos 30 dias
   const cartRes = await fetch(
     `${base}/checkouts.json?created_at_min=${since}&limit=250`,
     { headers }
   );
   const { checkouts = [] } = cartRes.ok ? await cartRes.json() : {};
-  const taxaAbandono = (orders.length + checkouts.length) > 0
-    ? checkouts.length / (orders.length + checkouts.length)
+  const taxaAbandono = (allOrders.length + checkouts.length) > 0
+    ? checkouts.length / (allOrders.length + checkouts.length)
     : 0.7;
 
   return { faturamento, ticketMedio, totalClientes, taxaAbandono: Math.min(taxaAbandono, 0.85) };
@@ -98,7 +105,6 @@ async function fetchNuvemshop(config: Record<string, string>) {
   };
   const since = thirtyDaysAgo();
 
-  // Pedidos últimos 30 dias
   const ordersRes = await fetch(
     `${base}/orders?created_at_min=${since}&per_page=200&fields=total`,
     { headers }
@@ -110,42 +116,55 @@ async function fetchNuvemshop(config: Record<string, string>) {
     .reduce((s: number, o: Record<string, string>) => s + parseFloat(o.total || "0"), 0);
   const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
 
-  // Total de clientes
   const custRes = await fetch(`${base}/customers?fields=id&per_page=1`, { headers });
   const totalClientes = custRes.ok
     ? parseInt(custRes.headers.get("x-total-count") || "0", 10) || 0
     : 0;
 
-  // Carrinhos abandonados (estimativa via média do segmento se não disponível)
-  const taxaAbandono = 0.72; // Nuvemshop não expõe abandoned checkouts na REST API pública
+  const taxaAbandono = 0.72;
 
   return { faturamento, ticketMedio, totalClientes, taxaAbandono };
 }
 
-// ─── WooCommerce ─────────────────────────────────────────────
+// ─── WooCommerce (paginated) ─────────────────────────────────
 async function fetchWooCommerce(config: Record<string, string>) {
   const siteUrl = config.site_url?.replace(/\/$/, "");
   const ck = config.consumer_key;
   const cs = config.consumer_secret;
   if (!siteUrl || !ck || !cs) throw new Error("Credenciais WooCommerce incompletas");
 
-  // SSRF guard: site_url is user-controlled — validate before fetching.
   assertSafeApiAddress(siteUrl);
   const auth = btoa(`${ck}:${cs}`);
   const base = `${siteUrl}/wp-json/wc/v3`;
   const headers = { Authorization: `Basic ${auth}` };
   const since = thirtyDaysAgo();
 
-  const ordersRes = await fetch(
-    `${base}/orders?after=${since}&per_page=100&status=completed,processing&_fields=total`,
-    { headers }
-  );
-  if (!ordersRes.ok) throw new Error(`WooCommerce orders: ${ordersRes.status}`);
-  const orders = await ordersRes.json();
+  // Paginated order fetch
+  let allOrders: Array<Record<string, string>> = [];
+  let page = 1;
+  const perPage = 100;
 
-  const faturamento = (Array.isArray(orders) ? orders : [])
-    .reduce((s: number, o: Record<string, string>) => s + parseFloat(o.total || "0"), 0);
-  const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
+  while (allOrders.length < 10_000) {
+    const res = await fetch(
+      `${base}/orders?after=${since}&per_page=${perPage}&page=${page}&status=completed,processing&_fields=total`,
+      { headers }
+    );
+    if (!res.ok) {
+      if (res.status === 429) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      throw new Error(`WooCommerce orders: ${res.status}`);
+    }
+    const orders = await res.json();
+    if (!Array.isArray(orders) || orders.length === 0) break;
+    allOrders = allOrders.concat(orders);
+    if (orders.length < perPage) break;
+    page++;
+  }
+
+  const faturamento = allOrders.reduce((s, o) => s + parseFloat(o.total || "0"), 0);
+  const ticketMedio = allOrders.length > 0 ? faturamento / allOrders.length : 0;
 
   const custRes = await fetch(`${base}/customers?per_page=1`, { headers });
   const totalClientes = custRes.ok
@@ -163,7 +182,7 @@ async function fetchTray(config: Record<string, string>) {
 
   assertSafeApiAddress(apiAddress);
   const base = `https://${apiAddress}/web_api`;
-  const since = thirtyDaysAgo().split("T")[0]; // yyyy-mm-dd
+  const since = thirtyDaysAgo().split("T")[0];
 
   const ordersRes = await fetch(
     `${base}/orders?access_token=${encodeURIComponent(token)}&created=${since}&limit=50&status=approved`,
@@ -195,7 +214,6 @@ async function fetchVTEX(config: Record<string, string>) {
   const since = thirtyDaysAgo().split("T")[0];
   const today = new Date().toISOString().split("T")[0];
 
-  // OMS List orders
   const ordersRes = await fetch(
     `${base}/oms/pvt/orders?f_creationDate=creationDate:[${since}T00:00:00.000Z TO ${today}T23:59:59.999Z]&per_page=100`,
     { headers },
@@ -211,6 +229,93 @@ async function fetchVTEX(config: Record<string, string>) {
   return { faturamento, ticketMedio, totalClientes, taxaAbandono: 0.68 };
 }
 
+// ─── Yampi ───────────────────────────────────────────────────
+async function fetchYampi(config: Record<string, string>) {
+  const alias = config.alias || config.store_alias;
+  const token = config.token || config.secret_key || config.access_token;
+  if (!alias || !token) throw new Error("Credenciais Yampi incompletas");
+
+  const base = `https://api.dooki.com.br/v2/${alias}`;
+  const headers = {
+    "User-Token": token,
+    "Content-Type": "application/json",
+  };
+
+  // Fetch orders from last 30 days
+  const ordersRes = await fetch(`${base}/orders?limit=200`, { headers });
+  if (!ordersRes.ok) throw new Error(`Yampi orders: ${ordersRes.status}`);
+  const ordersData = await ordersRes.json();
+  const orders = ordersData.data || [];
+
+  const faturamento = orders.reduce((s: number, o: Record<string, unknown>) =>
+    s + parseFloat(String(o.total ?? o.amount ?? 0)), 0);
+  const ticketMedio = orders.length > 0 ? faturamento / orders.length : 0;
+
+  const custRes = await fetch(`${base}/customers?limit=1`, { headers });
+  const custData = custRes.ok ? await custRes.json() : {};
+  const totalClientes = custData.meta?.pagination?.total ?? orders.length;
+
+  return { faturamento, ticketMedio, totalClientes, taxaAbandono: 0.73 };
+}
+
+// ─── Magento 2 ───────────────────────────────────────────────
+async function fetchMagento(config: Record<string, string>) {
+  const baseUrl = config.base_url?.replace(/\/$/, "") || config.api_url?.replace(/\/$/, "");
+  const token = config.access_token || config.integration_token || config.bearer_token;
+  if (!baseUrl || !token) throw new Error("Credenciais Magento incompletas");
+
+  assertSafeApiAddress(baseUrl);
+  const base = `${baseUrl.startsWith("https://") ? baseUrl : `https://${baseUrl}`}/rest/V1`;
+  const headers = {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const since = thirtyDaysAgo().split("T")[0];
+
+  // Fetch orders using searchCriteria — paginated
+  let allOrders: Array<Record<string, unknown>> = [];
+  let page = 1;
+  const pageSize = 100;
+
+  while (allOrders.length < 10_000) {
+    const searchCriteria = [
+      `searchCriteria[filter_groups][0][filters][0][field]=created_at`,
+      `searchCriteria[filter_groups][0][filters][0][value]=${since}`,
+      `searchCriteria[filter_groups][0][filters][0][condition_type]=gteq`,
+      `searchCriteria[filter_groups][1][filters][0][field]=status`,
+      `searchCriteria[filter_groups][1][filters][0][value]=complete,processing`,
+      `searchCriteria[filter_groups][1][filters][0][condition_type]=in`,
+      `searchCriteria[pageSize]=${pageSize}`,
+      `searchCriteria[currentPage]=${page}`,
+      `fields=items[grand_total,created_at],total_count`,
+    ].join("&");
+
+    const res = await fetch(`${base}/orders?${searchCriteria}`, { headers });
+    if (!res.ok) {
+      if (res.status === 429) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      throw new Error(`Magento orders: ${res.status}`);
+    }
+    const data = await res.json();
+    const items = data.items || [];
+    allOrders = allOrders.concat(items);
+    if (items.length < pageSize || allOrders.length >= (data.total_count || 0)) break;
+    page++;
+  }
+
+  const faturamento = allOrders.reduce((s, o) => s + parseFloat(String(o.grand_total ?? 0)), 0);
+  const ticketMedio = allOrders.length > 0 ? faturamento / allOrders.length : 0;
+
+  // Get customer count
+  const custRes = await fetch(`${base}/customers/search?searchCriteria[pageSize]=1&fields=total_count`, { headers });
+  const custData = custRes.ok ? await custRes.json() : {};
+  const totalClientes = custData.total_count ?? allOrders.length;
+
+  return { faturamento, ticketMedio, totalClientes, taxaAbandono: 0.70 };
+}
+
 // ─── Handler principal ───────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -221,7 +326,6 @@ serve(async (req) => {
   );
 
   try {
-    // Autentica usuário
     const jwt = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
     const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
     if (authErr || !user) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: cors });
@@ -229,8 +333,7 @@ serve(async (req) => {
     const { allowed: rlAllowed } = await checkDistributedRateLimit(supabase, `fetch-store-metrics:${user.id}`, 24, 60_000);
     if (!rlAllowed) return rateLimitedResponse();
 
-    // Busca integração ativa de e-commerce
-    const ECOMMERCE_TYPES = ["shopify", "nuvemshop", "woocommerce", "tray", "vtex"];
+    const ECOMMERCE_TYPES = ["shopify", "nuvemshop", "woocommerce", "tray", "vtex", "yampi", "magento"];
     const { data: integration } = await supabase
       .from("integrations")
       .select("type, config")
@@ -266,6 +369,12 @@ serve(async (req) => {
       case "vtex":
         metrics = await fetchVTEX(integration.config as Record<string, string>);
         break;
+      case "yampi":
+        metrics = await fetchYampi(integration.config as Record<string, string>);
+        break;
+      case "magento":
+        metrics = await fetchMagento(integration.config as Record<string, string>);
+        break;
       default:
         return new Response(
           JSON.stringify({ error: `Plataforma ${integration.type} ainda não suportada para diagnóstico automático.` }),
@@ -278,9 +387,17 @@ serve(async (req) => {
       { status: 200, headers: { ...cors, "Content-Type": "application/json" } }
     );
   } catch (err: unknown) {
+    const errMsg = (err as Error).message ?? "Erro interno";
+    // Friendly message for rate limit errors from upstream APIs
+    if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate")) {
+      return new Response(
+        JSON.stringify({ error: "A plataforma está limitando requisições. Tente novamente em alguns minutos." }),
+        { status: 429, headers: { ...cors, "Content-Type": "application/json", "Retry-After": "120" } }
+      );
+    }
     console.error("fetch-store-metrics error:", err);
     return new Response(
-      JSON.stringify({ error: (err as Error).message ?? "Erro interno" }),
+      JSON.stringify({ error: errMsg }),
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
     );
   }
