@@ -1,6 +1,5 @@
-// @ts-nocheck
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Gift, Copy, Check, TrendingUp, DollarSign,
   Users, Clock, Loader2, ExternalLink, ChevronRight,
@@ -35,7 +34,6 @@ const STATUS_CONFIG = {
 export default function Afiliados() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [linkCopied, setLinkCopied] = useState(false);
 
   const referralCode = user?.id?.slice(0, 8) ?? "";

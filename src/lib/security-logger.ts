@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { supabase } from "@/lib/supabase";
 
 type SecurityEventInput = {
@@ -23,7 +22,7 @@ export function logSecurityEvent(event: SecurityEventInput): void {
     .from("audit_logs")
     .insert({
       action: event.action,
-      resource_type: event.resource ?? null,
+      resource: event.resource ?? "unknown",
       result: event.result,
       metadata: (event.metadata ?? {}) as Record<string, unknown>,
     })

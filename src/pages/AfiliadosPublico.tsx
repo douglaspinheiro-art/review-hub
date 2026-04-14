@@ -1,6 +1,5 @@
-// @ts-nocheck
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, DollarSign, Gift, Link2, MessageCircle, Sparkles, TrendingUp, Users, Zap } from "lucide-react";
+import { ArrowRight, CheckCircle2, DollarSign, Gift, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";

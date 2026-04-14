@@ -1,8 +1,6 @@
-// @ts-nocheck
 import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { toast } from "sonner";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
@@ -11,7 +9,6 @@ import {
   CHANNELS_LIST_SELECT,
   FUNNEL_METRICS_V3_SELECT,
   OPPORTUNITIES_LIST_SELECT,
-  PRESCRIPTIONS_WITH_OPPORTUNITY_SELECT,
   STORE_V3_PUBLIC_SELECT,
   WEBHOOK_LOGS_LIST_SELECT,
 } from "@/lib/supabase-select-fragments";
@@ -69,7 +66,7 @@ export function useOpportunitiesV3(storeId?: string) {
       const { data, error } = await supabase
         .from("opportunities")
         .select(OPPORTUNITIES_LIST_SELECT)
-        .eq("store_id", storeId)
+        .eq("store_id", storeId as string)
         .order("detected_at", { ascending: false })
         .limit(500);
       if (error) throw error;
@@ -364,7 +361,7 @@ export function useMetricsV3(storeId?: string) {
       const { data, error } = await supabase
         .from("funnel_metrics_v3")
         .select(FUNNEL_METRICS_V3_SELECT)
-        .eq("store_id", storeId)
+        .eq("store_id", storeId as string)
         .order("data_referencia", { ascending: false })
         .limit(1)
         .maybeSingle();
