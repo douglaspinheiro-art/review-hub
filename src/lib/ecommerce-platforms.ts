@@ -8,6 +8,8 @@ export const ECOMMERCE_PLATFORMAS = [
   "WooCommerce",
   "Yampi",
   "Tray",
+  "Shopee",
+  "Magento",
   "Loja Integrada",
   "Dizy Commerce",
   "Outra",
@@ -22,6 +24,8 @@ export const ECOMMERCE_PLATFORMAS_FUNIL = [
   "WooCommerce",
   "Nuvemshop",
   "Tray",
+  "Shopee",
+  "Magento",
   "Dizy Commerce",
   "Outro",
 ] as const;
@@ -34,5 +38,7 @@ export const ECOMMERCE_PLATFORM_CHIPS = [
   "VTEX",
   "Yampi",
   "Tray",
+  "Shopee",
+  "Magento",
   "Dizy Commerce",
 ] as const;
