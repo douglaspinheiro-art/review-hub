@@ -158,6 +158,7 @@ export function useFunilBff(storeId: string | null, period = "30d") {
     queryKey: ["funil-bff", storeId, period],
     queryFn: async () => {
       if (!storeId) return null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return invokeCachedRpc<any>("get_funil_page_data", {
         p_store_id: storeId,
         p_period: period
