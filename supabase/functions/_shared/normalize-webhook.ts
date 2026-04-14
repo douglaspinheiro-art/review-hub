@@ -40,7 +40,7 @@ export interface NormalizedCartPayload {
   abandon_step: string | null;
 }
 
-type SignatureSource = "shopify" | "woocommerce" | "nuvemshop";
+type SignatureSource = "shopify" | "woocommerce" | "nuvemshop" | "vtex" | "tray" | "yampi";
 
 interface IntegrationRow {
   id: string;
@@ -75,6 +75,9 @@ const SOURCE_ALIASES: Record<SignatureSource, string[]> = {
   shopify: ["shopify"],
   woocommerce: ["woocommerce", "woo_commerce", "woo"],
   nuvemshop: ["nuvemshop", "tiendanube", "linkedstore"],
+  vtex: ["vtex"],
+  tray: ["tray"],
+  yampi: ["yampi"],
 };
 
 function readString(value: unknown): string | null {
@@ -269,6 +272,73 @@ export function verifyNuvemshopToken(req: Request, secret: string): boolean {
   if (a.length !== b.length) return false;
   // @ts-expect-error Deno runtime expõe timingSafeEqual em crypto.subtle.
   return crypto.subtle.timingSafeEqual(a, b);
+}
+
+/**
+ * VTEX: X-VTEX-API-AppKey header must match the stored app_key for this store.
+ * VTEX doesn't support standard HMAC — we verify the caller knows the app_key.
+ */
+export function verifyVtexAppKey(req: Request, secret: string): boolean {
+  if (!secret) return false;
+  const header = req.headers.get("x-vtex-api-appkey") ?? "";
+  if (!header) return false;
+  const enc = new TextEncoder();
+  const a = enc.encode(header);
+  const b = enc.encode(secret);
+  if (a.length !== b.length) return false;
+  // @ts-expect-error Deno runtime expõe timingSafeEqual em crypto.subtle.
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
+/**
+ * Tray: X-Tray-HMAC-SHA256 = base64(HMAC-SHA256(rawBody, TRAY_WEBHOOK_SECRET))
+ * Tray Commerce supports HMAC signatures on webhook payloads.
+ */
+export async function verifyTrayHmac(
+  req: Request,
+  rawBody: Uint8Array,
+  secret: string,
+): Promise<boolean> {
+  if (!secret) return false;
+  const header = req.headers.get("x-tray-hmac-sha256") ?? req.headers.get("x-store-token") ?? "";
+  if (!header) {
+    // Tray fallback: if no HMAC header, verify via token in query string or body
+    return false;
+  }
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, rawBody as BufferSource);
+  const expected = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return expected === header;
+}
+
+/**
+ * Yampi: X-Yampi-Hmac-SHA256 = base64(HMAC-SHA256(rawBody, YAMPI_WEBHOOK_SECRET))
+ * Yampi supports HMAC webhook verification.
+ */
+export async function verifyYampiHmac(
+  req: Request,
+  rawBody: Uint8Array,
+  secret: string,
+): Promise<boolean> {
+  if (!secret) return false;
+  const header = req.headers.get("x-yampi-hmac-sha256") ?? req.headers.get("x-webhook-signature") ?? "";
+  if (!header) return false;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, rawBody as BufferSource);
+  const expected = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return expected === header;
 }
 
 // ── Source detection ───────────────────────────────────────────────────────────
