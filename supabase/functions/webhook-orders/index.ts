@@ -35,6 +35,9 @@ import {
   verifyNuvemshopToken,
   verifyShopifyHmac,
   verifyWooCommerceHmac,
+  verifyVtexAppKey,
+  verifyTrayHmac,
+  verifyYampiHmac,
 } from "../_shared/normalize-webhook.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
@@ -406,6 +409,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
     }
     signatureOk = verifyNuvemshopToken(req, secretResult.secret);
+  } else if (source === "vtex") {
+    const secretResult = await getVerifierSecretForStore(supabase, storeId, "vtex");
+    if (secretResult.ok) {
+      signatureOk = verifyVtexAppKey(req, secretResult.secret);
+    }
+  } else if (source === "tray") {
+    const secretResult = await getVerifierSecretForStore(supabase, storeId, "tray");
+    if (secretResult.ok) {
+      signatureOk = await verifyTrayHmac(req, rawBody, secretResult.secret);
+    }
+  } else if (source === "yampi") {
+    const secretResult = await getVerifierSecretForStore(supabase, storeId, "yampi");
+    if (secretResult.ok) {
+      signatureOk = await verifyYampiHmac(req, rawBody, secretResult.secret);
+    }
   }
 
   if (!signatureOk) {
