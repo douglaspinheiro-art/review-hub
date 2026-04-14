@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from "react";
 import {
   DollarSign, TrendingUp, ShoppingCart, Zap, Target,

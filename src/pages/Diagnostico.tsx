@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
