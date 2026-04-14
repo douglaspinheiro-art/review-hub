@@ -669,8 +669,10 @@ export default function CampaignModal({
       setAiVariations(chunks.slice(0, 5).map((text, i) => ({ label: labels[i] ?? `Opção ${i + 1}`, text })));
       toast({ title: "Sugestões prontas", description: "Toque numa variação para colar na mensagem." });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro desconhecido";
-      toast({ title: "Não foi possível gerar com IA", description: msg, variant: "destructive" });
+      const msg = e instanceof RateLimitError
+        ? `Rate limit exceeded. Try again in ${Math.ceil(e.retryAfterMs / 1000)}s.`
+        : e instanceof Error ? e.message : "Unknown error";
+      toast({ title: "Could not generate with AI", description: msg, variant: "destructive" });
     } finally {
       setAiLoading(false);
     }

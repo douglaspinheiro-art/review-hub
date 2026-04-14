@@ -335,9 +335,13 @@ export default function Inbox() {
       } else {
         toast.info("A IA não devolveu sugestão para este contexto.");
       }
-    } catch {
+    } catch (err) {
       setAiSuggestion(null);
-      toast.error("Não foi possível obter sugestão da IA.");
+      if (err instanceof RateLimitError) {
+        toast.error(`Limite de chamadas à IA atingido. Tente em ${Math.ceil(err.retryAfterMs / 1000)}s.`);
+      } else {
+        toast.error("Não foi possível obter sugestão da IA.");
+      }
     } finally {
       setLoadingAi(false);
     }
