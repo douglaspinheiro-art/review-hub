@@ -171,6 +171,16 @@
       "function": "enqueue-inngest-event",
       "file": "supabase/functions/enqueue-inngest-event/index.ts",
       "sha256": "pending"
+    },
+    {
+      "function": "bulk-import-contacts",
+      "file": "supabase/functions/bulk-import-contacts/index.ts",
+      "sha256": "pending"
+    },
+    {
+      "function": "register-webhooks",
+      "file": "supabase/functions/register-webhooks/index.ts",
+      "sha256": "pending"
     }
   ]
 }

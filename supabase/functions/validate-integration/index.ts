@@ -241,6 +241,7 @@ serve(async (req) => {
       case "zenvia": result = await testZenvia(config); break;
       case "twilio": result = await testTwilio(config); break;
       case "magento": result = await testMagento(config); break;
+      case "shopee": result = { ok: true, detail: "Shopee configurada (validação via Partner API)" }; break;
       case "dizy": result = { ok: true, detail: "Dizy Commerce configurado" }; break;
       case "google_my_business": result = { ok: true, detail: "Place ID salvo" }; break;
       case "reclame_aqui": result = { ok: true, detail: "ID da empresa salvo" }; break;
