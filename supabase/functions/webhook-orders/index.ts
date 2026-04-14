@@ -35,6 +35,9 @@ import {
   verifyNuvemshopToken,
   verifyShopifyHmac,
   verifyWooCommerceHmac,
+  verifyVtexAppKey,
+  verifyTrayHmac,
+  verifyYampiHmac,
 } from "../_shared/normalize-webhook.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
 
@@ -269,6 +272,78 @@ function normalizeMagento2Order(p: AnyRecord): NormalizedOrder {
   };
 }
 
+function normalizeTrayOrder(p: AnyRecord): NormalizedOrder {
+  // Tray Commerce: { Order: { id, total, status, Customer: { ... }, OrderProduct: [...] } }
+  const order = (p.Order ?? p) as AnyRecord;
+  const customer = (order.Customer ?? order.customer ?? {}) as AnyRecord;
+  const status = toStr(order.status || order.point_sale || "").toLowerCase();
+  const products: AnyRecord[] = (order.OrderProduct ?? order.products ?? order.items ?? []) as AnyRecord[];
+  const produtos = products.map((item) => {
+    const prod = (item.OrderProduct ?? item) as AnyRecord;
+    return {
+      sku: toStr(prod.reference || prod.sku || prod.id),
+      nome: toStr(prod.product_name || prod.name),
+      qtd: toInt(prod.quantity || prod.qty),
+      price: toFloat(prod.price || prod.unit_price),
+    };
+  });
+
+  const paidStatuses = ["aprovado", "approved", "pago", "paid", "completo", "complete"];
+
+  return {
+    external_id: toStr(order.id || p.id),
+    customer_phone: normalizePhone(toStr(customer.cellphone || customer.phone || customer.telephone || "")),
+    customer_email: toStr(customer.email || order.email) || undefined,
+    customer_name: toStr(customer.name || `${toStr(customer.firstname)} ${toStr(customer.lastname)}`.trim()),
+    valor: toFloat(order.total || order.partial_total),
+    valor_desconto: toFloat(order.discount || order.total_discount),
+    valor_frete: toFloat(order.shipment_value || order.shipping || order.shipping_cost),
+    status,
+    financial_status: paidStatuses.includes(status) ? "paid" : "pending",
+    fulfillment_status: ["enviado", "shipped", "entregue", "delivered"].includes(status) ? "fulfilled" : "unfulfilled",
+    payment_method: toStr(order.payment_method || order.payment_form) || undefined,
+    produtos_json: produtos,
+    created_at: toStr(order.date || order.created_at || p.created_at) || undefined,
+    is_paid: paidStatuses.includes(status),
+    is_delivered: ["entregue", "delivered"].includes(status),
+  };
+}
+
+function normalizeYampiOrder(p: AnyRecord): NormalizedOrder {
+  // Yampi: { id, number, status: { alias }, customer: { name, email, cellphone }, items, totals, ... }
+  const customer = (p.customer ?? {}) as AnyRecord;
+  const statusObj = (p.status ?? {}) as AnyRecord;
+  const status = toStr(statusObj.alias || p.status_alias || p.status || "").toLowerCase();
+  const items: AnyRecord[] = (p.items ?? p.products ?? []) as AnyRecord[];
+  const produtos = items.map((item) => ({
+    sku: toStr(item.sku || item.product_id),
+    nome: toStr(item.name || item.product_name),
+    qtd: toInt(item.quantity || item.qty),
+    price: toFloat(item.price || item.unit_price),
+  }));
+
+  const totals = (p.totals ?? {}) as AnyRecord;
+  const paidStatuses = ["paid", "approved", "invoiced", "pago"];
+
+  return {
+    external_id: toStr(p.number || p.id),
+    customer_phone: normalizePhone(toStr(customer.cellphone || customer.phone || customer.mobile || "")),
+    customer_email: toStr(customer.email || p.email) || undefined,
+    customer_name: toStr(customer.name || `${toStr(customer.first_name)} ${toStr(customer.last_name)}`.trim()),
+    valor: toFloat(totals.total || p.total || p.amount),
+    valor_desconto: toFloat(totals.discount || p.discount),
+    valor_frete: toFloat(totals.shipping || p.shipping || p.freight),
+    status,
+    financial_status: paidStatuses.includes(status) ? "paid" : "pending",
+    fulfillment_status: ["shipped", "delivered", "enviado", "entregue"].includes(status) ? "fulfilled" : "unfulfilled",
+    payment_method: toStr(p.payment_method || (p.payment as AnyRecord | undefined)?.method) || undefined,
+    produtos_json: produtos,
+    created_at: toStr(p.created_at) || undefined,
+    is_paid: paidStatuses.includes(status),
+    is_delivered: ["delivered", "entregue"].includes(status),
+  };
+}
+
 function normalizeCustomOrder(p: AnyRecord): NormalizedOrder {
   const customer = (p.customer ?? {}) as AnyRecord;
   const status = toStr(p.status || p.financial_status || "").toLowerCase();
@@ -309,6 +384,8 @@ function normalizeOrder(source: string, p: unknown): NormalizedOrder {
     case "vtex":        return normalizeVTEXOrder(payload);
     case "nuvemshop":   return normalizeNuvemshopOrder(payload);
     case "magento":     return normalizeMagento2Order(payload);
+    case "tray":        return normalizeTrayOrder(payload);
+    case "yampi":       return normalizeYampiOrder(payload);
     default:            return normalizeCustomOrder(payload);
   }
 }
@@ -406,6 +483,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
     }
     signatureOk = verifyNuvemshopToken(req, secretResult.secret);
+  } else if (source === "vtex") {
+    const secretResult = await getVerifierSecretForStore(supabase, storeId, "vtex");
+    if (secretResult.ok) {
+      signatureOk = verifyVtexAppKey(req, secretResult.secret);
+    }
+  } else if (source === "tray") {
+    const secretResult = await getVerifierSecretForStore(supabase, storeId, "tray");
+    if (secretResult.ok) {
+      signatureOk = await verifyTrayHmac(req, rawBody, secretResult.secret);
+    }
+  } else if (source === "yampi") {
+    const secretResult = await getVerifierSecretForStore(supabase, storeId, "yampi");
+    if (secretResult.ok) {
+      signatureOk = await verifyYampiHmac(req, rawBody, secretResult.secret);
+    }
   }
 
   if (!signatureOk) {
