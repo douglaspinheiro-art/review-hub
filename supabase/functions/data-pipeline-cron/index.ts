@@ -50,18 +50,18 @@ async function jobQuality(supabase: any, snapshotDate: string, stores: any[]) {
       continue;
     }
 
-    const ids = [...new Set(list.map((o) => o.cliente_id).filter(Boolean))] as string[];
+    const ids = [...new Set(list.map((o: Record<string, unknown>) => o.cliente_id).filter(Boolean))] as string[];
     let phoneOk = 0;
     if (ids.length > 0) {
       const { data: custs } = await supabase.from("customers_v3").select("id, phone").in("id", ids);
-      const pmap = new Map((custs ?? []).map((c: any) => [c.id, c.phone as string | null]));
-      for (const o of list) {
+      const pmap = new Map((custs ?? []).map((c: Record<string, unknown>) => [c.id as string, c.phone as string | null]));
+      for (const o of list as Array<Record<string, unknown>>) {
         if (!o.cliente_id) continue;
-        const ph = pmap.get(o.cliente_id)?.replace(/\D/g, "") ?? "";
+        const ph = pmap.get(o.cliente_id as string)?.replace(/\D/g, "") ?? "";
         if (ph.length >= 12) phoneOk++;
       }
     }
-    const utmOk = list.filter((o: any) => o.utm_source && String(o.utm_source).trim().length > 0).length;
+    const utmOk = (list as Array<Record<string, unknown>>).filter((o) => o.utm_source && String(o.utm_source).trim().length > 0).length;
 
     const { count: whTotal } = await supabase
       .from("webhook_logs")

@@ -146,7 +146,7 @@ ${commerceRules}
 Retorne APENAS o texto sugerido, sem introduções ou explicações.`;
 
       user = `Histórico da conversa:\n${history}\n\nContexto extra: ${context}\n\nSugira a próxima resposta para o Atendente:`;
-    } else {
+    } else if (parsedReview.success) {
       let content = parsedReview.data.content;
       let rating = parsedReview.data.rating ?? null;
       let reviewer_name = parsedReview.data.reviewer_name ?? "Cliente";

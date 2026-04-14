@@ -23,7 +23,7 @@ const DISPATCH_CAMPAIGN_SECRET = Deno.env.get("DISPATCH_CAMPAIGN_SECRET") ?? "";
 const BodySchema = z.object({ campaign_id: uuidSchema });
 
 async function canDispatchCampaign(
-  supabase: any,
+  supabase: ReturnType<typeof createClient>,
   requesterUserId: string,
   campaign: { user_id: string; store_id: string | null },
 ): Promise<boolean> {

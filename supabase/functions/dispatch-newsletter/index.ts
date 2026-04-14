@@ -232,8 +232,8 @@ async function getLatestCartContextByCustomer(
     .in("customer_id", customerIds)
     .order("created_at", { ascending: false });
   for (const row of (carts ?? []) as Array<Record<string, unknown>>) {
-    if (!byCustomer.has(row.customer_id)) {
-      byCustomer.set(row.customer_id, {
+    if (!byCustomer.has(row.customer_id as string)) {
+      byCustomer.set(row.customer_id as string, {
         cart_value: row.cart_value ?? null,
         recovery_url: row.recovery_url ?? null,
         utm_source: row.utm_source ?? null,
