@@ -152,5 +152,25 @@
       "file": "supabase/functions/whatsapp-health-check/index.ts",
       "sha256": "e7d1b36fd3f62cb5e98ad3142000599db802d6022a645905e74c1d4ad69e148e"
     },
+    {
+      "function": "webhook-orders",
+      "file": "supabase/functions/webhook-orders/index.ts",
+      "sha256": "pending"
+    },
+    {
+      "function": "webhook-refunds",
+      "file": "supabase/functions/webhook-refunds/index.ts",
+      "sha256": "pending"
+    },
+    {
+      "function": "inngest-serve",
+      "file": "supabase/functions/inngest-serve/index.ts",
+      "sha256": "pending"
+    },
+    {
+      "function": "enqueue-inngest-event",
+      "file": "supabase/functions/enqueue-inngest-event/index.ts",
+      "sha256": "pending"
+    }
   ]
 }
