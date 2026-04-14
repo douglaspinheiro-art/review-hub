@@ -44,11 +44,6 @@ export default defineConfig(({ mode }) => ({
           "vendor-sentry": ["@sentry/react"],
         },
       },
-      treeshake: {
-        // Treat modules without explicit side-effect declarations as side-effect-free.
-        // Enables dead code elimination for unused exports in vendor bundles.
-        moduleSideEffects: false,
-      },
     },
   },
 }));
