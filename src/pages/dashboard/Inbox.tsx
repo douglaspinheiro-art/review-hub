@@ -344,7 +344,7 @@ export default function Inbox() {
     } finally {
       setLoadingAi(false);
     }
-  }, [selectedId, messages, loadingAi]);
+  }, [selectedId, messages, loadingAi, user?.id]);
 
   useEffect(() => {
     setLiveMessagesRt("unknown");
@@ -414,7 +414,7 @@ export default function Inbox() {
         void ch.unsubscribe().then(() => supabase.removeChannel(ch));
       }
     };
-  }, [queryClient, activeStoreHint, storeScopeReady]);
+  }, [queryClient, activeStoreHint, storeScopeReady, storeScope?.effectiveUserId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

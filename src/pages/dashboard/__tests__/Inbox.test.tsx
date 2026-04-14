@@ -128,8 +128,7 @@ function renderInbox(InboxCmp: ComponentType) {
 describe("Inbox", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(useConversations).mockReturnValue(convInfiniteEmpty as any);
+    vi.mocked(useConversations).mockReturnValue(convInfiniteEmpty as ReturnType<typeof useConversations>);
   });
 
   it("renderiza título e filtros de status", () => {
@@ -163,8 +162,7 @@ describe("Inbox", () => {
       fetchNextPage: vi.fn(),
       hasNextPage: false,
       isFetchingNextPage: false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as ReturnType<typeof useConversations>);
 
     renderInbox(Inbox);
 

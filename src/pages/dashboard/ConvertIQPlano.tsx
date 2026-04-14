@@ -214,7 +214,7 @@ export default function ConvertIQPlano() {
   // All derived values and hooks must be declared BEFORE any early return to
   // satisfy the Rules of Hooks (no conditional hook calls).
   const diagJson   = lastDiag.data?.recomendacoes as unknown as DiagnosticoJSON | null;
-  const recs       = diagJson?.recomendacoes ?? [];
+  const recs = useMemo(() => diagJson?.recomendacoes ?? [], [diagJson]);
   const totalImpacto = recs.reduce((s, r) => s + r.impacto_pp, 0);
   const ticket     = Number((loja.data as unknown as Record<string, unknown>)?.ticket_medio ?? 250);
   const visitantes = (lastDiag.data?.dados_funil as Record<string, number> | null)?.visitantes ?? 12400;

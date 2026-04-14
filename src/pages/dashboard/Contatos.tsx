@@ -86,7 +86,7 @@ export default function Contatos() {
   const rfmReport = contactsResult?.rfmReport;
   const rfmReportLoading = isLoading;
 
-  const contacts = contactsResult?.contacts ?? [];
+  const contacts = useMemo(() => contactsResult?.contacts ?? [], [contactsResult?.contacts]);
   const totalCount = contactsResult?.totalCount ?? 0;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasListFilters = Boolean(debouncedSearch) || Boolean(rfmFilter);

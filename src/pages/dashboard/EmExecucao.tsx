@@ -114,8 +114,8 @@ export default function EmExecucao() {
     refetch: refetchBundle,
   } = useExecutionMonitor();
 
-  const rxRows = bundle?.prescriptions ?? [];
-  const campaignsRaw = bundle?.campaigns ?? [];
+  const rxRows = useMemo(() => bundle?.prescriptions ?? [], [bundle?.prescriptions]);
+  const campaignsRaw = useMemo(() => bundle?.campaigns ?? [], [bundle?.campaigns]);
 
   const rows: PrescriptionRow[] = useMemo(() => {
     if (isDemo) return mockPrescricoes.map(mockPrescricaoToRow);
