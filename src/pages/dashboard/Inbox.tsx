@@ -1,4 +1,3 @@
-// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { MessageCircle, WifiOff, Settings, Sparkles, User, Zap as ZapIcon, RotateCcw, CheckCheck, AlertCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";

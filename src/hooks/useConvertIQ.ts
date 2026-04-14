@@ -1,4 +1,3 @@
-// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";

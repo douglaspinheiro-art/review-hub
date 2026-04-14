@@ -1,4 +1,3 @@
-// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {

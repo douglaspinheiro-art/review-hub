@@ -1,4 +1,3 @@
-// @ts-nocheck -- Supabase types.ts schema misalignment (read-only file)
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
