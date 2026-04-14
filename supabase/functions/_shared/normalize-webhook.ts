@@ -375,7 +375,7 @@ export function detectSource(req: Request, payload: unknown): string {
   // Explicit platform field (some integrators send this)
   if (typeof p?.platform === "string" && p.platform) {
     const pl = p.platform.toLowerCase();
-    if (["shopify", "nuvemshop", "vtex", "woocommerce", "tray", "yampi", "shopee"].includes(pl)) {
+    if (["shopify", "nuvemshop", "vtex", "woocommerce", "tray", "yampi", "magento"].includes(pl)) {
       return pl;
     }
   }
