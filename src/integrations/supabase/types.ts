@@ -4104,6 +4104,7 @@ export type Database = {
           error_message: string | null
           external_id: string | null
           id: string
+          next_retry_at: string | null
           payload_normalized: Json
           platform: string
           processed_at: string | null
@@ -4118,6 +4119,7 @@ export type Database = {
           error_message?: string | null
           external_id?: string | null
           id?: string
+          next_retry_at?: string | null
           payload_normalized: Json
           platform: string
           processed_at?: string | null
@@ -4132,6 +4134,7 @@ export type Database = {
           error_message?: string | null
           external_id?: string | null
           id?: string
+          next_retry_at?: string | null
           payload_normalized?: Json
           platform?: string
           processed_at?: string | null
@@ -5279,6 +5282,10 @@ export type Database = {
             Returns: undefined
           }
       increment_unread_count: { Args: { conv_id: string }; Returns: undefined }
+      integration_health_summary: {
+        Args: { p_store_id: string }
+        Returns: Json
+      }
       is_password_rotation_due: { Args: { _user_id: string }; Returns: boolean }
       prune_api_request_logs: {
         Args: { p_retention_days?: number }
