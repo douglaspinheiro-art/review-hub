@@ -1,6 +1,6 @@
 # WhatsApp Cloud API (Meta) — setup com LTV Boost
 
-Checklist para usar **apenas Meta Cloud** (sem Evolution): inbox, envio pelo app e campanhas com templates.
+Checklist para usar **Meta Cloud API**: inbox, envio pelo app e campanhas com templates.
 
 ## 1. Supabase
 

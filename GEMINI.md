@@ -11,7 +11,7 @@ This file contains foundational mandates for Gemini CLI while working on the LTV
 - **Frontend:** Vite + React 18 + TypeScript + React Router 6 + TanStack Query 5.
 - **Styling:** Tailwind CSS + shadcn/ui.
 - **Backend/Auth:** Supabase (PostgreSQL, Auth, Edge Functions).
-- **WhatsApp Integration:** Evolution API.
+- **WhatsApp Integration:** Meta Cloud API.
 - **Animations:** Framer Motion.
 
 ## Design & UI Conventions

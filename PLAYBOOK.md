@@ -25,7 +25,7 @@ A plataforma foi construída com tecnologias de ponta para garantir velocidade e
 - **Frontend:** Vite + React 18 + TypeScript + Tailwind CSS.
 - **Componentes:** shadcn/ui + Framer Motion.
 - **Backend/Banco:** Supabase (PostgreSQL, Auth, Edge Functions).
-- **Conectividade WhatsApp:** Evolution API (Open-source wrapper).
+- **Conectividade WhatsApp:** Meta Cloud API (API oficial).
 - **Gerenciamento de Estado:** TanStack Query v5.
 
 ---
@@ -44,7 +44,7 @@ O LTV Boost opera em um ecossistema de microsserviços e funções serverless, d
 - **RFM Engine:** Processa o banco de dados PostgreSQL para segmentar clientes em tempo real (Recência, Frequência, Valor).
 
 ### 3. Execução de Mensagens (Egress)
-- **Evolution API Service:** Camada de abstração que gerencia a conexão com o WhatsApp, garantindo que as mensagens sejam entregues via instâncias estáveis.
+- **Meta Cloud API:** Camada de envio oficial via API da Meta, garantindo entrega confiável e conformidade com políticas do WhatsApp Business.
 - **Dispatch Campaign:** Gerencia o envio em massa de campanhas segmentadas, respeitando limites de taxa (rate limiting) para evitar bloqueios.
 
 ### 4. Ciclo de Feedback
@@ -85,7 +85,7 @@ A identidade visual do LTV Boost foi projetada para transmitir confiança, efici
 O sucesso no LTV Boost começa com uma configuração correta em 3 passos:
 
 1.  **Conexão de Canais:** Integre sua loja (Shopify, VTEX, Nuvemshop, WooCommerce) via Webhook ou API.
-2.  **Motor de Recuperação:** Escaneie o QR Code para conectar seu WhatsApp via Evolution API.
+2.  **Motor de Recuperação:** Conecte seu WhatsApp Business via Meta Embedded Signup (login com Facebook).
 3.  **Primeira Prescrição:** A IA analisa seus dados históricos e sugere a primeira campanha de alto impacto (ex: recuperar boletos expirados dos últimos 7 dias).
 
 ---
@@ -134,8 +134,8 @@ Para resultados imediatos, implemente estas 3 estratégias:
 Para plataformas sem integração nativa, utilize o nosso **Integration Gateway**:
 `https://[SUPABASE_URL]/functions/v1/integration-gateway?platform=generic&loja_id=[ID]`
 
-### Evolution API
-A plataforma suporta instâncias da Evolution API. Configure o `URL` e `API KEY` em **Configurações > WhatsApp**.
+### WhatsApp (Meta Cloud API)
+A plataforma utiliza a API oficial da Meta. Conecte sua conta via **Embedded Signup** em **Configurações > WhatsApp**.
 
 ---
 
