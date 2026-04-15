@@ -1,4 +1,3 @@
-// @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {

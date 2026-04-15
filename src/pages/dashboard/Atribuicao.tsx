@@ -1,4 +1,3 @@
-// @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
 import { useState } from "react";
 import {
   DollarSign, TrendingUp, ShoppingCart, Zap, Target,
