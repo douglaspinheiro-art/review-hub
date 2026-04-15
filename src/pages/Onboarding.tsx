@@ -44,6 +44,7 @@ export default function Onboarding() {
   const [waConnecting, setWaConnecting] = useState(false);
   const [waConnected, setWaConnected] = useState<{ phone?: string } | null>(null);
   const [userStoreId, setUserStoreId] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   const showCommunity = sessionStorage.getItem("ltv_show_community") === "1";
   const companyName = sessionStorage.getItem("ltv_company") || "";
 
