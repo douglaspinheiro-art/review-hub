@@ -230,13 +230,11 @@ export default function Campanhas() {
   const deleteMutation = useMutation({
     mutationFn: async (campaignId: string) => {
       // Soft-delete to preserve attribution data
-      const { error, count } = await supabase
+      const { error } = await supabase
         .from("campaigns")
         .update({ status: "archived" })
-        .eq("id", campaignId)
-        .select("id", { count: "exact", head: true });
+        .eq("id", campaignId);
       if (error) throw error;
-      if (count === 0) throw new Error("Campanha não encontrada ou sem permissão para arquivar.");
     },
     onSuccess: () => {
       toast({ title: "Campanha arquivada." });
