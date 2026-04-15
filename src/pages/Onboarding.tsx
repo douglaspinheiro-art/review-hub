@@ -207,10 +207,7 @@ export default function Onboarding() {
         queryParams += `&site_url=${encodeURIComponent(siteUrl)}`;
       }
 
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: null,
-        method: "GET",
-      } as any);
+      // For GET requests with query params, construct URL manually
 
       // For GET requests, we need to construct the URL manually
       const session = (await supabase.auth.getSession()).data.session;
