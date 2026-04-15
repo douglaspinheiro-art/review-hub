@@ -1,4 +1,3 @@
-
 /* mocks parciais de useInfiniteQuery */
 import type { ComponentType } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
