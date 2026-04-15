@@ -5,12 +5,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {
   contactMatchesEnglishRfmSegment,
-  RFM_ENGLISH_ALIASES,
-  type RfmEnglishSegment,
 } from "@/lib/rfm-segments";
 import { scopeAttributionEventsForStore } from "@/lib/attribution-scope";
 import { ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
@@ -555,8 +551,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
 const CUSTOMERS_V3_LIST_COLUMNS =
   "id,name,email,phone,rfm_segment,tags,last_purchase_at,customer_health_score,unsubscribed_at,email_hard_bounce_at,email_complaint_at,created_at,rfm_frequency,rfm_monetary";
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function escapeIlikePattern(s: string): string {
+function _escapeIlikePattern(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 

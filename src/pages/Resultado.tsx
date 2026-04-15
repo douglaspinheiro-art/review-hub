@@ -53,7 +53,7 @@ export default function Resultado() {
         .limit(1)
         .maybeSingle();
 
-      if (storeData?.nome) setStoreName(storeData.nome);
+      if ((storeData as any)?.nome) setStoreName((storeData as any).nome);
 
       // Get latest diagnostic
       const { data: diagData } = await supabase

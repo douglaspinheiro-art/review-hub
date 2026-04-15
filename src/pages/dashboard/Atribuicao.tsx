@@ -206,7 +206,7 @@ export default function Atribuicao() {
 
       {!isLoading && data && data.totalRevenue > 0 && (
         <>
-          {data.attributionQueryError && (
+          {(data as any).attributionQueryError && (
             <div
               className="flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
               role="alert"
@@ -214,7 +214,7 @@ export default function Atribuicao() {
               <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" aria-hidden />
               <div>
                 <p className="font-bold text-foreground">Não foi possível carregar eventos de atribuição</p>
-                <p className="text-muted-foreground text-xs mt-1">{data.attributionQueryError}</p>
+                <p className="text-muted-foreground text-xs mt-1">{(data as any).attributionQueryError}</p>
                 <p className="text-muted-foreground text-xs mt-1">
                   As métricas de receita do gráfico continuam disponíveis; a tabela por campanha pode ficar vazia até o problema ser resolvido.
                 </p>
@@ -222,7 +222,7 @@ export default function Atribuicao() {
             </div>
           )}
 
-          {data.usesEstimatedSourceSplit && (
+          {(data as any).usesEstimatedSourceSplit && (
             <DisclaimerCard title="Distribuição por origem estimada. ">
               Não há pedidos com <code className="text-[10px] bg-muted px-1 rounded">attribution_events</code> no período.
               O gráfico &quot;Por origem&quot; usa uma divisão ilustrativa (55% / 30% / 15%) sobre a receita influenciada — não substitui medição por pedido.

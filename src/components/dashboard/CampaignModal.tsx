@@ -251,7 +251,7 @@ export default function CampaignModal({
   const [collectionName, setCollectionName] = useState("");
   const [prodCoupon, setProdCoupon] = useState("");
 
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const scope = useStoreScopeOptional();
   const loja = useLoja();
   const lojaData = (loja.data as LojaExtended | null) ?? null;
@@ -267,7 +267,7 @@ export default function CampaignModal({
 
   const [confirmClose, setConfirmClose] = useState(false);
 
-  const { register, handleSubmit, watch, setValue, trigger, reset, formState: { errors, isDirty } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, trigger, reset, formState: { isDirty } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       channel: whatsappOnly ? "whatsapp" : (prefill?.channel ?? "whatsapp"),
@@ -286,9 +286,9 @@ export default function CampaignModal({
     queryKey: ["campaign_edit_bundle", editingCampaignId],
     enabled: !!editingCampaignId && !!user?.id,
     queryFn: async () => {
-      const { data: camp, error } = await supabase.from("campaigns").select(CAMPAIGN_LIST_SELECT).eq("id", editingCampaignId).single();
+      const { data: camp, error } = await supabase.from("campaigns").select(CAMPAIGN_LIST_SELECT).eq("id", editingCampaignId!).single();
       if (error) throw error;
-      const { data: seg } = await supabase.from("campaign_segments").select("type,filters").eq("campaign_id", editingCampaignId).maybeSingle();
+      const { data: seg } = await supabase.from("campaign_segments").select("type,filters").eq("campaign_id", editingCampaignId!).maybeSingle();
       return { camp, seg } as {
         camp: Record<string, unknown>;
         seg: { type?: string; filters?: Record<string, unknown> } | null;
@@ -439,22 +439,22 @@ export default function CampaignModal({
   const channel = watch("channel");
   const message = watch("message") ?? "";
   const objective = watch("objective");
-  const watchedName = watch("name");
+  const _watchedName = watch("name");
 
   const { data: savedTemplates = [] } = useQuery({
     queryKey: ["campaign_message_templates", user?.id, channel, objective],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from("campaign_message_templates")
-        .select(CAMPAIGN_MESSAGE_TEMPLATE_SELECT)
+      const { data, error } = await (supabase
+        .from("campaign_message_templates" as any)
+        .select(CAMPAIGN_MESSAGE_TEMPLATE_SELECT) as any)
         .eq("user_id", user.id)
         .eq("channel", channel)
         .eq("objective", objective)
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as any[];
     },
     enabled: !!user && !!channel && !!objective,
   });
@@ -464,7 +464,7 @@ export default function CampaignModal({
       if (!user) throw new Error("Não autenticado");
       if (!templateName.trim()) throw new Error("Informe um nome para o template");
       if (!message.trim()) throw new Error("Escreva uma mensagem antes de salvar");
-      const { error } = await supabase.from("campaign_message_templates").insert({
+      const { error } = await (supabase.from("campaign_message_templates" as any) as any).insert({
         user_id: user.id,
         store_id: lojaData?.id ?? null,
         name: templateName.trim(),
@@ -533,7 +533,7 @@ export default function CampaignModal({
           message: data.message,
           channel: channelSave,
           subject: data.subject ?? null,
-          tags,
+          tags: tags as any,
           blocks: blocksPayload,
         }).eq("id", editingCampaignId).eq("user_id", user.id);
         if (upErr) throw upErr;
@@ -547,7 +547,7 @@ export default function CampaignModal({
           channel: channelSave,
           subject: data.subject ?? null,
           source_prescription_id: prescriptionId ?? null,
-          tags,
+          tags: tags as any,
           status: "draft",
           total_contacts: 0,
           sent_count: 0,
@@ -1042,20 +1042,20 @@ export default function CampaignModal({
                       <div className="flex flex-wrap gap-2">
                         {savedTemplates.slice(0, 6).map((tpl) => (
                           <button
-                            key={tpl.id}
+                             key={(tpl as any).id}
                             type="button"
                             onClick={() => {
-                              setValue("message", tpl.message ?? "");
-                              const waCfg = (tpl.whatsapp_config ?? {}) as Record<string, unknown>;
+                              setValue("message", (tpl as any).message ?? "");
+                              const waCfg = ((tpl as any).whatsapp_config ?? {}) as Record<string, unknown>;
                               setWaContentType(parseWaContentType(waCfg.content_type));
-                              setWaMediaUrl(waCfg.media_url ?? "");
-                              const b = Array.isArray(waCfg.buttons) && waCfg.buttons.length > 0 ? waCfg.buttons[0] : null;
+                              setWaMediaUrl((waCfg.media_url as string) ?? "");
+                              const b = Array.isArray(waCfg.buttons) && waCfg.buttons.length > 0 ? (waCfg.buttons[0] as any) : null;
                               setWaButtonLabel(b?.label ?? "");
                               setWaButtonUrl(b?.value ?? "");
                             }}
                             className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-background border hover:border-primary/40"
                           >
-                            {tpl.name}
+                            {(tpl as any).name}
                           </button>
                         ))}
                         {savedTemplates.length === 0 && (

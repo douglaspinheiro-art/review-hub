@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Header from "@/components/landing/Header";
 import Footer from "@/components/landing/Footer";
@@ -198,7 +199,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
     if (!profile?.company_name) return;
     setFormData(prev => {
       if (prev.nome.trim()) return prev;
-      return { ...prev, nome: profile.company_name };
+      return { ...prev, nome: profile.company_name ?? "" };
     });
   }, [profile?.company_name]);
 
@@ -571,7 +572,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <Label>Clientes ativos na base</Label>
-                  {realDataLoaded && storeMetrics?.totalClientes > 0 && (
+                  {realDataLoaded && (storeMetrics?.totalClientes ?? 0) > 0 && (
                     <Badge className="bg-emerald-500/10 text-emerald-600 border-none text-[9px] font-black px-1.5">REAL</Badge>
                   )}
                 </div>

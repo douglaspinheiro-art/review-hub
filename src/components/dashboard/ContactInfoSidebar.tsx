@@ -88,7 +88,8 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
   const initials = contact.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?";
 
   async function handleSendCheckout() {
-    const lojaData = loja.data as Database["public"]["Tables"]["stores"]["Row"] | null;
+    if (!contact) return;
+    const lojaData = loja.data as any;
     if (!lojaData?.url) {
       toast.error("Configure a URL da loja em Funil → Configurar loja");
       return;
@@ -129,7 +130,8 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
   }
 
   async function handleSendPix() {
-    const lojaData = loja.data as Database["public"]["Tables"]["stores"]["Row"] | null;
+    if (!contact) return;
+    const lojaData = loja.data as any;
     const pixKey = lojaData?.pix_key || pixKeyInput.trim();
     if (!pixKey) {
       toast.error("Informe a chave PIX");
@@ -153,7 +155,7 @@ export function ContactInfoSidebar({ contact, className }: ContactInfoSidebarPro
         amount,
         description: pixDesc.trim() || undefined,
       });
-      const phone = normalizePhone(contact.phone);
+      const phone = normalizePhone(contact!.phone);
       const amountFormatted = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       await sendTextForConnection(conn, {
         number: phone,
