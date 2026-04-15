@@ -23,10 +23,8 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
   Shopify: {
     type: "shopify",
     fields: [
-      { key: "shop_url", label: "URL da loja (sem https://)", placeholder: "minhaloja.myshopify.com" },
-      { key: "access_token", label: "Access Token (Admin API)", placeholder: "shpat_...", secret: true },
+      { key: "shop_url", label: "Domínio Shopify", placeholder: "minhaloja.myshopify.com" },
     ],
-    helpUrl: "https://help.shopify.com/en/manual/apps/app-types/custom-apps",
   },
   Nuvemshop: {
     type: "nuvemshop",
