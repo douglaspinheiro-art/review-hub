@@ -28,9 +28,8 @@ type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 
 const PAGE_SIZE = 25;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _REVIEW_LIST_COLUMNS =
-  "id,user_id,platform,rating,reviewer_name,content,status,url,ai_reply,replied_at,created_at,updated_at,raw_payload";
+
+
 
 const PLATFORM_CONFIG: Record<
   string,
@@ -77,10 +76,8 @@ function StarRating({ rating }: { rating: number | null }) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _sanitizeIlikeTerm(raw: string): string {
-  return raw.trim().replace(/[%*,()]/g, "").slice(0, 80);
-}
+
+
 
 export default function Reviews() {
   const [filter, setFilter] = useState<"all" | "pending" | "negative">("all");

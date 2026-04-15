@@ -68,20 +68,8 @@ function campaignDispatchPriority(status: string | undefined): number {
   return 3;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _pickLinkedCampaign(
-  prescriptionId: string,
-  campaigns: CampaignRow[],
-): CampaignRow | null {
-  const linked = campaigns.filter((c) => c.source_prescription_id === prescriptionId);
-  if (linked.length === 0) return null;
-  return [...linked].sort((a, b) => {
-    const pa = campaignDispatchPriority(a.status);
-    const pb = campaignDispatchPriority(b.status);
-    if (pa !== pb) return pa - pb;
-    return String(b.id).localeCompare(String(a.id));
-  })[0];
-}
+
+
 
 function channelIcon(c: string | undefined) {
   const x = (c ?? "whatsapp").toLowerCase();

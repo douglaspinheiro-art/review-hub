@@ -22,8 +22,7 @@ import {
   calcFunil, EMPTY_FUNIL_METRICAS, type MetricasFunil,
   recoveryPctOfRevenue, isFunilGa4SnapshotRecent, funilGa4StaleHint,
 } from "@/hooks/useConvertIQ";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { useProductsV3 as useProdutosV3, useMetricsV3 } from "@/hooks/useLTVBoost";
+import "@/hooks/useLTVBoost";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
