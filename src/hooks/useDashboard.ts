@@ -6,6 +6,7 @@ import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {
   contactMatchesEnglishRfmSegment,
   RFM_ENGLISH_ALIASES,
@@ -607,8 +608,8 @@ export function useContacts(options: UseContactsOptions = {}) {
           p_store_id: storeId,
           p_search: search,
           p_rfm_segment: rfmSegment,
-          p_cursor_created_at: cursor,
-          p_limit: pageSize,
+          p_cursor_created_at: cursor ?? undefined,
+          p_limit: pageSize ?? undefined,
         });
 
         if (error) throw error;
@@ -749,7 +750,7 @@ export function useConversations(
     },
     getNextPageParam: (lastPage) => {
       if (!lastPage.length || lastPage.length < INBOX_CONV_PAGE_SIZE) return undefined;
-      const last = lastPage[lastPage.length - 1] as { last_message_at: string };
+      const last = lastPage[lastPage.length - 1] as unknown as { last_message_at: string };
       return last.last_message_at;
     },
     staleTime: 20_000,
