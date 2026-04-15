@@ -30,8 +30,6 @@ const links: Record<string, { label: string; href: string }[]> = {
 const Footer = forwardRef<HTMLElement>(function Footer(_props, ref) {
   return (
     <footer ref={ref} className="border-t border-border/50 py-16">
-
-    <footer className="border-t border-border/50 py-16">
       <div className="container mx-auto px-4">
         <div className="grid md:grid-cols-5 gap-10 mb-12">
           <div className="md:col-span-1 space-y-4">
@@ -73,6 +71,7 @@ const Footer = forwardRef<HTMLElement>(function Footer(_props, ref) {
         </div>
       </div>
     </footer>
+  );
 });
 
 export default Footer;
