@@ -558,8 +558,8 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* STEP 2: E-commerce Integration (MANDATORY) */}
-        {step === 2 && platformInfo && (
+        {/* STEP 2: E-commerce Integration */}
+        {step === 2 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center gap-2 bg-violet-500/10 text-violet-400 text-[10px] font-black px-3 py-1 rounded-full border border-violet-500/20 uppercase tracking-[0.2em]">
@@ -569,7 +569,9 @@ export default function Onboarding() {
                 Integre sua loja
               </h1>
               <p className="text-muted-foreground max-w-lg mx-auto font-medium">
-                A integração com o {plataforma} permite que o diagnóstico use dados reais da sua loja.
+                {isOAuth
+                  ? `Conecte com 1 clique — autorizamos via ${plataforma} diretamente.`
+                  : `A integração com o ${plataforma} permite que o diagnóstico use dados reais da sua loja.`}
               </p>
             </div>
 
@@ -580,9 +582,11 @@ export default function Onboarding() {
                 </div>
                 <div>
                   <p className="font-bold text-sm">{plataforma}</p>
-                  <p className="text-[10px] text-muted-foreground">Preencha as credenciais da API</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {isOAuth ? "Conexão automática via OAuth" : "Preencha as credenciais da API"}
+                  </p>
                 </div>
-                {platformInfo.helpUrl && (
+                {platformInfo?.helpUrl && !isOAuth && (
                   <a
                     href={platformInfo.helpUrl}
                     target="_blank"
@@ -594,21 +598,123 @@ export default function Onboarding() {
                 )}
               </div>
 
-              {platformInfo.fields.map(field => (
-                <div key={field.key} className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{field.label}</Label>
-                  <Input
-                    type={field.secret ? "password" : "text"}
-                    placeholder={field.placeholder}
-                    value={integrationConfig[field.key] || ""}
-                    onChange={e => handleIntegrationFieldChange(field.key, e.target.value)}
-                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                    disabled={integrationValid}
-                  />
-                </div>
-              ))}
+              {/* ── OAuth Flow (Shopify / Nuvemshop / WooCommerce) ── */}
+              {isOAuth && !integrationValid && (
+                <>
+                  {plataforma === "Shopify" && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        Domínio Shopify *
+                      </Label>
+                      <Input
+                        placeholder="minhaloja.myshopify.com"
+                        value={integrationConfig.shop_url || ""}
+                        onChange={e => handleIntegrationFieldChange("shop_url", e.target.value)}
+                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                      />
+                    </div>
+                  )}
+                  {plataforma === "WooCommerce" && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        URL do site *
+                      </Label>
+                      <Input
+                        placeholder="https://minhaloja.com.br"
+                        value={integrationConfig.site_url || ""}
+                        onChange={e => handleIntegrationFieldChange("site_url", e.target.value)}
+                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                      />
+                    </div>
+                  )}
 
-              {/* Validation result */}
+                  <Button
+                    onClick={handleOAuthConnect}
+                    disabled={oauthConnecting}
+                    className="w-full h-14 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-base"
+                  >
+                    {oauthConnecting ? (
+                      <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Conectando...</>
+                    ) : (
+                      <><Plug className="w-5 h-5 mr-2" /> Conectar com {plataforma}</>
+                    )}
+                  </Button>
+
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    Você será redirecionado para o {plataforma} para autorizar o acesso. Nenhuma senha é compartilhada.
+                  </p>
+                </>
+              )}
+
+              {/* ── Manual Flow (VTEX / Tray / Magento / Dizy) ── */}
+              {!isOAuth && platformInfo && (
+                <>
+                  {platformInfo.fields.map(field => (
+                    <div key={field.key} className="space-y-1.5">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{field.label}</Label>
+                      <Input
+                        type={field.secret ? "password" : "text"}
+                        placeholder={field.placeholder}
+                        value={integrationConfig[field.key] || ""}
+                        onChange={e => handleIntegrationFieldChange(field.key, e.target.value)}
+                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                        disabled={integrationValid}
+                      />
+                    </div>
+                  ))}
+
+                  {/* Platform-specific guide */}
+                  {platformInfo.helpUrl && (
+                    <div className="rounded-xl bg-blue-500/5 border border-blue-500/20 p-4 space-y-2">
+                      <p className="text-xs font-bold text-blue-400">📋 Como encontrar suas credenciais:</p>
+                      {plataforma === "VTEX" && (
+                        <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                          <li>Acesse o Admin VTEX → Configurações da conta → Chaves de aplicação</li>
+                          <li>Clique em "Gerenciar chaves de aplicação" → "Gerar nova chave"</li>
+                          <li>Copie o App Key e App Token gerados</li>
+                        </ol>
+                      )}
+                      {plataforma === "Tray" && (
+                        <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                          <li>Acesse o Painel Tray → Integrações → API</li>
+                          <li>Copie o endereço da API e gere um token de acesso</li>
+                        </ol>
+                      )}
+                      {plataforma === "Magento" && (
+                        <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                          <li>Acesse Admin → System → Integrations → Add New Integration</li>
+                          <li>Configure permissões (Sales, Catalog, Customers) e ative</li>
+                          <li>Copie o Access Token gerado</li>
+                        </ol>
+                      )}
+                      <a
+                        href={platformInfo.helpUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                      >
+                        Ver documentação completa <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+
+                  {!integrationValid && (
+                    <Button
+                      onClick={handleValidateIntegration}
+                      disabled={integrationValidating}
+                      className="w-full h-12 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold"
+                    >
+                      {integrationValidating ? (
+                        <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Validando conexão...</>
+                      ) : (
+                        <><Plug className="w-4 h-4 mr-2" /> Conectar e validar</>
+                      )}
+                    </Button>
+                  )}
+                </>
+              )}
+
+              {/* Success state (shared) */}
               {integrationValid && (
                 <div className="rounded-xl p-4 flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500" />
@@ -627,20 +733,6 @@ export default function Onboarding() {
                     <p className="text-xs text-muted-foreground">{integrationError}</p>
                   </div>
                 </div>
-              )}
-
-              {!integrationValid && (
-                <Button
-                  onClick={handleValidateIntegration}
-                  disabled={integrationValidating}
-                  className="w-full h-12 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold"
-                >
-                  {integrationValidating ? (
-                    <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Validando conexão...</>
-                  ) : (
-                    <><Plug className="w-4 h-4 mr-2" /> Conectar e validar</>
-                  )}
-                </Button>
               )}
             </div>
 
