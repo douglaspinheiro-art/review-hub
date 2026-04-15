@@ -7,13 +7,13 @@ const steps = [
     icon: Link2,
     step: "01",
     title: "Conecte",
-    desc: "Integre loja e WhatsApp com setup guiado. Em 24h voce entra em producao.",
+    desc: "Integre loja e WhatsApp com setup guiado. Em 24h você entra em produção.",
   },
   {
     icon: BarChart3,
     step: "02",
     title: "Analise",
-    desc: "A IA prioriza onde existe caixa travado e gera plano de acao diario por impacto.",
+    desc: "A IA prioriza onde existe caixa travado e gera plano de ação diário por impacto.",
   },
   {
     icon: Zap,
@@ -25,7 +25,7 @@ const steps = [
     icon: Rocket,
     step: "04",
     title: "Escale",
-    desc: "Escalone o que funciona com benchmark de coorte e recomendacao de proxima melhor acao.",
+    desc: "Escalone o que funciona com benchmark de coorte e recomendação de próxima melhor ação.",
   },
 ];
 

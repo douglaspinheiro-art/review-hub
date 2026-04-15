@@ -38,10 +38,10 @@ export default function Pricing() {
         )}>
           <p className="text-primary font-semibold text-sm mb-3 uppercase tracking-widest">Planos</p>
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-            Planos para operar <span className="text-gradient">retencao com previsibilidade</span>
+            Planos para operar <span className="text-gradient">retenção com previsibilidade</span>
           </h2>
           <p className="text-muted-foreground text-lg mb-6">
-            Feito para e-commerces de R$30k a R$3M/mes. Voce paga pela base e expande conforme captura mais lucro incremental.
+            Feito para e-commerces de R$30k a R$3M/mês. Você paga pela base e expande conforme captura mais lucro incremental.
           </p>
 
           {/* Toggle */}
@@ -137,7 +137,7 @@ export default function Pricing() {
           Mensagens adicionais: <strong>R$ {BUNDLES.wa[1].price} por {BUNDLES.wa[1].qty.toLocaleString("pt-BR")}</strong> · Todos os planos incluem suporte via WhatsApp
         </p>
         <p className="text-center text-xs text-muted-foreground mt-2">
-          Add-ons disponiveis no dashboard: benchmark preditivo, autopilot de retencao e governanca multi-loja.
+          Add-ons disponíveis no dashboard: benchmark preditivo, autopilot de retenção e governança multi-loja.
         </p>
       </div>
     </section>
