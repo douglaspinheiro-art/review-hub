@@ -21,7 +21,7 @@ import { CAMPAIGN_LIST_SELECT } from "@/lib/supabase-select-fragments";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import ErrorBoundary from "@/components/ErrorBoundary";
+import { RouteErrorBoundary } from "@/components/ErrorBoundary";
 const BlockCanvas = lazy(() =>
   import("@/components/dashboard/newsletter/BlockCanvas").then((m) => ({ default: m.BlockCanvas })),
 );
@@ -249,7 +249,7 @@ export default function Newsletter() {
       }
       setRecipientTag((existingCampaign as { email_recipient_tag?: string }).email_recipient_tag ?? "");
       setRecipientRFM((existingCampaign as { email_recipient_rfm?: string }).email_recipient_rfm ?? "champions");
-      const loaded = (existingCampaign as { blocks?: Block[] }).blocks ?? null;
+      const loaded = ((existingCampaign as any).blocks as Block[] | null) ?? null;
       setBlocks(loaded && loaded.length > 0 ? loaded : createDefaultBlocks());
       setShowTemplateModal(false);
     }
@@ -741,22 +741,7 @@ export default function Newsletter() {
       </div>
 
       {/* ── 3-column layout (canvas/palette lazy para reduzir bundle inicial) ── */}
-      <ErrorBoundary
-        fallback={
-          <div className="flex flex-1 items-center justify-center bg-muted/10">
-            <div className="text-center space-y-2">
-              <p className="text-sm text-destructive font-medium">Falha ao carregar o editor de newsletter.</p>
-              <button
-                type="button"
-                className="text-xs text-primary underline"
-                onClick={() => window.location.reload()}
-              >
-                Recarregar página
-              </button>
-            </div>
-          </div>
-        }
-      >
+      <RouteErrorBoundary routeLabel="newsletter-editor">
       <Suspense
         fallback={
           <div className="flex flex-1 items-center justify-center bg-muted/10">
@@ -966,7 +951,7 @@ export default function Newsletter() {
         </div>
       </div>
       </Suspense>
-      </ErrorBoundary>
+      </RouteErrorBoundary>
 
       {/* ── Template picker modal ── */}
       {showTemplateModal && (

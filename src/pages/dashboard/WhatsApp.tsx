@@ -96,7 +96,8 @@ export default function WhatsApp() {
   const queryClient = useQueryClient();
 
   const handleEmbeddedSignup = useCallback(async () => {
-    if (!metaAppId) {
+    const metaAppIdVal = (import.meta.env.VITE_META_APP_ID as string | undefined);
+    if (!metaAppIdVal) {
       toast({ title: "META_APP_ID não configurado", description: "Defina VITE_META_APP_ID no build.", variant: "destructive" });
       return;
     }
@@ -107,7 +108,7 @@ export default function WhatsApp() {
     setEmbeddedSignupLoading(true);
     try {
       const result = await launchEmbeddedSignup({
-        appId: metaAppId,
+        appId: metaAppIdVal,
         storeId: selectedStoreId,
       });
       if (result.ok) {
@@ -122,7 +123,7 @@ export default function WhatsApp() {
     } finally {
       setEmbeddedSignupLoading(false);
     }
-  }, [metaAppId, selectedStoreId, toast, queryClient]);
+  }, [selectedStoreId, toast, queryClient]);
 
   const metaWebhookUrl = useMemo(() => {
     const raw = import.meta.env.VITE_SUPABASE_URL;
@@ -131,8 +132,8 @@ export default function WhatsApp() {
     return `${base}/functions/v1/meta-whatsapp-webhook`;
   }, []);
 
-  const connectionSelect =
-    "id, instance_name, phone_number, status, provider, meta_phone_number_id, meta_waba_id, meta_default_template_name, connected_at, created_at, store_id";
+
+
 
   const {
     data: lojas = [],
@@ -327,7 +328,7 @@ export default function WhatsApp() {
       }
       const { error } = await supabase
         .from("whatsapp_connections")
-        .update(patch)
+        .update(patch as any)
         .eq("id", connectionId)
         .eq("user_id", user!.id);
       if (error) throw error;
@@ -415,7 +416,7 @@ export default function WhatsApp() {
             </Select>
           )}
           <div className="flex gap-2 flex-wrap">
-            {metaAppId && (
+            {(import.meta.env.VITE_META_APP_ID as string | undefined) && (
               <Button
                 onClick={handleEmbeddedSignup}
                 disabled={embeddedSignupLoading || !selectedStoreId}
@@ -679,7 +680,7 @@ export default function WhatsApp() {
               : "Crie uma loja no onboarding ou em Configurações, depois adicione o WhatsApp."}
           </p>
           <div className="flex flex-col sm:flex-row gap-2 justify-center">
-            {metaAppId && (
+            {(import.meta.env.VITE_META_APP_ID as string | undefined) && (
               <Button
                 onClick={handleEmbeddedSignup}
                 disabled={embeddedSignupLoading || !selectedStoreId}
@@ -702,16 +703,16 @@ export default function WhatsApp() {
           {healthSummary.recent_errors.length > 0 && (
             <Card className="p-4 bg-muted/30 border border-border/50 rounded-xl">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
-                <AlertTriangle className="w-3 h-3 text-red-500" /> Logs de erro recentes
+                <AlertCircle className="w-3 h-3 text-red-500" /> Logs de erro recentes
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {healthSummary.recent_errors.map((err: any) => (
                   <div key={err.id} className="p-2.5 bg-card border rounded-lg space-y-1">
                     <div className="flex justify-between items-center gap-2">
-                      <Badge variant="outline" className="text-[8px] h-3.5 px-1 uppercase font-bold border-red-500/20 text-red-600 bg-red-500/5">
+                      <span className="text-[8px] h-3.5 px-1 uppercase font-bold border border-red-500/20 text-red-600 bg-red-500/5 rounded">
                         {err.event_type.replace('whatsapp.', '')}
-                      </Badge>
+                      </span>
                       <span className="text-[8px] text-muted-foreground">
                         {new Date(err.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </span>

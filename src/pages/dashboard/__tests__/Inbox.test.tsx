@@ -128,7 +128,7 @@ function renderInbox(InboxCmp: ComponentType) {
 describe("Inbox", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useConversations).mockReturnValue(convInfiniteEmpty as ReturnType<typeof useConversations>);
+    vi.mocked(useConversations).mockReturnValue(convInfiniteEmpty as unknown as ReturnType<typeof useConversations>);
   });
 
   it("renderiza título e filtros de status", () => {
@@ -162,7 +162,7 @@ describe("Inbox", () => {
       fetchNextPage: vi.fn(),
       hasNextPage: false,
       isFetchingNextPage: false,
-    } as ReturnType<typeof useConversations>);
+    } as unknown as ReturnType<typeof useConversations>);
 
     renderInbox(Inbox);
 

@@ -190,7 +190,7 @@ export default function RFM() {
   const totalCount = contactsResult?.totalCount ?? 0;
   const isTruncated = totalCount > contacts.length;
 
-  const { segments, maxFreq, maxMonetary, maxDaysInactive, monetaryById, segmentOf } = useMemo(() => {
+  const { segments, maxDaysInactive, monetaryById, segmentOf } = useMemo(() => {
     const ctx = computeRfmSampleContext(contacts);
 
     const groups: Record<string, Contact[]> = {
@@ -534,7 +534,7 @@ export default function RFM() {
                   <div className="space-y-1">
                     {group.slice(0, 4).map((c) => {
                       const recencyDate = c.last_purchase_at ?? c.created_at;
-                      const daysAgo = Math.round((Date.now() - new Date(recencyDate).getTime()) / 86_400_000);
+                      const daysAgo = Math.round((Date.now() - new Date(recencyDate ?? "").getTime()) / 86_400_000);
                       return (
                         <div key={c.id} className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5">

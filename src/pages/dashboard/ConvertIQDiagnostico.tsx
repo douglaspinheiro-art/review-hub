@@ -80,7 +80,7 @@ function HistoryModal({ diags, onClose }: {
   diags: Array<{ id: string; created_at: string; taxa_conversao: number; score: number; recomendacoes: unknown }>;
   onClose: () => void;
 }) {
-  const [expanded, _setExpanded] = useState<string | null>(null);
+  const [_expanded, _setExpanded] = useState<string | null>(null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -222,7 +222,7 @@ export default function ConvertIQDiagnostico() {
       <div>
         <h1 className="text-2xl font-bold">Diagnóstico de Conversão</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Gerado em {new Date(lastDiag.data.created_at).toLocaleString("pt-BR", {
+          Gerado em {new Date(lastDiag.data.created_at ?? "").toLocaleString("pt-BR", {
             day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
           })}
         </p>
@@ -376,7 +376,7 @@ export default function ConvertIQDiagnostico() {
               <div key={d.id} className="flex items-center justify-between p-3 rounded-xl border hover:bg-muted/30 transition-colors">
                 <div>
                   <p className="text-sm font-medium">
-                    {new Date(d.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                    {new Date(d.created_at ?? "").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
                   </p>
                   <p className="text-xs text-muted-foreground">{d.taxa_conversao}% conversão · {(d.recomendacoes as unknown as DiagnosticoJSON)?.problemas?.length ?? 0} problemas</p>
                 </div>

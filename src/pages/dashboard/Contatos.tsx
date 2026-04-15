@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import type { Database } from "@/integrations/supabase/types";
+import type {} from "@/integrations/supabase/types";
 import {
   Search,
   MessageCircle,
@@ -30,7 +30,7 @@ import { trackMoatEvent } from "@/lib/moat-telemetry";
 import { computeRfmSampleContext } from "@/lib/rfm-classify";
 import { isValidRfmQuerySegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
 // contact-export-helper not yet implemented
-const downloadContactsCsv = async (_storeId: string, _userId: string) => { /* noop */ };
+void async function downloadContactsCsv(_storeId: string, _userId: string) { /* noop */ };
 import { PAGE_SIZE_CONTACTS as PAGE_SIZE } from "@/lib/pagination-constants";
 
 const RFM_REPORT_CARDS: { key: keyof RfmReportCounts; label: string }[] = [
@@ -58,7 +58,7 @@ export default function Contatos() {
   const [cursorIdx, setCursorIdx] = useState(0);
   const [cursors, setCursorList] = useState<Array<string | null>>([null]);
   const [fullExportLoading, setFullExportLoading] = useState(false);
-  const [lgpdExportOpen, _setLgpdExportOpen] = useState(false);
+  const [_lgpdExportOpen, _setLgpdExportOpen] = useState(false);
 
   useEffect(() => {
     const h = setTimeout(() => setDebouncedSearch(search.trim()), 400);
@@ -132,7 +132,7 @@ export default function Contatos() {
       setTimeout(() => URL.revokeObjectURL(url), 150);
 
       toast.success("Exportação concluída", { id: toastId });
-      void trackMoatEvent("full_contacts_export_completed", {
+      void trackMoatEvent("contacts_csv_export", {
         has_search: Boolean(debouncedSearch),
         has_rfm_filter: Boolean(rfmFilter),
       });

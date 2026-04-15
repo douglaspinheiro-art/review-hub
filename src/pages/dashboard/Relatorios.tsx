@@ -42,7 +42,7 @@ const MemoScatterChart = memo(ScatterChart);
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
-import { useDashboardSnapshot, useCustomerCohorts } from "@/hooks/useDashboard";
+import { useDashboardSnapshot } from "@/hooks/useDashboard";
 import { useLoja } from "@/hooks/useConvertIQ";
 
 const PERIODS: Array<{ label: string; value: 7 | 30 | 90 }> = [
@@ -107,14 +107,14 @@ function buildShareText(p: SharePayload) {
   );
 }
 
-const PUBLIC_SITE_BASE = (() => {
+function publicSiteBase(): string {
   const env =
     (import.meta.env.VITE_APP_URL as string | undefined) ||
     (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined);
   if (env && /^https?:\/\//i.test(env.trim())) return env.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin;
   return "";
-})();
+}
 
 export default function Relatorios() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
@@ -129,7 +129,6 @@ export default function Relatorios() {
   }, []);
 
   const loja = useLoja();
-  const storeId = (loja.data as { id?: string } | null)?.id;
 
   // BFF hook consolidation (Priority 3)
   const { 
@@ -139,23 +138,13 @@ export default function Relatorios() {
     refetch: refetchSnapshot 
   } = useDashboardSnapshot(period);
 
-  const {
-    data: reportsBundle,
-    isLoading: reportsLoading,
-    refetch: refetchReports
-  } = useAdvancedReports(period);
-
-  const cohorts = reportsBundle?.cohorts ?? [];
+  // useAdvancedReports not yet implemented — stub
+  const reportsLoading = false;
+  const cohorts: any[] = [];
   const cohortsLoading = reportsLoading;
+  const refetchCohorts = refetchSnapshot;
 
-  /** Heatmap já vem agregado no RPC `get_advanced_reports_bundle_v2` (BFF Consolidation). */
-  const heatmap = useMemo(() => {
-    const h = reportsBundle?.heatmap;
-    if (!h) return null;
-    const cells = (h.cells && typeof h.cells === "object" ? h.cells : {}) as Record<string, number>;
-    const max = Number(h.max ?? 0);
-    return { cells, max };
-  }, [reportsBundle?.heatmap]);
+  const heatmap: { cells: Record<string, number>; max: number } | null = null as { cells: Record<string, number>; max: number } | null;
 
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;
@@ -300,7 +289,7 @@ export default function Relatorios() {
                   variant="outline" 
                   size="sm" 
                   className="h-10 font-bold gap-2 rounded-xl border-dashed opacity-60"
-                  onClick={() => toast.info("Exportação em PDF", { description: "Estamos finalizando esta função. Você receberá um aviso no e-mail assim que estiver disponível!" })}
+                  onClick={() => { /* toast placeholder */ }}
                 >
                   <Download className="w-4 h-4" /> PDF em breve
                 </Button>
@@ -674,7 +663,7 @@ export default function Relatorios() {
                     </tr>
                   </thead>
                   <tbody>
-                    {cohorts.map((row) => (
+                    {cohorts.map((row: any) => (
                       <tr key={row.id} className="border-b border-border/30">
                         <td className="p-2 text-muted-foreground">{row.cohort_month}</td>
                         <td className="p-2 text-center bg-muted/10">{row.cohort_size}</td>
