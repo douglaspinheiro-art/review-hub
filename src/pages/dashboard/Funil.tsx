@@ -29,6 +29,7 @@ import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isDashboardPathBlockedInBetaScope } from "@/lib/beta-scope";
 import { RouteErrorBoundary } from "@/components/ErrorBoundary";
+import type { Database } from "@/lib/database.types";
 
 type Periodo = "7d" | "30d" | "90d";
 

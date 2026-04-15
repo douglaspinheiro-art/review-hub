@@ -249,7 +249,7 @@ export default function Newsletter() {
       }
       setRecipientTag((existingCampaign as { email_recipient_tag?: string }).email_recipient_tag ?? "");
       setRecipientRFM((existingCampaign as { email_recipient_rfm?: string }).email_recipient_rfm ?? "champions");
-      const loaded = (existingCampaign as { blocks?: Block[] }).blocks ?? null;
+      const loaded = ((existingCampaign as any).blocks as Block[] | null) ?? null;
       setBlocks(loaded && loaded.length > 0 ? loaded : createDefaultBlocks());
       setShowTemplateModal(false);
     }

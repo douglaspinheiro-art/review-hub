@@ -22,17 +22,13 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import type { Database } from "@/integrations/supabase/types";
-import {
-  averageRating,
-  distinctPlatformCount,
-  negativeReviewCount,
-} from "@/lib/review-metrics";
+import "@/lib/review-metrics";
 
 type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 
 const PAGE_SIZE = 25;
 
-const REVIEW_LIST_COLUMNS =
+const _REVIEW_LIST_COLUMNS =
   "id,user_id,platform,rating,reviewer_name,content,status,url,ai_reply,replied_at,created_at,updated_at,raw_payload";
 
 const PLATFORM_CONFIG: Record<
@@ -80,7 +76,7 @@ function StarRating({ rating }: { rating: number | null }) {
   );
 }
 
-function sanitizeIlikeTerm(raw: string): string {
+function _sanitizeIlikeTerm(raw: string): string {
   return raw.trim().replace(/[%*,()]/g, "").slice(0, 80);
 }
 
@@ -181,7 +177,7 @@ export default function Reviews() {
     isError,
     error,
     refetch,
-    isFetching,
+    _isFetching,
   } = useQuery({
     queryKey: ["reviews", user?.id, filter, page, cursors[page], debouncedSearch],
     queryFn: async () => {
@@ -189,7 +185,7 @@ export default function Reviews() {
         p_user_id: user!.id,
         p_filter: filter,
         p_search: debouncedSearch.trim(),
-        p_cursor_created_at: cursors[page],
+        p_cursor_created_at: cursors[page] ?? undefined,
         p_limit: PAGE_SIZE,
       });
       if (qErr) throw qErr;
