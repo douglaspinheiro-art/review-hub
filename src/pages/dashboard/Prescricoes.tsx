@@ -46,7 +46,7 @@ function readPrescricoesOnboardingDismissed(): boolean {
 type ChannelFilter = "all" | "whatsapp" | "email" | "sms";
 
 export default function Prescricoes() {
-  const isDemo = false; // always real data
+  
   const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(true);
   useEffect(() => {
     setOnboardingBannerDismissed(readPrescricoesOnboardingDismissed());
@@ -65,7 +65,7 @@ export default function Prescricoes() {
   const loja = useLoja();
   const storeId = loja.data?.id as string | undefined;
 
-  const { data: rxQuery, isLoading, isError, error, refetch } = usePrescriptionsV3(isDemo ? undefined : storeId);
+  const { data: rxQuery, isLoading, isError, error, refetch } = usePrescriptionsV3(storeId);
   const rxRows = rxQuery?.rows ?? [];
   const rxStats = rxQuery?.stats;
 
@@ -309,7 +309,7 @@ export default function Prescricoes() {
           </div>
         )}
 
-        {!isDemo && !storeId && !isLoading && (
+        {!storeId && !isLoading && (
           <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             Configure sua loja para ver prescrições geradas pelo diagnóstico.
             <Button variant="link" className="block mx-auto mt-2" onClick={() => navigate("/dashboard/funil")}>
@@ -318,7 +318,7 @@ export default function Prescricoes() {
           </div>
         )}
 
-        {isError && !isDemo && (
+        {isError && (
           <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center space-y-3">
             <p className="text-sm font-medium text-destructive">{error instanceof Error ? error.message : "Erro ao carregar prescrições"}</p>
             <p className="text-xs text-muted-foreground max-w-lg mx-auto leading-relaxed">
@@ -336,19 +336,19 @@ export default function Prescricoes() {
               <TabsTrigger value="aguardando" className="rounded-lg px-6 font-bold text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm">
                 Aguardando{" "}
                 <Badge variant="secondary" className="ml-2 bg-primary/10 text-primary border-0">
-                  {isLoading && !isDemo ? "…" : aguardando.length}
+                  {isLoading ? "…" : aguardando.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="execucao" className="rounded-lg px-6 font-bold text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm">
                 Em execução{" "}
                 <Badge variant="secondary" className="ml-2 bg-muted text-muted-foreground border-0">
-                  {isLoading && !isDemo ? "…" : execucao.length}
+                  {isLoading ? "…" : execucao.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="concluidas" className="rounded-lg px-6 font-bold text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm">
                 Concluídas{" "}
                 <Badge variant="secondary" className="ml-2 bg-muted text-muted-foreground border-0">
-                  {isLoading && !isDemo ? "…" : concluidas.length}
+                  {isLoading ? "…" : concluidas.length}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -376,7 +376,7 @@ export default function Prescricoes() {
           </div>
 
           <TabsContent value="aguardando" className="mt-0">
-            {isLoading && !isDemo ? (
+            {isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1, 2, 3].map((i) => (
                   <Skeleton key={i} className="h-80 rounded-2xl" />
@@ -427,22 +427,6 @@ export default function Prescricoes() {
                     </div>
                   );
                 })}
-                {isDemo && (
-                  <div className="bg-card/50 border border-dashed border-border/60 rounded-2xl p-6 flex flex-col items-center justify-center text-center relative group overflow-hidden">
-                    <div className="absolute inset-0 bg-background/40 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6">
-                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                        <Zap className="w-6 h-6 text-muted-foreground" />
-                      </div>
-                      <h4 className="font-bold text-sm mb-1 uppercase tracking-tighter">Demonstração</h4>
-                      <p className="text-xs text-muted-foreground mb-4">No app autenticado, os cartões vêm do banco.</p>
-                    </div>
-                    <div className="w-full space-y-4 opacity-20 grayscale">
-                      <div className="h-4 bg-muted rounded w-1/2" />
-                      <div className="h-20 bg-muted rounded" />
-                      <div className="h-8 bg-muted rounded" />
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </TabsContent>

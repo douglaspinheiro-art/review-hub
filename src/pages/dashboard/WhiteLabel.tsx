@@ -307,13 +307,8 @@ function AgencyPanel({ domain, brandName }: { domain: string; brandName: string 
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Mock client list — virá de Supabase via agency_clients table
-  const clientes = [
-    { nome: "Studio Moda SP", plano: "Crescimento", mrr: 297, status: "ativo", desde: "Jan 2026" },
-    { nome: "NutriShop Online", plano: "Escala", mrr: 697, status: "ativo", desde: "Fev 2026" },
-    { nome: "Casa & Arte", plano: "Crescimento", mrr: 297, status: "trial", desde: "Mar 2026" },
-    { nome: "Beleza Pura", plano: "Crescimento", mrr: 297, status: "ativo", desde: "Mar 2026" },
-  ];
+  // Agency clients — empty state until agency_clients table is populated
+  const clientes: { nome: string; plano: string; mrr: number; status: string; desde: string }[] = [];
 
   const mrrTotal = clientes.filter(c => c.status === "ativo").reduce((s, c) => s + c.mrr, 0);
   const ativos = clientes.filter(c => c.status === "ativo").length;

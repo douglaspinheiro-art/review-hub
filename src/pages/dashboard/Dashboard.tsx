@@ -106,7 +106,6 @@ export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const isDemo = searchParams.get("demo") === "true";
   const isNewSetup = searchParams.get("setup") === "complete" || searchParams.get("setup") === "novo";
   const isFirstWeek = searchParams.get("firstweek") === "true";
   const { user, profile } = useAuth();
@@ -158,10 +157,6 @@ export default function Dashboard() {
       : (PLANS[planKey]?.cogsFixed ?? PLANS.starter.cogsFixed);
 
   const handleSync = async () => {
-    if (isDemo) {
-      toast.info("Modo demonstração ativo.");
-      return;
-    }
     if (!storeIdDash) {
       toast.error("Associe uma loja para sincronizar os canais.");
       return;

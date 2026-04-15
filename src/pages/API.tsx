@@ -35,7 +35,7 @@ const integrations = [
   { name: "HubSpot", category: "CRM" },
   { name: "Salesforce", category: "CRM" },
   { name: "RD Station", category: "Marketing" },
-  { name: "Stripe", category: "Pagamentos" },
+  { name: "Mercado Pago", category: "Pagamentos" },
   { name: "PagSeguro", category: "Pagamentos" },
   { name: "Bling", category: "ERP" },
   { name: "SAP", category: "ERP" },

@@ -117,12 +117,11 @@ const WEBHOOK_LOGS_PAGE_SIZE = 50;
 
 export default function Canais() {
   const { user } = useAuth();
-  const isDemo = false; // kept for conditional UI; always false in production
   const queryClient = useQueryClient();
   const [webhookLogsPage, setWebhookLogsPage] = useState(1);
 
-  const canaisQuery = useCanaisPageData(!isDemo);
-  const logsQuery = useWebhookLogs(!isDemo, { page: webhookLogsPage, pageSize: WEBHOOK_LOGS_PAGE_SIZE });
+  const canaisQuery = useCanaisPageData(true);
+  const logsQuery = useWebhookLogs(true, { page: webhookLogsPage, pageSize: WEBHOOK_LOGS_PAGE_SIZE });
   const webhookLogs = logsQuery.data?.logs ?? [];
   const webhookLogsTotal = logsQuery.data?.totalCount ?? 0;
   const webhookLogsTotalPages = Math.max(1, Math.ceil(webhookLogsTotal / WEBHOOK_LOGS_PAGE_SIZE));
@@ -230,18 +229,16 @@ export default function Canais() {
           </div>
           <p className="text-muted-foreground text-sm mt-1">
             Gerencie as fontes de dados e integrações da sua loja.
-            {!isDemo && (
-              <span className="block text-[10px] uppercase tracking-widest text-muted-foreground/80 mt-1">
-                Pedidos e receita nos cards: últimos 90 dias
-              </span>
-            )}
+            <span className="block text-[10px] uppercase tracking-widest text-muted-foreground/80 mt-1">
+              Pedidos e receita nos cards: últimos 90 dias
+            </span>
           </p>
         </div>
         <Button
           variant="outline"
           className="font-bold gap-2 rounded-xl"
           onClick={() => void onSyncAll()}
-          disabled={isDemo || canaisQuery.isFetching || logsQuery.isFetching}
+          disabled={canaisQuery.isFetching || logsQuery.isFetching}
         >
           {(canaisQuery.isFetching || logsQuery.isFetching) && !canaisQuery.isLoading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -254,7 +251,7 @@ export default function Canais() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {renderChannelCards()}
-        {!isDemo && (
+        {(
           <div className="border-2 border-dashed border-border/60 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
             <Link to="/dashboard/integracoes" className="flex flex-col items-center space-y-4 w-full group">
               <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
@@ -269,7 +266,7 @@ export default function Canais() {
         )}
       </div>
 
-      {!isDemo && user && (
+      {user && (
         <div className="pt-12 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-4">
             <div className="flex items-center gap-3">
@@ -433,11 +430,6 @@ export default function Canais() {
         </div>
       )}
 
-      {isDemo && (
-        <p className="text-center text-xs text-muted-foreground pb-4">
-          Logs de webhook estão disponíveis após criar conta e receber eventos reais.
-        </p>
-      )}
     </div>
   );
 }
