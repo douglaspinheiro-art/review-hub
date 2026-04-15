@@ -153,7 +153,10 @@ export function useUpdatePrescriptionStatus(storeId?: string) {
 export function usePrescriptionsPendingStats(storeId?: string) {
   const q = usePrescriptionsV3(storeId);
   const { pendingCount, pendingValue } = useMemo(() => {
-    const list = (q.data ?? []) as { status?: string | null; estimated_potential?: number | null }[];
+    const raw = q.data;
+    // Handle both legacy array format and new { rows, stats } object format
+    const list: { status?: string | null; estimated_potential?: number | null }[] =
+      Array.isArray(raw) ? raw : Array.isArray((raw as PrescriptionsQueryResult)?.rows) ? (raw as PrescriptionsQueryResult).rows : [];
     const pending = list.filter((p) => (p.status ?? "") === "aguardando_aprovacao");
     const pendingValue = pending.reduce((a, p) => a + Number(p.estimated_potential ?? 0), 0);
     return { pendingCount: pending.length, pendingValue };
