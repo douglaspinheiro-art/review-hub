@@ -49,6 +49,7 @@ type ChannelFilter = "all" | "whatsapp" | "email" | "sms";
 
 export default function Prescricoes() {
   const isDemo = false;
+  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(true);
   useEffect(() => {
     setOnboardingBannerDismissed(readPrescricoesOnboardingDismissed());
   }, []);
