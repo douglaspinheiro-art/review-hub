@@ -354,8 +354,7 @@ export default function EmExecucao() {
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         {/* M8: Pause / resume button */}
-                        {!isDemo && (
-                          rx.status === "pausada" ? (
+                        {rx.status === "pausada" ? (
                             <Button
                               variant="outline"
                               size="sm"
@@ -378,7 +377,7 @@ export default function EmExecucao() {
                               <Pause className="w-3.5 h-3.5" /> Pausar
                             </Button>
                           )
-                        )}
+                        }
                         <Button
                           variant="outline"
                           size="sm"
