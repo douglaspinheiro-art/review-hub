@@ -951,7 +951,7 @@ export default function Newsletter() {
         </div>
       </div>
       </Suspense>
-      </ErrorBoundary>
+      </RouteErrorBoundary>
 
       {/* ── Template picker modal ── */}
       {showTemplateModal && (
