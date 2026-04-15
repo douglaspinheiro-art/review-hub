@@ -6,8 +6,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * Receives IPN/Webhook notifications from Mercado Pago.
  * verify_jwt = false — authentication via x-signature header.
  *
- * Secrets: MERCADOPAGO_ACCESS_TOKEN, MERCADOPAGO_WEBHOOK_SECRET (optional),
- *          MP_PLAN_TO_TIER (optional JSON)
+ * Secrets: MERCADOPAGO_ACCESS_TOKEN, MERCADOPAGO_WEBHOOK_SECRET,
+ *          MP_PLAN_TO_TIER (JSON mapping preapproval_plan_id → tier)
  */
 
 const corsHeaders = {
@@ -16,6 +16,19 @@ const corsHeaders = {
 };
 
 const VALID_PLANS = ["starter", "growth", "scale", "enterprise"];
+
+/* ---------- helpers ---------- */
+
+function loadPlanToTierMap(): Record<string, string> {
+  const raw = Deno.env.get("MP_PLAN_TO_TIER");
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.warn("[mp-webhook] MP_PLAN_TO_TIER is not valid JSON");
+    return {};
+  }
+}
 
 function planFromMetadata(meta: Record<string, unknown> | null | undefined): string | null {
   const raw = meta?.plan_tier ?? meta?.plan;
@@ -38,6 +51,61 @@ function planFromExternalRef(ref: string | null | undefined): { userId: string |
   }
 }
 
+/** Resolve tier from preapproval_plan_id via MP_PLAN_TO_TIER secret */
+function planFromPlanId(planId: string | null | undefined, map: Record<string, string>): string | null {
+  if (!planId) return null;
+  const tier = map[planId];
+  return tier && VALID_PLANS.includes(tier) ? tier : null;
+}
+
+/** Verify MP webhook signature (HMAC-SHA256) */
+async function verifySignature(req: Request, body: string): Promise<boolean> {
+  const secret = Deno.env.get("MERCADOPAGO_WEBHOOK_SECRET");
+  if (!secret) return true; // skip if not configured
+
+  const xSignature = req.headers.get("x-signature");
+  const xRequestId = req.headers.get("x-request-id");
+  if (!xSignature || !xRequestId) return false;
+
+  // Parse x-signature: "ts=...,v1=..."
+  const parts: Record<string, string> = {};
+  for (const part of xSignature.split(",")) {
+    const [k, v] = part.split("=", 2);
+    if (k && v) parts[k.trim()] = v.trim();
+  }
+
+  const ts = parts["ts"];
+  const v1 = parts["v1"];
+  if (!ts || !v1) return false;
+
+  // Extract data.id from body
+  let dataId = "";
+  try {
+    const parsed = JSON.parse(body);
+    dataId = String(parsed?.data?.id ?? "");
+  } catch {
+    return false;
+  }
+
+  // Build manifest: id:[data.id];request-id:[x-request-id];ts:[ts];
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(manifest));
+  const computed = Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  return computed === v1;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -49,13 +117,27 @@ serve(async (req) => {
     });
   }
 
+  const bodyText = await req.text();
+
+  // Verify webhook signature
+  const sigValid = await verifySignature(req, bodyText);
+  if (!sigValid) {
+    console.warn("[mp-webhook] invalid signature");
+    return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  const planMap = loadPlanToTierMap();
+
   try {
-    const body = await req.json();
+    const body = JSON.parse(bodyText);
     const eventType = body.type ?? body.topic;
     const dataId = body.data?.id ?? body.id;
 
@@ -86,7 +168,6 @@ serve(async (req) => {
 
     // Handle payment notifications
     if (eventType === "payment") {
-      // Fetch payment details from MP API
       const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
         headers: { Authorization: `Bearer ${mpToken}` },
       });
@@ -105,7 +186,6 @@ serve(async (req) => {
       const metaPlan = planFromMetadata(payment.metadata);
       const plan = metaPlan ?? extRef.plan;
       const userId = extRef.userId ?? payment.metadata?.user_id;
-      const payerEmail = payment.payer?.email;
       const mpCustomerId = payment.payer?.id ? String(payment.payer.id) : null;
 
       if (!userId) {
@@ -127,7 +207,6 @@ serve(async (req) => {
         patch.mp_subscription_id = null;
         console.log(`[mp-webhook] payment ${status} for user ${userId}, downgrade to starter`);
       } else {
-        // pending, in_process, etc. — log but don't change plan
         console.log(`[mp-webhook] payment status ${status} for user ${userId}, no action`);
         return new Response(JSON.stringify({ received: true, status }), {
           status: 200,
@@ -151,17 +230,25 @@ serve(async (req) => {
         const sub = await subRes.json();
         const status = String(sub.status ?? "").toLowerCase();
         const extRef = planFromExternalRef(sub.external_reference);
-        const userId = extRef.userId ?? sub.metadata?.user_id;
+        const userId = extRef.userId ?? sub.metadata?.user_id ?? sub.payer_id;
+
+        // Resolve plan: external_reference > preapproval_plan_id map > metadata
+        const resolvedPlan =
+          extRef.plan ??
+          planFromPlanId(sub.preapproval_plan_id, planMap) ??
+          planFromMetadata(sub.metadata);
 
         if (userId) {
           const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
           if (status === "authorized" || status === "active") {
             patch.mp_subscription_id = sub.id;
-            if (extRef.plan) patch.plan = extRef.plan;
+            if (resolvedPlan) patch.plan = resolvedPlan;
+            console.log(`[mp-webhook] subscription ${status} for user ${userId}, plan: ${resolvedPlan}`);
           } else if (status === "cancelled" || status === "paused") {
             patch.mp_subscription_id = null;
             if (status === "cancelled") patch.plan = "starter";
+            console.log(`[mp-webhook] subscription ${status} for user ${userId}`);
           }
 
           const { error } = await admin.from("profiles").update(patch).eq("id", userId);
