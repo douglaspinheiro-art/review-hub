@@ -4,11 +4,13 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2, Globe, ShoppingBag, Smartphone,
   ArrowRight, Loader2, Shield,
-  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle, Facebook
+  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle, Facebook,
+  ChevronDown, ExternalLink, HelpCircle, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
 import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -42,6 +44,7 @@ export default function Onboarding() {
   const [waConnecting, setWaConnecting] = useState(false);
   const [waConnected, setWaConnected] = useState<{ phone?: string } | null>(null);
   const [userStoreId, setUserStoreId] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   const showCommunity = sessionStorage.getItem("ltv_show_community") === "1";
   const companyName = sessionStorage.getItem("ltv_company") || "";
 
@@ -431,7 +434,115 @@ export default function Onboarding() {
                     >
                       {waConnected ? "Continuar →" : "Configurar manualmente depois"}
                     </Button>
-                  </div>
+                   </div>
+
+                  {/* Guia: Como verificar o Business Manager */}
+                  {!waConnected && (
+                    <Collapsible open={showGuide} onOpenChange={setShowGuide} className="mt-4">
+                      <CollapsibleTrigger asChild>
+                        <button className="flex items-center gap-2 text-xs text-muted-foreground hover:text-white transition-colors w-full group">
+                          <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
+                          <span className="font-bold">Preciso de ajuda para conectar</span>
+                          <ChevronDown className={cn("w-3.5 h-3.5 ml-auto transition-transform", showGuide && "rotate-180")} />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-4">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                            <p className="text-xs text-blue-300/90 leading-relaxed">
+                              Você <strong>não precisa criar um app no Meta Developers</strong>. O LTV Boost já faz tudo automaticamente.
+                              Basta ter um <strong>Business Manager verificado</strong> no Facebook.
+                            </p>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Passo a passo</p>
+
+                            <div className="space-y-2">
+                              {[
+                                {
+                                  num: "1",
+                                  title: "Crie ou acesse seu Business Manager",
+                                  desc: "Se ainda não tem, crie gratuitamente.",
+                                  link: "https://business.facebook.com/overview",
+                                  linkLabel: "Abrir Business Manager",
+                                },
+                                {
+                                  num: "2",
+                                  title: "Verifique sua empresa",
+                                  desc: "Em Configurações → Central de Segurança → Verificação. Você vai precisar de CNPJ ou documento da empresa.",
+                                  link: "https://business.facebook.com/settings/security",
+                                  linkLabel: "Ir para Verificação",
+                                },
+                                {
+                                  num: "3",
+                                  title: "Adicione um número de WhatsApp",
+                                  desc: "Use um número que não esteja no WhatsApp pessoal. Pode ser fixo ou celular.",
+                                },
+                                {
+                                  num: "4",
+                                  title: "Clique em \"Conectar com Facebook\" acima",
+                                  desc: "O LTV Boost cuida do resto: tokens, webhook, número — tudo automático.",
+                                },
+                              ].map((item) => (
+                                <div key={item.num} className="flex gap-3 items-start">
+                                  <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 text-[10px] font-black mt-0.5">
+                                    {item.num}
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-bold text-white/90">{item.title}</p>
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">{item.desc}</p>
+                                    {item.link && (
+                                      <a
+                                        href={item.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
+                                      >
+                                        {item.linkLabel} <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* FAQ rápido */}
+                          <div className="border-t border-blue-500/10 pt-3 space-y-2">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Dúvidas frequentes</p>
+                            {[
+                              {
+                                q: "Preciso de conta de desenvolvedor no Meta?",
+                                a: "Não. O LTV Boost usa seu próprio app. Você só autoriza o acesso.",
+                              },
+                              {
+                                q: "Quanto tempo leva a verificação do Business Manager?",
+                                a: "Geralmente 1 a 3 dias úteis. Enquanto isso, você pode explorar o dashboard com dados demo.",
+                              },
+                              {
+                                q: "Posso usar meu número pessoal do WhatsApp?",
+                                a: "Não é recomendado. Use um número dedicado para a loja. Pode ser fixo ou celular.",
+                              },
+                            ].map((faq) => (
+                              <div key={faq.q} className="bg-white/[0.02] rounded-lg p-2.5">
+                                <p className="text-[11px] font-bold text-white/80">{faq.q}</p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">{faq.a}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                            <p className="text-[10px] text-amber-300/80 leading-relaxed">
+                              Se o popup fechar sem concluir, verifique se pop-ups estão permitidos no seu navegador e se você está logado no Facebook correto.
+                            </p>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </div>
 
                 <div className="relative">
