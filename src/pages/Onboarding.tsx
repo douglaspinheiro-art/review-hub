@@ -34,12 +34,14 @@ export default function Onboarding() {
 
   const [channels, setChannels] = useState<string[]>([]);
   const [_isSyncing, setIsSyncing] = useState<string | null>(null);
-  const [step, setStep] = useState(1); // 1: Channels, 2: WhatsApp, 3: Primeira Prescrição
+  const [step, setStep] = useState(1);
   const [objective, setObjective] = useState<PrimaryObjective | null>(null);
   const [vertical, setVertical] = useState<EcommerceVertical | null>(null);
   const [pulseNum, setPulseNum] = useState("");
   const [isLaunching, setIsLaunching] = useState(false);
-  const showCommunity = sessionStorage.getItem("ltv_show_community") === "1";
+  const [waConnecting, setWaConnecting] = useState(false);
+  const [waConnected, setWaConnected] = useState<{ phone?: string } | null>(null);
+  const [userStoreId, setUserStoreId] = useState<string | null>(null);
   const companyName = sessionStorage.getItem("ltv_company") || "";
 
   const ownStores = [
