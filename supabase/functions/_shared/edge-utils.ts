@@ -189,11 +189,11 @@ export async function verifyJwt(req: Request): Promise<AuthResult> {
   const client = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
-  const { data: { user }, error } = await client.auth.getUser(token);
-  if (error || !user) {
+  const { data, error } = await client.auth.getClaims(token);
+  if (error || !data?.claims?.sub) {
     return { ok: false, response: errorResponse("Unauthorized", 401) };
   }
-  return { ok: true, userId: user.id };
+  return { ok: true, userId: data.claims.sub as string };
 }
 
 /** Log estruturado para alertas de cron / jobs internos (filtrar no agregador por `tag`). */
