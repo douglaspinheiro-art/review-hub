@@ -607,7 +607,7 @@ export function useContacts(options: UseContactsOptions = {}) {
         const { data, error } = await supabase.rpc("get_contacts_bundle_v2", {
           p_store_id: storeId,
           p_search: search,
-          p_rfm_segment: rfmSegment,
+          p_rfm_segment: (rfmSegment ?? undefined) as string | undefined,
           p_cursor_created_at: cursor ?? undefined,
           p_limit: pageSize ?? undefined,
         });
@@ -1116,10 +1116,12 @@ export function useConversionBaseline(days = 30) {
         storeCampaignIds,
       );
 
-      const sent = sends.filter((s) => String(s.status ?? "").startsWith("sent")).length;
-      const replied = sends.filter((s) => String(s.status ?? "") === "replied").length;
-      const delivered = sends.filter((s) => String(s.status ?? "") === "delivered").length;
-      const read = sends.filter((s) => String(s.status ?? "") === "read").length;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const typedSends = sends as any[];
+      const sent = typedSends.filter((s) => String(s.status ?? "").startsWith("sent")).length;
+      const replied = typedSends.filter((s) => String(s.status ?? "") === "replied").length;
+      const delivered = typedSends.filter((s) => String(s.status ?? "") === "delivered").length;
+      const read = typedSends.filter((s) => String(s.status ?? "") === "read").length;
 
       const replyRate = sent > 0 ? (replied / sent) * 100 : 0;
       const deliveryRate = sent > 0 ? (delivered / sent) * 100 : 0;
@@ -1130,8 +1132,10 @@ export function useConversionBaseline(days = 30) {
       const conversionRate = sent > 0 ? (conversions / sent) * 100 : 0;
       const revenuePerMessage = sent > 0 ? revenue / sent : 0;
 
-      const prevSent = sendsPrev.filter((s) => String(s.status ?? "").startsWith("sent")).length;
-      const prevReply = sendsPrev.filter((s) => String(s.status ?? "") === "replied").length;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const typedSendsPrev = sendsPrev as any[];
+      const prevSent = typedSendsPrev.filter((s) => String(s.status ?? "").startsWith("sent")).length;
+      const prevReply = typedSendsPrev.filter((s) => String(s.status ?? "") === "replied").length;
       const prevReplyRate = prevSent > 0 ? (prevReply / prevSent) * 100 : 0;
       const replyRateDelta = prevReplyRate > 0 ? ((replyRate - prevReplyRate) / prevReplyRate) * 100 : 0;
 
@@ -1346,7 +1350,7 @@ export function useRfmReportCounts() {
 
       // Fallback or legacy (for users without store_id or if v2 fails)
       const { data: rpcData, error: rpcErr } = await supabase.rpc("get_rfm_report_counts", {
-        p_store_id: storeId,
+        p_store_id: storeId as string,
         p_owner_user_id: effectiveUserId,
       });
 
