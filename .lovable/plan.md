@@ -1,190 +1,132 @@
 
 
-# Plano: Plataforma 100% Funcional para E-commerces Reais
+# Plano: Plataforma 100% Funcional para Usuários Reais
 
-## Mudança Principal vs. Plano Anterior
-Stripe substituído por **Mercado Pago Checkout Transparente** (Cartão, PIX, Boleto, Carteira ML).
+## Estado Atual
 
----
-
-## Fase 1 — Limpeza de Código Morto (2-3 dias)
-
-### 1.1 Eliminar `mock-data.ts` e todas as referências
-- Deletar `src/lib/mock-data.ts`
-- Limpar imports em: `Canais.tsx`, `EmExecucao.tsx`, `Prescricoes.tsx`, `prescription-map.ts`
-- Remover `isDemo = false` residual em `Prescricoes.tsx` e `EmExecucao.tsx` — usar apenas dados reais do Supabase
-- Substituir fallback por empty states com CTA ("Configure sua loja para ver dados reais")
-
-### 1.2 Limpar `MOCK_METRICAS` / `MOCK_CONFIG` do ConvertIQ
-- Em `useConvertIQ.ts`: remover constantes mock, usar empty state real
-- Páginas `ConvertIQ.tsx`, `ConvertIQSetup.tsx`, `ConvertIQDiagnostico.tsx`: sem dados fictícios
-
-### 1.3 Resolver `@ts-nocheck` nos arquivos críticos
-- Priorizar: `Onboarding.tsx`, `useDashboard.ts`, `useConvertIQ.ts`
-- Regenerar types do Supabase para alinhar com schema real
+Auditoria completa revela que a plataforma está em **~80% de prontidão**. Mercado Pago e mock-data.ts foram resolvidos na sessão anterior. Os bloqueios restantes são concretos e finitos.
 
 ---
 
-## Fase 2 — Fluxo de Signup → Valor Real (3-4 dias)
+## Bloco 1 — Remover lógica demo residual (3 arquivos)
 
-### 2.1 Onboarding end-to-end
-- Passo 2 (integração obrigatória) → `validate-integration` → `post-integration-setup` (webhooks automáticos)
-- Após validação: `fetch-store-metrics` popula dados reais (pedidos, faturamento, contatos)
+**Problema:** `isDemo` ainda existe em `Dashboard.tsx`, `Canais.tsx` e `Prescricoes.tsx` como variáveis que geram branches mortos.
 
-### 2.2 Diagnóstico com dados reais
-- `Analisando.tsx`: alimentar `gerar-diagnostico` com dados da integração (não mock)
-- Garantir Edge Function `gerar-diagnostico` deployada com `ANTHROPIC_API_KEY`
-- `Resultado.tsx`: exibir diagnóstico real do banco
-
-### 2.3 Setup (WhatsApp) simplificado
-- Pós-diagnóstico, skippable
-- Meta Embedded Signup como caminho principal
-
-### 2.4 Dashboard first-load
-- Com integração ativa: KPIs reais
-- Sem dados: `ActivationChecklist` com CTAs claros
-
----
-
-## Fase 3 — Billing com Mercado Pago (3-4 dias)
-
-**Substituir TODO o fluxo Stripe por Mercado Pago Checkout Transparente.**
-
-### 3.1 Criar Edge Function `mercadopago-create-preference`
-- Recebe: `plan_key`, `billing_cycle` (mensal/anual), `user_id`
-- Cria preferência de pagamento via API do Mercado Pago (`/v1/preferences` ou `/v1/payments` para checkout transparente)
-- Métodos habilitados: **Cartão de crédito, PIX, Boleto bancário, Saldo Mercado Pago**
-- Retorna `init_point` ou dados para renderizar checkout transparente no frontend
-- Secrets necessários: `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`
-
-### 3.2 Criar Edge Function `mercadopago-webhook`
-- Recebe notificações IPN/Webhook do Mercado Pago (`verify_jwt = false`)
-- Valida assinatura via `x-signature` header + `MERCADOPAGO_WEBHOOK_SECRET`
-- Eventos tratados:
-  - `payment.approved` → atualiza `profiles.plan`, `profiles.mp_customer_id`, `profiles.mp_subscription_id`
-  - `payment.cancelled` / `payment.refunded` → downgrade para `starter`
-  - Idempotência via tabela `mp_webhook_events` (similar ao `stripe_webhook_events`)
-- Persiste em `mp_webhook_events` para auditoria
-
-### 3.3 Criar Edge Function `mercadopago-subscription` (recorrência)
-- Usa API de Assinaturas do MP (`/preapproval`) para planos recorrentes
-- Permite criar, pausar e cancelar assinaturas
-- Mapeia `preapproval_plan_id` → `plan_tier` via secret `MP_PLAN_TO_TIER`
-
-### 3.4 Migration: adaptar tabelas
-- Adicionar colunas em `profiles`: `mp_customer_id`, `mp_subscription_id` (substituindo `stripe_customer_id`, `stripe_subscription_id`)
-- Criar tabela `mp_webhook_events` (id, type, payload, created_at)
-- Manter colunas Stripe por ora (não deletar, apenas parar de usar)
-
-### 3.5 Refatorar `Billing.tsx`
-- Remover `openStripePortal` e toda referência a Stripe
-- Novo fluxo: botão "Assinar" → checkout transparente inline (SDK MercadoPago.js)
-- Renderizar formulário de cartão, botão PIX (com QR code), botão Boleto — tudo na mesma página
-- Status do pagamento: polling via `supabase.from("profiles").select("plan")` ou realtime
-- Seção "Gerenciar assinatura": cancelar/pausar via Edge Function
-
-### 3.6 Refatorar `Planos.tsx` e landing `Pricing.tsx`
-- CTA "Assinar" → abre checkout transparente (não redireciona para Stripe)
-- Badge de método: "Cartão, PIX, Boleto ou Saldo ML"
-
-### 3.7 Atualizar `pricing-constants.ts`
-- Trocar `GW_FEE` de 2.5% (Stripe) para taxas do MP:
-  - Cartão: 4.99% (ou taxa negociada)
-  - PIX: 0.99%
-  - Boleto: R$ 3,49/boleto
-- Remover referências a Stripe no cálculo de margem
-
-### 3.8 Deletar/desativar código Stripe
-- Deletar: `supabase/functions/stripe-billing-portal/index.ts`
-- Deletar: `supabase/functions/stripe-webhook/index.ts`
-- Deletar: `src/lib/billing/stripe-price-to-plan.ts` + `.test.ts`
-- Remover secrets Stripe do `validate-required-env.mjs`
-- Adicionar secrets MP: `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, `MERCADOPAGO_WEBHOOK_SECRET`, `MP_PLAN_TO_TIER`
-
-### 3.9 Trial enforcement
-- `profiles.trial_ends_at` + `isTrialActive` / `isPaid` no AuthContext continuam funcionando
-- `TrialGate` expandido para todas as features pagas
-
----
-
-## Fase 4 — Features Core Funcionais (4-5 dias)
-
-### 4.1 Campanhas WhatsApp
-- `dispatch-campaign` envia mensagens reais via Meta Cloud API
-- Testar: criar campanha → selecionar segmento → enviar → métricas de entrega
-
-### 4.2 Inbox
-- `meta-whatsapp-webhook` recebe mensagens inbound
-- Testar: mensagem recebida → Inbox → responder → enviada
-
-### 4.3 Automações (Carrinho Abandonado)
-- `webhook-cart` recebe eventos das plataformas integradas
-- `flow-engine` processa: 1h WhatsApp → 4h Email → 24h SMS
-- Testar end-to-end com loja real
-
-### 4.4 Contatos / RFM
-- `calculate-rfm` roda após sync de pedidos
-- Página RFM exibe segmentos reais de `customers_v3`
-
-### 4.5 Analytics
-- `analytics_daily` populada via `webhook-orders` + cron
-- Gráficos de receita, mensagens, contatos — tudo do banco
-
----
-
-## Fase 5 — Segurança e Estabilidade (2 dias)
-
-### 5.1 RLS audit
-- Verificar isolamento multi-tenant (User A ≠ User B)
-- Rodar linter do Supabase
-
-### 5.2 Secrets audit
-- Todos os secrets de `validate-required-env.mjs` configurados (agora com MP no lugar de Stripe)
-
-### 5.3 Rate limiting
-- Edge Functions críticas: `dispatch-campaign`, `ai-agent`, `send-email`, `mercadopago-webhook`
-
----
-
-## Fase 6 — Testes e Observabilidade (2 dias)
-
-### 6.1 Smoke test do fluxo principal
-- Signup → Onboarding → Integração → Diagnóstico → Dashboard → Assinar (MP) → Criar Campanha → Enviar
-
-### 6.2 Monitoring
-- Sentry (`error-monitoring.ts`) configurado
-- Alertas para falhas em Edge Functions
-
----
-
-## Resumo de Prioridades
-
-| Prioridade | Item | Impacto |
-|---|---|---|
-| **P0** | Remover mock data | Credibilidade |
-| **P0** | Onboarding → integração → dados reais | Sem isso, nada funciona |
-| **P0** | Billing Mercado Pago (checkout transparente) | Receita |
-| **P1** | Campanhas WhatsApp e2e | Core value prop |
-| **P1** | Webhook cart + automações | Receita automatizada |
-| **P1** | RLS audit | Segurança multi-tenant |
-| **P2** | @ts-nocheck cleanup | Estabilidade |
-| **P2** | Inbox funcional | Feature complementar |
-| **P2** | Analytics com dados reais | Retenção |
-
-### Estimativa total: 16-20 dias
-
-### Ordem de execução:
-1. Fase 1 (limpeza) — base limpa
-2. Fase 2 (signup→valor) — primeiro cliente real entra
-3. Fase 3 (Mercado Pago) — pode cobrar
-4. Fase 4 (features core) — valor real entregue
-5. Fase 5 + 6 (segurança + testes) — escala
-
-### Secrets necessários (Mercado Pago)
-| Secret | Onde obter |
+| Arquivo | O que fazer |
 |---|---|
-| `MERCADOPAGO_ACCESS_TOKEN` | Mercado Pago Developers → Credenciais → Access Token (produção) |
-| `MERCADOPAGO_PUBLIC_KEY` | Mesma página → Public Key (vai no frontend para SDK JS) |
-| `MERCADOPAGO_WEBHOOK_SECRET` | Configuração de webhooks no painel MP |
-| `MP_PLAN_TO_TIER` | JSON mapeando IDs de plano MP → tier (ex: `{"plan_abc":"growth"}`) |
+| `Dashboard.tsx` (L109, L161) | Remover `const isDemo = searchParams.get("demo") === "true"` e o `if (isDemo)` no `handleSync`. O demo não deve existir em produção. |
+| `Canais.tsx` (L120) | Remover `const isDemo = false` e todos os `!isDemo` / `isDemo` condicionais — já são sempre false. |
+| `Prescricoes.tsx` (L49) | Idem — `const isDemo = false` é código morto. Limpar todas as referências. |
+
+**Também:** `WhiteLabel.tsx` (L310-316) tem mock inline de clientes de agência. Substituir por query real em `agency_clients` ou empty state.
+
+---
+
+## Bloco 2 — Resolver @ts-nocheck (25 arquivos)
+
+**Problema:** 25 arquivos usam `@ts-nocheck` com a justificativa "Supabase types.ts misaligned". Isso mascara bugs reais.
+
+**Solução:**
+1. Regenerar `src/integrations/supabase/types.ts` (automático pelo Lovable ao salvar migration)
+2. Remover `@ts-nocheck` de cada arquivo e corrigir erros de tipagem resultantes
+3. Priorizar os 10 mais críticos primeiro:
+   - `Onboarding.tsx`, `useDashboard.ts`, `Inbox.tsx`, `Dashboard.tsx` referências
+   - `Contatos.tsx`, `Campanhas` (CampaignModal), `CarrinhoAbandonado.tsx`
+   - `ConvertIQ.tsx`, `ConvertIQDiagnostico.tsx`, `Funil.tsx`
+4. Depois os restantes: `Resultado.tsx`, `Setup.tsx`, `Diagnostico.tsx`, `Newsletter.tsx`, `Forecast.tsx`, `AgenteIA.tsx`, `Integracoes.tsx`, `Relatorios.tsx`, `WhatsApp.tsx`, `RFM.tsx`, `Atribuicao.tsx`, `EmExecucao.tsx`, `ContactInfoSidebar.tsx`, `Inbox.test.tsx`, `Billing.tsx` (já sem @ts-nocheck mas referências Stripe no types.ts)
+
+---
+
+## Bloco 3 — Segurança do banco (migration SQL)
+
+**Problemas detectados pelo linter/scanner:**
+
+| Severidade | Problema | Quantidade |
+|---|---|---|
+| ERROR | Security Definer Views | 12 views |
+| WARN | Function search_path mutable | 23 functions |
+| ERROR | SMS credentials plaintext (`sms_connections`) | 1 tabela |
+| ERROR | Team members privilege escalation | 1 policy gap |
+| WARN | Leaked password protection disabled | Dashboard setting |
+
+**Migration a criar:**
+1. Converter 12 views para `SECURITY INVOKER`: `ALTER VIEW <name> SET (security_invoker = on);`
+2. Adicionar `SET search_path = public` nas 23 functions
+3. Restringir `sms_connections` policy de `public` para `authenticated`
+4. Adicionar write protection explícita em `membros_loja` (INSERT/UPDATE/DELETE owner-only)
+
+**Ação manual no Dashboard:** Habilitar "Leaked Password Protection" em Authentication > Settings.
+
+---
+
+## Bloco 4 — Secrets faltantes
+
+**Secrets configurados:** Meta WhatsApp (6), Resend, Inngest (2), Lovable API Key.
+
+**Secrets FALTANTES para produção:**
+
+| Secret | Necessário para | Prioridade |
+|---|---|---|
+| `MERCADOPAGO_ACCESS_TOKEN` | Billing / checkout | P0 |
+| `MERCADOPAGO_PUBLIC_KEY` | Frontend SDK | P0 |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Validar webhooks MP | P0 |
+| `MP_PLAN_TO_TIER` | Mapear planos MP → tiers | P0 |
+| `ANTHROPIC_API_KEY` | gerar-diagnostico, ai-agent | P0 |
+| `CRON_SECRET` | sync-funil-ga4, data-pipeline-cron | P1 |
+| `DISPATCH_CAMPAIGN_SECRET` | dispatch-campaign interno | P1 |
+| `PROCESS_SCHEDULED_MESSAGES_SECRET` | process-scheduled-messages | P1 |
+| `FLOW_ENGINE_SECRET` | flow-engine automations | P1 |
+| `WEBHOOK_CART_SECRET` | webhook-cart auth | P1 |
+| `INTEGRATION_GATEWAY_SECRET` | integration-gateway | P1 |
+
+**Ação:** Solicitar cada secret via tool `add_secret` com instrução de onde obter.
+
+---
+
+## Bloco 5 — Referências Stripe residuais
+
+Ainda existem menções a Stripe em:
+- `src/pages/API.tsx` (L38) — lista de integrações
+- `src/pages/Diagnostico.tsx` (L122) — comentário sobre faturação Stripe
+- `src/components/landing/Integrations.tsx` (L6) — lista de logos
+- `src/integrations/supabase/types.ts` — colunas `stripe_customer_id`, `stripe_subscription_id`, tabela `stripe_webhook_events`
+
+**Ação:** Remover referências no código. As colunas no banco ficam (não deletar por ora, já não são usadas).
+
+---
+
+## Bloco 6 — Deploy de Edge Functions pendentes
+
+As Edge Functions já existem no repo mas precisam estar deployadas. Verificar deploy de:
+- `mercadopago-create-preference` (novo)
+- `mercadopago-webhook` (novo)
+- `dispatch-campaign`, `flow-engine`, `webhook-cart`
+- `process-scheduled-messages`, `trigger-automations`
+- `gerar-diagnostico`, `ai-agent`, `ai-copy`
+
+Edge Functions deployam automaticamente no Lovable ao salvar — confirmar que todas as pastas existem em `supabase/functions/`.
+
+---
+
+## Bloco 7 — ConvertIQ mock badge
+
+`ConvertIQ.tsx` (L193-299) mostra badge "Dados demonstrativos" quando `source === "none"`. Isso é correto (empty state real, não mock). Apenas garantir que o texto diz "Configure GA4 para ver dados reais" em vez de "dados demonstrativos".
+
+---
+
+## Resumo de Execução
+
+| Bloco | Esforço | Impacto |
+|---|---|---|
+| 1. Remover isDemo | 30 min | Credibilidade |
+| 2. @ts-nocheck (25 files) | 3-4h | Estabilidade, bugs ocultos |
+| 3. Security migration | 1h | Multi-tenant safety |
+| 4. Secrets | 15 min (config) | Tudo funciona |
+| 5. Stripe residual | 15 min | Limpeza |
+| 6. Edge deploy | Automático | Funcionalidade |
+| 7. ConvertIQ copy | 5 min | UX |
+
+**Estimativa total: 5-6 horas de implementação.**
+
+Após esses 7 blocos + configuração dos secrets no Supabase Dashboard + habilitar leaked password protection, a plataforma estará pronta para receber o primeiro e-commerce real.
 
