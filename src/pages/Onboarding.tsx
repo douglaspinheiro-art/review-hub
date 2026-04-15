@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight, Loader2, Shield, Sparkles, Info,
   Store, BarChart3, Globe, TrendingUp, Plug, CheckCircle2, ExternalLink, AlertCircle
@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { VERTICALS, type EcommerceVertical } from "@/lib/strategy-profile";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { seedPilotStore } from "@/lib/pilot-seed-data";
 
 const TOTAL_STEPS = 4;
 
@@ -82,6 +83,7 @@ const UNSUPPORTED_PLATFORMS = ["Yampi", "Loja Integrada", "Outra", "Outro", ""];
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
 
   const [step, setStep] = useState(1);
@@ -306,7 +308,13 @@ export default function Onboarding() {
         });
       }
 
-      // 6. Store funnel data in sessionStorage for Analisando page
+      // 6. Seed demo data for pilot users (best-effort)
+      const isPilot = user?.user_metadata?.pilot === true || searchParams.get("ref") === "pilot";
+      if (isPilot && storeId) {
+        seedPilotStore(user.id, storeId).catch(() => {});
+      }
+
+      // 7. Store funnel data in sessionStorage for Analisando page
       const funnelPayload = {
         visitantes: funnelVisitors,
         produto_visto: funnelProdutoVisto,
