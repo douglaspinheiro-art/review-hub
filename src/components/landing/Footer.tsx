@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { MessageCircle } from "lucide-react";
 
 const links: Record<string, { label: string; href: string }[]> = {
