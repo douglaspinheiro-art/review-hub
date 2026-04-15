@@ -139,18 +139,18 @@ export default function Billing() {
   const revenueAtRisk = problemsQuery?.totalEstimatedImpact ?? 0;
   const totalRecovered = stats?.revenueLast30 ?? 0;
 
-  const openStripePortal = async () => {
+  const openMercadoPagoCheckout = async () => {
     setPortalLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke<{ url?: string }>("stripe-billing-portal", {
-        body: {},
+      const { data, error } = await supabase.functions.invoke<{ init_point?: string }>("mercadopago-create-preference", {
+        body: { plan_key: "growth", billing_cycle: "monthly" },
       });
       if (error) throw new Error(error.message);
-      const url = data?.url;
-      if (!url) throw new Error("URL do portal não retornada. Confirme STRIPE_SECRET_KEY e stripe_customer_id.");
+      const url = data?.init_point;
+      if (!url) throw new Error("URL de checkout não retornada. Verifique MERCADOPAGO_ACCESS_TOKEN.");
       window.location.href = url;
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível abrir o portal de faturação.");
+      toast.error(e instanceof Error ? e.message : "Não foi possível abrir o checkout.");
     } finally {
       setPortalLoading(false);
     }
@@ -453,12 +453,11 @@ export default function Billing() {
           <h2 className="font-semibold">Método de pagamento</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          Abra o portal seguro da Stripe para atualizar cartão, faturas e dados de faturação (requer{" "}
-          <code className="text-xs">stripe_customer_id</code> no perfil e a edge <code className="text-xs">stripe-billing-portal</code>).
+          Pague com Cartão de Crédito, PIX, Boleto ou Saldo Mercado Pago. Checkout seguro via Mercado Pago.
         </p>
-        <Button variant="outline" className="gap-2" onClick={() => void openStripePortal()} disabled={portalLoading}>
+        <Button variant="outline" className="gap-2" onClick={() => void openMercadoPagoCheckout()} disabled={portalLoading}>
           {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-          Abrir portal de faturação
+          Assinar / Gerenciar pagamento
         </Button>
       </div>
 
