@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcFunil, recoveryPctOfRevenue, MOCK_METRICAS, type MetricasFunil } from "./useConvertIQ";
+import { calcFunil, recoveryPctOfRevenue, EMPTY_FUNIL_METRICAS, type MetricasFunil } from "./useConvertIQ";
 
 describe("calcFunil", () => {
   it("calcula taxa de conversão e perda mensal", () => {

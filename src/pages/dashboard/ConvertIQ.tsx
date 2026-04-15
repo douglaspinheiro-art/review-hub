@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import {
   useLoja, useConvertIQConfig, useFunilPageMetricas, useLatestDiagnostico,
   useSaveMetricas, useGerarDiagnostico,
-  MOCK_METRICAS, MOCK_CONFIG, calcFunil, MetricasFunil,
+  EMPTY_FUNIL_METRICAS, DEFAULT_CONFIG, calcFunil, MetricasFunil,
 } from "@/hooks/useConvertIQ";
 import type { Database } from "@/lib/database.types";
 import { Input } from "@/components/ui/input";
@@ -201,11 +201,11 @@ export default function ConvertIQ() {
         receita:               funilPage.data.metricas.receita,
         fonte:                 funilPage.data.source === "ga4" ? "ga4" : "real",
       }
-    : MOCK_METRICAS;
+    : EMPTY_FUNIL_METRICAS;
 
-  const meta    = Number(config.data?.meta_conversao  ?? MOCK_CONFIG.meta_conversao);
+  const meta    = Number(config.data?.meta_conversao  ?? DEFAULT_CONFIG.meta_conversao);
   const storeRow = loja.data as (StoreRow & { ticket_medio?: number }) | undefined;
-  const ticket  = Number(storeRow?.ticket_medio ?? MOCK_CONFIG.ticket_medio);
+  const ticket  = Number(storeRow?.ticket_medio ?? DEFAULT_CONFIG.ticket_medio);
   const { taxaConversao, perdaMensal, etapas, maiorGargalo } = calcFunil(raw, meta, ticket);
 
   // Biggest drop index (0-based among steps 1-4)
