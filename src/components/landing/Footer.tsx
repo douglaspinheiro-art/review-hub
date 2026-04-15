@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { MessageCircle } from "lucide-react";
 
 const links: Record<string, { label: string; href: string }[]> = {
@@ -8,27 +9,27 @@ const links: Record<string, { label: string; href: string }[]> = {
     { label: "API", href: "/api" },
   ],
   Empresa: [
-    { label: "Sobre", href: "/sobre" },
-    { label: "Cases", href: "/#cases" },
-    { label: "Blog", href: "/blog" },
+    { label: "Sobre nós", href: "/sobre" },
     { label: "Carreiras", href: "/carreiras" },
-  ],
-  Suporte: [
-    { label: "Central de Ajuda", href: "/central-de-ajuda" },
-    { label: "Documentação", href: "/documentacao" },
-    { label: "Status", href: "/status" },
+    { label: "Blog", href: "/blog" },
     { label: "Contato", href: "/contato" },
   ],
+  Recursos: [
+    { label: "Central de Ajuda", href: "/ajuda" },
+    { label: "Documentação", href: "/documentacao" },
+    { label: "Status", href: "/status" },
+    { label: "Calculadora", href: "/calculadora" },
+  ],
   Legal: [
-    { label: "Privacidade", href: "/privacidade" },
     { label: "Termos de Uso", href: "/termos" },
+    { label: "Privacidade", href: "/privacidade" },
     { label: "LGPD", href: "/lgpd" },
   ],
 };
 
-export default function Footer() {
+const Footer = forwardRef<HTMLElement>(function Footer(_props, ref) {
   return (
-    <footer className="border-t border-border/50 py-16">
+    <footer ref={ref} className="border-t border-border/50 py-16">
       <div className="container mx-auto px-4">
         <div className="grid md:grid-cols-5 gap-10 mb-12">
           <div className="md:col-span-1 space-y-4">
@@ -71,4 +72,6 @@ export default function Footer() {
       </div>
     </footer>
   );
-}
+});
+
+export default Footer;
