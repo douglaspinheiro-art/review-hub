@@ -86,7 +86,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.get-cached-data]
-verify_jwt = true
+verify_jwt = false
 
 [functions.benchmark-setor]
 verify_jwt = true
