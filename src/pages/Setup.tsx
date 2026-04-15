@@ -1,4 +1,4 @@
-// @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
