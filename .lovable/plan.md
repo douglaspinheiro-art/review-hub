@@ -1,40 +1,47 @@
 
 
-# Automating WhatsApp Connection for Stores — Embedded Signup in Onboarding
+# Remoção Completa da Evolution API
 
-## Current State
-- The **Embedded Signup** button ("Conectar com Facebook") already works on the `/dashboard/whatsapp` page
-- The **Onboarding** flow (Step 2) still shows a QR code placeholder and says "configure later in Dashboard"
-- New stores must navigate to the WhatsApp page after onboarding to connect — friction that hurts activation
+## Contexto
+A Evolution API era o provedor legado de WhatsApp (QR Code). Agora todo envio usa Meta Cloud API. Os campos e referências à Evolution ainda existem no código e precisam ser limpos.
 
-## What Changes
+## Alterações
 
-### 1. Integrate Embedded Signup into Onboarding Step 2
-Replace the QR code placeholder in `src/pages/Onboarding.tsx` (Step 2) with a "Conectar com Facebook" button that triggers the same `launchEmbeddedSignup()` flow. After a successful OAuth, the step shows a green checkmark with the connected phone number and auto-advances to Step 3.
+### 1. Código TypeScript (arquivos do app)
 
-### 2. Handle store_id timing
-During onboarding, the store may have just been created. The component needs to fetch the user's store ID (from `stores` table) before launching the signup. If no store exists yet, show a message prompting the user to complete Step 1 first.
+| Arquivo | Mudança |
+|---------|---------|
+| `src/lib/meta-whatsapp-client.ts` | Remover `evolution_api_url` e `evolution_api_key` do tipo `ConnRow` |
+| `src/pages/dashboard/WhatsApp.tsx` | Remover as linhas `evolution_api_url: null` e `evolution_api_key: null` dos objetos de criação/atualização |
+| `src/lib/whatsapp/__tests__/connection-ui.test.ts` | Remover testes com `provider: "evolution"` e atualizar descrições |
+| `src/hooks/useWhatsAppSender.ts` | Nenhuma mudança necessaria (já não referencia Evolution) |
 
-### 3. Success state in onboarding
-After successful connection:
-- Show connected phone number with green badge
-- "Configurar depois" becomes "Continuar →" 
-- Auto-advance to Step 3 after 2 seconds
+### 2. Edge Functions
 
-### 4. Keep manual fallback
-Add a small "Configurar manualmente depois" link below the button for users who prefer to set up later.
+| Arquivo | Mudança |
+|---------|---------|
+| `supabase/functions/meta-wa-oauth/index.ts` | Remover `evolution_api_url: null` e `evolution_api_key: null` do upsert |
+| `supabase/functions/_shared/whatsapp-inbound-persist.ts` | Atualizar comentário "Evolution ou Meta" para apenas "Meta" |
 
-## Files to Modify
+### 3. Documentação
 
-| File | Change |
-|------|--------|
-| `src/pages/Onboarding.tsx` | Replace Step 2 QR placeholder with Embedded Signup button + success state |
+| Arquivo | Mudança |
+|---------|---------|
+| `README.md` | Trocar "WhatsApp: Evolution API" por "WhatsApp: Meta Cloud API" |
+| `GEMINI.md` | Trocar "Evolution API" por "Meta Cloud API" |
+| `PLAYBOOK.md` | Remover referências à Evolution API e QR Code; atualizar para Meta Cloud |
+| `docs/meta-whatsapp-cloud-setup.md` | Remover "(sem Evolution)" do texto |
 
-No new edge functions, migrations, or secrets needed — everything reuses the existing `launchEmbeddedSignup` helper and `meta-wa-oauth` edge function.
+### 4. SQL / Migrações
+- **Não remover colunas do banco** (`evolution_api_url`, `evolution_api_key`, `api_provider`) — isso requer migração destrutiva e pode quebrar dados existentes. As colunas ficam no DB mas o código não as usa mais.
+- `supabase/schema.sql` — Remover `evolution_api_url` e `evolution_api_key` da definição da tabela `whatsapp_connections` (schema de referência)
+- `src/integrations/supabase/types.ts` — Não editar manualmente (gerado automaticamente pelo Supabase CLI)
 
-## Technical Notes
-- Import `launchEmbeddedSignup` from `@/lib/whatsapp/meta-embedded-signup`
-- Read `VITE_META_APP_ID` from `import.meta.env`
-- Query user's store from Supabase to get `store_id`
-- On success, store connection status in local state to show the green confirmation
+### 5. Memória
+- Atualizar `mem://features/whatsapp-integration` para refletir que Evolution foi removida
+
+## Arquivos que NÃO serão alterados
+- `src/integrations/supabase/types.ts` — gerado automaticamente
+- Migrações existentes em `supabase/migrations/` — histórico imutável
+- `supabase/full-migration.sql`, `supabase/phase1-migration.sql` — scripts legados de referência
 
