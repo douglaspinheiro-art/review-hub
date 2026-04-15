@@ -24,7 +24,7 @@ export default function Hero() {
             </h1>
 
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              A LTV Boost identifica o dinheiro parado na sua base e recupera ele automaticamente com IA.
+              A LTV Boost identifica o dinheiro parado na sua base e recupera automaticamente. Comece com um diagnóstico gratuito.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -39,36 +39,17 @@ export default function Hero() {
               ))}
             </div>
 
-            <div className="flex flex-wrap gap-4 items-center">
+            <div className="space-y-3">
               <Button asChild size="lg" className="h-14 px-8 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] transition-all">
                 <a href="/signup">
-                  Ver o diagnóstico da minha loja <ArrowRight className="ml-2 w-5 h-5" />
+                  Ver quanto estou perdendo (grátis) <ArrowRight className="ml-2 w-5 h-5" />
                 </a>
               </Button>
-              <Button asChild variant="outline" size="lg" className="h-14 px-8 text-base rounded-xl border-border/50 hover:bg-secondary">
-                <a href="#cases">Ver Cases de Sucesso</a>
-              </Button>
-            </div>
-
-            {/* Social proof avatars */}
-            <div className="flex items-center gap-4 pt-2">
-              <div className="flex -space-x-3">
-                {[
-                  { initials: "CM", bg: "from-violet-500 to-purple-600" },
-                  { initials: "RO", bg: "from-blue-500 to-cyan-500" },
-                  { initials: "JS", bg: "from-rose-500 to-pink-500" },
-                  { initials: "AL", bg: "from-amber-500 to-orange-500" },
-                  { initials: "MF", bg: "from-primary to-emerald-400" },
-                ].map((a, i) => (
-                  <div key={i} className={`w-10 h-10 rounded-full border-2 border-background bg-gradient-to-br ${a.bg} flex items-center justify-center text-[11px] font-bold text-primary-foreground`}>
-                    {a.initials}
-                  </div>
-                ))}
-              </div>
-              <div>
-                <p className="text-sm font-semibold">+200 e-commerces</p>
-                <p className="text-xs text-muted-foreground">já confiam na plataforma</p>
-              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                <span>• Leva menos de 1 minuto</span>
+                <span>• Sem cartão</span>
+                <span>• Resultado imediato</span>
+              </p>
             </div>
           </div>
 
