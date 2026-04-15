@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
+import {
   contactMatchesEnglishRfmSegment,
   RFM_ENGLISH_ALIASES,
   type RfmEnglishSegment,
