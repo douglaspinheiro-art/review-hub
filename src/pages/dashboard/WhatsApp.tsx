@@ -90,8 +90,9 @@ export default function WhatsApp() {
   const [selectedApiConnectionId, setSelectedApiConnectionId] = useState<string | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
 
-  const { user } = useAuth();
+  const metaAppId = import.meta.env.VITE_META_APP_ID ?? "";
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
