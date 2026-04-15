@@ -29,8 +29,8 @@ export default function CategoryPositioning() {
                 O Sistema Operacional de Retenção para e-commerce no Brasil
               </h2>
               <p className="text-sm text-muted-foreground max-w-3xl">
-                Voce nao compra automacao isolada. Voce liga um ritmo diario de receita, com playbooks, operacao de inbox, IA
-                de decisao e atribuicao de impacto no mesmo lugar.
+                Você não compra automação isolada. Você liga um ritmo diário de receita, com playbooks, operação de inbox, IA
+                de decisão e atribuição de impacto no mesmo lugar.
               </p>
             </div>
             <Button asChild className="h-11 px-6 gap-1.5">
