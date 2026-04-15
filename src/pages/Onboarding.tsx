@@ -80,7 +80,7 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
 const UNSUPPORTED_PLATFORMS = ["Yampi", "Loja Integrada", "Outra", "Outro", ""];
 
 // Platforms that support OAuth (1-click connect)
-const OAUTH_PLATFORMS = ["Shopify", "Nuvemshop", "WooCommerce"] as const;
+const OAUTH_PLATFORMS = ["Shopify"] as const;
 type OAuthPlatform = typeof OAUTH_PLATFORMS[number];
 
 function isOAuthPlatform(p: string): p is OAuthPlatform {
