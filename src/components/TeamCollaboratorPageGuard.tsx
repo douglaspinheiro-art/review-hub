@@ -2,7 +2,6 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useDemo } from "@/contexts/DemoContext";
 import { useTeamAccess, teamNavItemHidden } from "@/hooks/useTeamAccess";
 
 /**
@@ -10,11 +9,10 @@ import { useTeamAccess, teamNavItemHidden } from "@/hooks/useTeamAccess";
  */
 export function TeamCollaboratorPageGuard({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
-  const { isDemo } = useDemo();
   const { data: access, isLoading } = useTeamAccess();
   const showedToast = useRef(false);
 
-  const blocked = !isDemo && teamNavItemHidden(pathname, access);
+  const blocked = teamNavItemHidden(pathname, access);
 
   useEffect(() => {
     if (blocked && !showedToast.current) {
@@ -24,8 +22,6 @@ export function TeamCollaboratorPageGuard({ children }: { children: React.ReactN
       });
     }
   }, [blocked]);
-
-  if (isDemo) return <>{children}</>;
 
   if (isLoading) {
     return (
