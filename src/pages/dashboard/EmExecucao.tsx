@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Zap,
   MessageCircle,
@@ -13,21 +14,21 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoja } from "@/hooks/useConvertIQ";
-import { usePrescriptionsV3 } from "@/hooks/useLTVBoost";
-import { useCampaigns } from "@/hooks/useDashboard";
+import { useExecutionMonitor } from "@/hooks/useDashboard";
 import {
   isPrescriptionInExecution,
   type PrescriptionRow,
 } from "@/lib/prescription-map";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 
 type CampaignRow = {
   id: string;
