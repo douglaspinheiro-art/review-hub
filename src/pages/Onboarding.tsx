@@ -1,12 +1,13 @@
 // @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2, Globe, ShoppingBag, Smartphone,
   ArrowRight, Loader2,
-  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle
+  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle, Facebook
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
