@@ -25,7 +25,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { mockCanais } from "@/lib/mock-data";
 import { useAuth } from "@/hooks/useAuth";
 
 import {
@@ -118,7 +117,7 @@ const WEBHOOK_LOGS_PAGE_SIZE = 50;
 
 export default function Canais() {
   const { user } = useAuth();
-  const isDemo = false;
+  const isDemo = false; // kept for conditional UI; always false in production
   const queryClient = useQueryClient();
   const [webhookLogsPage, setWebhookLogsPage] = useState(1);
 
@@ -154,67 +153,7 @@ export default function Canais() {
   };
 
   const renderChannelCards = () => {
-    if (isDemo) {
-      return (
-        <>
-          {mockCanais.map((c) => (
-            <div
-              key={c.tipo}
-              className="bg-card border border-border/50 rounded-2xl p-6 space-y-6 shadow-sm hover:border-primary/30 transition-all group"
-            >
-              <div className="flex items-start justify-between">
-                <div
-                  className={cn(
-                    "w-12 h-12 rounded-xl flex items-center justify-center shadow-lg",
-                    c.tipo === "loja_propria" ? "bg-primary/10 text-primary" : "bg-yellow-400 text-white",
-                  )}
-                >
-                  {c.tipo === "loja_propria" ? <Globe className="w-6 h-6" /> : <ShoppingBag className="w-6 h-6" />}
-                </div>
-                <Badge className="bg-emerald-500/10 text-emerald-500 border-0 text-[10px] font-black uppercase tracking-widest px-2 py-0.5">
-                  {c.status.toUpperCase()}
-                </Badge>
-              </div>
-              <div>
-                <h3 className="font-bold text-lg leading-tight">{c.nome}</h3>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Última sync: {c.ultima_sync}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 py-4 border-y border-border/40">
-                <div>
-                  <span className="text-[9px] font-bold uppercase text-muted-foreground block mb-1">Pedidos</span>
-                  <div className="text-lg font-black font-syne">{c.pedidos}</div>
-                </div>
-                <div>
-                  <span className="text-[9px] font-bold uppercase text-muted-foreground block mb-1">Conv. (demo)</span>
-                  <div className="text-lg font-black font-syne text-emerald-500">{c.cvr}%</div>
-                </div>
-              </div>
-              {c.reputacao && (
-                <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 flex items-center gap-3">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-                  <div>
-                    <p className="text-[10px] font-bold text-amber-500 uppercase">Atenção Reputação</p>
-                    <p className="text-[10px] text-amber-200/80 leading-tight">{c.reputacao.aviso}</p>
-                  </div>
-                </div>
-              )}
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 h-9 text-[10px] font-black uppercase tracking-widest rounded-lg" asChild>
-                  <Link to="/dashboard/integracoes">Configurar</Link>
-                </Button>
-                <Button variant="ghost" className="h-9 w-9 p-0 rounded-lg" asChild aria-label="Abrir integrações">
-                  <Link to="/dashboard/integracoes">
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          ))}
-        </>
-      );
-    }
+    /* Demo branch removed — only real data from Supabase */
 
     if (canaisQuery.isLoading) {
       return (
@@ -288,11 +227,6 @@ export default function Canais() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Meus Canais</h1>
-            {isDemo && (
-              <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider">
-                Dados demonstrativos
-              </Badge>
-            )}
           </div>
           <p className="text-muted-foreground text-sm mt-1">
             Gerencie as fontes de dados e integrações da sua loja.
@@ -329,19 +263,6 @@ export default function Canais() {
               <div>
                 <h4 className="font-bold text-sm">Conectar canal</h4>
                 <p className="text-xs text-muted-foreground">E-commerce, CRM e mais — em Integrações.</p>
-              </div>
-            </Link>
-          </div>
-        )}
-        {isDemo && (
-          <div className="border-2 border-dashed border-border/60 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
-            <Link to="/signup" className="flex flex-col items-center space-y-4 w-full group">
-              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                <Link2 className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm">Criar conta</h4>
-                <p className="text-xs text-muted-foreground">Para conectar canais reais.</p>
               </div>
             </Link>
           </div>

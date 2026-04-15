@@ -20,7 +20,7 @@ import {
   useLoja, useConvertIQConfig, useFunilPageMetricas, useLatestDiagnostico,
   useDiagnosticos, useSaveLoja, useSaveMetricas, useGerarDiagnostico, useClaudeCircuitBreaker,
   useMetricasEnriquecidas, useDataHealth, useFunilBff,
-  calcFunil, EMPTY_FUNIL_METRICAS, MOCK_CONFIG, MetricasFunil,
+  calcFunil, EMPTY_FUNIL_METRICAS, DEFAULT_CONFIG, MetricasFunil,
   recoveryPctOfRevenue, isFunilGa4SnapshotRecent, funilGa4StaleHint,
 } from "@/hooks/useConvertIQ";
 import { useProductsV3 as useProdutosV3, useMetricsV3 } from "@/hooks/useLTVBoost";

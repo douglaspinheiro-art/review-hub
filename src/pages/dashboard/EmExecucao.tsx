@@ -24,11 +24,9 @@ import { useLoja } from "@/hooks/useConvertIQ";
 import { usePrescriptionsV3 } from "@/hooks/useLTVBoost";
 import { useCampaigns } from "@/hooks/useDashboard";
 import {
-  mockPrescricaoToRow,
   isPrescriptionInExecution,
   type PrescriptionRow,
 } from "@/lib/prescription-map";
-import { mockPrescricoes, mockLinkedCampaignsForExec } from "@/lib/mock-data";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
@@ -103,7 +101,7 @@ export default function EmExecucao() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isDemo = false;
+  const isDemo = false; // always real data
   const loja = useLoja();
   const storeId = loja.data?.id as string | undefined;
 
@@ -119,9 +117,8 @@ export default function EmExecucao() {
   const campaignsRaw = useMemo(() => bundle?.campaigns ?? [], [bundle?.campaigns]);
 
   const rows: PrescriptionRow[] = useMemo(() => {
-    if (isDemo) return mockPrescricoes.map(mockPrescricaoToRow);
     return (rxRows ?? []) as PrescriptionRow[];
-  }, [isDemo, rxRows]);
+  }, [rxRows]);
 
   const inProgress = useMemo(
     () => rows.filter((r) => isPrescriptionInExecution(r.status)),
@@ -129,9 +126,8 @@ export default function EmExecucao() {
   );
 
   const campaigns: CampaignRow[] = useMemo(() => {
-    if (isDemo) return mockLinkedCampaignsForExec as CampaignRow[];
     return (campaignsRaw ?? []) as CampaignRow[];
-  }, [isDemo, campaignsRaw]);
+  }, [campaignsRaw]);
 
   // Pre-built lookup map: prescription_id → linked campaign (eliminates O(n×m) filter per render)
   const campaignByPrescriptionId = useMemo(() => {
@@ -162,11 +158,6 @@ export default function EmExecucao() {
   const baseDash = isDemo ? "/demo" : "/dashboard";
 
   const onRefresh = () => {
-    if (isDemo) {
-      toast.info("Modo demonstração: dados locais.");
-      return;
-    }
-    // Ponto #10: remove explicit .refetch() after invalidateQueries
     void queryClient.invalidateQueries({ queryKey: ["execution-monitor"] });
     toast.success("Métricas atualizadas.");
   };

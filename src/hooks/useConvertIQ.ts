@@ -170,21 +170,7 @@ export function useFunilBff(storeId: string | null, period = "30d") {
   });
 }
 
-// ─── Mock fallback ────────────────────────────────────────────────────────────
-
-export const MOCK_METRICAS: MetricasFunil = {
-  visitantes:            12400,
-  visualizacoes_produto: 8930,
-  adicionou_carrinho:    3472,
-  iniciou_checkout:      1736,
-  compras:               174,
-  receita:               43500,
-  fonte: "mockado",
-  receita_travada_frete: 12500,
-  receita_travada_pagamento: 8400,
-  total_abandonos_frete: 42,
-  total_abandonos_pagamento: 28,
-};
+// ─── Empty state (replaces former MOCK fallback) ─────────────────────────────
 
 /** Snapshot inicial após criar loja — evita gravar números de demonstração como se fossem reais. */
 export const EMPTY_FUNIL_METRICAS: MetricasFunil = {
@@ -201,7 +187,7 @@ export const EMPTY_FUNIL_METRICAS: MetricasFunil = {
   total_abandonos_pagamento: 0,
 };
 
-export const MOCK_CONFIG = {
+export const DEFAULT_CONFIG = {
   meta_conversao: 2.5,
   ticket_medio: 250,
 };

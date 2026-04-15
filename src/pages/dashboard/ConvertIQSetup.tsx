@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useSaveLoja, testarGA4, MOCK_METRICAS } from "@/hooks/useConvertIQ";
+import { useSaveLoja, testarGA4, EMPTY_FUNIL_METRICAS } from "@/hooks/useConvertIQ";
 import { useSaveMetricas } from "@/hooks/useConvertIQ";
 import { toast } from "sonner";
 import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
@@ -135,8 +135,8 @@ export default function ConvertIQSetup() {
         ga4_access_token: ga4Token || undefined,
       });
 
-      // Save mock metrics so the dashboard is not empty
-      await saveMetricas.mutateAsync({ lojaId: loja.id, metricas: MOCK_METRICAS });
+      // Initialize empty funnel metrics so the dashboard shows empty state with CTA
+      await saveMetricas.mutateAsync({ lojaId: loja.id, metricas: EMPTY_FUNIL_METRICAS });
 
       toast.success("Configuração salva com sucesso!");
       navigate("/dashboard/funil");

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcFunil, recoveryPctOfRevenue, MOCK_METRICAS, type MetricasFunil } from "./useConvertIQ";
+import { calcFunil, recoveryPctOfRevenue, EMPTY_FUNIL_METRICAS, type MetricasFunil } from "./useConvertIQ";
 
 describe("calcFunil", () => {
   it("calcula taxa de conversão e perda mensal", () => {
@@ -31,9 +31,9 @@ describe("calcFunil", () => {
     expect(etapas.every((e) => Number.isFinite(e.barPct))).toBe(true);
   });
 
-  it("usa mock base com meta padrão", () => {
-    const r = calcFunil(MOCK_METRICAS, 2.5, 250);
-    expect(r.taxaConversao).toBeGreaterThan(0);
+  it("usa empty funil com meta padrão", () => {
+    const r = calcFunil(EMPTY_FUNIL_METRICAS, 2.5, 250);
+    expect(r.taxaConversao).toBe(0);
     expect(r.etapas).toHaveLength(5);
   });
 });
