@@ -297,7 +297,7 @@ export default function ConvertIQ() {
       {isMock && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm">
           <span>📊</span>
-          <span className="text-amber-600 dark:text-amber-400">Dados demonstrativos — <button className="underline" onClick={() => setShowManual(true)}>inserir seus dados reais</button> ou conectar GA4 nas configurações.</span>
+          <span className="text-amber-600 dark:text-amber-400">Configure GA4 para ver dados reais — <button className="underline" onClick={() => setShowManual(true)}>inserir manualmente</button> ou conectar GA4 nas configurações.</span>
         </div>
       )}
 

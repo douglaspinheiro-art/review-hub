@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 const integrations = [
   "Shopify", "Nuvemshop", "VTEX", "WooCommerce", "Dizy Commerce", "Tray",
-  "Magento", "Stripe", "PagSeguro", "Bling", "SAP",
+  "Magento", "Mercado Pago", "PagSeguro", "Bling", "SAP",
   "RD Station", "HubSpot", "Salesforce", "Google Ads", "Meta Ads",
 ];
 

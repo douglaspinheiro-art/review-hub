@@ -119,7 +119,7 @@ export default function Diagnostico({ embedInDashboard }: { embedInDashboard?: b
     setSavingPlan(key);
     try {
       if (user) {
-        // Escolha persistida no perfil para onboarding; com faturação Stripe ativa, limites e produto efetivo devem seguir o webhook de subscrição.
+        // Escolha persistida no perfil para onboarding; com faturação Mercado Pago ativa, limites e produto efetivo devem seguir o webhook de subscrição.
         const { error: profileErr } = await supabase
           .from("profiles")
           .update({ plan: key, onboarding_completed: true })

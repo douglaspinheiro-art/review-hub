@@ -427,22 +427,6 @@ export default function Prescricoes() {
                     </div>
                   );
                 })}
-                {isDemo && (
-                  <div className="bg-card/50 border border-dashed border-border/60 rounded-2xl p-6 flex flex-col items-center justify-center text-center relative group overflow-hidden">
-                    <div className="absolute inset-0 bg-background/40 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6">
-                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                        <Zap className="w-6 h-6 text-muted-foreground" />
-                      </div>
-                      <h4 className="font-bold text-sm mb-1 uppercase tracking-tighter">Demonstração</h4>
-                      <p className="text-xs text-muted-foreground mb-4">No app autenticado, os cartões vêm do banco.</p>
-                    </div>
-                    <div className="w-full space-y-4 opacity-20 grayscale">
-                      <div className="h-4 bg-muted rounded w-1/2" />
-                      <div className="h-20 bg-muted rounded" />
-                      <div className="h-8 bg-muted rounded" />
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </TabsContent>
