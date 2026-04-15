@@ -503,7 +503,7 @@ export default function CampaignModal({
       }
       const prescriptionId = prefill?.prescriptionId;
       const channelSave = whatsappOnly ? "whatsapp" : data.channel;
-      const tags = (() => {
+      const _tags = (() => {
         if (data.segment === "all") return [];
         if (data.segment.startsWith("rfm_")) {
           const key = data.segment.replace("rfm_", "");

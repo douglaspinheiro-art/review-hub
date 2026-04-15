@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { MessageCircle, WifiOff, Settings, Sparkles, User, Zap as ZapIcon, RotateCcw, CheckCheck, AlertCircle } from "lucide-react";
+import { MessageCircle, WifiOff, Sparkles, Zap as ZapIcon, RotateCcw, AlertCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -31,7 +31,7 @@ import { ConversationList } from "@/components/dashboard/inbox/ConversationList"
 import { ChatHeader } from "@/components/dashboard/inbox/ChatHeader";
 import { MessageList } from "@/components/dashboard/inbox/MessageList";
 import { MessageComposer } from "@/components/dashboard/inbox/MessageComposer";
-import { getSlaBucket } from "@/components/dashboard/ConversationListItem";
+import {} from "@/components/dashboard/ConversationListItem";
 import { Button } from "@/components/ui/button";
 
 type DbMessage = Database["public"]["Tables"]["messages"]["Row"];
@@ -214,7 +214,7 @@ export default function Inbox() {
     search: debouncedSearch,
   });
   const conversations = useMemo(
-    () => (convQuery.data?.pages.flatMap((p) => p) ?? []) as InboxConversationRow[],
+    () => (convQuery.data?.pages.flatMap((p) => p) ?? []) as unknown as InboxConversationRow[],
     [convQuery.data],
   );
 
@@ -229,7 +229,7 @@ export default function Inbox() {
   const {
     data: messageSearchIds = [],
     isFetching: searchingHistory,
-    isError: messageSearchError,
+    isError: _messageSearchError,
     refetch: refetchMessageSearch,
   } = useConversationIdsByMessageSearch(debouncedSearch);
   const messageSearchSet = useMemo(() => new Set(messageSearchIds), [messageSearchIds]);
@@ -271,7 +271,7 @@ export default function Inbox() {
     [messageFetchLimit],
   );
 
-  const { data: chatBundle, isLoading: bundleLoading, isError: bundleError } = useInboxChatBundle(selectedId, messageLimitCapped);
+  const { data: chatBundle, isLoading: _bundleLoading, isError: bundleError } = useInboxChatBundle(selectedId, messageLimitCapped);
 
   const conversation = chatBundle?.conversation ?? null;
   const contactEmbed = chatBundle?.contact ?? null;
@@ -429,7 +429,7 @@ export default function Inbox() {
     if (!selectedId || selectedConv == null || (selectedConv.unread_count ?? 0) === 0) return;
     supabase.from("conversations").update({ unread_count: 0 }).eq("id", selectedId).then(() => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    }).catch((err: unknown) => {
+    }, (err: unknown) => {
       console.error("[Inbox] Failed to mark conversation as read:", err);
     });
   }, [selectedId, selectedConv, queryClient]);
@@ -440,14 +440,15 @@ export default function Inbox() {
       setSendError(null);
       const msgType: DbMessageInsert["type"] =
         payload.mode === "template" || payload.mode === "flow" ? "template" : "text";
-      const insertRow: DbMessageInsert = {
+      const insertRow = {
         conversation_id: selectedId,
         content: payload.content,
         direction: "outbound",
         status: "sending",
         type: msgType,
         external_id: null,
-      };
+        user_id: user!.id,
+      } as DbMessageInsert;
       const { data: inserted, error: insertError } = await supabase
         .from("messages")
         .insert(insertRow)
@@ -508,8 +509,8 @@ export default function Inbox() {
   const saveOpsMetaMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId) return;
-      const { error } = await supabase
-        .from("conversations")
+      const { error } = await (supabase
+        .from("conversations") as any)
         .update({
           assigned_to_name: assigneeName || null,
           priority,
@@ -561,7 +562,7 @@ export default function Inbox() {
     mutationFn: async (messageId: string) => {
       const { error } = await supabase
         .from("messages")
-        .update({ status: "pending", error_message: null })
+        .update({ status: "pending", error_message: null } as any)
         .eq("id", messageId);
       if (error) throw error;
     },
@@ -723,7 +724,7 @@ export default function Inbox() {
                 slaDueAt={slaDueAt}
                 setSlaDueAt={setSlaDueAt}
                 priority={priority}
-                setPriority={setPriority}
+                setPriority={setPriority as (v: string) => void}
                 saveOpsMeta={saveOpsMeta}
               />
 

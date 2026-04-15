@@ -16,17 +16,16 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line,
 } from "recharts";
 import {
-  useLoja, useConvertIQConfig, useFunilPageMetricas, useLatestDiagnostico,
-  useDiagnosticos, useSaveLoja, useSaveMetricas, useGerarDiagnostico, useClaudeCircuitBreaker,
-  useMetricasEnriquecidas, useDataHealth, useFunilBff,
-  calcFunil, EMPTY_FUNIL_METRICAS, DEFAULT_CONFIG, MetricasFunil,
+  useLoja, useConvertIQConfig,
+  useSaveLoja, useSaveMetricas, useGerarDiagnostico, useClaudeCircuitBreaker,
+  useFunilBff,
+  calcFunil, EMPTY_FUNIL_METRICAS, type MetricasFunil,
   recoveryPctOfRevenue, isFunilGa4SnapshotRecent, funilGa4StaleHint,
 } from "@/hooks/useConvertIQ";
 import { useProductsV3 as useProdutosV3, useMetricsV3 } from "@/hooks/useLTVBoost";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
-import type { Database } from "@/lib/database.types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isDashboardPathBlockedInBetaScope } from "@/lib/beta-scope";
 import { RouteErrorBoundary } from "@/components/ErrorBoundary";
@@ -705,7 +704,7 @@ export default function Funil() {
                 Sem alertas críticos de dados no período.
               </p>
             ) : (
-              (dataHealthData?.alertas ?? []).map((a) => (
+              (dataHealthData?.alertas ?? []).map((a: any) => (
                 <div key={a.id} className={cn(
                   "rounded-xl border px-3 py-2 text-sm",
                   a.severidade === "critico"
@@ -725,7 +724,7 @@ export default function Funil() {
             <div className="mt-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Data Health por canal</p>
               <div className="grid md:grid-cols-3 gap-3">
-                {(dataHealthData?.canais ?? []).slice(0, 3).map((c) => (
+                {(dataHealthData?.canais ?? []).slice(0, 3).map((c: any) => (
                   <div key={c.canal} className="rounded-xl border p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold uppercase">{c.canal}</p>
@@ -749,7 +748,7 @@ export default function Funil() {
             <div className="mt-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Data Health por etapa</p>
               <div className="grid md:grid-cols-4 gap-3">
-                {(dataHealthData?.etapas ?? []).map((e) => (
+                {(dataHealthData?.etapas ?? []).map((e: any) => (
                   <div key={e.etapa} className="rounded-xl border p-3">
                     <p className="text-xs font-bold uppercase">{e.etapa}</p>
                     <p className={cn(
@@ -781,7 +780,7 @@ export default function Funil() {
         <div className="bg-card border rounded-2xl p-6">
           <h3 className="font-black text-base uppercase tracking-tighter mb-4">Contrato canônico de métricas</h3>
           <div className="grid md:grid-cols-3 gap-3">
-            {dataHealthData.metricContract.map((m) => (
+            {dataHealthData.metricContract.map((m: any) => (
               <div key={m.metrica} className="rounded-xl border p-3">
                 <p className="text-xs font-bold">{m.metrica}</p>
                 <p className="text-xs text-muted-foreground mt-1">{m.definicao}</p>

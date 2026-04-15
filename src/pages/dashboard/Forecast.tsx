@@ -1,5 +1,5 @@
 import {
-  TrendingUp, Sparkles, ArrowUpRight, Info, ShieldCheck, Loader2, RefreshCw, AlertCircle,
+  TrendingUp, Sparkles, ArrowUpRight, Info, ShieldCheck, RefreshCw, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { useAnalytics, useForecastSnapshot, useForecastProjection } from "@/hook
 import { useLoja } from "@/hooks/useConvertIQ";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useMemo } from "react";
 import {
   FORECAST_ANALYTICS_DAYS,
   FORECAST_MIN_DAYS,
@@ -39,7 +40,7 @@ export default function Forecast() {
   } = useAnalytics(FORECAST_ANALYTICS_DAYS);
   const {
     data: snapshot,
-    isLoading: loadingSnapshot,
+    isLoading: _loadingSnapshot,
     isFetching: fetchingSnapshot,
     isError: snapshotError,
     error: snapshotErr,
@@ -145,11 +146,12 @@ export default function Forecast() {
     );
   }
 
-  const snapshotBase = snapshot?.cenario_base != null ? Number(snapshot.cenario_base) : null;
-  const snapshotPresc = snapshot?.cenario_com_prescricoes != null ? Number(snapshot.cenario_com_prescricoes) : null;
-  const snapshotUx = snapshot?.cenario_com_ux != null ? Number(snapshot.cenario_com_ux) : null;
-  const snapshotConf = snapshot?.confianca_ia != null ? Math.round(Number(snapshot.confianca_ia)) : null;
-  const hasPersistedScenarios = snapshot && (snapshotBase != null || snapshotPresc != null);
+  const snap = snapshot as any;
+  const snapshotBase = snap?.cenario_base != null ? Number(snap.cenario_base) : null;
+  const snapshotPresc = snap?.cenario_com_prescricoes != null ? Number(snap.cenario_com_prescricoes) : null;
+  const snapshotUx = snap?.cenario_com_ux != null ? Number(snap.cenario_com_ux) : null;
+  const snapshotConf = snap?.confianca_ia != null ? Math.round(Number(snap.confianca_ia)) : null;
+  const hasPersistedScenarios = snap && (snapshotBase != null || snapshotPresc != null);
 
   return (
     <div className="space-y-8 pb-10">
@@ -288,7 +290,7 @@ export default function Forecast() {
               <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
                 Valores persistidos pelo pipeline da plataforma (ex.: rotina agendada). Podem usar outra metodologia
                 em relação à estimativa rápida ao lado.
-                {snapshot.data_calculo ? ` · Calculado em ${new Date(snapshot.data_calculo).toLocaleString("pt-BR")}` : ""}
+                {snap.data_calculo ? ` · Calculado em ${new Date(snap.data_calculo).toLocaleString("pt-BR")}` : ""}
               </p>
               <ul className="space-y-2 text-xs">
                 {snapshotBase != null && (

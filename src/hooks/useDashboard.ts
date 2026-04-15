@@ -4,10 +4,7 @@ import { pickStoreIdFromList } from "@/lib/active-store-id";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import {
-  contactMatchesEnglishRfmSegment,
-} from "@/lib/rfm-segments";
+import "@/lib/rfm-segments";
 import { scopeAttributionEventsForStore } from "@/lib/attribution-scope";
 import { ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
 import type { Database } from "@/integrations/supabase/types";
@@ -550,10 +547,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
 /** Colunas usadas na listagem e na amostra da Matriz RFM (classificação local). */
 const CUSTOMERS_V3_LIST_COLUMNS =
   "id,name,email,phone,rfm_segment,tags,last_purchase_at,customer_health_score,unsubscribed_at,email_hard_bounce_at,email_complaint_at,created_at,rfm_frequency,rfm_monetary";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _escapeIlikePattern(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
+/* escapeIlikePattern kept for future use */
 
 export type ContactsQueryResult = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

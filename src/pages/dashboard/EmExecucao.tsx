@@ -68,7 +68,7 @@ function campaignDispatchPriority(status: string | undefined): number {
   return 3;
 }
 
-function pickLinkedCampaign(
+function _pickLinkedCampaign(
   prescriptionId: string,
   campaigns: CampaignRow[],
 ): CampaignRow | null {
