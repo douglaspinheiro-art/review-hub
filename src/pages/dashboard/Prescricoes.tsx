@@ -3,7 +3,7 @@ import {
   Sparkles, Filter, Settings, Zap, RefreshCw, ChevronRight, Lock, TrendingUp, ArrowRight, X,
   ChevronUp, ChevronDown,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,9 +48,7 @@ function readPrescricoesOnboardingDismissed(): boolean {
 type ChannelFilter = "all" | "whatsapp" | "email" | "sms";
 
 export default function Prescricoes() {
-  const location = useLocation();
   const isDemo = false;
-  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(true);
   useEffect(() => {
     setOnboardingBannerDismissed(readPrescricoesOnboardingDismissed());
   }, []);

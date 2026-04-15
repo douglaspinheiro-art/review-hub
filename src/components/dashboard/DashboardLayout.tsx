@@ -383,7 +383,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {/* Trial countdown bar */}
-            {isTrialActive && !isDemo && (
+            {isTrialActive && (
               <div className={cn(
                 "shrink-0 px-6 py-2 flex items-center justify-between gap-4 border-b text-xs font-bold",
                 trialDaysLeft <= 2
@@ -409,7 +409,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             )}
 
-            {isBetaLimitedScope && !isDemo && (
+            {isBetaLimitedScope && (
               <div className="shrink-0 px-4 md:px-6 py-2 border-b bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300 text-[11px] md:text-xs font-semibold leading-snug">
                 {BETA_LIMITED_BANNER_PT}
               </div>
