@@ -30,8 +30,8 @@ export default function Hero() {
             <div className="flex flex-wrap gap-2">
               {[
                 "Moda: +22% recompra em 60 dias",
-                "Beleza: payback medio em 9 dias",
-                "Suplementos: +31% em reativacao",
+                "Beleza: payback médio em 9 dias",
+                "Suplementos: +31% em reativação",
               ].map((proof) => (
                 <span key={proof} className="px-3 py-1 rounded-full text-xs font-semibold bg-secondary border border-border/50">
                   {proof}

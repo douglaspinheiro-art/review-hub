@@ -8,7 +8,7 @@ const cases = [
     id: "modafit",
     company: "ModaFit",
     segment: "Moda Fitness",
-    quote: "Com playbook de recompra e operacao diaria, triplicamos recorrencia. O setup se pagou na primeira semana.",
+    quote: "Com playbook de recompra e operação diária, triplicamos recorrência. O setup se pagou na primeira semana.",
     author: "Carolina M., CEO",
     metrics: [
       { icon: DollarSign, value: "R$ 2.4M", label: "Receita via WhatsApp" },
@@ -21,7 +21,7 @@ const cases = [
     id: "techstore",
     company: "TechStore",
     segment: "Eletrônicos",
-    quote: "Unificamos atendimento + campanhas. O time ganhou velocidade e o WhatsApp virou canal previsivel de receita.",
+    quote: "Unificamos atendimento + campanhas. O time ganhou velocidade e o WhatsApp virou canal previsível de receita.",
     author: "Ricardo O., Head de Marketing",
     metrics: [
       { icon: DollarSign, value: "R$ 1.8M", label: "Vendas incrementais" },
@@ -34,7 +34,7 @@ const cases = [
     id: "belezapura",
     company: "BelezaPura",
     segment: "Cosméticos",
-    quote: "Com segmentacao RFM acionavel, paramos de enviar no escuro e elevamos recompra com margem.",
+    quote: "Com segmentação RFM acionável, paramos de enviar no escuro e elevamos recompra com margem.",
     author: "Juliana S., Diretora",
     metrics: [
       { icon: DollarSign, value: "R$ 890K", label: "Receita de recompra" },

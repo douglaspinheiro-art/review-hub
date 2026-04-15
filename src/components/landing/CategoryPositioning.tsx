@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Store, Users, Handshake, MessageCircle } from "lucide-react";
 
 const ICP_SEGMENTS = [
-  { title: "Moda e Beleza", profile: "Operacoes de R$80k a R$500k/mes", win: "Recompra e lancamentos por colecao" },
-  { title: "Saude e Suplementos", profile: "Ticket medio acima de R$120", win: "Reposicao e recorrencia guiada por janela" },
-  { title: "Casa e Lifestyle", profile: "Catalogo amplo e alta sazonalidade", win: "Cross-sell e pos-venda com prova social" },
+  { title: "Moda e Beleza", profile: "Operações de R$80k a R$500k/mês", win: "Recompra e lançamentos por coleção" },
+  { title: "Saúde e Suplementos", profile: "Ticket médio acima de R$120", win: "Reposição e recorrência guiada por janela" },
+  { title: "Casa e Lifestyle", profile: "Catálogo amplo e alta sazonalidade", win: "Cross-sell e pós-venda com prova social" },
 ];
 
 export default function CategoryPositioning() {
@@ -26,11 +26,11 @@ export default function CategoryPositioning() {
             <div className="space-y-2">
               <Badge className="bg-primary/10 text-primary border-primary/20">Categoria</Badge>
               <h2 className="text-2xl md:text-3xl font-display font-bold">
-                O Sistema Operacional de Retencao para e-commerce no Brasil
+                O Sistema Operacional de Retenção para e-commerce no Brasil
               </h2>
               <p className="text-sm text-muted-foreground max-w-3xl">
-                Voce nao compra automacao isolada. Voce liga um ritmo diario de receita, com playbooks, operacao de inbox, IA
-                de decisao e atribuicao de impacto no mesmo lugar.
+                Você não compra automação isolada. Você liga um ritmo diário de receita, com playbooks, operação de inbox, IA
+                de decisão e atribuição de impacto no mesmo lugar.
               </p>
             </div>
             <Button asChild className="h-11 px-6 gap-1.5">
@@ -60,21 +60,21 @@ export default function CategoryPositioning() {
               <Handshake className="w-4 h-4 text-primary" />
               <p className="text-sm font-semibold">Programa de parceiros</p>
             </div>
-            <p className="text-xs text-muted-foreground">Playbooks co-criados com agencias e operadores certificados.</p>
+            <p className="text-xs text-muted-foreground">Playbooks co-criados com agências e operadores certificados.</p>
           </div>
           <div className="rounded-2xl border bg-card p-5 space-y-2">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
               <p className="text-sm font-semibold">Comunidade de operadores</p>
             </div>
-            <p className="text-xs text-muted-foreground">Benchmark mensal por nicho com clinica de otimizacao.</p>
+            <p className="text-xs text-muted-foreground">Benchmark mensal por nicho com clínica de otimização.</p>
           </div>
           <div className="rounded-2xl border bg-card p-5 space-y-2">
             <div className="flex items-center gap-2">
               <MessageCircle className="w-4 h-4 text-primary" />
-              <p className="text-sm font-semibold">Distribuicao orientada a casos</p>
+              <p className="text-sm font-semibold">Distribuição orientada a casos</p>
             </div>
-            <p className="text-xs text-muted-foreground">Teardowns reais de campanhas para escalar aquisicao com prova.</p>
+            <p className="text-xs text-muted-foreground">Teardowns reais de campanhas para escalar aquisição com prova.</p>
           </div>
         </div>
       </div>
