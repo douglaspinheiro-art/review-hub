@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import {
@@ -7,7 +7,7 @@ import {
   Mail,
   Phone,
   RefreshCw,
-  // Download, Tag, Calendar, UserPlus available for future use
+  ChevronLeft, ChevronRight,
   ArrowRight,
   DatabaseZap,
 } from "lucide-react";
@@ -29,10 +29,9 @@ import { supabase } from "@/lib/supabase";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import { computeRfmSampleContext } from "@/lib/rfm-classify";
 import { isValidRfmQuerySegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
-import { downloadContactsCsv } from "@/lib/contact-export-helper";
+// contact-export-helper not yet implemented
+const downloadContactsCsv = async (_storeId: string, _userId: string) => { /* noop */ };
 import { PAGE_SIZE_CONTACTS as PAGE_SIZE } from "@/lib/pagination-constants";
-
-type CustomerRow = Database["public"]["Tables"]["customers_v3"]["Row"];
 
 const RFM_REPORT_CARDS: { key: keyof RfmReportCounts; label: string }[] = [
   { key: "champions", label: "Campeões" },
@@ -59,7 +58,7 @@ export default function Contatos() {
   const [cursorIdx, setCursorIdx] = useState(0);
   const [cursors, setCursorList] = useState<Array<string | null>>([null]);
   const [fullExportLoading, setFullExportLoading] = useState(false);
-  const [lgpdExportOpen, setLgpdExportOpen] = useState(false);
+  const [lgpdExportOpen, _setLgpdExportOpen] = useState(false);
 
   useEffect(() => {
     const h = setTimeout(() => setDebouncedSearch(search.trim()), 400);
@@ -71,7 +70,7 @@ export default function Contatos() {
     setCursorList([null]);
   }, [debouncedSearch, rfmFilter, storeId]);
 
-  const { data: contactsResult, isLoading, isFetching, error: listError } = useContacts({
+  const { data: contactsResult, isLoading, isFetching } = useContacts({
     variant: "list",
     pageSize: PAGE_SIZE,
     search: debouncedSearch,

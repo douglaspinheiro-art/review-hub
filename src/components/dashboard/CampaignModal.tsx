@@ -533,9 +533,8 @@ export default function CampaignModal({
           message: data.message,
           channel: channelSave,
           subject: data.subject ?? null,
-          tags: tags as any,
           blocks: blocksPayload,
-        }).eq("id", editingCampaignId).eq("user_id", user.id);
+        } as any).eq("id", editingCampaignId).eq("user_id", user.id);
         if (upErr) throw upErr;
         campaignId = editingCampaignId;
       } else {

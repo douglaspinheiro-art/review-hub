@@ -4,6 +4,7 @@ import { pickStoreIdFromList } from "@/lib/active-store-id";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {
   contactMatchesEnglishRfmSegment,
 } from "@/lib/rfm-segments";

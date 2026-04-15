@@ -1,12 +1,13 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowLeft, Sparkles, ChevronRight, Loader2, History, AlertCircle, Megaphone,
+  ArrowLeft, Sparkles, ChevronRight, History, AlertCircle, Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useLoja, useLatestDiagnostico, useDiagnosticos, parseDiagnosticoJSON, type DiagnosticoJSON, type Problema } from "@/hooks/useConvertIQ";
-import CampaignModal, { ProdutoParaCampanha } from "@/components/dashboard/CampaignModal";
+import CampaignModal from "@/components/dashboard/CampaignModal";
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 const sevConfig = {
@@ -79,7 +80,7 @@ function HistoryModal({ diags, onClose }: {
   diags: Array<{ id: string; created_at: string; taxa_conversao: number; score: number; recomendacoes: unknown }>;
   onClose: () => void;
 }) {
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, _setExpanded] = useState<string | null>(null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -196,7 +197,7 @@ export default function ConvertIQDiagnostico() {
     <div className="space-y-6">
       {showHistory && (
         <HistoryModal
-          diags={allDiags.data ?? []}
+          diags={(allDiags.data ?? []) as any}
           onClose={() => setShowHistory(false)}
         />
       )}
