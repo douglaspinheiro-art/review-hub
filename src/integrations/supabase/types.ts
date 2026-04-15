@@ -4173,8 +4173,10 @@ export type Database = {
           last_health_check_at: string | null
           meta_access_token: string | null
           meta_api_version: string | null
+          meta_business_id: string | null
           meta_default_template_name: string | null
           meta_phone_number_id: string | null
+          meta_token_expires_at: string | null
           meta_waba_id: string | null
           provider: string
           status: string | null
@@ -4194,8 +4196,10 @@ export type Database = {
           last_health_check_at?: string | null
           meta_access_token?: string | null
           meta_api_version?: string | null
+          meta_business_id?: string | null
           meta_default_template_name?: string | null
           meta_phone_number_id?: string | null
+          meta_token_expires_at?: string | null
           meta_waba_id?: string | null
           provider?: string
           status?: string | null
@@ -4215,8 +4219,10 @@ export type Database = {
           last_health_check_at?: string | null
           meta_access_token?: string | null
           meta_api_version?: string | null
+          meta_business_id?: string | null
           meta_default_template_name?: string | null
           meta_phone_number_id?: string | null
+          meta_token_expires_at?: string | null
           meta_waba_id?: string | null
           provider?: string
           status?: string | null
