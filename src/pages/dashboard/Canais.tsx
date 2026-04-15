@@ -27,7 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { mockCanais } from "@/lib/mock-data";
 import { useAuth } from "@/hooks/useAuth";
-import { useDemo } from "@/contexts/DemoContext";
+
 import {
   useCanaisPageData,
   useWebhookLogs,
@@ -118,7 +118,7 @@ const WEBHOOK_LOGS_PAGE_SIZE = 50;
 
 export default function Canais() {
   const { user } = useAuth();
-  const { isDemo } = useDemo();
+  const isDemo = false;
   const queryClient = useQueryClient();
   const [webhookLogsPage, setWebhookLogsPage] = useState(1);
 

@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 const mockUseAuth = vi.fn();
-const mockUseDemo = vi.fn();
 const mockRpc = vi.fn().mockResolvedValue({ data: false });
 
 vi.mock("@/lib/supabase", () => ({
@@ -16,10 +15,6 @@ vi.mock("@/lib/supabase", () => ({
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
-}));
-
-vi.mock("@/contexts/DemoContext", () => ({
-  useDemo: () => mockUseDemo(),
 }));
 
 vi.mock("sonner", () => ({
@@ -40,7 +35,6 @@ function renderRoute(element: ReactNode, initialPath = "/dashboard/forecast") {
 
 describe("ProtectedRoute business rules", () => {
   beforeEach(() => {
-    mockUseDemo.mockReturnValue({ isDemo: false });
     mockRpc.mockResolvedValue({ data: false });
   });
 

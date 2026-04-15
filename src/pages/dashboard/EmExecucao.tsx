@@ -103,7 +103,7 @@ export default function EmExecucao() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isDemo = location.pathname.startsWith("/demo");
+  const isDemo = false;
   const loja = useLoja();
   const storeId = loja.data?.id as string | undefined;
 

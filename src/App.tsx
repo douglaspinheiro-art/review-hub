@@ -13,7 +13,7 @@ import { useSistemaConfig } from "@/hooks/useSistemaConfig";
 import { useIsAdmin } from "@/hooks/useAdminCheck";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
 import TelaManutencao from "./components/TelaManutencao";
-import { DemoProvider } from "./contexts/DemoContext.tsx";
+
 import { AuthProvider } from "./contexts/AuthContext.tsx";
 
 // ── QueryClient with stability config ─────────────────────────────────────────
@@ -66,31 +66,8 @@ function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function DemoBanner() {
-  return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-amber-950 text-xs font-black text-center py-1.5 tracking-widest uppercase flex items-center justify-center gap-3">
-      <span>Modo Demonstração — dados fictícios</span>
-      <a href="/signup" className="underline hover:no-underline font-black">Criar conta grátis →</a>
-    </div>
-  );
-}
 
-function DemoRoute({ children, routeLabel }: { children: React.ReactNode; routeLabel?: string }) {
-  return (
-    <DemoProvider>
-      <DemoBanner />
-      <div className="pt-7">
-        <ProtectedRoute>
-          <DashboardLayout>
-            <RouteErrorBoundary routeLabel={routeLabel}>
-              {children}
-            </RouteErrorBoundary>
-          </DashboardLayout>
-        </ProtectedRoute>
-      </div>
-    </DemoProvider>
-  );
-}
+
 
 function PageLoader() {
   return (
@@ -213,22 +190,6 @@ const App = () => (
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
           <Route path="/aceitar-convite" element={<AceitarConviteEquipe />} />
-
-          {/* Demo dashboard */}
-          <Route path="/demo" element={<DemoRoute routeLabel="Demo Home"><Dashboard /></DemoRoute>} />
-          <Route path="/demo/prescricoes" element={<DemoRoute routeLabel="Demo Prescrições"><Prescricoes /></DemoRoute>} />
-          <Route path="/demo/funil" element={<DemoRoute routeLabel="Demo Funil"><Funil /></DemoRoute>} />
-          <Route path="/demo/produtos" element={<DemoRoute routeLabel="Demo Produtos"><Produtos /></DemoRoute>} />
-          <Route path="/demo/canais" element={<DemoRoute routeLabel="Demo Canais"><Canais /></DemoRoute>} />
-          <Route path="/demo/inbox" element={<DemoRoute routeLabel="Demo Inbox"><Inbox /></DemoRoute>} />
-          <Route path="/demo/campanhas" element={<DemoRoute routeLabel="Demo Campanhas"><Campanhas /></DemoRoute>} />
-          <Route path="/demo/contatos" element={<DemoRoute routeLabel="Demo Contatos"><Contatos /></DemoRoute>} />
-          <Route path="/demo/rfm" element={<DemoRoute routeLabel="Demo RFM"><RFM /></DemoRoute>} />
-          <Route path="/demo/automacoes" element={<DemoRoute routeLabel="Demo Automações"><Automacoes /></DemoRoute>} />
-          <Route path="/demo/analytics" element={<DemoRoute routeLabel="Demo Analytics"><Analytics /></DemoRoute>} />
-          <Route path="/demo/relatorios" element={<DemoRoute routeLabel="Demo Relatórios"><Relatorios /></DemoRoute>} />
-          <Route path="/demo/em-execucao" element={<DemoRoute routeLabel="Demo Em Execução"><EmExecucao /></DemoRoute>} />
-          <Route path="/demo/chatbot" element={<DemoRoute routeLabel="Demo Chatbot"><Chatbot /></DemoRoute>} />
 
           {/* Protected dashboard */}
           <Route path="/dashboard" element={<DashboardRoute routeLabel="Dashboard Home"><Dashboard /></DashboardRoute>} />

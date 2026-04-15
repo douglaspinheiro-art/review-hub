@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { useTeamAccess, teamNavItemHidden } from "@/hooks/useTeamAccess";
-import { useDemo } from "@/contexts/DemoContext";
+
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import { TeamCollaboratorPageGuard } from "@/components/TeamCollaboratorPageGuard";
 import {
@@ -50,10 +50,7 @@ function hasPlanAccess(userPlan: string | undefined, minPlan: MinPlan | undefine
   return planLevel(userPlan) >= planLevels[minPlan];
 }
 
-function rewriteDashboardHref(href: string, isDemo: boolean): string {
-  if (!isDemo || !href.startsWith("/dashboard")) return href;
-  return href.replace("/dashboard", "/demo");
-}
+
 
 const nav: { section: string; items: NavItem[] }[] = [
   {
@@ -145,41 +142,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const trialDaysLeft = profile?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(profile.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
-  const { isDemo, demoProfile } = useDemo();
   const navigate = useNavigate();
 
-  const activeProfile = isDemo ? demoProfile : profile;
-
-  const demoNav = useMemo(
-    () =>
-      nav.map((section) => ({
-        ...section,
-        items: section.items.map((item) => ({
-          ...item,
-          href: rewriteDashboardHref(item.href, isDemo),
-        })),
-      })),
-    [isDemo],
-  );
+  const activeProfile = profile;
 
   const visibleNav = useMemo(() => {
-    const base = isDemo || !isBetaLimitedScope
-      ? demoNav
-      : demoNav
+    const base = !isBetaLimitedScope
+      ? nav
+      : nav
           .map((section) => ({
             ...section,
             items: section.items.filter((item) => !shouldHideNavItemHref(item.href)),
           }))
           .filter((section) => section.items.length > 0);
-
-    if (isDemo) {
-      return base
-        .map((section) => ({
-          ...section,
-          items: section.items.filter((item) => !item.platformStaffOnly),
-        }))
-        .filter((section) => section.items.length > 0);
-    }
 
     return base
       .map((section) => ({
@@ -190,11 +165,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }),
       }))
       .filter((section) => section.items.length > 0);
-  }, [demoNav, isDemo, teamAccess, isPlatformStaff]);
+  }, [teamAccess, isPlatformStaff]);
 
-  const dashboardHome = isDemo ? "/demo" : "/dashboard";
-  const settingsHref = rewriteDashboardHref("/dashboard/configuracoes", isDemo);
-  const profileHref = isDemo ? dashboardHome : settingsHref;
+  const dashboardHome = "/dashboard";
+  const settingsHref = "/dashboard/configuracoes";
+  const profileHref = settingsHref;
 
   useEffect(() => {
     if (!open) return;
@@ -206,7 +181,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [open]);
 
   async function handleSignOut() {
-    if (isDemo) { navigate("/", { replace: true }); return; }
     await signOut();
     navigate("/login", { replace: true });
   }
@@ -248,7 +222,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </p>
             <div className="space-y-1">
               {items.map((item) => {
-                const unlocked = isDemo || hasPlanAccess(activeProfile?.plan, item.minPlan);
+                const unlocked = hasPlanAccess(activeProfile?.plan, item.minPlan);
                 const target = unlocked ? item.href : "/upgrade";
                 const active = unlocked && isActive(item.href, pathname);
                 return (
@@ -291,7 +265,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </nav>
 
       {/* Upgrade CTA — trial users */}
-      {(isTrialActive || plan === "starter") && activeProfile && !isDemo && (
+      {(isTrialActive || plan === "starter") && activeProfile && (
         <div className="px-4 pb-2">
           <div className={cn(
             "p-4 rounded-2xl border space-y-2.5",
@@ -409,7 +383,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {/* Trial countdown bar */}
-            {isTrialActive && !isDemo && (
+            {isTrialActive && (
               <div className={cn(
                 "shrink-0 px-6 py-2 flex items-center justify-between gap-4 border-b text-xs font-bold",
                 trialDaysLeft <= 2
@@ -435,7 +409,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             )}
 
-            {isBetaLimitedScope && !isDemo && (
+            {isBetaLimitedScope && (
               <div className="shrink-0 px-4 md:px-6 py-2 border-b bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300 text-[11px] md:text-xs font-semibold leading-snug">
                 {BETA_LIMITED_BANNER_PT}
               </div>
