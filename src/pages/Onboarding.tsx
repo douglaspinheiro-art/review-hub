@@ -23,10 +23,8 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
   Shopify: {
     type: "shopify",
     fields: [
-      { key: "shop_url", label: "URL da loja (sem https://)", placeholder: "minhaloja.myshopify.com" },
-      { key: "access_token", label: "Access Token (Admin API)", placeholder: "shpat_...", secret: true },
+      { key: "shop_url", label: "Domínio Shopify", placeholder: "minhaloja.myshopify.com" },
     ],
-    helpUrl: "https://help.shopify.com/en/manual/apps/app-types/custom-apps",
   },
   Nuvemshop: {
     type: "nuvemshop",
@@ -82,7 +80,7 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
 const UNSUPPORTED_PLATFORMS = ["Yampi", "Loja Integrada", "Outra", "Outro", ""];
 
 // Platforms that support OAuth (1-click connect)
-const OAUTH_PLATFORMS = ["Shopify", "Nuvemshop", "WooCommerce"] as const;
+const OAUTH_PLATFORMS = ["Shopify"] as const;
 type OAuthPlatform = typeof OAUTH_PLATFORMS[number];
 
 function isOAuthPlatform(p: string): p is OAuthPlatform {
@@ -184,32 +182,15 @@ export default function Onboarding() {
     setIntegrationError(null);
 
     try {
-      const functionName = `oauth-${plataforma.toLowerCase()}`;
-      let queryParams = `action=start&store_id=${storeData.id}`;
-
-      if (plataforma === "Shopify") {
-        const shop = integrationConfig.shop_url?.trim();
-        if (!shop) {
-          toast.error("Informe o domínio da loja Shopify (ex: minhaloja.myshopify.com).");
-          setOauthConnecting(false);
-          return;
-        }
-        queryParams += `&shop=${encodeURIComponent(shop)}`;
+      const functionName = "oauth-shopify";
+      const shop = integrationConfig.shop_url?.trim();
+      if (!shop) {
+        toast.error("Informe o domínio da loja Shopify (ex: minhaloja.myshopify.com).");
+        setOauthConnecting(false);
+        return;
       }
+      const queryParams = `action=start&store_id=${storeData.id}&shop=${encodeURIComponent(shop)}`;
 
-      if (plataforma === "WooCommerce") {
-        const siteUrl = integrationConfig.site_url?.trim();
-        if (!siteUrl) {
-          toast.error("Informe a URL do seu site WooCommerce.");
-          setOauthConnecting(false);
-          return;
-        }
-        queryParams += `&site_url=${encodeURIComponent(siteUrl)}`;
-      }
-
-      // For GET requests with query params, construct URL manually
-
-      // For GET requests, we need to construct the URL manually
       const session = (await supabase.auth.getSession()).data.session;
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ydkglitowqlpizpnnofy.supabase.co";
       const res = await fetch(`${supabaseUrl}/functions/v1/${functionName}?${queryParams}`, {
@@ -227,16 +208,10 @@ export default function Onboarding() {
         return;
       }
 
-      if (plataforma === "WooCommerce") {
-        // WooCommerce uses redirect (callback is server-to-server POST)
-        window.location.href = resData.url;
-      } else {
-        // Shopify/Nuvemshop use popup
-        const popup = window.open(resData.url, `oauth-${plataforma}`, "width=600,height=700,scrollbars=yes");
-        if (!popup) {
-          toast.error("Popup bloqueado. Permita popups para este site.");
-          setOauthConnecting(false);
-        }
+      const popup = window.open(resData.url, "oauth-shopify", "width=600,height=700,scrollbars=yes");
+      if (!popup) {
+        toast.error("Popup bloqueado. Permita popups para este site.");
+        setOauthConnecting(false);
       }
     } catch (e) {
       console.error("OAuth error:", e);
@@ -607,19 +582,6 @@ export default function Onboarding() {
                         placeholder="minhaloja.myshopify.com"
                         value={integrationConfig.shop_url || ""}
                         onChange={e => handleIntegrationFieldChange("shop_url", e.target.value)}
-                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                      />
-                    </div>
-                  )}
-                  {plataforma === "WooCommerce" && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        URL do site *
-                      </Label>
-                      <Input
-                        placeholder="https://minhaloja.com.br"
-                        value={integrationConfig.site_url || ""}
-                        onChange={e => handleIntegrationFieldChange("site_url", e.target.value)}
                         className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
                       />
                     </div>
