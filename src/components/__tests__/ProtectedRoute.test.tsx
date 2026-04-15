@@ -17,8 +17,7 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-
-
+vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
 }));
 
