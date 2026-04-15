@@ -144,7 +144,7 @@ export default function Relatorios() {
   const cohortsLoading = reportsLoading;
   const refetchCohorts = refetchSnapshot;
 
-  const heatmap: { cells: Record<string, number>; max: number } | null = null;
+  const heatmap: { cells: Record<string, number>; max: number } | null = null as { cells: Record<string, number>; max: number } | null;
 
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;

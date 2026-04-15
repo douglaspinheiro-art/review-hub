@@ -21,7 +21,7 @@ import { CAMPAIGN_LIST_SELECT } from "@/lib/supabase-select-fragments";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import ErrorBoundary from "@/components/ErrorBoundary";
+import { RouteErrorBoundary } from "@/components/ErrorBoundary";
 const BlockCanvas = lazy(() =>
   import("@/components/dashboard/newsletter/BlockCanvas").then((m) => ({ default: m.BlockCanvas })),
 );
