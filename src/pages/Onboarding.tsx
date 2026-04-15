@@ -4,7 +4,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2, Globe, ShoppingBag, Smartphone,
   ArrowRight, Loader2, Shield,
-  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle, Facebook
+  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle, Facebook,
+  ChevronDown, ExternalLink, HelpCircle, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
