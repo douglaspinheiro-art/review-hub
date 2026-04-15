@@ -1,117 +1,40 @@
 
 
-# Automação do Onboarding WhatsApp Meta — Arquitetura Escalável
+# Automating WhatsApp Connection for Stores — Embedded Signup in Onboarding
 
-## Problema Atual
+## Current State
+- The **Embedded Signup** button ("Conectar com Facebook") already works on the `/dashboard/whatsapp` page
+- The **Onboarding** flow (Step 2) still shows a QR code placeholder and says "configure later in Dashboard"
+- New stores must navigate to the WhatsApp page after onboarding to connect — friction that hurts activation
 
-Cada loja precisa manualmente:
-1. Ir ao Meta Developer, criar app, configurar webhook
-2. Copiar Phone Number ID + Access Token
-3. Colar no dashboard LTV Boost
+## What Changes
 
-Isso inviabiliza 100+ lojas.
+### 1. Integrate Embedded Signup into Onboarding Step 2
+Replace the QR code placeholder in `src/pages/Onboarding.tsx` (Step 2) with a "Conectar com Facebook" button that triggers the same `launchEmbeddedSignup()` flow. After a successful OAuth, the step shows a green checkmark with the connected phone number and auto-advances to Step 3.
 
-## Solução: Meta Embedded Signup (OAuth)
+### 2. Handle store_id timing
+During onboarding, the store may have just been created. The component needs to fetch the user's store ID (from `stores` table) before launching the signup. If no store exists yet, show a message prompting the user to complete Step 1 first.
 
-A Meta oferece o **Embedded Signup Flow** — um botão "Conectar WhatsApp" que abre um popup OAuth. O lojista autoriza, e a plataforma recebe automaticamente:
-- Phone Number ID
-- WABA ID  
-- Access Token de longa duração (System User Token)
+### 3. Success state in onboarding
+After successful connection:
+- Show connected phone number with green badge
+- "Configurar depois" becomes "Continuar →" 
+- Auto-advance to Step 3 after 2 seconds
 
-Nenhum copy-paste, nenhuma visita ao Meta Developer.
+### 4. Keep manual fallback
+Add a small "Configurar manualmente depois" link below the button for users who prefer to set up later.
 
-```text
-┌──────────────────┐    OAuth popup    ┌──────────────┐
-│  Dashboard LTV   │ ───────────────→  │  Meta Login   │
-│  "Conectar WA"   │                   │  (Facebook)   │
-└──────────────────┘                   └──────┬───────┘
-                                              │ redirect + code
-                                              ▼
-                                    ┌──────────────────┐
-                                    │  Edge Function    │
-                                    │  meta-wa-oauth    │
-                                    │  (troca code →    │
-                                    │   token + IDs)    │
-                                    └────────┬─────────┘
-                                             │ salva na
-                                             │ whatsapp_connections
-                                             ▼
-                                    ┌──────────────────┐
-                                    │  Loja conectada   │
-                                    │  automaticamente  │
-                                    └──────────────────┘
-```
+## Files to Modify
 
-## O que muda
+| File | Change |
+|------|--------|
+| `src/pages/Onboarding.tsx` | Replace Step 2 QR placeholder with Embedded Signup button + success state |
 
-### 1. Pré-requisitos no Meta
-- Criar um **Meta Business App** com produto WhatsApp
-- Habilitar **Embedded Signup** no app (requer verificação do Business)
-- Configurar `META_APP_ID` e `META_APP_SECRET` como secrets (o `META_APP_SECRET` já existe)
-- Adicionar um **System User** com permissão `whatsapp_business_messaging`
+No new edge functions, migrations, or secrets needed — everything reuses the existing `launchEmbeddedSignup` helper and `meta-wa-oauth` edge function.
 
-### 2. Nova Edge Function: `meta-wa-oauth`
-- Recebe o `code` do redirect OAuth
-- Troca por `access_token` de longa duração via Graph API
-- Busca automaticamente Phone Number ID e WABA ID
-- Cria/atualiza `whatsapp_connections` com todos os campos
-- Registra webhook automaticamente na WABA (Graph API `/{waba_id}/subscribed_apps`)
-
-### 3. Atualização do Dashboard WhatsApp
-- Adicionar botão **"Conectar com Facebook"** (SDK `facebook-login`)
-- Ao completar o OAuth, a conexão aparece automaticamente como "connected"
-- Manter formulário manual como fallback para casos especiais
-- Token fornecido pela Meta via Embedded Signup dura ~60 dias; adicionar job de refresh automático
-
-### 4. Token Refresh Automático
-- Nova Edge Function `meta-wa-token-refresh` (cron diário)
-- Verifica tokens próximos de expirar (< 7 dias)
-- Renova via Graph API `/oauth/access_token?grant_type=fb_exchange_token`
-- Atualiza `whatsapp_connections.meta_access_token`
-- Notifica lojista apenas se refresh falhar
-
-### 5. Migration: nova coluna
-- `whatsapp_connections.meta_token_expires_at` (timestamptz) — para saber quando renovar
-- `whatsapp_connections.meta_business_id` (text) — Business Manager ID do lojista
-
-## Sobre as credenciais que você enviou
-
-As credenciais que você compartilhou (Phone Number ID `1003067482898885`, WABA ID `2161510034688293`, Token `EAAi...`) serão usadas como a **conta principal da plataforma** (System User). Elas vão como secrets globais:
-
-| Secret | Valor |
-|--------|-------|
-| `META_APP_ID` | ID do app Meta (preciso que envie) |
-| `META_APP_SECRET` | Já configurado ou a configurar |
-| `META_SYSTEM_USER_TOKEN` | O token que você enviou |
-| `META_PLATFORM_WABA_ID` | `2161510034688293` |
-| `META_PLATFORM_PHONE_ID` | `1003067482898885` |
-
-Com o Embedded Signup, cada loja recebe **suas próprias credenciais** automaticamente. O número da plataforma fica como fallback ou para envios internos.
-
-## Arquivos a criar/modificar
-
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/meta-wa-oauth/index.ts` | Criar — troca OAuth code por token + IDs |
-| `supabase/functions/meta-wa-token-refresh/index.ts` | Criar — cron de renovação de tokens |
-| `supabase/migrations/...meta_oauth_columns.sql` | Criar — `meta_token_expires_at`, `meta_business_id` |
-| `src/pages/dashboard/WhatsApp.tsx` | Modificar — botão "Conectar com Facebook" |
-| `src/lib/whatsapp/meta-embedded-signup.ts` | Criar — helper client-side para o SDK Meta |
-| `supabase/config.toml` | Adicionar config das novas functions |
-
-## Ordem de execução
-
-1. Migration (novas colunas)
-2. Secret `META_APP_ID` (preciso do valor)
-3. Edge Function `meta-wa-oauth`
-4. Edge Function `meta-wa-token-refresh`
-5. Helper client-side + botão no dashboard
-6. Salvar token global como `META_SYSTEM_USER_TOKEN`
-
-## Pré-requisito seu
-
-Preciso que você confirme/envie:
-- **META_APP_ID** — o App ID do seu app Meta (aparece no Meta Developer → Settings → Basic)
-- Se o app Meta já tem **Embedded Signup** habilitado
-- Se já passou pela **verificação do Business** no Meta Business Manager
+## Technical Notes
+- Import `launchEmbeddedSignup` from `@/lib/whatsapp/meta-embedded-signup`
+- Read `VITE_META_APP_ID` from `import.meta.env`
+- Query user's store from Supabase to get `store_id`
+- On success, store connection status in local state to show the green confirmation
 
