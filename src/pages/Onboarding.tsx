@@ -1,12 +1,13 @@
 // @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2, Globe, ShoppingBag, Smartphone,
-  ArrowRight, Loader2,
-  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle
+  ArrowRight, Loader2, Shield,
+  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle, Facebook
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,13 +34,63 @@ export default function Onboarding() {
 
   const [channels, setChannels] = useState<string[]>([]);
   const [_isSyncing, setIsSyncing] = useState<string | null>(null);
-  const [step, setStep] = useState(1); // 1: Channels, 2: WhatsApp, 3: Primeira Prescrição
+  const [step, setStep] = useState(1);
   const [objective, setObjective] = useState<PrimaryObjective | null>(null);
   const [vertical, setVertical] = useState<EcommerceVertical | null>(null);
   const [pulseNum, setPulseNum] = useState("");
   const [isLaunching, setIsLaunching] = useState(false);
+  const [waConnecting, setWaConnecting] = useState(false);
+  const [waConnected, setWaConnected] = useState<{ phone?: string } | null>(null);
+  const [userStoreId, setUserStoreId] = useState<string | null>(null);
   const showCommunity = sessionStorage.getItem("ltv_show_community") === "1";
   const companyName = sessionStorage.getItem("ltv_company") || "";
+
+  const metaAppId = import.meta.env.VITE_META_APP_ID as string | undefined;
+
+  // Fetch user's store_id when entering step 2
+  useEffect(() => {
+    if (step !== 2 || !user?.id) return;
+    supabase
+      .from("stores")
+      .select("id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setUserStoreId(data.id);
+      });
+  }, [step, user?.id]);
+
+  const handleConnectWhatsApp = useCallback(async () => {
+    if (!metaAppId) {
+      toast.error("META_APP_ID não configurado. Configure VITE_META_APP_ID.");
+      return;
+    }
+    if (!userStoreId) {
+      toast.error("Complete o passo 1 primeiro para criar sua loja.");
+      return;
+    }
+    setWaConnecting(true);
+    try {
+      const result = await launchEmbeddedSignup({
+        appId: metaAppId,
+        storeId: userStoreId,
+        instanceName: "onboarding",
+      });
+      if (result.ok) {
+        setWaConnected({ phone: result.display_phone_number });
+        toast.success("✅ WhatsApp conectado com sucesso!");
+        setTimeout(() => setStep(3), 2000);
+      } else {
+        toast.error(result.error || "Não foi possível conectar.");
+      }
+    } catch (err) {
+      toast.error("Erro ao conectar WhatsApp. Tente novamente.");
+    } finally {
+      setWaConnecting(false);
+    }
+  }, [metaAppId, userStoreId]);
 
   const ownStores = [
     { id: "shopify", label: "Shopify", icon: Globe, help: "Conexão via App Oficial. Sincroniza pedidos, clientes e carrinhos em tempo real." },
@@ -349,30 +400,63 @@ export default function Onboarding() {
                     </div>
                   </div>
 
-                  <div className="pt-4">
+                  <div className="pt-4 space-y-3">
+                    {waConnected ? (
+                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center gap-3 animate-in fade-in zoom-in">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0" />
+                        <div>
+                          <p className="font-bold text-emerald-400 text-sm">WhatsApp conectado!</p>
+                          {waConnected.phone && (
+                            <p className="text-xs text-muted-foreground font-mono">{waConnected.phone}</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => void handleConnectWhatsApp()}
+                        disabled={waConnecting}
+                        className="w-full h-12 bg-[#1877F2] hover:bg-[#1877F2]/90 text-white font-bold rounded-xl gap-2"
+                      >
+                        {waConnecting ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Conectando...</>
+                        ) : (
+                          <><Facebook className="w-4 h-4" /> Conectar com Facebook</>
+                        )}
+                      </Button>
+                    )}
                     <Button
-                      onClick={() => { toast.info("WhatsApp será configurado no dashboard após o cadastro."); setStep(3); }}
-                      variant="outline"
-                      className="w-full h-12 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500 hover:text-white font-bold rounded-xl gap-2"
+                      onClick={() => setStep(3)}
+                      variant="ghost"
+                      className="w-full text-xs text-muted-foreground hover:text-white"
                     >
-                      <QrCode className="w-4 h-4" /> Configurar depois
+                      {waConnected ? "Continuar →" : "Configurar manualmente depois"}
                     </Button>
-                    <p className="text-[10px] text-muted-foreground text-center mt-3 italic">
-                      Configure em Dashboard → WhatsApp após o cadastro.
-                    </p>
                   </div>
                 </div>
 
-                <div className="relative group cursor-pointer" onClick={() => { toast.info("WhatsApp será configurado no dashboard após o cadastro."); setStep(3); }}>
-                  <div className="absolute inset-0 bg-emerald-500/20 blur-2xl group-hover:bg-emerald-500/30 transition-all rounded-full" />
+                <div className="relative">
+                  <div className="absolute inset-0 bg-emerald-500/20 blur-2xl rounded-full" />
                   <div className="relative bg-black rounded-2xl p-6 border border-white/10 shadow-2xl flex flex-col items-center gap-4">
-                    <div className="w-48 h-48 bg-white rounded-xl p-2 flex items-center justify-center relative overflow-hidden">
-                      <QrCode className="w-40 h-40 text-black" />
-                      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-[10px] font-black uppercase text-white tracking-widest bg-emerald-500 px-3 py-1 rounded-full">Clique para Gerar</span>
-                      </div>
-                    </div>
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Aguardando Conexão...</p>
+                    {waConnected ? (
+                      <>
+                        <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-emerald-500/10">
+                          <CheckCircle2 className="w-24 h-24 text-emerald-500 animate-in zoom-in" />
+                        </div>
+                        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Conectado ✓</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-[#1877F2]/10 border border-[#1877F2]/20">
+                          <div className="text-center space-y-3">
+                            <Facebook className="w-16 h-16 text-[#1877F2] mx-auto" />
+                            <p className="text-xs text-muted-foreground font-medium">Conexão automática<br />via Meta Business</p>
+                          </div>
+                        </div>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                          {waConnecting ? "Conectando..." : "Aguardando Conexão..."}
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
