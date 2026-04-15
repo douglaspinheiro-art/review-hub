@@ -30,6 +30,7 @@ import { trackMoatEvent } from "@/lib/moat-telemetry";
 import { computeRfmSampleContext } from "@/lib/rfm-classify";
 import { isValidRfmQuerySegment, type RfmEnglishSegment } from "@/lib/rfm-segments";
 // contact-export-helper not yet implemented
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _downloadContactsCsv = async (_storeId: string, _userId: string) => { /* noop */ };
 import { PAGE_SIZE_CONTACTS as PAGE_SIZE } from "@/lib/pagination-constants";
 

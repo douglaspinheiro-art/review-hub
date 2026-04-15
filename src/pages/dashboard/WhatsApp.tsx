@@ -132,6 +132,7 @@ export default function WhatsApp() {
     return `${base}/functions/v1/meta-whatsapp-webhook`;
   }, []);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _connectionSelect =
     "id, instance_name, phone_number, status, provider, meta_phone_number_id, meta_waba_id, meta_default_template_name, connected_at, created_at, store_id";
 

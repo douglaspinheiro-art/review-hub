@@ -68,6 +68,7 @@ function campaignDispatchPriority(status: string | undefined): number {
   return 3;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function _pickLinkedCampaign(
   prescriptionId: string,
   campaigns: CampaignRow[],
