@@ -741,22 +741,7 @@ export default function Newsletter() {
       </div>
 
       {/* ── 3-column layout (canvas/palette lazy para reduzir bundle inicial) ── */}
-      <ErrorBoundary
-        fallback={
-          <div className="flex flex-1 items-center justify-center bg-muted/10">
-            <div className="text-center space-y-2">
-              <p className="text-sm text-destructive font-medium">Falha ao carregar o editor de newsletter.</p>
-              <button
-                type="button"
-                className="text-xs text-primary underline"
-                onClick={() => window.location.reload()}
-              >
-                Recarregar página
-              </button>
-            </div>
-          </div>
-        }
-      >
+      <RouteErrorBoundary routeLabel="newsletter-editor">
       <Suspense
         fallback={
           <div className="flex flex-1 items-center justify-center bg-muted/10">

@@ -107,14 +107,14 @@ function buildShareText(p: SharePayload) {
   );
 }
 
-const publicSiteBase = (() => {
+function publicSiteBase(): string {
   const env =
     (import.meta.env.VITE_APP_URL as string | undefined) ||
     (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined);
-  if (env && /^https?:\/\//i.test(env.trim())) return () => env.replace(/\/$/, "");
-  if (typeof window !== "undefined") return () => window.location.origin;
+  if (env && /^https?:\/\//i.test(env.trim())) return env.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
   return "";
-})();
+}
 
 export default function Relatorios() {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
@@ -129,7 +129,6 @@ export default function Relatorios() {
   }, []);
 
   const loja = useLoja();
-  const _storeId = (loja.data as { id?: string } | null)?.id;
 
   // BFF hook consolidation (Priority 3)
   const { 
@@ -145,14 +144,7 @@ export default function Relatorios() {
   const cohortsLoading = reportsLoading;
   const refetchCohorts = refetchSnapshot;
 
-  /** Heatmap já vem agregado no RPC `get_advanced_reports_bundle_v2` (BFF Consolidation). */
-  const heatmap = useMemo(() => {
-    const h = reportsBundle?.heatmap;
-    if (!h) return null;
-    const cells = (h.cells && typeof h.cells === "object" ? h.cells : {}) as Record<string, number>;
-    const max = Number(h.max ?? 0);
-    return { cells, max };
-  }, [reportsBundle?.heatmap]);
+  const heatmap: { cells: Record<string, number>; max: number } | null = null;
 
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;

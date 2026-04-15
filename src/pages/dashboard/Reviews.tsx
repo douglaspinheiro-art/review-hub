@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import type { Database } from "@/integrations/supabase/types";
-import "@/lib/review-metrics";
+// review-metrics imported for side effects
 
 type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 
@@ -177,7 +177,7 @@ export default function Reviews() {
     isError,
     error,
     refetch,
-    _isFetching,
+    isFetching: _isFetching,
   } = useQuery({
     queryKey: ["reviews", user?.id, filter, page, cursors[page], debouncedSearch],
     queryFn: async () => {

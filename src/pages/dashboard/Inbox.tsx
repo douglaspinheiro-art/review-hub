@@ -715,7 +715,7 @@ export default function Inbox() {
                 selectedId={selectedId}
                 setSelectedId={setSelectedId}
                 selectedContact={selectedContact}
-                selectedConv={selectedConv}
+                selectedConv={(selectedConv ?? undefined) as any}
                 inboxReadOnly={inboxReadOnly}
                 showSidebar={showSidebar}
                 setShowSidebar={setShowSidebar}
