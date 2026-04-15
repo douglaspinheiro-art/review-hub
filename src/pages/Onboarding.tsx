@@ -586,19 +586,6 @@ export default function Onboarding() {
                       />
                     </div>
                   )}
-                  {plataforma === "WooCommerce" && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        URL do site *
-                      </Label>
-                      <Input
-                        placeholder="https://minhaloja.com.br"
-                        value={integrationConfig.site_url || ""}
-                        onChange={e => handleIntegrationFieldChange("site_url", e.target.value)}
-                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                      />
-                    </div>
-                  )}
 
                   <Button
                     onClick={handleOAuthConnect}
