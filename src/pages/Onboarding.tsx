@@ -133,6 +133,120 @@ export default function Onboarding() {
 
   const platformInfo = PLATFORM_INTEGRATION_MAP[plataforma];
   const isUnsupportedPlatform = UNSUPPORTED_PLATFORMS.includes(plataforma);
+  const isOAuth = isOAuthPlatform(plataforma);
+
+  // Listen for OAuth popup result
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "oauth_result") {
+        setOauthConnecting(false);
+        if (event.data.success) {
+          setIntegrationValid(true);
+          toast.success(`${plataforma} conectado com sucesso!`);
+        } else {
+          setIntegrationError(event.data.error || "Falha na conexão OAuth.");
+          toast.error("Falha na conexão. Tente novamente.");
+        }
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [plataforma]);
+
+  // Check URL params for OAuth redirect result (WooCommerce uses redirect, not popup)
+  useEffect(() => {
+    const oauthParam = searchParams.get("oauth");
+    if (oauthParam === "connected") {
+      setIntegrationValid(true);
+      setStep(2);
+      toast.success("Loja conectada com sucesso!");
+    }
+  }, [searchParams]);
+
+  const handleOAuthConnect = useCallback(async () => {
+    if (!user?.id) return;
+
+    // Get store_id
+    const { data: storeData } = await supabase
+      .from("stores")
+      .select("id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!storeData?.id) {
+      toast.error("Crie sua loja primeiro (passo 1).");
+      return;
+    }
+
+    setOauthConnecting(true);
+    setIntegrationError(null);
+
+    try {
+      const functionName = `oauth-${plataforma.toLowerCase()}`;
+      let queryParams = `action=start&store_id=${storeData.id}`;
+
+      if (plataforma === "Shopify") {
+        const shop = integrationConfig.shop_url?.trim();
+        if (!shop) {
+          toast.error("Informe o domínio da loja Shopify (ex: minhaloja.myshopify.com).");
+          setOauthConnecting(false);
+          return;
+        }
+        queryParams += `&shop=${encodeURIComponent(shop)}`;
+      }
+
+      if (plataforma === "WooCommerce") {
+        const siteUrl = integrationConfig.site_url?.trim();
+        if (!siteUrl) {
+          toast.error("Informe a URL do seu site WooCommerce.");
+          setOauthConnecting(false);
+          return;
+        }
+        queryParams += `&site_url=${encodeURIComponent(siteUrl)}`;
+      }
+
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: null,
+        method: "GET",
+      } as any);
+
+      // For GET requests, we need to construct the URL manually
+      const session = (await supabase.auth.getSession()).data.session;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ydkglitowqlpizpnnofy.supabase.co";
+      const res = await fetch(`${supabaseUrl}/functions/v1/${functionName}?${queryParams}`, {
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlka2dsaXRvd3FscGl6cG5ub2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTc2NjEsImV4cCI6MjA5MDYzMzY2MX0.kJTWWxWN8cP4r1AtmM2XraJtjPM_qy8sxE2gHU9f8QE",
+        },
+      });
+
+      const resData = await res.json();
+
+      if (!resData?.url) {
+        setIntegrationError("Não foi possível gerar a URL de autorização.");
+        setOauthConnecting(false);
+        return;
+      }
+
+      if (plataforma === "WooCommerce") {
+        // WooCommerce uses redirect (callback is server-to-server POST)
+        window.location.href = resData.url;
+      } else {
+        // Shopify/Nuvemshop use popup
+        const popup = window.open(resData.url, `oauth-${plataforma}`, "width=600,height=700,scrollbars=yes");
+        if (!popup) {
+          toast.error("Popup bloqueado. Permita popups para este site.");
+          setOauthConnecting(false);
+        }
+      }
+    } catch (e) {
+      console.error("OAuth error:", e);
+      setIntegrationError("Erro ao iniciar conexão. Tente novamente.");
+      setOauthConnecting(false);
+    }
+  }, [user?.id, plataforma, integrationConfig]);
 
   const handleStep1Next = () => {
     if (!storeName.trim()) { toast.error("Informe o nome da loja."); return; }
