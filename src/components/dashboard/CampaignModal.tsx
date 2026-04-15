@@ -439,7 +439,7 @@ export default function CampaignModal({
   const channel = watch("channel");
   const message = watch("message") ?? "";
   const objective = watch("objective");
-  const _watchedName = watch("name");
+  void watch("name"); // keep form tracking
 
   const { data: savedTemplates = [] } = useQuery({
     queryKey: ["campaign_message_templates", user?.id, channel, objective],
@@ -547,7 +547,6 @@ export default function CampaignModal({
           channel: channelSave,
           subject: data.subject ?? null,
           source_prescription_id: prescriptionId ?? null,
-          tags: tags as any,
           status: "draft",
           total_contacts: 0,
           sent_count: 0,
@@ -555,7 +554,7 @@ export default function CampaignModal({
           read_count: 0,
           reply_count: 0,
           blocks: blocksPayload,
-        }]).select("id").single();
+        }] as any).select("id").single();
         if (error) throw error;
         campaignId = inserted?.id as string | undefined;
       }

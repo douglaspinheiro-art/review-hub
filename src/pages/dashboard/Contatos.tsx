@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import {
@@ -6,12 +7,7 @@ import {
   Mail,
   Phone,
   RefreshCw,
-  Download,
-  Tag,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  UserPlus,
+  // Download, Tag, Calendar, UserPlus available for future use
   ArrowRight,
   DatabaseZap,
 } from "lucide-react";
@@ -27,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import { useAuth } from "@/hooks/useAuth";
-import { useContacts, useRfmReportCounts, type RfmReportCounts } from "@/hooks/useDashboard";
+import { useContacts, type RfmReportCounts } from "@/hooks/useDashboard";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { supabase } from "@/lib/supabase";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
