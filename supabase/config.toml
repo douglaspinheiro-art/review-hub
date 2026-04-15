@@ -173,3 +173,11 @@ verify_jwt = true
 # Registro automático de webhooks — autenticado por JWT do usuário.
 [functions.register-webhooks]
 verify_jwt = true
+
+# Meta Embedded Signup OAuth — autenticado via JWT do usuário.
+[functions.meta-wa-oauth]
+verify_jwt = false
+
+# Token refresh cron — autenticado via CRON_SECRET no handler.
+[functions.meta-wa-token-refresh]
+verify_jwt = false
