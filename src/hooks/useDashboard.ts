@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {
   contactMatchesEnglishRfmSegment,
   RFM_ENGLISH_ALIASES,
@@ -18,6 +19,7 @@ import {
   mapDashboardSnapshotRpcToHomeStats,
   type DashboardHomeStats,
 } from "@/lib/dashboard-home-stats";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { CAMPAIGN_LIST_SELECT, OPPORTUNITIES_LIST_SELECT } from "@/lib/supabase-select-fragments";
 import { CHART_SERIES_MAX_POINTS, downsampleDailySeriesBySum } from "@/lib/chart-downsample";
 
