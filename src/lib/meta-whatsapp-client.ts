@@ -23,8 +23,6 @@ export interface SendMessageResponse {
 export type ConnRow = {
   id: string;
   instance_name: string;
-  evolution_api_url?: string | null;
-  evolution_api_key?: string | null;
   provider?: string | null;
   meta_phone_number_id?: string | null;
   meta_access_token?: string | null;

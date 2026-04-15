@@ -9,7 +9,7 @@ Para entender como utilizar a plataforma, estratégias de LTV e configurações 
 ## 🛠️ Tecnologias
 - **Frontend:** React + Vite + TypeScript + Tailwind CSS
 - **Backend:** Supabase
-- **WhatsApp:** Evolution API
+- **WhatsApp:** Meta Cloud API
 
 ## 🚀 Como começar
 1. Clone o repositório

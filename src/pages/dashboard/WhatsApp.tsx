@@ -276,8 +276,6 @@ export default function WhatsApp() {
         instance_name: name.trim(),
         status: "disconnected" as const,
         provider: "meta_cloud" as const,
-        evolution_api_url: null,
-        evolution_api_key: null,
         meta_phone_number_id: metaPhoneNumberId.trim() || null,
         meta_waba_id: metaWabaId.trim() || null,
         meta_access_token: metaAccessToken.trim() || null,
@@ -321,8 +319,6 @@ export default function WhatsApp() {
     mutationFn: async (connectionId: string) => {
       const patch: Record<string, unknown> = {
         provider: "meta_cloud",
-        evolution_api_url: null,
-        evolution_api_key: null,
         meta_phone_number_id: metaPhoneNumberId.trim() || null,
         meta_waba_id: metaWabaId.trim() || null,
         meta_default_template_name: metaDefaultTemplate.trim() || null,

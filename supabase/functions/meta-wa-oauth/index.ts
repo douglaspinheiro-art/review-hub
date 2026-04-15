@@ -139,8 +139,6 @@ Deno.serve(async (req) => {
       meta_api_version: "v21.0",
       phone_number: displayPhoneNumber || null,
       connected_at: metaPhoneNumberId ? new Date().toISOString() : null,
-      evolution_api_url: null,
-      evolution_api_key: null,
     };
 
     const { data: inserted, error: insertErr } = await adminClient

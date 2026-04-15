@@ -1,5 +1,5 @@
 /**
- * Persistência canônica de mensagem inbound (Evolution ou Meta) → customers_v3, conversations, messages.
+ * Persistência canônica de mensagem inbound (Meta Cloud API) → customers_v3, conversations, messages.
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
