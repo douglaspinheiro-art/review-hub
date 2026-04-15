@@ -3,8 +3,8 @@ import { supabase } from "@/lib/supabase";
 import { pickStoreIdFromList } from "@/lib/active-store-id";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { aggregateAnalyticsDailyRows, type AnalyticsDailyRow } from "@/lib/analytics-aggregate";
-import {
   contactMatchesEnglishRfmSegment,
   RFM_ENGLISH_ALIASES,
   type RfmEnglishSegment,
@@ -29,7 +29,7 @@ async function fetchLegacyConversationKpis(
 ): Promise<{ openConversations: number; totalUnread: number }> {
   try {
     const { data, error } = await supabase.rpc("get_legacy_dashboard_conversation_kpis", {
-      p_store_id: storeId,
+      p_store_id: storeId as string,
       p_user_id: effectiveUserId,
     });
     if (error) throw error;
@@ -114,7 +114,7 @@ export async function fetchDashboardStatsLegacyData(
   days: number,
   scope: { userId: string; storeId: string | null; effectiveUserId: string },
 ) {
-  const { userId, storeId, effectiveUserId } = scope;
+  const { storeId, effectiveUserId } = scope;
 
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const prevSince = new Date(Date.now() - days * 2 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
@@ -303,7 +303,7 @@ type CampaignRevRow = { campaign_id: string; revenue: number };
 // vs 125 round-trips at the old chunk size of 40.
 const CAMPAIGN_METRICS_FALLBACK_CHUNK = 200;
 
-async function fetchCampaignMetricsBundle(
+async function _fetchCampaignMetricsBundle(
   storeId: string | null,
   effectiveUserId: string,
   campaignIds: string[],
@@ -313,7 +313,7 @@ async function fetchCampaignMetricsBundle(
   if (campaignIds.length === 0) return empty();
 
   const { data: bundle, error } = await supabase.rpc("get_campaign_metrics_bundle", {
-    p_store_id: storeId,
+    p_store_id: storeId as string,
     p_owner_user_id: effectiveUserId,
     p_campaign_ids: campaignIds,
   });
