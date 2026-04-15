@@ -92,9 +92,38 @@ export default function WhatsApp() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
 
-  const metaAppId = import.meta.env.VITE_META_APP_ID ?? "";
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const handleEmbeddedSignup = useCallback(async () => {
+    if (!metaAppId) {
+      toast({ title: "META_APP_ID não configurado", description: "Defina VITE_META_APP_ID no build.", variant: "destructive" });
+      return;
+    }
+    if (!selectedStoreId) {
+      toast({ title: "Selecione uma loja primeiro", variant: "destructive" });
+      return;
+    }
+    setEmbeddedSignupLoading(true);
+    try {
+      const result = await launchEmbeddedSignup({
+        appId: metaAppId,
+        storeId: selectedStoreId,
+      });
+      if (result.ok) {
+        toast({ title: "WhatsApp conectado!", description: result.display_phone_number ? `Número: ${result.display_phone_number}` : "Conexão criada automaticamente." });
+        queryClient.invalidateQueries({ queryKey: ["whatsapp_bundle_v2"] });
+        queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
+      } else {
+        toast({ title: "Erro na conexão", description: result.error ?? "Tente novamente.", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Erro", description: err instanceof Error ? err.message : "Falha no Embedded Signup", variant: "destructive" });
+    } finally {
+      setEmbeddedSignupLoading(false);
+    }
+  }, [metaAppId, selectedStoreId, toast, queryClient]);
 
   const metaWebhookUrl = useMemo(() => {
     const raw = import.meta.env.VITE_SUPABASE_URL;
