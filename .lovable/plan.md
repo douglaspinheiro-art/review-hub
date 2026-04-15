@@ -1,63 +1,92 @@
 
 
-# Plano: Fechar os Últimos Gaps para Produção (100%)
+# Plano: Produção 100% — Últimos Gaps
 
 ## Estado Atual
-
-A plataforma avançou significativamente. Os `@ts-nocheck` foram removidos, secrets configurados, security migration aplicada. Porém, **o build está quebrado** com ~50 erros TypeScript e há itens residuais pendentes.
-
----
-
-## Bloco 1 — Corrigir erros de build (CRÍTICO — app não compila)
-
-O build falha com erros TypeScript em 4 arquivos após remoção dos `@ts-nocheck`. Todos são desalinhamentos entre o código e os tipos gerados do Supabase.
-
-| Arquivo | Erros | Causa raiz |
-|---|---|---|
-| `CampaignModal.tsx` | 17 erros | Tabela `campaign_message_templates` não existe nos types; campos `user_id`, `channel`, `objective` não reconhecidos; variáveis não usadas |
-| `useDashboard.ts` | 15 erros | Variáveis não usadas; `string \| null` atribuído a `string`; referência a `campaigns` inexistente no escopo; coluna `assigned_to_name` e `created_at` não encontradas em `conversations` / `message_sends` |
-| `useConvertIQ.ts` | 3 erros | `string \| null` → `string`; campo `user_id` não no insert type |
-| `ContactInfoSidebar.tsx` | 6 erros | Campo `url` não existe em `stores`; `contact` possivelmente `null` |
-
-**Solução:** Adicionar type assertions (`as any`), null coalescing, e remover variáveis não usadas. Onde os types do Supabase divergem da realidade do banco, usar cast explícito com comentário.
+- **Build:** Compilando com sucesso (zero erros TS)
+- **Secrets:** 20 secrets configurados (todos P0/P1 presentes)
+- **Linter:** 7 issues (2 INFO já ignorados, 5 WARN pendentes)
+- **Security scan:** 3 findings (1 ERROR crítico, 1 ERROR de auditoria, 1 WARN)
 
 ---
 
-## Bloco 2 — Remover `isDemo` residual em `EmExecucao.tsx`
+## Bloco 1 — Security Fixes (CRÍTICO)
 
-Ainda há `const isDemo = false` e branches mortos em `EmExecucao.tsx` (L103, L153-154, L157, L358).
+### 1a. SMS credentials exposure (ERROR)
+A tabela `sms_connections` tem policy `FOR ALL USING (auth.uid() = user_id)` com role `public`. Se alguma row tiver `user_id = NULL`, as colunas `api_key` e `api_secret` ficam expostas a requests não autenticados.
 
-**Ação:** Remover a variável e simplificar as condições (já são sempre `true`/`false`).
+**Migration:**
+- Drop policy `sms_connections_own`, recriar com role `authenticated` em vez de `public`
+
+### 1b. Team members privilege escalation (ERROR)
+A policy `team_members_owner_manage` concede ALL ao owner, mas operadores com write access podem potencialmente escalar privilégios.
+
+**Migration:**
+- Adicionar policies explícitas de INSERT/UPDATE/DELETE em `team_members` restringindo escrita ao owner (`store_id` owner check)
+- Garantir que `membros_loja` não permite inserts não autorizados
+
+### 1c. `api_request_logs` sem policy (INFO — já ignorado)
+Tabela interna, service-role only. RLS bloqueia tudo por padrão — correto. Nenhuma ação.
 
 ---
 
-## Bloco 3 — Linter warnings do banco
+## Bloco 2 — Linter Warnings
 
-| Issue | Ação |
+### 2a. Function Search Path Mutable (2 funções)
+As 2 overloads de `increment_daily_revenue` (2 args e 3 args) não têm `search_path` definido.
+
+**Migration:**
+- `ALTER FUNCTION increment_daily_revenue(date, numeric) SET search_path = public;`
+- `ALTER FUNCTION increment_daily_revenue(uuid, date, numeric) SET search_path = public;`
+
+### 2b. Extensions in Public (`pg_trgm`, `pgcrypto`)
+Já ignorado no scan. Mover extensões requer ação manual no Dashboard (não é possível via migration). Documentado e aceito.
+
+### 2c. Leaked Password Protection Disabled
+**Ação manual:** Dashboard Supabase → Authentication → Settings → Habilitar "Leaked password protection". Não é possível via migration.
+
+---
+
+## Bloco 3 — Policies com role `public` → `authenticated`
+
+Várias tabelas usam `FOR ALL ... TO public` em vez de `TO authenticated`. Isso é um padrão inseguro (permite match se `user_id` for NULL). Tabelas afetadas:
+
+| Tabela | Policy atual |
 |---|---|
-| 2× RLS Enabled No Policy (`api_request_logs`, `rate_limits`) | Criar policies mínimas (service-role only) ou documentar que são tabelas internas |
-| 2× Function Search Path Mutable | Corrigir as 2 funções restantes (`increment_daily_revenue` overloads e `get_optimal_send_hour`) |
-| Leaked Password Protection Disabled | **Ação manual** no Dashboard: Authentication → Settings |
-| 2× Extension in Public (`pg_trgm`, `pgcrypto`) | Mover para schema `extensions` via migration |
-| SMS credentials plaintext | Restringir policy de `public` para `authenticated` |
-| WhatsApp tokens readable by team | Separar colunas sensíveis ou restringir select das colunas de token |
+| `sms_connections` | `sms_connections_own` TO public |
+| `ai_generated_coupons` | `ai_coupons_own` TO public |
+| `channels` | `canais_own` TO public |
+| `communications_sent` | `comunicacoes_enviadas_own` TO public |
+| `executions` | `execucoes_own` TO public |
+| `loyalty_points` | `loyalty_points_owner` TO public |
+| `benchmark_reports` | `benchmark_reports_own` TO public |
+| `ai_agent_config` | `agente_ia_own` TO public |
 
----
-
-## Bloco 4 — Secrets faltantes verificados
-
-**20 secrets configurados** — todos os P0 e P1 do plano anterior estão presentes. Nenhum secret faltante.
+**Migration:** Recriar essas policies com `TO authenticated`.
 
 ---
 
 ## Resumo de Execução
 
-| Bloco | Esforço | Impacto |
+| Bloco | Tipo | Esforço |
 |---|---|---|
-| 1. Fix build errors (4 arquivos) | 45 min | **App não compila sem isso** |
-| 2. Remover isDemo EmExecucao | 5 min | Limpeza |
-| 3. DB linter fixes | 30 min | Segurança |
-| Manual: Leaked Password Protection | 1 min | Dashboard Supabase |
+| 1a. Fix SMS credentials exposure | Migration SQL | 5 min |
+| 1b. Team members escalation guard | Migration SQL | 10 min |
+| 2a. search_path nas 2 funções | Migration SQL | 2 min |
+| 2b. Extensions in public | Manual (Dashboard) | — |
+| 2c. Leaked password protection | Manual (Dashboard) | 1 min |
+| 3. Policies public → authenticated | Migration SQL | 15 min |
 
-**Após esses blocos, a plataforma estará compilando, segura e pronta para usuários reais.**
+**Total:** 1 migration com todos os fixes SQL + 2 ações manuais no Dashboard.
+
+### Ações manuais (você precisa fazer):
+1. **Leaked Password Protection:** Dashboard → Authentication → Settings → Enable
+2. **Extensions:** Opcionalmente mover `pg_trgm`/`pgcrypto` para schema `extensions` no Dashboard
+
+### Após este plano:
+- Zero security findings
+- Zero linter warnings (exceto extensions — aceito)
+- Build compilando
+- Secrets completos
+- **Plataforma pronta para usuários reais**
 
