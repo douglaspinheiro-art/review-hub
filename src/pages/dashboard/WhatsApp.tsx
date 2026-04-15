@@ -33,6 +33,7 @@ import {
   metaShowsWebhookHelp,
   shouldWarnIncompleteSetup,
 } from "@/lib/whatsapp/connection-ui";
+import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
 
 type Connection = {
   id: string;
