@@ -25,6 +25,8 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [searchParams] = useSearchParams();
   const perda = searchParams.get("perda");
+  const refParam = searchParams.get("ref");
+  const isPilot = refParam === "pilot";
   const { signUp, user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -45,6 +47,7 @@ export default function Signup() {
     const { error } = await signUp(data.email, data.password, {
       full_name: data.full_name,
       plataforma: data.plataforma,
+      ...(isPilot ? { pilot: true } : {}),
     });
     setLoading(false);
     if (error) {
