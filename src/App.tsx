@@ -107,6 +107,7 @@ const Signup = lazy(() => import("./pages/Signup.tsx"));
 const Onboarding = lazy(() => import("./pages/Onboarding.tsx"));
 const Analisando = lazy(() => import("./pages/Analisando.tsx"));
 const Resultado = lazy(() => import("./pages/Resultado.tsx"));
+const Setup = lazy(() => import("./pages/Setup.tsx"));
 const Sobre = lazy(() => import("./pages/Sobre.tsx"));
 const Blog = lazy(() => import("./pages/Blog.tsx"));
 const Carreiras = lazy(() => import("./pages/Carreiras.tsx"));
@@ -186,6 +187,7 @@ const App = () => (
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/analisando" element={<ProtectedRoute><Analisando /></ProtectedRoute>} />
           <Route path="/resultado" element={<ProtectedRoute><Resultado /></ProtectedRoute>} />
+          <Route path="/setup" element={<ProtectedRoute><Setup /></ProtectedRoute>} />
           <Route path="/sobre" element={<Sobre />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/carreiras" element={<Carreiras />} />
