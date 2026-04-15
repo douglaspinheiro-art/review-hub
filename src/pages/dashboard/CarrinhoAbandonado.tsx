@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ShoppingCart,
@@ -9,8 +9,7 @@ import {
   TrendingUp,
   Loader2,
   RefreshCw,
-  Filter,
-  AlertCircle,
+  // Filter and AlertCircle available for future use
   ExternalLink,
   ChevronLeft,
   ChevronRight,
@@ -34,7 +33,6 @@ import { useWhatsAppSender } from "@/hooks/useWhatsAppSender";
 import { cn } from "@/lib/utils";
 import {
   buildCartRecoveryMessage,
-  normalizePhoneDigitsBr,
   parseSafeHttpUrl,
 } from "@/lib/carrinho-abandonado-helpers";
 import { PAGE_SIZE_CARTS as PAGE_SIZE } from "@/lib/pagination-constants";
@@ -172,7 +170,7 @@ export default function CarrinhoAbandonado() {
         p_store_id: effectiveStoreId,
         p_since: sinceIso,
         p_status: filter,
-        p_cursor_created_at: cursors[cursorIdx],
+        p_cursor_created_at: cursors[cursorIdx] ?? undefined,
         p_limit: PAGE_SIZE
       });
 
@@ -190,7 +188,7 @@ export default function CarrinhoAbandonado() {
 
   const carts = cartsQuery.data?.carts ?? [];
   const totalCount = cartsQuery.data?.totalCount ?? 0;
-  const kpi = cartsQuery.data?.kpi ?? { total: 0, recovered: 0, pending: 0, total_value: 0, recovered_value: 0 };
+  const kpi = (cartsQuery.data?.kpi ?? { total: 0, recovered: 0, pending: 0, total_value: 0, recovered_value: 0 }) as any;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const recoveryRate = kpi.total > 0 ? Math.round((kpi.recovered / kpi.total) * 100) : 0;
 

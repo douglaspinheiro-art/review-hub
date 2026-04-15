@@ -206,7 +206,7 @@ export default function Atribuicao() {
 
       {!isLoading && data && data.totalRevenue > 0 && (
         <>
-          {data.attributionQueryError && (
+          {(data as any).attributionQueryError && (
             <div
               className="flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
               role="alert"
@@ -214,7 +214,7 @@ export default function Atribuicao() {
               <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" aria-hidden />
               <div>
                 <p className="font-bold text-foreground">Não foi possível carregar eventos de atribuição</p>
-                <p className="text-muted-foreground text-xs mt-1">{data.attributionQueryError}</p>
+                <p className="text-muted-foreground text-xs mt-1">{(data as any).attributionQueryError}</p>
                 <p className="text-muted-foreground text-xs mt-1">
                   As métricas de receita do gráfico continuam disponíveis; a tabela por campanha pode ficar vazia até o problema ser resolvido.
                 </p>
@@ -222,20 +222,20 @@ export default function Atribuicao() {
             </div>
           )}
 
-          {data.usesEstimatedSourceSplit && (
+          {(data as any).usesEstimatedSourceSplit && (
             <DisclaimerCard title="Distribuição por origem estimada. ">
               Não há pedidos com <code className="text-[10px] bg-muted px-1 rounded">attribution_events</code> no período.
               O gráfico &quot;Por origem&quot; usa uma divisão ilustrativa (55% / 30% / 15%) sobre a receita influenciada — não substitui medição por pedido.
             </DisclaimerCard>
           )}
 
-          {(data.scopeTruncated || data.detailFetchTruncated || data.roasSpendPartial) && (
+          {((data as any).scopeTruncated || (data as any).detailFetchTruncated || (data as any).roasSpendPartial) && (
             <DisclaimerCard title="Consulta otimizada. ">
-              {data.scopeTruncated &&
+              {(data as any).scopeTruncated &&
                 "Listamos até 20 mil IDs de campanhas da loja para filtrar eventos multi-tenant; acima disso, a atribuição por campanha pode ficar incompleta. "}
-              {data.detailFetchTruncated &&
+              {(data as any).detailFetchTruncated &&
                 "Há mais de 500 campanhas distintas com pedidos atribuídos no período; detalhe e custo de envio usados no ROAS consideram apenas um subconjunto para manter a página rápida. "}
-              {data.roasSpendPartial &&
+              {(data as any).roasSpendPartial &&
                 "O denominador do ROAS reflete só o custo das campanhas carregadas nesta consulta — pode subestimar ou superestimar o total real da loja."}
             </DisclaimerCard>
           )}
@@ -254,9 +254,9 @@ export default function Atribuicao() {
               label="ROI / ROAS"
               value={data.roas != null ? `${data.roas.toFixed(1)}x` : "—"}
               sub={
-                data.roasDenominatorMissing
+                (data as any).roasDenominatorMissing
                   ? "Informe custo de envio nas campanhas (custo total) para calcular ROAS."
-                  : `${data.roasSpendPartial ? "Custo considerado nas campanhas carregadas para esta página. " : ""}Base: ${fmt(data.totalSpendBrl)} em custo de envio.`
+                  : `${(data as any).roasSpendPartial ? "Custo considerado nas campanhas carregadas para esta página. " : ""}Base: ${fmt(data.totalSpendBrl)} em custo de envio.`
               }
               icon={TrendingUp}
               color="bg-primary/10 text-primary"
@@ -270,7 +270,7 @@ export default function Atribuicao() {
             />
             <KpiCard
               label="Conversões"
-              value={data.totalConversions.toLocaleString("pt-BR")}
+              value={((data as any).totalConversions ?? 0).toLocaleString("pt-BR")}
               sub={data.hasAttribution ? `atribuídas (last-touch ${windowLabel})` : "estimado (sem eventos no período)"}
               icon={Zap}
               color="bg-violet-500/10 text-violet-600"
@@ -286,7 +286,7 @@ export default function Atribuicao() {
               </span>
             </div>
             <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={data.chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+              <AreaChart data={(data as any).chartData ?? []} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
@@ -442,7 +442,7 @@ export default function Atribuicao() {
                   </div>
                 </>
               )}
-              {data.usesEstimatedSourceSplit && (
+              {(data as any).usesEstimatedSourceSplit && (
                 <p className="text-[10px] text-muted-foreground border-t pt-3">
                   Proporções ilustrativas até existirem eventos de atribuição por pedido.
                 </p>
@@ -594,19 +594,19 @@ export default function Atribuicao() {
               <div className="space-y-2">
                 <div className="rounded-xl border p-3">
                   <p className="text-xs font-bold">Se reduzir Meta em {metaCut}%</p>
-                  <p className="text-sm text-red-500 font-mono mt-1">{fmt(Math.round((data.scenarioImpact.metaMinus20Pct / 20) * metaCut))} estimado</p>
+                  <p className="text-sm text-red-500 font-mono mt-1">{fmt(Math.round(((data as any).scenarioImpact?.metaMinus20Pct ?? 0) / 20 * metaCut))} estimado</p>
                 </div>
                 <div className="rounded-xl border p-3">
                   <p className="text-xs font-bold">Se reduzir Google em {googleCut}%</p>
-                  <p className="text-sm text-red-500 font-mono mt-1">{fmt(Math.round((data.scenarioImpact.googleMinus20Pct / 20) * googleCut))} estimado</p>
+                  <p className="text-sm text-red-500 font-mono mt-1">{fmt(Math.round(((data as any).scenarioImpact?.googleMinus20Pct ?? 0) / 20 * googleCut))} estimado</p>
                 </div>
                 <div className="rounded-xl border p-3">
                   <p className="text-xs font-bold">Se aumentar CRM em {crmIncrease}%</p>
-                  <p className="text-sm text-emerald-500 font-mono mt-1">+{fmt(Math.round((data.scenarioImpact.crmPlus15Pct / 15) * crmIncrease))}</p>
+                  <p className="text-sm text-emerald-500 font-mono mt-1">+{fmt(Math.round(((data as any).scenarioImpact?.crmPlus15Pct ?? 0) / 15 * crmIncrease))}</p>
                 </div>
               </div>
               <div className="space-y-2">
-                {data.channelRisk.map((r) => (
+                {((data as any).channelRisk ?? []).map((r: any) => (
                   <div key={r.channel} className="flex items-center justify-between text-xs rounded-lg bg-muted/30 p-2 gap-2 flex-wrap">
                     <span className="font-semibold">{r.channel}</span>
                     <span className="text-muted-foreground">assistido {fmt(r.assistedRevenue)}</span>

@@ -391,7 +391,7 @@ export default function ConvertIQ() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Último Diagnóstico</h2>
             <span className="text-xs text-muted-foreground">
-              {new Date(lastDiag.data.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+              {new Date(lastDiag.data.created_at!).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
           <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{lastDiag.data.resumo}</p>

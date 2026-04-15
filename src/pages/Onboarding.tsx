@@ -240,12 +240,9 @@ export default function Onboarding() {
       const { error: storeErr } = await supabase
         .from("stores")
         .update({
-          nome: storeName,
-          url: storeUrl || null,
+          name: storeName,
           segment: vertical,
-          plataforma: plataforma || null,
-          ga4_property_id: ga4PropertyId || null,
-        })
+        } as any)
         .eq("user_id", user.id);
 
       if (storeErr) console.warn("Store update error:", storeErr.message);

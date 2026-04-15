@@ -407,7 +407,7 @@ export function useLatestDiagnostico(lojaId: string | null) {
       const { data, error } = await supabase
         .from("diagnostics")
         .select(DIAGNOSTICS_LIST_SELECT)
-        .eq("store_id", lojaId)
+        .eq("store_id", lojaId!)
         .eq("status", "done")
         .order("created_at", { ascending: false })
         .limit(1)
@@ -428,7 +428,7 @@ export function useDiagnosticos(lojaId: string | null) {
       const { data, error } = await supabase
         .from("diagnostics")
         .select(DIAGNOSTICS_LIST_SELECT)
-        .eq("store_id", lojaId)
+        .eq("store_id", lojaId!)
         .eq("status", "done")
         .order("created_at", { ascending: false })
         .limit(30);
@@ -584,13 +584,13 @@ export function useGerarDiagnostico() {
 
       const { data: diagRow, error: diagErr } = await supabase
         .from("diagnostics")
-        .insert({
+        .insert([{
           user_id: uid,
           store_id: payload.lojaId,
           status: "pending",
           meta_conversao: payload.metaConversao,
           dados_funil: payload.metricas as unknown as Record<string, unknown>,
-        })
+        }] as any)
         .select(DIAGNOSTICS_LIST_SELECT)
         .single();
 

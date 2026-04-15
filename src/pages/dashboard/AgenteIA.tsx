@@ -134,7 +134,7 @@ export default function AgenteIA() {
   }, [storesQuery.isError]);
 
   const aiConfigQuery = useAiAgentConfig(selectedLoja || undefined, user?.id);
-  const _recentActions = aiConfigQuery.data?.recentActions ?? [];
+  // recentActions available via aiConfigQuery.data?.recentActions
 
   useEffect(() => {
     if (aiConfigQuery.isError) toast.error("Erro ao carregar configuração do agente.");
