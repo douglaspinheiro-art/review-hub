@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Zap,
   MessageCircle,
@@ -13,21 +14,21 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoja } from "@/hooks/useConvertIQ";
-import { usePrescriptionsV3 } from "@/hooks/useLTVBoost";
-import { useCampaigns } from "@/hooks/useDashboard";
+import { useExecutionMonitor } from "@/hooks/useDashboard";
 import {
   isPrescriptionInExecution,
   type PrescriptionRow,
 } from "@/lib/prescription-map";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 
 type CampaignRow = {
   id: string;
@@ -97,10 +98,9 @@ function channelLabel(c: string | undefined) {
 }
 
 export default function EmExecucao() {
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isDemo = false; // always real data
+  const { user } = useAuth();
   const loja = useLoja();
   const storeId = loja.data?.id as string | undefined;
 
@@ -109,7 +109,6 @@ export default function EmExecucao() {
     isLoading: bundleLoading,
     isError: bundleError,
     error: bundleErr,
-    refetch: refetchBundle,
   } = useExecutionMonitor();
 
   const rxRows = useMemo(() => bundle?.prescriptions ?? [], [bundle?.prescriptions]);
@@ -150,11 +149,11 @@ export default function EmExecucao() {
     [inProgress, campaignByPrescriptionId],
   );
 
-  const isLoading = !isDemo && bundleLoading;
-  const isError = !isDemo && bundleError;
+  const isLoading = bundleLoading;
+  const isError = bundleError;
   const errorMsg = bundleErr instanceof Error ? bundleErr.message : "Erro ao carregar dados";
 
-  const baseDash = isDemo ? "/demo" : "/dashboard";
+  const baseDash = "/dashboard";
 
   const onRefresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["execution-monitor"] });
@@ -355,8 +354,7 @@ export default function EmExecucao() {
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         {/* M8: Pause / resume button */}
-                        {!isDemo && (
-                          rx.status === "pausada" ? (
+                        {rx.status === "pausada" ? (
                             <Button
                               variant="outline"
                               size="sm"
@@ -379,7 +377,7 @@ export default function EmExecucao() {
                               <Pause className="w-3.5 h-3.5" /> Pausar
                             </Button>
                           )
-                        )}
+                        }
                         <Button
                           variant="outline"
                           size="sm"
