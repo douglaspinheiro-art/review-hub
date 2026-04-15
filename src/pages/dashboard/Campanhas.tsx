@@ -230,15 +230,19 @@ export default function Campanhas() {
   const deleteMutation = useMutation({
     mutationFn: async (campaignId: string) => {
       // Soft-delete to preserve attribution data
-      const { error } = await supabase.from("campaigns").update({ status: "archived" }).eq("id", campaignId);
+      const { error } = await supabase
+        .from("campaigns")
+        .update({ status: "archived" })
+        .eq("id", campaignId);
       if (error) throw error;
     },
     onSuccess: () => {
       toast({ title: "Campanha arquivada." });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
-    onError: () => {
-      toast({ title: "Erro ao arquivar campanha", variant: "destructive" });
+    onError: (err: Error) => {
+      console.error("[deleteMutation]", err);
+      toast({ title: "Erro ao arquivar campanha", description: err.message, variant: "destructive" });
     },
     onSettled: () => setConfirmDeleteId(null),
   });
