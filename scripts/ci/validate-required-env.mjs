@@ -26,10 +26,9 @@ const EDGE_REQUIRED = [
 
 /** Recomendados / integrações — não bloqueiam `edge` (beta pode não usar todos). */
 const EDGE_RECOMMENDED = [
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "STRIPE_PRICE_TO_PLAN",
-  "STRIPE_BILLING_PORTAL_RETURN_URL",
+  "MERCADOPAGO_ACCESS_TOKEN",
+  "MERCADOPAGO_WEBHOOK_SECRET",
+  "MP_PLAN_TO_TIER",
   "CRON_SECRET",
   "RESEND_DEFAULT_FROM",
   "RESEND_WEBHOOK_SECRET",
@@ -64,16 +63,6 @@ if (mode === "frontend" || mode === "all") {
 
 if (mode === "edge" || mode === "all") {
   ok = run(EDGE_REQUIRED, "Edge Functions (Supabase)") && ok;
-  if (ok && process.env.STRIPE_SECRET_KEY?.trim()) {
-    const stripePair = missing(["STRIPE_WEBHOOK_SECRET"]);
-    if (stripePair.length > 0) {
-      console.error(
-        "Edge — STRIPE_SECRET_KEY está definido mas falta STRIPE_WEBHOOK_SECRET (webhooks Stripe não serão fiáveis).",
-      );
-      for (const name of stripePair) console.error(`- ${name}`);
-      ok = false;
-    }
-  }
   const rec = missing(EDGE_RECOMMENDED);
   if (rec.length > 0) {
     console.warn("Edge — recomendadas (não bloqueiam):");

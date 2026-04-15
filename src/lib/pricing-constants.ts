@@ -163,7 +163,7 @@ export const BUNDLES = {
 
 export const CONTACT_PACK = { qty: 1000, price: 39, cost: 12 };
 
-export const GW_FEE = 0.025;
+export const GW_FEE = 0.0499; // Mercado Pago cartão ~4.99%
 export const WA_EXCESS_PRICE = 0.50;
 export const EMAIL_EXCESS_PRICE = 0.015;
 export const SMS_EXCESS_PRICE = 0.22;
