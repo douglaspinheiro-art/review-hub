@@ -1,15 +1,13 @@
 import { useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import { useDemo } from "@/contexts/DemoContext";
 import { isDashboardPathBlockedInBetaScope } from "@/lib/beta-scope";
 
 export function BetaLimitedPageGuard({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
-  const { isDemo } = useDemo();
   const showedToast = useRef(false);
 
-  const blocked = !isDemo && isDashboardPathBlockedInBetaScope(pathname);
+  const blocked = isDashboardPathBlockedInBetaScope(pathname);
 
   useEffect(() => {
     if (blocked && !showedToast.current) {

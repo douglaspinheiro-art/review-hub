@@ -49,7 +49,7 @@ type ChannelFilter = "all" | "whatsapp" | "email" | "sms";
 
 export default function Prescricoes() {
   const location = useLocation();
-  const isDemo = location.pathname.startsWith("/demo");
+  const isDemo = false;
   const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(true);
   useEffect(() => {
     setOnboardingBannerDismissed(readPrescricoesOnboardingDismissed());

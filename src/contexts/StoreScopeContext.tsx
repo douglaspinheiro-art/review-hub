@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { useDemo } from "@/contexts/DemoContext";
+
 import { supabase } from "@/lib/supabase";
 import { pickStoreIdFromList, readPersistedActiveStoreId, writePersistedActiveStoreId } from "@/lib/active-store-id";
 
@@ -46,13 +46,12 @@ export function useStoreScopeOptional(): StoreScopeValue | null {
 
 export function StoreScopeProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const { isDemo } = useDemo();
   const qc = useQueryClient();
   const [activeStoreId, setActiveState] = useState<string | null>(null);
 
   const { data: storeData, isSuccess } = useQuery({
     queryKey: ["dashboard-stores-list", user?.id ?? null],
-    enabled: !!user && !isDemo,
+    enabled: !!user,
     queryFn: async (): Promise<StoreQueryResult> => {
       const uid = user!.id;
       const { data: membership } = await supabase
@@ -82,7 +81,7 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
   const resolvedEffectiveUserId = storeData?.effectiveUserId ?? null;
 
   useEffect(() => {
-    if (isDemo || !isSuccess) return;
+    if (!isSuccess) return;
     if (storeRows.length === 0) {
       setActiveState(null);
       writePersistedActiveStoreId(null);
@@ -92,7 +91,7 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
     const chosen = pickStoreIdFromList(ids, readPersistedActiveStoreId());
     setActiveState(chosen);
     if (chosen) writePersistedActiveStoreId(chosen);
-  }, [isDemo, isSuccess, storeRows]);
+  }, [isSuccess, storeRows]);
 
   const setActiveStoreId = useCallback(
     (id: string) => {
@@ -115,7 +114,7 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo((): StoreScopeValue => {
-    if (isDemo || !user) {
+    if (!user) {
       return {
         activeStoreId: null,
         storeOptions: [],
@@ -133,7 +132,7 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
       userId: user.id,
       effectiveUserId: resolvedEffectiveUserId ?? user.id,
     };
-  }, [isDemo, user, activeStoreId, storeRows, setActiveStoreId, isSuccess, resolvedEffectiveUserId]);
+  }, [user, activeStoreId, storeRows, setActiveStoreId, isSuccess, resolvedEffectiveUserId]);
 
   return <StoreScopeContext.Provider value={value}>{children}</StoreScopeContext.Provider>;
 }
