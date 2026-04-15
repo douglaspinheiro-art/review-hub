@@ -178,6 +178,16 @@ verify_jwt = true
 [functions.meta-wa-oauth]
 verify_jwt = false
 
+# OAuth platform connectors — callbacks don't carry JWT; auth via state token.
+[functions.oauth-shopify]
+verify_jwt = false
+
+[functions.oauth-nuvemshop]
+verify_jwt = false
+
+[functions.oauth-woocommerce]
+verify_jwt = false
+
 # Token refresh cron — autenticado via CRON_SECRET no handler.
 [functions.meta-wa-token-refresh]
 verify_jwt = false

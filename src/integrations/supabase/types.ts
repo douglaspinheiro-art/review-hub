@@ -2548,6 +2548,57 @@ export type Database = {
           },
         ]
       }
+      oauth_states: {
+        Row: {
+          created_at: string
+          expires_at: string
+          extra_data: Json | null
+          id: string
+          platform: string
+          redirect_url: string | null
+          state_token: string
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          extra_data?: Json | null
+          id?: string
+          platform: string
+          redirect_url?: string | null
+          state_token: string
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          extra_data?: Json | null
+          id?: string
+          platform?: string
+          redirect_url?: string | null
+          state_token?: string
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oauth_states_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oauth_states_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opportunities: {
         Row: {
           dados_json: Json | null
@@ -5117,6 +5168,15 @@ export type Database = {
       check_rate_limit_atomic: {
         Args: { p_key: string; p_max: number; p_window_ms: number }
         Returns: boolean
+      }
+      consume_oauth_state: {
+        Args: { p_token: string }
+        Returns: {
+          extra_data: Json
+          platform: string
+          store_id: string
+          user_id: string
+        }[]
       }
       decrypt_integration_config: {
         Args: { encrypted: string; encryption_key: string }
