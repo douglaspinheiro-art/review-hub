@@ -431,7 +431,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
       if (storeId && !sourcePrescriptionIds) {
         const { data, error } = await supabase.rpc("get_campaigns_bundle_v2", {
           p_store_id: storeId,
-          p_created_since: createdSince,
+          p_created_since: createdSince ?? undefined,
           p_limit: limit,
         });
 
@@ -502,53 +502,34 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
         });
       }
 
-      const abTestIds = campaigns.map((c) => c.ab_test_id).filter(Boolean);
-      let winnersByTestId = new Map<string, string | null>();
-      if (abTestIds.length > 0) {
-        const { data: abTests } = await supabase
-          .from("ab_tests")
-          .select("id,winner_variant,status")
-          .in("id", abTestIds);
-        type AbTestRow = { id: string; winner_variant: string | null };
-        winnersByTestId = new Map(
-          ((abTests ?? []) as AbTestRow[]).map((t) => [t.id, t.winner_variant ?? null]),
-        );
+      // Fallback: fetch campaigns directly (no storeId or prescription-filtered)
+      let campQuery = supabase.from("campaigns").select(CAMPAIGN_LIST_SELECT).eq("user_id", effectiveUserId).order("created_at", { ascending: false }).limit(limit);
+      if (createdSince) campQuery = campQuery.gte("created_at", createdSince);
+      if (sourcePrescriptionIds && sourcePrescriptionIds.length > 0) {
+        campQuery = campQuery.in("source_prescription_id", sourcePrescriptionIds);
+      }
+      const { data: campRows, error: campErr } = await campQuery;
+      if (campErr) throw campErr;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fallbackCampaigns = (campRows ?? []) as any[];
+      const fallbackMetrics = await _fetchCampaignMetricsBundle(storeId, effectiveUserId, fallbackCampaigns.map((c: { id: string }) => c.id));
+
+      const abTestIds2 = fallbackCampaigns.map((c: { ab_test_id?: string | null }) => c.ab_test_id).filter(Boolean);
+      let winnersByTestId2 = new Map<string, string | null>();
+      if (abTestIds2.length > 0) {
+        const { data: abTests } = await supabase.from("ab_tests").select("id,winner_variant").in("id", abTestIds2);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        winnersByTestId2 = new Map(((abTests ?? []) as any[]).map((t) => [t.id, t.winner_variant ?? null]));
       }
 
-      return campaigns.map((campaign): CampaignListItem => {
-        const stats = byCampaignStats.get(campaign.id) ?? {
-          holdout: 0,
-          sent: 0,
-          revenue: 0,
-          suppressedOptOut: 0,
-          suppressedCooldown: 0,
-        };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return fallbackCampaigns.map((campaign: any): CampaignListItem => {
+        const stats = fallbackMetrics.get(campaign.id) ?? { holdout: 0, sent: 0, revenue: 0, suppressedOptOut: 0, suppressedCooldown: 0 };
         const holdoutRate = stats.sent + stats.holdout > 0 ? stats.holdout / (stats.sent + stats.holdout) : 0;
-        const incrementalRevenue = holdoutRate > 0
-          ? Math.max(0, stats.revenue * (1 - holdoutRate))
-          : stats.revenue;
+        const incrementalRevenue = holdoutRate > 0 ? Math.max(0, stats.revenue * (1 - holdoutRate)) : stats.revenue;
         const incrementalLiftPct = holdoutRate > 0 ? Math.round((1 - holdoutRate) * 100) : 100;
-        const winnerVariant = campaign.ab_test_id ? winnersByTestId.get(campaign.ab_test_id) : null;
+        const winnerVariant = campaign.ab_test_id ? winnersByTestId2.get(campaign.ab_test_id) : null;
         const aggregatedSent = Math.max(Number(campaign.sent_count ?? 0), stats.sent);
-        const sentBase = Math.max(1, aggregatedSent);
-        const readRate = Number(campaign.read_count ?? 0) / sentBase;
-        const clickRate = Number(campaign.click_count ?? 0) / sentBase;
-        const suppressionBase = aggregatedSent + stats.suppressedCooldown + stats.suppressedOptOut;
-        const suppressionRate = suppressionBase > 0
-          ? (stats.suppressedCooldown + stats.suppressedOptOut) / suppressionBase
-          : 0;
-        let nextBestAction = "";
-        if (campaign.channel === "email") {
-          if (readRate < 0.15) nextBestAction = "Baixa abertura: teste novo assunto e reenvie para não-abertos.";
-          else if (clickRate < 0.02) nextBestAction = "Bom open, baixo clique: ajuste CTA/oferta e destaque cupom no primeiro bloco.";
-          else if (suppressionRate > 0.25) nextBestAction = "Supressão alta: revise frequência e janela de envio por segmento.";
-          else nextBestAction = "Escalar segmentação vencedora e repetir no melhor horário dos últimos envios.";
-        } else {
-          if (readRate < 0.35) nextBestAction = "Leitura baixa no WhatsApp: reduzir texto inicial e testar horário alternativo.";
-          else if (Number(campaign.reply_count ?? 0) / sentBase < 0.03) nextBestAction = "Leitura boa sem resposta: incluir pergunta de resposta rápida + oferta de urgência.";
-          else if (suppressionRate > 0.25) nextBestAction = "Supressão alta: diminuir cadência e aumentar cooldown por perfil.";
-          else nextBestAction = "Criar variação vencedora em automação para capturar demanda recorrente.";
-        }
         return {
           ...campaign,
           aggregated_sent_count: aggregatedSent,
@@ -560,7 +541,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
           suppressed_opt_out: stats.suppressedOptOut,
           suppressed_cooldown: stats.suppressedCooldown,
           winner_variant: winnerVariant,
-          next_best_action: nextBestAction,
+          next_best_action: "",
         };
       });
     },
