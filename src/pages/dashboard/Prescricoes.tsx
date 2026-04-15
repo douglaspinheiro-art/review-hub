@@ -25,13 +25,11 @@ import { useLoja } from "@/hooks/useConvertIQ";
 import { usePrescriptionsV3, useUpdatePrescriptionStatus } from "@/hooks/useLTVBoost";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  mockPrescricaoToRow,
   isPrescriptionInExecution,
   prescriptionRowToCardProps,
   prescriptionToCampaignPrefill,
   type PrescriptionRow,
 } from "@/lib/prescription-map";
-import { mockPrescricoes } from "@/lib/mock-data";
 import { supabase } from "@/lib/supabase";
 
 const UPSELL_POTENTIAL_CAP = 25_000;
@@ -48,7 +46,7 @@ function readPrescricoesOnboardingDismissed(): boolean {
 type ChannelFilter = "all" | "whatsapp" | "email" | "sms";
 
 export default function Prescricoes() {
-  const isDemo = false;
+  const isDemo = false; // always real data
   const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(true);
   useEffect(() => {
     setOnboardingBannerDismissed(readPrescricoesOnboardingDismissed());
@@ -74,9 +72,8 @@ export default function Prescricoes() {
   const updateStatus = useUpdatePrescriptionStatus(storeId);
 
   const rows: PrescriptionRow[] = useMemo(() => {
-    if (isDemo) return mockPrescricoes.map(mockPrescricaoToRow);
     return (rxRows ?? []) as PrescriptionRow[];
-  }, [isDemo, rxRows]);
+  }, [rxRows]);
 
   const filtered = useMemo(() => {
     if (channelFilter === "all") return rows;
@@ -101,14 +98,8 @@ export default function Prescricoes() {
   }, [filtered, sortCol, sortDir]);
 
   const pendingPotentialSum = useMemo(() => {
-    if (isDemo) {
-      return aguardando.reduce((a, r) => {
-        const val = Number(r.estimated_potential ?? 0);
-        return a + (Number.isFinite(val) ? val : 0);
-      }, 0);
-    }
     return rxStats?.pending_value ?? 0;
-  }, [isDemo, aguardando, rxStats]);
+  }, [rxStats]);
 
   const upsellDisplay = Math.min(
     Math.round(pendingPotentialSum > 0 ? pendingPotentialSum * 0.12 : 0),
@@ -178,20 +169,10 @@ export default function Prescricoes() {
       setShowTrialGate(true);
       return;
     }
-    if (isDemo) {
-      showConfettiWithCleanup();
-      toast.info("Modo demonstração: rascunho de campanha não persistido.");
-      navigate("/dashboard/campanhas?new=true");
-      return;
-    }
     approveMutation.mutate(row);
   };
 
   const handleRejeitar = async (row: PrescriptionRow) => {
-    if (isDemo) {
-      toast.info("Modo demonstração: rejeição não é salva.");
-      return;
-    }
     try {
       await updateStatus.mutateAsync({ id: row.id, status: "rejeitada" });
       toast.success("Prescrição rejeitada.");
@@ -201,10 +182,6 @@ export default function Prescricoes() {
   };
 
   const onRefresh = () => {
-    if (isDemo) {
-      toast.info("Modo demonstração.");
-      return;
-    }
     void queryClient.invalidateQueries({ queryKey: ["prescriptions_v3", storeId] });
     void refetch();
     toast.success("Lista atualizada.");
