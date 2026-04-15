@@ -400,30 +400,63 @@ export default function Onboarding() {
                     </div>
                   </div>
 
-                  <div className="pt-4">
+                  <div className="pt-4 space-y-3">
+                    {waConnected ? (
+                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center gap-3 animate-in fade-in zoom-in">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0" />
+                        <div>
+                          <p className="font-bold text-emerald-400 text-sm">WhatsApp conectado!</p>
+                          {waConnected.phone && (
+                            <p className="text-xs text-muted-foreground font-mono">{waConnected.phone}</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => void handleConnectWhatsApp()}
+                        disabled={waConnecting}
+                        className="w-full h-12 bg-[#1877F2] hover:bg-[#1877F2]/90 text-white font-bold rounded-xl gap-2"
+                      >
+                        {waConnecting ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Conectando...</>
+                        ) : (
+                          <><Facebook className="w-4 h-4" /> Conectar com Facebook</>
+                        )}
+                      </Button>
+                    )}
                     <Button
-                      onClick={() => { toast.info("WhatsApp será configurado no dashboard após o cadastro."); setStep(3); }}
-                      variant="outline"
-                      className="w-full h-12 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500 hover:text-white font-bold rounded-xl gap-2"
+                      onClick={() => setStep(3)}
+                      variant="ghost"
+                      className="w-full text-xs text-muted-foreground hover:text-white"
                     >
-                      <QrCode className="w-4 h-4" /> Configurar depois
+                      {waConnected ? "Continuar →" : "Configurar manualmente depois"}
                     </Button>
-                    <p className="text-[10px] text-muted-foreground text-center mt-3 italic">
-                      Configure em Dashboard → WhatsApp após o cadastro.
-                    </p>
                   </div>
                 </div>
 
-                <div className="relative group cursor-pointer" onClick={() => { toast.info("WhatsApp será configurado no dashboard após o cadastro."); setStep(3); }}>
-                  <div className="absolute inset-0 bg-emerald-500/20 blur-2xl group-hover:bg-emerald-500/30 transition-all rounded-full" />
+                <div className="relative">
+                  <div className="absolute inset-0 bg-emerald-500/20 blur-2xl rounded-full" />
                   <div className="relative bg-black rounded-2xl p-6 border border-white/10 shadow-2xl flex flex-col items-center gap-4">
-                    <div className="w-48 h-48 bg-white rounded-xl p-2 flex items-center justify-center relative overflow-hidden">
-                      <QrCode className="w-40 h-40 text-black" />
-                      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-[10px] font-black uppercase text-white tracking-widest bg-emerald-500 px-3 py-1 rounded-full">Clique para Gerar</span>
-                      </div>
-                    </div>
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Aguardando Conexão...</p>
+                    {waConnected ? (
+                      <>
+                        <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-emerald-500/10">
+                          <CheckCircle2 className="w-24 h-24 text-emerald-500 animate-in zoom-in" />
+                        </div>
+                        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Conectado ✓</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-[#1877F2]/10 border border-[#1877F2]/20">
+                          <div className="text-center space-y-3">
+                            <Facebook className="w-16 h-16 text-[#1877F2] mx-auto" />
+                            <p className="text-xs text-muted-foreground font-medium">Conexão automática<br />via Meta Business</p>
+                          </div>
+                        </div>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                          {waConnecting ? "Conectando..." : "Aguardando Conexão..."}
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
