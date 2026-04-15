@@ -1,86 +1,59 @@
 
 
-# Plano: OAuth Automatizado para Shopify e Nuvemshop + WooCommerce Auto-Auth
+## Plan: Fix Portuguese Accent Issues Across All Landing Components
 
-## Objetivo
-Substituir a entrada manual de tokens por fluxos OAuth automatizados nas plataformas que suportam, reduzindo a fricção de onboarding drasticamente.
+### Problem
+Multiple components have Portuguese text missing proper diacritical marks (acentos). Words like "medio", "operacao", "retenção" etc. are written without accents.
 
-## O que muda para o lojista
-- **Shopify/Nuvemshop:** Clica "Conectar" → abre popup da plataforma → autoriza → volta com token salvo automaticamente
-- **WooCommerce:** Clica "Conectar" → redireciona ao WP → autoriza → chaves geradas e salvas
-- **VTEX/Tray/Magento/Dizy:** Continua manual (com guia visual melhorado)
+### Files to Edit and Specific Fixes
 
----
+**1. `src/components/landing/Hero.tsx`**
+- Line 33: "payback medio" → "payback médio"
+- Line 34: "reativacao" → "reativação"
 
-## Bloco 1 — Infraestrutura OAuth (Edge Functions)
+**2. `src/components/landing/Cases.tsx`**
+- Line 11: "operacao diaria, triplicamos recorrencia" → "operação diária, triplicamos recorrência"
+- Line 24: "canal previsivel de receita" → "canal previsível de receita"
+- Line 37: "segmentacao RFM acionavel" → "segmentação RFM acionável"
 
-### 1a. Edge Function `oauth-shopify`
-- Rota `GET /start` → gera URL de autorização com `client_id`, `scopes`, `redirect_uri`, `state` (JWT com store_id)
-- Rota `GET /callback` → recebe `code`, troca por `access_token` permanente via Shopify API, salva em `integrations` com pgcrypto
-- Scopes necessários: `read_orders`, `read_customers`, `read_products`, `read_checkouts`
-- **Secrets necessários:** `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`
+**3. `src/components/landing/Pricing.tsx`**
+- Line 41: "retencao com previsibilidade" → "retenção com previsibilidade"
+- Line 44: "R$30k a R$3M/mes. Voce paga" → "R$30k a R$3M/mês. Você paga"
+- Line 140: "Add-ons disponiveis ... benchmark preditivo, autopilot de retencao e governanca multi-loja" → "Add-ons disponíveis ... benchmark preditivo, autopilot de retenção e governança multi-loja"
 
-### 1b. Edge Function `oauth-nuvemshop`
-- Mesmo padrão: `start` → redirect → `callback` → troca code por token
-- Endpoint: `https://www.tiendanube.com/apps/authorize/token`
-- **Secrets necessários:** `NUVEMSHOP_CLIENT_ID`, `NUVEMSHOP_CLIENT_SECRET`
+**4. `src/components/landing/CategoryPositioning.tsx`**
+- Line 8: "Operacoes de R$80k a R$500k/mes" → "Operações de R$80k a R$500k/mês"
+- Line 9: "Ticket medio acima de R$120" → "Ticket médio acima de R$120"
+- Line 9: "Reposicao e recorrencia guiada" → "Reposição e recorrência guiada"
+- Line 10: "Catalogo amplo" → "Catálogo amplo"
+- Line 10: "pos-venda" → "pós-venda"
+- Line 29: "Retencao" → "Retenção"
+- Line 32: "Voce nao compra automacao isolada. Voce liga um ritmo diario de receita ... IA de decisao e atribuicao" → "Você não compra automação isolada. Você liga um ritmo diário de receita ... IA de decisão e atribuição"
+- Line 63: "agencias" → "agências"
+- Line 70: "clinica de otimizacao" → "clínica de otimização"
+- Line 75: "Distribuicao orientada" → "Distribuição orientada"
+- Line 77: "aquisicao" → "aquisição"
 
-### 1c. Edge Function `oauth-woocommerce`
-- Usa o endpoint nativo `{site_url}/wc-auth/v1/authorize` que gera chaves automaticamente
-- Callback recebe `consumer_key` e `consumer_secret` via POST
-- Não requer client_id/secret — WooCommerce gera as chaves no servidor do lojista
+**5. `src/components/landing/HowItWorks.tsx`**
+- Line 27: "voce entra em producao" → "você entra em produção"
+- Line 32: "acao diario" → "ação diário"
+- Line 42: "recomendacao de proxima melhor acao" → "recomendação de próxima melhor ação"
 
-### 1d. Tabela de state tokens
-- Migration: tabela `oauth_states` (state_token, store_id, platform, expires_at) para validar callbacks e prevenir CSRF
+**6. `src/components/landing/FooterCTA.tsx`**
+- Line 41: "modo dominancia" → "modo dominância"
+- Line 44: "proximos 90 dias com metas de retencao, distribuicao e expansao" → "próximos 90 dias com metas de retenção, distribuição e expansão"
 
----
+**7. `src/components/landing/Metrics.tsx`**
+- Line 11: "últimos" is correct, no changes needed in this file.
 
-## Bloco 2 — Frontend: Onboarding Step 2 Atualizado
+**8. `src/components/landing/TickerBar.tsx`** — All text correct, no changes.
 
-Alterar `src/pages/Onboarding.tsx` Step 2:
+**9. `src/components/landing/ScarcityBanner.tsx`** — All text correct, no changes.
 
-- **Shopify/Nuvemshop/WooCommerce:** Mostrar botão "Conectar com [Plataforma]" que abre popup/redirect OAuth
-  - Loading state enquanto aguarda callback
-  - Após sucesso: ícone verde + "Loja conectada!" + avança automaticamente
-  
-- **VTEX/Tray/Magento/Dizy:** Manter formulário manual atual, mas adicionar:
-  - Guia visual inline com screenshots de onde encontrar as credenciais
-  - Link direto para a página de criação de chaves na plataforma
+**10. `src/components/landing/Footer.tsx`** — All text correct, no changes.
 
----
-
-## Bloco 3 — Secrets e Pré-requisitos
-
-Para que o OAuth funcione, você precisará:
-
-1. **Shopify:** Criar um Shopify App (Partner Dashboard) → obter Client ID e Secret
-2. **Nuvemshop:** Criar app no Portal de Parceiros Nuvemshop → obter Client ID e Secret
-3. **WooCommerce:** Sem secrets extras (usa endpoint nativo do WP)
-
-Os secrets `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `NUVEMSHOP_CLIENT_ID`, `NUVEMSHOP_CLIENT_SECRET` precisam ser adicionados no Supabase antes do deploy.
-
----
-
-## Resumo de Execução
-
-| Bloco | Tipo | Esforço |
-|---|---|---|
-| 1a. Edge Function oauth-shopify | Nova Edge Function | 30 min |
-| 1b. Edge Function oauth-nuvemshop | Nova Edge Function | 25 min |
-| 1c. Edge Function oauth-woocommerce | Nova Edge Function | 20 min |
-| 1d. Migration oauth_states | SQL | 5 min |
-| 2. Frontend onboarding refactor | Code edit | 30 min |
-| 3. Secrets setup | Manual (você) | 10 min |
-
-**Total:** ~2h de implementação
-
-### Pré-requisito (você precisa fazer antes):
-1. Criar app no Shopify Partner Dashboard → anotar Client ID e Secret
-2. Criar app no Nuvemshop Partner Portal → anotar Client ID e Secret
-3. Adicionar os 4 secrets no Supabase
-
-### Resultado:
-- **Shopify/Nuvemshop:** 1 clique para conectar (zero campos manuais)
-- **WooCommerce:** 2 cliques (redirect + autorizar no WP)
-- **Demais:** Manual com guia melhorado
+### Summary
+- **7 files** to edit
+- ~25 individual accent corrections
+- No logic or structural changes — text-only fixes
 
