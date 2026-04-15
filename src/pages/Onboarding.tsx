@@ -1,745 +1,538 @@
 // @ts-nocheck Supabase types.ts is read-only and misaligned with the live DB schema
-import { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  CheckCircle2, Globe, ShoppingBag, Smartphone,
-  ArrowRight, Loader2, Shield,
-  Sparkles, Info, Zap, QrCode, DollarSign, TrendingUp, Bell, Users, MessageCircle, Facebook,
-  ChevronDown, ExternalLink, HelpCircle, AlertTriangle
+  ArrowRight, Loader2, Shield, Sparkles, Info,
+  Store, BarChart3, Globe, TrendingUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
-import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { OBJECTIVES, VERTICALS, saveStrategyProfile, type EcommerceVertical, type PrimaryObjective } from "@/lib/strategy-profile";
+import { VERTICALS, type EcommerceVertical } from "@/lib/strategy-profile";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+
+const SEGMENTS = VERTICALS;
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
-  const perda = searchParams.get("perda");
 
-  // Onboarding flow is active — no more blind redirect
-
-  const [channels, setChannels] = useState<string[]>([]);
-  const [_isSyncing, setIsSyncing] = useState<string | null>(null);
   const [step, setStep] = useState(1);
-  const [objective, setObjective] = useState<PrimaryObjective | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Step 1 — Store info
+  const [storeName, setStoreName] = useState("");
+  const [storeUrl, setStoreUrl] = useState("");
   const [vertical, setVertical] = useState<EcommerceVertical | null>(null);
-  const [pulseNum, setPulseNum] = useState("");
-  const [isLaunching, setIsLaunching] = useState(false);
-  const [waConnecting, setWaConnecting] = useState(false);
-  const [waConnected, setWaConnected] = useState<{ phone?: string } | null>(null);
-  const [userStoreId, setUserStoreId] = useState<string | null>(null);
-  const [showGuide, setShowGuide] = useState(false);
-  const showCommunity = sessionStorage.getItem("ltv_show_community") === "1";
-  const companyName = sessionStorage.getItem("ltv_company") || "";
+  const [plataforma, setPlataforma] = useState("");
 
-  const metaAppId = import.meta.env.VITE_META_APP_ID as string | undefined;
+  // Step 2 — Funnel data
+  const [faturamento, setFaturamento] = useState("");
+  const [ticketMedio, setTicketMedio] = useState("250");
+  const [numClientes, setNumClientes] = useState("");
+  const [visitantes, setVisitantes] = useState("");
+  const [carrinho, setCarrinho] = useState("");
+  const [checkout, setCheckout] = useState("");
+  const [pedidos, setPedidos] = useState("");
+  const [metaConversao, setMetaConversao] = useState("2.5");
 
-  // Fetch user's store_id when entering step 2
-  useEffect(() => {
-    if (step !== 2 || !user?.id) return;
-    supabase
-      .from("stores")
-      .select("id")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setUserStoreId(data.id);
-      });
-  }, [step, user?.id]);
+  // Step 3 — GA4 optional
+  const [ga4PropertyId, setGa4PropertyId] = useState("");
+  const [ga4Token, setGa4Token] = useState("");
+  const [ga4Testing, setGa4Testing] = useState(false);
+  const [ga4Result, setGa4Result] = useState<{ ok: boolean; visitors?: number } | null>(null);
 
-  const handleConnectWhatsApp = useCallback(async () => {
-    if (!metaAppId) {
-      toast.error("META_APP_ID não configurado. Configure VITE_META_APP_ID.");
+  // Compute estimated funnel from faturamento if manual fields not filled
+  const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
+  const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
+  const estimatedCheckout = checkout ? Number(checkout) : Math.round(estimatedVisitors * 0.14);
+  const estimatedPedidos = pedidos ? Number(pedidos) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250));
+
+  const handleStep1Next = () => {
+    if (!storeName.trim()) {
+      toast.error("Informe o nome da loja.");
       return;
     }
-    if (!userStoreId) {
-      toast.error("Complete o passo 1 primeiro para criar sua loja.");
+    if (!vertical) {
+      toast.error("Selecione o segmento da loja.");
       return;
     }
-    setWaConnecting(true);
+    setStep(2);
+  };
+
+  const handleStep2Next = () => {
+    if (!faturamento || Number(faturamento) <= 0) {
+      toast.error("Informe seu faturamento mensal aproximado.");
+      return;
+    }
+    setStep(3);
+  };
+
+  const handleTestGA4 = async () => {
+    if (!ga4PropertyId.trim() || !ga4Token.trim()) {
+      toast.error("Preencha o Property ID e o Access Token.");
+      return;
+    }
+    setGa4Testing(true);
     try {
-      const result = await launchEmbeddedSignup({
-        appId: metaAppId,
-        storeId: userStoreId,
-        instanceName: "onboarding",
+      const { data, error } = await supabase.functions.invoke("buscar-ga4", {
+        body: { ga4_property_id: ga4PropertyId, access_token: ga4Token, periodo: "30d" },
       });
-      if (result.ok) {
-        setWaConnected({ phone: result.display_phone_number });
-        toast.success("✅ WhatsApp conectado com sucesso!");
-        setTimeout(() => setStep(3), 2000);
+      if (error || !data?.success) {
+        setGa4Result({ ok: false });
+        toast.error("Não foi possível conectar ao GA4. Verifique as credenciais.");
       } else {
-        toast.error(result.error || "Não foi possível conectar.");
-      }
-    } catch (err) {
-      toast.error("Erro ao conectar WhatsApp. Tente novamente.");
-    } finally {
-      setWaConnecting(false);
-    }
-  }, [metaAppId, userStoreId]);
-
-  const ownStores = [
-    { id: "shopify", label: "Shopify", icon: Globe, help: "Conexão via App Oficial. Sincroniza pedidos, clientes e carrinhos em tempo real." },
-    { id: "vtex", label: "VTEX", icon: Globe, help: "Integração via App Key/Token. Suporte total a Master Data e pedidos." },
-    { id: "nuvemshop", label: "Nuvemshop", icon: Globe, help: "Conexão nativa via OAuth. Ideal para e-commerces brasileiros." },
-    { id: "woocommerce", label: "WooCommerce", icon: Globe, help: "Via Plugin LTV Boost. Requer permissões de leitura na API REST." },
-  ];
-
-  const marketplaces = [
-    { id: "ml", label: "Mercado Livre", icon: ShoppingBag, color: "bg-yellow-400", help: "Sincroniza vendas e reputação. Identifica clientes que também compram na loja própria." },
-    { id: "shopee", label: "Shopee", icon: ShoppingBag, color: "bg-orange-500", help: "Acompanhe pedidos e métricas de conversão do marketplace Shopee." },
-    { id: "tiktok", label: "TikTok Shop", icon: Smartphone, color: "bg-black", badge: "BETA", help: "Integração com a nova frente de vendas do TikTok." },
-  ];
-
-  const toggleChannel = (id: string) => {
-    setChannels(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-    );
-  };
-
-  const BR_PHONE_RE = /^\+?55\s?\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}$/;
-
-  const handleNextStep = () => {
-    if (step === 1 && (!objective || !vertical)) {
-      toast.error("Selecione objetivo e vertical antes de continuar.");
-      return;
-    }
-    if (step === 1) setStep(2);
-    else if (step === 2) setStep(3);
-  };
-
-  const handleLaunch = async () => {
-    // Validate pulse number if provided
-    const trimmedPulse = pulseNum.trim();
-    if (trimmedPulse && !BR_PHONE_RE.test(trimmedPulse)) {
-      toast.error("Número de WhatsApp inválido. Use o formato +55 11 99999-9999.");
-      return;
-    }
-
-    setIsLaunching(true);
-    try {
-      if (objective && vertical) {
-        saveStrategyProfile({ objective, vertical });
-        if (user?.id) {
-          const updatePayload: Record<string, unknown> = { segment: vertical };
-          if (trimmedPulse) updatePayload.notification_phone = trimmedPulse;
-          const { error: storeErr } = await supabase
-            .from("stores")
-            .update(updatePayload)
-            .eq("user_id", user.id);
-          if (storeErr) {
-            console.warn("Onboarding: dados não persistidos na loja:", storeErr.message);
-          } else if (trimmedPulse) {
-            toast.success(`Pulse semanal ativado para ${trimmedPulse}!`);
-          }
+        setGa4Result({ ok: true, visitors: data.metricas?.visitantes });
+        // Auto-fill funnel data from GA4
+        if (data.metricas) {
+          const m = data.metricas;
+          setVisitantes(String(m.visitantes || ""));
+          setCarrinho(String(m.carrinho || ""));
+          setCheckout(String(m.checkout || ""));
+          setPedidos(String(m.pedido || ""));
         }
+        toast.success(`✅ GA4 conectado! ${data.metricas?.visitantes?.toLocaleString("pt-BR")} visitantes encontrados.`);
       }
-      sessionStorage.removeItem("ltv_show_community");
-      sessionStorage.removeItem("ltv_company");
-      navigate(`/dashboard?setup=complete&firstweek=true`);
+    } catch {
+      setGa4Result({ ok: false });
+      toast.error("Erro ao testar conexão GA4.");
+    } finally {
+      setGa4Testing(false);
+    }
+  };
+
+  const handleFinish = async () => {
+    setIsSubmitting(true);
+    try {
+      if (!user?.id) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
+      // 1. Update store
+      const { error: storeErr } = await supabase
+        .from("stores")
+        .update({
+          nome: storeName,
+          url: storeUrl || null,
+          segment: vertical,
+          plataforma: plataforma || null,
+          ga4_property_id: ga4PropertyId || null,
+        })
+        .eq("user_id", user.id);
+
+      if (storeErr) console.warn("Store update error:", storeErr.message);
+
+      // 2. Get store_id
+      const { data: storeData } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      const storeId = storeData?.id;
+
+      // 3. Save funnel metrics
+      const funnelVisitors = visitantes ? Number(visitantes) : estimatedVisitors;
+      const funnelCarrinho = carrinho ? Number(carrinho) : estimatedCarrinho;
+      const funnelCheckout = checkout ? Number(checkout) : estimatedCheckout;
+      const funnelPedidos = pedidos ? Number(pedidos) : estimatedPedidos;
+      const funnelProdutoVisto = Math.round(funnelVisitors * 0.72);
+
+      if (storeId) {
+        await supabase.from("funnel_metrics").insert({
+          store_id: storeId,
+          user_id: user.id,
+          visitantes: funnelVisitors,
+          visualizacoes_produto: funnelProdutoVisto,
+          adicionou_carrinho: funnelCarrinho,
+          iniciou_checkout: funnelCheckout,
+          compras: funnelPedidos,
+          receita: Number(faturamento) || 0,
+        });
+      }
+
+      // 4. Store funnel data in sessionStorage for Analisando page
+      const funnelPayload = {
+        visitantes: funnelVisitors,
+        produto_visto: funnelProdutoVisto,
+        carrinho: funnelCarrinho,
+        checkout: funnelCheckout,
+        pedido: funnelPedidos,
+        ticket_medio: Number(ticketMedio) || 250,
+        meta_conversao: Number(metaConversao) || 2.5,
+        store_id: storeId,
+      };
+      sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
+
+      navigate("/analisando");
     } catch (e) {
       console.error(e);
-      toast.error("Não foi possível concluir. Tente novamente.");
+      toast.error("Erro ao salvar dados. Tente novamente.");
     } finally {
-      setIsLaunching(false);
+      setIsSubmitting(false);
     }
   };
-
-  const handleDemoMode = () => {
-    navigate('/dashboard?demo=true');
-  };
-
-  // Mock prescription for step 3 — clamp perda to prevent URL manipulation
-  const perdaNum = Math.min(Math.max(0, Number(perda) || 0), 999_999);
-  const mockPrescription = perdaNum > 0
-    ? { valor: Math.round(perdaNum * 0.18), tipo: "Carrinho Abandonado", clientes: Math.floor(perdaNum / 120) }
-    : { valor: 4200, tipo: "Boletos Expirados", clientes: 34 };
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white flex flex-col items-center p-6 md:p-20 overflow-x-hidden">
-      <TooltipProvider>
-        <div className="max-w-4xl w-full space-y-12">
-          {/* Progress Header */}
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
-                <span className="font-bold tracking-tighter">LTV BOOST</span>
+      <div className="max-w-2xl w-full space-y-12">
+        {/* Progress Header */}
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
+              <span className="font-bold tracking-tighter">LTV BOOST</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex gap-2">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className={cn("w-2 h-2 rounded-full transition-all", i <= step ? "bg-primary" : "bg-muted")} />
+                ))}
               </div>
-              <div className="flex items-center gap-4">
-                <div className="flex gap-2">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className={cn("w-2 h-2 rounded-full transition-all", i <= step ? "bg-primary" : "bg-muted")} />
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                Passo {step} de 3
+              </span>
+            </div>
+          </div>
+          <Progress value={Math.round((step / 3) * 100)} className="h-1 bg-muted/40" />
+        </div>
+
+        {/* STEP 1: Store Info */}
+        {step === 1 && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-[10px] font-black px-3 py-1 rounded-full border border-primary/20 uppercase tracking-[0.2em]">
+                <Store className="w-3 h-3" /> Passo 1 — Sua Loja
+              </div>
+              <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
+                Conte sobre sua loja
+              </h1>
+              <p className="text-muted-foreground max-w-lg mx-auto font-medium">
+                Essas informações vão personalizar seu diagnóstico e benchmarks do setor.
+              </p>
+            </div>
+
+            <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Nome da loja *</Label>
+                <Input
+                  placeholder="Ex: Studio Moda Feminina"
+                  value={storeName}
+                  onChange={e => setStoreName(e.target.value)}
+                  className="h-12 rounded-xl bg-background/50 border-[#2E2E3E]"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">URL da loja</Label>
+                <Input
+                  placeholder="https://minhaloja.com.br"
+                  value={storeUrl}
+                  onChange={e => setStoreUrl(e.target.value)}
+                  className="h-12 rounded-xl bg-background/50 border-[#2E2E3E]"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Plataforma</Label>
+                <Select value={plataforma} onValueChange={setPlataforma}>
+                  <SelectTrigger className="h-12 rounded-xl bg-background/50 border-[#2E2E3E]">
+                    <SelectValue placeholder="Selecione sua plataforma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Shopify", "VTEX", "WooCommerce", "Nuvemshop", "Tray", "Yampi", "Loja Integrada", "Outro"].map(p => (
+                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Segmento *</Label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {SEGMENTS.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setVertical(item.id)}
+                      className={cn(
+                        "text-left rounded-xl border p-3 transition-all",
+                        vertical === item.id
+                          ? "border-primary bg-primary/10"
+                          : "border-[#2A2A38] hover:border-primary/40"
+                      )}
+                    >
+                      <p className="text-sm font-bold">{item.label}</p>
+                      <p className="text-[10px] text-muted-foreground">{item.benchmarkHint}</p>
+                    </button>
                   ))}
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                  Passo {step} de 3
-                </span>
               </div>
             </div>
-            <Progress value={Math.round((step / 3) * 100)} className="h-1 bg-muted/40" />
           </div>
+        )}
 
-          {/* STEP 1: Canais */}
-          {step === 1 && (
-            <>
-              <div className="text-center space-y-4">
-                {perdaNum > 0 ? (
-                  <div className="inline-flex items-center gap-2 bg-red-500/10 text-red-500 text-[10px] font-black px-3 py-1 rounded-full border border-red-500/20 uppercase tracking-[0.2em] mb-2">
-                    Meta: Recuperar R$ {perdaNum.toLocaleString('pt-BR')}/mês
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-[10px] font-black px-3 py-1 rounded-full border border-primary/20 uppercase tracking-[0.2em] mb-2">
-                    Passo 1 — Conectar Canais
-                  </div>
-                )}
-                <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">Conectar canais de venda</h1>
-                <p className="text-muted-foreground max-w-lg mx-auto font-medium">Conecte sua loja para que a IA identifique seus clientes reais em todos os canais.</p>
+        {/* STEP 2: Funnel Data */}
+        {step === 2 && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-500 text-[10px] font-black px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-[0.2em]">
+                <BarChart3 className="w-3 h-3" /> Passo 2 — Dados do Funil
               </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-4 space-y-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Objetivo principal</p>
-                  <div className="grid gap-2">
-                    {OBJECTIVES.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setObjective(item.id)}
-                        className={cn(
-                          "text-left rounded-xl border p-3 transition-all",
-                          objective === item.id
-                            ? "border-primary bg-primary/10"
-                            : "border-[#2A2A38] hover:border-primary/40"
-                        )}
-                      >
-                        <p className="text-sm font-bold">{item.label}</p>
-                        <p className="text-[11px] text-muted-foreground">{item.hint}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-4 space-y-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Vertical da loja</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {VERTICALS.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setVertical(item.id)}
-                        className={cn(
-                          "text-left rounded-xl border p-3 transition-all",
-                          vertical === item.id
-                            ? "border-primary bg-primary/10"
-                            : "border-[#2A2A38] hover:border-primary/40"
-                        )}
-                      >
-                        <p className="text-sm font-bold">{item.label}</p>
-                        <p className="text-[10px] text-muted-foreground">{item.benchmarkHint}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
-                {/* Section A: Own Store */}
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Loja Própria (Obrigatório)</h3>
-                    <Badge variant="outline" className="text-[8px] font-black text-primary border-primary/30">ATIVAR FUNIL</Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {ownStores.map(s => (
-                      <Tooltip key={s.id}>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => toggleChannel(s.id)}
-                            disabled={!!isSyncing}
-                            className={cn(
-                              "p-4 rounded-2xl border transition-all text-left relative group overflow-hidden",
-                              channels.includes(s.id) ? "border-primary bg-primary/5" : "border-[#1E1E2E] bg-[#13131A] hover:border-primary/30"
-                            )}
-                          >
-                            <div className={cn("absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity")} />
-                            {channels.includes(s.id) && <CheckCircle2 className="w-4 h-4 text-primary absolute top-3 right-3 animate-in zoom-in" />}
-                            {isSyncing === s.id && <Loader2 className="w-4 h-4 text-primary animate-spin absolute top-3 right-3" />}
-                            <s.icon className={cn("w-6 h-6 mb-3", channels.includes(s.id) ? "text-primary" : "text-muted-foreground")} />
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-bold block">{s.label}</span>
-                              <Info className="w-3 h-3 text-muted-foreground/40" />
-                            </div>
-                            {channels.includes(s.id) && <span className="text-[9px] text-primary font-bold uppercase mt-1 block">Selecionado — configure em Integrações</span>}
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="bg-[#13131A] border-[#1E1E2E] text-xs max-w-[200px]">
-                          {s.help}
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
-                  </div>
-                  <button className="text-xs font-bold text-muted-foreground hover:text-white transition-colors underline underline-offset-4 decoration-muted-foreground/30">
-                    Minha plataforma não está aqui →
-                  </button>
-
-                  {channels.length > 0 && (
-                    <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2">
-                      <p className="text-[10px] font-black uppercase text-primary">Próximo passo</p>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        O URL de webhook e as credenciais são gerados por loja após o cadastro. Em{" "}
-                        <Link to="/dashboard/integracoes" className="text-primary font-bold underline underline-offset-2">
-                          Integrações
-                        </Link>{" "}
-                        você copia o endpoint seguro e conclui OAuth ou chaves conforme a plataforma.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Section B: Marketplaces */}
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Marketplaces (Recomendado)</h3>
-                    <Badge variant="outline" className="text-[8px] font-black text-purple-400 border-purple-400/30">VISÃO UNIFICADA</Badge>
-                  </div>
-                  <div className="space-y-3">
-                    {marketplaces.map(m => (
-                      <Tooltip key={m.id}>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => toggleChannel(m.id)}
-                            disabled={!!isSyncing}
-                            className={cn(
-                              "w-full p-4 rounded-2xl border transition-all flex items-center justify-between group relative overflow-hidden",
-                              channels.includes(m.id) ? "border-primary bg-primary/5" : "border-[#1E1E2E] bg-[#13131A] hover:border-primary/30"
-                            )}
-                          >
-                            <div className="flex items-center gap-4 relative z-10">
-                              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shadow-lg", m.color)}>
-                                <m.icon className="w-5 h-5 text-white" />
-                              </div>
-                              <div className="text-left">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold">{m.label}</span>
-                                  <Info className="w-3 h-3 text-muted-foreground/40" />
-                                  {m.badge && <Badge className="bg-primary/20 text-primary border-0 text-[8px] font-black">{m.badge}</Badge>}
-                                </div>
-                                <span className="text-[10px] text-muted-foreground font-medium">{channels.includes(m.id) ? "✓ Selecionado — configure em Integrações" : "Clique para selecionar"}</span>
-                              </div>
-                            </div>
-                            {channels.includes(m.id) ? (
-                              <CheckCircle2 className="w-5 h-5 text-primary relative z-10 animate-in zoom-in" />
-                            ) : (
-                              <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-white transition-all relative z-10" />
-                            )}
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="bg-[#13131A] border-[#1E1E2E] text-xs max-w-[200px]">
-                          {m.help}
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
-                  </div>
-                  <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-3 italic">
-                    <Sparkles className="w-5 h-5 text-primary shrink-0" />
-                    <p className="text-[11px] text-primary/80 leading-relaxed font-medium">
-                      Com marketplaces conectados, a IA identifica compras multicanal e evita mensagens repetitivas para o mesmo cliente.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* STEP 2: WhatsApp */}
-          {step === 2 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center space-y-4">
-                <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-500 text-[10px] font-black px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-[0.2em] mb-2">
-                  Passo 2 — Motor de Recuperação
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">Conectar seu WhatsApp</h1>
-                <p className="text-muted-foreground max-w-lg mx-auto font-medium">Este é o canal onde as prescrições de IA serão executadas automaticamente.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-[#13131A] border border-[#1E1E2E] rounded-3xl p-8 md:p-12">
-                <div className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                        <Smartphone className="w-5 h-5 text-emerald-500" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold">Conexão via Meta Cloud API</h3>
-                        <p className="text-xs text-muted-foreground">WhatsApp Business oficial (Graph API) no dashboard.</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                        <Zap className="w-5 h-5 text-blue-500" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold">Recuperação Instantânea</h3>
-                        <p className="text-xs text-muted-foreground">Carrinhos e boletos recuperados em tempo real.</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 space-y-3">
-                    {waConnected ? (
-                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center gap-3 animate-in fade-in zoom-in">
-                        <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0" />
-                        <div>
-                          <p className="font-bold text-emerald-400 text-sm">WhatsApp conectado!</p>
-                          {waConnected.phone && (
-                            <p className="text-xs text-muted-foreground font-mono">{waConnected.phone}</p>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <Button
-                        onClick={() => void handleConnectWhatsApp()}
-                        disabled={waConnecting}
-                        className="w-full h-12 bg-[#1877F2] hover:bg-[#1877F2]/90 text-white font-bold rounded-xl gap-2"
-                      >
-                        {waConnecting ? (
-                          <><Loader2 className="w-4 h-4 animate-spin" /> Conectando...</>
-                        ) : (
-                          <><Facebook className="w-4 h-4" /> Conectar com Facebook</>
-                        )}
-                      </Button>
-                    )}
-                    <Button
-                      onClick={() => setStep(3)}
-                      variant="ghost"
-                      className="w-full text-xs text-muted-foreground hover:text-white"
-                    >
-                      {waConnected ? "Continuar →" : "Configurar manualmente depois"}
-                    </Button>
-                   </div>
-
-                  {/* Guia: Como verificar o Business Manager */}
-                  {!waConnected && (
-                    <Collapsible open={showGuide} onOpenChange={setShowGuide} className="mt-4">
-                      <CollapsibleTrigger asChild>
-                        <button className="flex items-center gap-2 text-xs text-muted-foreground hover:text-white transition-colors w-full group">
-                          <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
-                          <span className="font-bold">Preciso de ajuda para conectar</span>
-                          <ChevronDown className={cn("w-3.5 h-3.5 ml-auto transition-transform", showGuide && "rotate-180")} />
-                        </button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2">
-                        <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-4">
-                          <div className="flex items-start gap-2">
-                            <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                            <p className="text-xs text-blue-300/90 leading-relaxed">
-                              Você <strong>não precisa criar um app no Meta Developers</strong>. O LTV Boost já faz tudo automaticamente.
-                              Basta ter um <strong>Business Manager verificado</strong> no Facebook.
-                            </p>
-                          </div>
-
-                          <div className="space-y-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Passo a passo</p>
-
-                            <div className="space-y-2">
-                              {[
-                                {
-                                  num: "1",
-                                  title: "Crie ou acesse seu Business Manager",
-                                  desc: "Se ainda não tem, crie gratuitamente.",
-                                  link: "https://business.facebook.com/overview",
-                                  linkLabel: "Abrir Business Manager",
-                                },
-                                {
-                                  num: "2",
-                                  title: "Verifique sua empresa",
-                                  desc: "Em Configurações → Central de Segurança → Verificação. Você vai precisar de CNPJ ou documento da empresa.",
-                                  link: "https://business.facebook.com/settings/security",
-                                  linkLabel: "Ir para Verificação",
-                                },
-                                {
-                                  num: "3",
-                                  title: "Adicione um número de WhatsApp",
-                                  desc: "Use um número que não esteja no WhatsApp pessoal. Pode ser fixo ou celular.",
-                                },
-                                {
-                                  num: "4",
-                                  title: "Clique em \"Conectar com Facebook\" acima",
-                                  desc: "O LTV Boost cuida do resto: tokens, webhook, número — tudo automático.",
-                                },
-                              ].map((item) => (
-                                <div key={item.num} className="flex gap-3 items-start">
-                                  <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 text-[10px] font-black mt-0.5">
-                                    {item.num}
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-bold text-white/90">{item.title}</p>
-                                    <p className="text-[11px] text-muted-foreground leading-relaxed">{item.desc}</p>
-                                    {item.link && (
-                                      <a
-                                        href={item.link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
-                                      >
-                                        {item.linkLabel} <ExternalLink className="w-3 h-3" />
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* FAQ rápido */}
-                          <div className="border-t border-blue-500/10 pt-3 space-y-2">
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Dúvidas frequentes</p>
-                            {[
-                              {
-                                q: "Preciso de conta de desenvolvedor no Meta?",
-                                a: "Não. O LTV Boost usa seu próprio app. Você só autoriza o acesso.",
-                              },
-                              {
-                                q: "Quanto tempo leva a verificação do Business Manager?",
-                                a: "Geralmente 1 a 3 dias úteis. Enquanto isso, você pode explorar o dashboard com dados demo.",
-                              },
-                              {
-                                q: "Posso usar meu número pessoal do WhatsApp?",
-                                a: "Não é recomendado. Use um número dedicado para a loja. Pode ser fixo ou celular.",
-                              },
-                            ].map((faq) => (
-                              <div key={faq.q} className="bg-white/[0.02] rounded-lg p-2.5">
-                                <p className="text-[11px] font-bold text-white/80">{faq.q}</p>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">{faq.a}</p>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                            <p className="text-[10px] text-amber-300/80 leading-relaxed">
-                              Se o popup fechar sem concluir, verifique se pop-ups estão permitidos no seu navegador e se você está logado no Facebook correto.
-                            </p>
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
-                </div>
-
-                <div className="relative">
-                  <div className="absolute inset-0 bg-emerald-500/20 blur-2xl rounded-full" />
-                  <div className="relative bg-black rounded-2xl p-6 border border-white/10 shadow-2xl flex flex-col items-center gap-4">
-                    {waConnected ? (
-                      <>
-                        <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-emerald-500/10">
-                          <CheckCircle2 className="w-24 h-24 text-emerald-500 animate-in zoom-in" />
-                        </div>
-                        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Conectado ✓</p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-[#1877F2]/10 border border-[#1877F2]/20">
-                          <div className="text-center space-y-3">
-                            <Facebook className="w-16 h-16 text-[#1877F2] mx-auto" />
-                            <p className="text-xs text-muted-foreground font-medium">Conexão automática<br />via Meta Business</p>
-                          </div>
-                        </div>
-                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                          {waConnecting ? "Conectando..." : "Aguardando Conexão..."}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
+                Métricas do seu negócio
+              </h1>
+              <p className="text-muted-foreground max-w-lg mx-auto font-medium">
+                Com esses dados, a IA calcula seu Conversion Health Score e identifica gargalos.
+              </p>
             </div>
-          )}
 
-          {/* STEP 3: Primeira Prescrição */}
-          {step === 3 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center space-y-4">
-                <div className="inline-flex items-center gap-2 bg-amber-500/10 text-amber-500 text-[10px] font-black px-3 py-1 rounded-full border border-amber-500/20 uppercase tracking-[0.2em] mb-2">
-                  <Sparkles className="w-3 h-3" /> Passo 3 — Primeira Prescrição
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
-                  A IA já detectou <span className="text-primary">R$ {mockPrescription.valor.toLocaleString('pt-BR')}</span> parados
-                </h1>
-                <p className="text-muted-foreground max-w-lg mx-auto font-medium">
-                  Em menos de 60 segundos de análise, identificamos sua primeira oportunidade de recuperação.
-                </p>
-              </div>
-
-              {/* Mock Prescription Card */}
-              <div className="bg-[#0A0A0F] border border-amber-500/20 rounded-3xl p-8 relative overflow-hidden shadow-2xl shadow-amber-500/5">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full -mr-32 -mt-32 blur-[80px]" />
-                <div className="relative z-10 space-y-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                      <Badge className="bg-amber-500 text-black border-none font-black text-[9px] uppercase px-2">Oportunidade de Ouro — Detectada Agora</Badge>
-                      <h3 className="text-2xl font-black text-white font-syne tracking-tight leading-tight">
-                        {mockPrescription.tipo}: <span className="text-amber-400">{mockPrescription.clientes} clientes</span> aguardam contato
-                      </h3>
-                      <p className="text-white/60 text-sm leading-relaxed">
-                        O Agente IA identificou clientes com alta probabilidade de conversão agora. Uma mensagem personalizada pode recuperar esses pedidos em minutos.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-white/5 rounded-2xl p-4 text-center">
-                      <DollarSign className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
-                      <p className="text-xl font-black text-emerald-400">R$ {mockPrescription.valor.toLocaleString('pt-BR')}</p>
-                      <p className="text-[9px] text-white/40 uppercase font-bold tracking-widest mt-1">Impacto Estimado</p>
-                    </div>
-                    <div className="bg-white/5 rounded-2xl p-4 text-center">
-                      <TrendingUp className="w-5 h-5 text-blue-400 mx-auto mb-1" />
-                      <p className="text-xl font-black text-blue-400">14.2%</p>
-                      <p className="text-[9px] text-white/40 uppercase font-bold tracking-widest mt-1">Taxa de Recuperação</p>
-                    </div>
-                    <div className="bg-white/5 rounded-2xl p-4 text-center">
-                      <Zap className="w-5 h-5 text-amber-400 mx-auto mb-1" />
-                      <p className="text-xl font-black text-amber-400">2 seg</p>
-                      <p className="text-[9px] text-white/40 uppercase font-bold tracking-widest mt-1">Para Executar</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 text-sm text-emerald-300 italic font-medium">
-                    💡 Esta prescrição expira em 24h. Lojistas que aprovam nas primeiras 2h têm <strong>3.2x mais conversões</strong>.
-                  </div>
-                </div>
-              </div>
-
-              {/* Weekly Pulse opt-in */}
-              <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Bell className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm">Ativar Pulse Semanal (recomendado)</h3>
-                    <p className="text-xs text-muted-foreground">Receba todo domingo um resumo de ROI e oportunidades detectadas via WhatsApp.</p>
-                  </div>
-                  <Badge className="ml-auto bg-primary/10 text-primary border-none text-[8px] font-black shrink-0">GRÁTIS</Badge>
-                </div>
-                <div className="flex gap-3">
+            <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Faturamento mensal (R$) *</Label>
                   <Input
-                    placeholder="+55 11 99999-9999"
-                    value={pulseNum}
-                    onChange={e => setPulseNum(e.target.value)}
-                    className="h-11 rounded-xl font-mono bg-background/50 border-[#2E2E3E] flex-1"
+                    type="number"
+                    placeholder="Ex: 50000"
+                    value={faturamento}
+                    onChange={e => setFaturamento(e.target.value)}
+                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
                   />
-                  <Label className="sr-only">Número para o Pulse</Label>
                 </div>
-                <p className="text-[10px] text-muted-foreground italic">Deixe em branco para ativar depois em Configurações → Pulse Semanal.</p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Ticket médio (R$)</Label>
+                  <Input
+                    type="number"
+                    placeholder="250"
+                    value={ticketMedio}
+                    onChange={e => setTicketMedio(e.target.value)}
+                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Nº clientes ativos</Label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 1200"
+                    value={numClientes}
+                    onChange={e => setNumClientes(e.target.value)}
+                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Meta de conversão (%)</Label>
+                  <Input
+                    type="number"
+                    placeholder="2.5"
+                    value={metaConversao}
+                    onChange={e => setMetaConversao(e.target.value)}
+                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                    step="0.1"
+                  />
+                </div>
               </div>
 
-              {/* Community CTA */}
-              {showCommunity && (
-                <div className="bg-gradient-to-br from-emerald-500/10 to-transparent border border-emerald-500/20 rounded-2xl p-6 space-y-4 animate-in fade-in duration-500">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                      <Users className="w-5 h-5 text-emerald-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-sm text-emerald-300">Elite E-commerce Brasil</h3>
-                      <p className="text-xs text-muted-foreground">1.200+ lojistas · benchmarks semanais · suporte entre pares</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Bem-vindo(a) ao LTV Boost{companyName ? `, ${companyName}` : ""}! Nossa comunidade exclusiva é onde lojistas compartilham táticas reais que movem o ponteiro.
+              {/* Optional detailed funnel */}
+              <div className="border-t border-[#1E1E2E] pt-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Info className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground font-medium">
+                    Opcional: preencha os dados do funil para um diagnóstico mais preciso. Se não souber, a IA estima com base no faturamento.
                   </p>
-                  <div className="flex gap-3 flex-wrap">
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
-                      onClick={() => toast.info("Link da comunidade disponível em breve no dashboard.")}
-                    >
-                      <MessageCircle className="w-4 h-4" /> Entrar na Comunidade
-                    </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Visitantes/mês</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(estimatedVisitors || "—")}
+                      value={visitantes}
+                      onChange={e => setVisitantes(e.target.value)}
+                      className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Add to cart</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(estimatedCarrinho || "—")}
+                      value={carrinho}
+                      onChange={e => setCarrinho(e.target.value)}
+                      className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Checkout</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(estimatedCheckout || "—")}
+                      value={checkout}
+                      onChange={e => setCheckout(e.target.value)}
+                      className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pedidos/mês</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(estimatedPedidos || "—")}
+                      value={pedidos}
+                      onChange={e => setPedidos(e.target.value)}
+                      className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
+                    />
                   </div>
                 </div>
-              )}
+              </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Action Footer */}
-          <div className="pt-12 border-t border-[#1E1E2E] flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="flex items-center gap-6">
-              {step === 1 && (
-                <div className="flex items-center gap-4 text-sm font-bold">
-                  <div className="flex flex-col">
-                    <span className="text-primary font-black font-syne text-xl leading-none">{channels.length}</span>
-                    <span className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mt-1">Canais</span>
-                  </div>
-                  <div className="w-px h-8 bg-[#1E1E2E]" />
-                  <div className="flex flex-col">
-                    <span className="font-black font-syne text-xl leading-none">{channels.length > 0 ? channels.length * 42 : 0}+</span>
-                    <span className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mt-1">Pedidos</span>
-                  </div>
-                </div>
-              )}
-              {step === 1 && (
-                <Button
-                  variant="ghost"
-                  onClick={handleDemoMode}
-                  className="text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-white"
-                >
-                  Explorar com dados demo
-                </Button>
-              )}
+        {/* STEP 3: GA4 Optional */}
+        {step === 3 && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 text-[10px] font-black px-3 py-1 rounded-full border border-blue-500/20 uppercase tracking-[0.2em]">
+                <Globe className="w-3 h-3" /> Passo 3 — Dados em Tempo Real (Opcional)
+              </div>
+              <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
+                Conectar Google Analytics 4
+              </h1>
+              <p className="text-muted-foreground max-w-lg mx-auto font-medium">
+                Com GA4, o diagnóstico usa dados reais do seu funil. Sem ele, a IA estima com base no faturamento informado.
+              </p>
             </div>
 
-            <div className="flex flex-col items-center gap-3">
-              {step < 3 ? (
-                <Button
-                  size="lg"
-                  onClick={handleNextStep}
-                  disabled={step === 1 && channels.length === 0}
-                  className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 hover:shadow-emerald-500/40 transition-all gap-2 group"
-                >
-                  {step === 1 ? "Próximo: WhatsApp" : "Próximo: Ver Prescrição"} <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              ) : (
-                <Button
-                  size="lg"
-                  onClick={() => void handleLaunch()}
-                  disabled={isLaunching}
-                  className="h-14 px-12 text-lg font-black bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/20 hover:scale-105 transition-all gap-2 group"
-                >
-                  {isLaunching ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Iniciando...</>
+            <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">GA4 Property ID</Label>
+                <Input
+                  placeholder="Ex: 123456789"
+                  value={ga4PropertyId}
+                  onChange={e => setGa4PropertyId(e.target.value)}
+                  className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Access Token</Label>
+                <Input
+                  type="password"
+                  placeholder="ya29.a0..."
+                  value={ga4Token}
+                  onChange={e => setGa4Token(e.target.value)}
+                  className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                />
+              </div>
+
+              {ga4Result && (
+                <div className={cn(
+                  "rounded-xl p-4 flex items-center gap-3",
+                  ga4Result.ok ? "bg-emerald-500/10 border border-emerald-500/30" : "bg-red-500/10 border border-red-500/30"
+                )}>
+                  {ga4Result.ok ? (
+                    <>
+                      <Sparkles className="w-5 h-5 text-emerald-500" />
+                      <div>
+                        <p className="text-sm font-bold text-emerald-400">Conectado!</p>
+                        <p className="text-xs text-muted-foreground">{ga4Result.visitors?.toLocaleString("pt-BR")} visitantes encontrados nos últimos 30 dias.</p>
+                      </div>
+                    </>
                   ) : (
-                    <><Zap className="w-5 h-5 fill-white" /> Aprovar e Ver Dashboard</>
+                    <>
+                      <Info className="w-5 h-5 text-red-400" />
+                      <p className="text-sm text-red-400">Falha na conexão. Verifique as credenciais.</p>
+                    </>
                   )}
-                </Button>
+                </div>
               )}
-              <p className="text-[9px] font-black text-muted-foreground flex items-center gap-1.5 uppercase tracking-[0.2em]">
-                <Shield className="w-3.5 h-3.5 text-emerald-500" /> Criptografia ponta a ponta ativa
+
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleTestGA4}
+                  disabled={ga4Testing || !ga4PropertyId.trim() || !ga4Token.trim()}
+                  variant="outline"
+                  className="flex-1 h-11 rounded-xl border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                >
+                  {ga4Testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <TrendingUp className="w-4 h-4 mr-2" />}
+                  Testar Conexão
+                </Button>
+              </div>
+            </div>
+
+            <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-3">
+              <Sparkles className="w-5 h-5 text-primary shrink-0" />
+              <p className="text-xs text-primary/80 leading-relaxed font-medium">
+                Se preferir, pule esta etapa. A IA vai gerar o diagnóstico com os dados que você já informou e estimativas do benchmark do seu segmento.
               </p>
             </div>
           </div>
+        )}
+
+        {/* Action Footer */}
+        <div className="pt-12 border-t border-[#1E1E2E] flex flex-col items-center gap-4">
+          {step === 1 && (
+            <Button
+              size="lg"
+              onClick={handleStep1Next}
+              className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group"
+            >
+              Próximo: Dados do funil <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </Button>
+          )}
+          {step === 2 && (
+            <div className="flex flex-col items-center gap-3">
+              <Button
+                size="lg"
+                onClick={handleStep2Next}
+                className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group"
+              >
+                Próximo: Conectar GA4 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Button>
+              <button
+                onClick={() => { setStep(3); }}
+                className="text-xs text-muted-foreground hover:text-white transition-colors"
+              >
+                Pular GA4 e gerar diagnóstico
+              </button>
+            </div>
+          )}
+          {step === 3 && (
+            <div className="flex flex-col items-center gap-3">
+              <Button
+                size="lg"
+                onClick={() => void handleFinish()}
+                disabled={isSubmitting}
+                className="h-14 px-12 text-lg font-black bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/20 hover:scale-105 transition-all gap-2 group"
+              >
+                {isSubmitting ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Salvando...</>
+                ) : (
+                  <><Sparkles className="w-5 h-5" /> Gerar Diagnóstico com IA</>
+                )}
+              </Button>
+              {!ga4PropertyId && (
+                <button
+                  onClick={() => void handleFinish()}
+                  disabled={isSubmitting}
+                  className="text-xs text-muted-foreground hover:text-white transition-colors"
+                >
+                  Pular GA4 e usar estimativas
+                </button>
+              )}
+              <p className="text-[9px] font-black text-muted-foreground flex items-center gap-1.5 uppercase tracking-[0.2em]">
+                <Shield className="w-3.5 h-3.5 text-emerald-500" /> Dados criptografados e protegidos
+              </p>
+            </div>
+          )}
         </div>
-      </TooltipProvider>
+      </div>
     </div>
   );
 }

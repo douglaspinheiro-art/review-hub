@@ -56,7 +56,7 @@ export default function Signup() {
       return;
     }
     sessionStorage.setItem("ltv_show_community", "1");
-    navigate(`/analisando${perda ? `?perda=${perda}` : ""}`, { replace: true });
+    navigate("/onboarding", { replace: true });
   }
 
   return (
