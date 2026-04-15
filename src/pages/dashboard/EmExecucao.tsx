@@ -98,10 +98,9 @@ function channelLabel(c: string | undefined) {
 }
 
 export default function EmExecucao() {
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isDemo = false; // always real data
+  const { user } = useAuth();
   const loja = useLoja();
   const storeId = loja.data?.id as string | undefined;
 
@@ -110,7 +109,6 @@ export default function EmExecucao() {
     isLoading: bundleLoading,
     isError: bundleError,
     error: bundleErr,
-    refetch: refetchBundle,
   } = useExecutionMonitor();
 
   const rxRows = useMemo(() => bundle?.prescriptions ?? [], [bundle?.prescriptions]);
@@ -151,11 +149,11 @@ export default function EmExecucao() {
     [inProgress, campaignByPrescriptionId],
   );
 
-  const isLoading = !isDemo && bundleLoading;
-  const isError = !isDemo && bundleError;
+  const isLoading = bundleLoading;
+  const isError = bundleError;
   const errorMsg = bundleErr instanceof Error ? bundleErr.message : "Erro ao carregar dados";
 
-  const baseDash = isDemo ? "/demo" : "/dashboard";
+  const baseDash = "/dashboard";
 
   const onRefresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["execution-monitor"] });
