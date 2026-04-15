@@ -2347,6 +2347,30 @@ export type Database = {
           },
         ]
       }
+      mp_webhook_events: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          payload: Json
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          payload?: Json
+          type: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          payload?: Json
+          type?: string
+        }
+        Relationships: []
+      }
       newsletter_saved_blocks: {
         Row: {
           blocks: Json
@@ -3068,6 +3092,8 @@ export type Database = {
           loyalty_program_name: string | null
           loyalty_slug: string | null
           milestone_1k_shown: boolean
+          mp_customer_id: string | null
+          mp_subscription_id: string | null
           nps_shown_at: string | null
           onboarding_completed: boolean
           password_rotated_at: string | null
@@ -3102,6 +3128,8 @@ export type Database = {
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
           milestone_1k_shown?: boolean
+          mp_customer_id?: string | null
+          mp_subscription_id?: string | null
           nps_shown_at?: string | null
           onboarding_completed?: boolean
           password_rotated_at?: string | null
@@ -3136,6 +3164,8 @@ export type Database = {
           loyalty_program_name?: string | null
           loyalty_slug?: string | null
           milestone_1k_shown?: boolean
+          mp_customer_id?: string | null
+          mp_subscription_id?: string | null
           nps_shown_at?: string | null
           onboarding_completed?: boolean
           password_rotated_at?: string | null

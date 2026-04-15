@@ -1,31 +1,5 @@
 import type { CampaignPrefill } from "@/components/dashboard/CampaignModal";
 import type { PrescriptionProps } from "@/components/dashboard/PrescriptionCard";
-import { mockPrescricoes } from "@/lib/mock-data";
-
-type MockPrescricao = (typeof mockPrescricoes)[number];
-
-/** Converte o mock da demo para o formato da tabela `prescriptions`. */
-export function mockPrescricaoToRow(m: MockPrescricao): PrescriptionRow {
-  return {
-    id: m.id,
-    title: m.titulo,
-    description: m.desconto_justificativa,
-    execution_channel: m.canal,
-    segment_target: m.segmento,
-    num_clients_target: m.num_clientes,
-    discount_value: m.desconto_valor,
-    discount_type: m.desconto_tipo,
-    estimated_potential: m.potencial_estimado,
-    estimated_roi: m.roi_estimado,
-    template_json: {
-      melhor_horario: m.melhor_horario,
-      mensagem: m.preview_msg,
-      custo_estimado: m.custo_estimado,
-      ab_test: m.ab_teste_ativo,
-    },
-    status: m.status,
-  };
-}
 
 /** Prescrição aprovada ou em disparo (aba "Em execução" / página Recovery). */
 export function isPrescriptionInExecution(status: string | null | undefined): boolean {
@@ -92,7 +66,6 @@ function abTestFromTemplate(tj: Record<string, unknown> | null | undefined): boo
 
 /**
  * Map `segment_target` from DB / IA to campaign prefill.
- * Valores fechados preferidos (ver prompt em gerar-diagnostico).
  */
 export function segmentTargetToCampaignPrefill(
   segmentTarget: string | null | undefined,
