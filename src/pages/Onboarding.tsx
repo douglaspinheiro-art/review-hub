@@ -42,7 +42,55 @@ export default function Onboarding() {
   const [waConnecting, setWaConnecting] = useState(false);
   const [waConnected, setWaConnected] = useState<{ phone?: string } | null>(null);
   const [userStoreId, setUserStoreId] = useState<string | null>(null);
+  const showCommunity = sessionStorage.getItem("ltv_show_community") === "1";
   const companyName = sessionStorage.getItem("ltv_company") || "";
+
+  const metaAppId = import.meta.env.VITE_META_APP_ID as string | undefined;
+
+  // Fetch user's store_id when entering step 2
+  useEffect(() => {
+    if (step !== 2 || !user?.id) return;
+    supabase
+      .from("stores")
+      .select("id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setUserStoreId(data.id);
+      });
+  }, [step, user?.id]);
+
+  const handleConnectWhatsApp = useCallback(async () => {
+    if (!metaAppId) {
+      toast.error("META_APP_ID não configurado. Configure VITE_META_APP_ID.");
+      return;
+    }
+    if (!userStoreId) {
+      toast.error("Complete o passo 1 primeiro para criar sua loja.");
+      return;
+    }
+    setWaConnecting(true);
+    try {
+      const result = await launchEmbeddedSignup({
+        appId: metaAppId,
+        storeId: userStoreId,
+        instanceName: "onboarding",
+      });
+      if (result.ok) {
+        setWaConnected({ phone: result.display_phone_number });
+        toast.success("✅ WhatsApp conectado com sucesso!");
+        setTimeout(() => setStep(3), 2000);
+      } else {
+        toast.error(result.error || "Não foi possível conectar.");
+      }
+    } catch (err) {
+      toast.error("Erro ao conectar WhatsApp. Tente novamente.");
+    } finally {
+      setWaConnecting(false);
+    }
+  }, [metaAppId, userStoreId]);
 
   const ownStores = [
     { id: "shopify", label: "Shopify", icon: Globe, help: "Conexão via App Oficial. Sincroniza pedidos, clientes e carrinhos em tempo real." },
