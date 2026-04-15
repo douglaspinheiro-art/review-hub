@@ -514,7 +514,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
       const fallbackCampaigns = (campRows ?? []) as any[];
       const fallbackMetrics = await _fetchCampaignMetricsBundle(storeId, effectiveUserId, fallbackCampaigns.map((c: { id: string }) => c.id));
 
-      const abTestIds2 = fallbackCampaigns.map((c: { ab_test_id?: string | null }) => c.ab_test_id).filter(Boolean);
+      const abTestIds2 = fallbackCampaigns.map((c: { ab_test_id?: string | null }) => c.ab_test_id).filter((v): v is string => !!v);
       let winnersByTestId2 = new Map<string, string | null>();
       if (abTestIds2.length > 0) {
         const { data: abTests } = await supabase.from("ab_tests").select("id,winner_variant").in("id", abTestIds2);
@@ -554,6 +554,7 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
 const CUSTOMERS_V3_LIST_COLUMNS =
   "id,name,email,phone,rfm_segment,tags,last_purchase_at,customer_health_score,unsubscribed_at,email_hard_bounce_at,email_complaint_at,created_at,rfm_frequency,rfm_monetary";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function escapeIlikePattern(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
