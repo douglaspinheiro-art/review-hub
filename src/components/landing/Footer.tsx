@@ -73,5 +73,6 @@ const Footer = forwardRef<HTMLElement>(function Footer(_props, ref) {
         </div>
       </div>
     </footer>
-  );
-}
+});
+
+export default Footer;
