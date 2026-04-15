@@ -108,6 +108,7 @@ export default function Onboarding() {
   const [integrationValidating, setIntegrationValidating] = useState(false);
   const [integrationValid, setIntegrationValid] = useState(false);
   const [integrationError, setIntegrationError] = useState<string | null>(null);
+  const [oauthConnecting, setOauthConnecting] = useState(false);
 
   // Step 3 — Funnel data
   const [faturamento, setFaturamento] = useState("");
