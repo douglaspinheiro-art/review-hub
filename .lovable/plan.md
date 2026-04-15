@@ -1,102 +1,86 @@
 
 
-# Plano: Preparação para Validação com 10 E-commerces Reais
+# Plano: OAuth Automatizado para Shopify e Nuvemshop + WooCommerce Auto-Auth
 
-## Contexto
+## Objetivo
+Substituir a entrada manual de tokens por fluxos OAuth automatizados nas plataformas que suportam, reduzindo a fricção de onboarding drasticamente.
 
-A plataforma está com build estável, RLS hardened, e secrets configurados. Agora precisa garantir que o fluxo completo funciona end-to-end para usuários reais.
-
-## Problema Atual: Runtime Error
-
-Há um erro `Component is not a function` na rota `/planos` que precisa ser corrigido antes de qualquer usuário real acessar. Provavelmente relacionado ao lazy import do `Calculadora` — o componente exporta `CalculadoraPage` mas é importado como default sem destructuring.
-
----
-
-## Bloco 1 — Fix do Runtime Error (URGENTE)
-
-Investigar e corrigir o `TypeError: Component is not a function` na página `/planos`. O lazy import `const CalculadoraSimulador = lazy(() => import("./Calculadora"))` pode estar falhando em certas condições de carregamento.
+## O que muda para o lojista
+- **Shopify/Nuvemshop:** Clica "Conectar" → abre popup da plataforma → autoriza → volta com token salvo automaticamente
+- **WooCommerce:** Clica "Conectar" → redireciona ao WP → autoriza → chaves geradas e salvas
+- **VTEX/Tray/Magento/Dizy:** Continua manual (com guia visual melhorado)
 
 ---
 
-## Bloco 2 — Checklist de Validação por Fluxo
+## Bloco 1 — Infraestrutura OAuth (Edge Functions)
 
-Criar uma página interna `/admin/validacao` (protegida por role `admin`) que permite:
+### 1a. Edge Function `oauth-shopify`
+- Rota `GET /start` → gera URL de autorização com `client_id`, `scopes`, `redirect_uri`, `state` (JWT com store_id)
+- Rota `GET /callback` → recebe `code`, troca por `access_token` permanente via Shopify API, salva em `integrations` com pgcrypto
+- Scopes necessários: `read_orders`, `read_customers`, `read_products`, `read_checkouts`
+- **Secrets necessários:** `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`
 
-1. **Testar cada fluxo crítico** com status visual:
-   - Signup → Profile + Store criados
-   - Onboarding → Integration credentials saved
-   - WhatsApp Setup → Meta Embedded Signup → connection row
-   - Primeira campanha → dispatch → delivery
-   - Inbox → receber mensagem inbound → responder
+### 1b. Edge Function `oauth-nuvemshop`
+- Mesmo padrão: `start` → redirect → `callback` → troca code por token
+- Endpoint: `https://www.tiendanube.com/apps/authorize/token`
+- **Secrets necessários:** `NUVEMSHOP_CLIENT_ID`, `NUVEMSHOP_CLIENT_SECRET`
 
-2. **Health check das Edge Functions** — botão que chama cada function com payload de teste e mostra status/latência
+### 1c. Edge Function `oauth-woocommerce`
+- Usa o endpoint nativo `{site_url}/wc-auth/v1/authorize` que gera chaves automaticamente
+- Callback recebe `consumer_key` e `consumer_secret` via POST
+- Não requer client_id/secret — WooCommerce gera as chaves no servidor do lojista
 
-3. **Monitor de dados por loja** — ver se stores, contacts, campaigns existem para cada usuário piloto
-
----
-
-## Bloco 3 — Onboarding Simplificado para Pilotos
-
-O onboarding atual exige API keys manuais. Para os 10 pilotos:
-
-1. Adicionar um **fluxo de convite** — link `/signup?ref=pilot` que pré-configura trial de 30 dias e marca `profiles.tags = ['pilot']`
-2. Criar **guia contextual inline** no Step 2 do onboarding com screenshots de onde encontrar as credenciais em cada plataforma (Shopify, Nuvemshop, etc.)
-3. Adicionar **validação em tempo real** das credenciais no onboarding (já existe `validate-integration` — garantir que funciona para todas as plataformas)
+### 1d. Tabela de state tokens
+- Migration: tabela `oauth_states` (state_token, store_id, platform, expires_at) para validar callbacks e prevenir CSRF
 
 ---
 
-## Bloco 4 — Observabilidade Mínima
+## Bloco 2 — Frontend: Onboarding Step 2 Atualizado
 
-Para acompanhar os 10 pilotos em tempo real:
+Alterar `src/pages/Onboarding.tsx` Step 2:
 
-1. **Dashboard Admin** (`/admin`) — adicionar aba "Pilotos" com:
-   - Lista de usuários com status (signup, onboarding, ativo, churned)
-   - Contagem de contacts, campaigns, messages por loja
-   - Último login e última ação
-   - Erros recentes do `client_error_events`
-
-2. **Alertas básicos** — Edge Function `enviar-pulse-semanal` já existe; ajustar para enviar alerta quando:
-   - Piloto não logou em 3+ dias
-   - Integration quebrou (sync_status = 'error')
-   - Campanha falhou (status = 'failed')
+- **Shopify/Nuvemshop/WooCommerce:** Mostrar botão "Conectar com [Plataforma]" que abre popup/redirect OAuth
+  - Loading state enquanto aguarda callback
+  - Após sucesso: ícone verde + "Loja conectada!" + avança automaticamente
+  
+- **VTEX/Tray/Magento/Dizy:** Manter formulário manual atual, mas adicionar:
+  - Guia visual inline com screenshots de onde encontrar as credenciais
+  - Link direto para a página de criação de chaves na plataforma
 
 ---
 
-## Bloco 5 — Hardening do Fluxo Crítico
+## Bloco 3 — Secrets e Pré-requisitos
 
-1. **Retry no WhatsApp send** — adicionar retry com backoff no `meta-whatsapp-send` (hoje falha silenciosamente)
-2. **Dead-letter queue** — `scheduled_messages` com status `failed` precisam de um mecanismo de retry visível no dashboard
-3. **Rate limit feedback** — quando Meta API retorna 429, mostrar toast ao usuário com tempo de espera
+Para que o OAuth funcione, você precisará:
 
----
+1. **Shopify:** Criar um Shopify App (Partner Dashboard) → obter Client ID e Secret
+2. **Nuvemshop:** Criar app no Portal de Parceiros Nuvemshop → obter Client ID e Secret
+3. **WooCommerce:** Sem secrets extras (usa endpoint nativo do WP)
 
-## Bloco 6 — Seed Data para Demo
-
-Para que os pilotos vejam valor imediato ao entrar:
-
-1. **Primeiro diagnóstico automático** — após onboarding, chamar `gerar-diagnostico` automaticamente com dados mockados da plataforma do piloto
-2. **Contatos de exemplo** — inserir 5 contatos demo com RFM já calculado para que o mapa RFM não fique vazio
+Os secrets `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `NUVEMSHOP_CLIENT_ID`, `NUVEMSHOP_CLIENT_SECRET` precisam ser adicionados no Supabase antes do deploy.
 
 ---
 
 ## Resumo de Execução
 
-| Bloco | Tipo | Prioridade | Esforço |
-|---|---|---|---|
-| 1. Fix runtime error `/planos` | Code fix | P0 | 15 min |
-| 2. Página de validação admin | Nova feature | P1 | 45 min |
-| 3. Onboarding pilot flow | Code edit | P1 | 30 min |
-| 4. Dashboard admin pilotos | Nova feature | P1 | 40 min |
-| 5. Retry/dead-letter WhatsApp | Edge Function | P2 | 30 min |
-| 6. Seed data automático | Code edit | P2 | 20 min |
+| Bloco | Tipo | Esforço |
+|---|---|---|
+| 1a. Edge Function oauth-shopify | Nova Edge Function | 30 min |
+| 1b. Edge Function oauth-nuvemshop | Nova Edge Function | 25 min |
+| 1c. Edge Function oauth-woocommerce | Nova Edge Function | 20 min |
+| 1d. Migration oauth_states | SQL | 5 min |
+| 2. Frontend onboarding refactor | Code edit | 30 min |
+| 3. Secrets setup | Manual (você) | 10 min |
 
-**Total estimado:** ~3h de implementação
+**Total:** ~2h de implementação
 
-### Ordem recomendada:
-1. Fix runtime error (bloqueia tudo)
-2. Onboarding pilot flow (primeira coisa que pilotos veem)
-3. Dashboard admin pilotos (você precisa monitorar)
-4. Página de validação (seu checklist interno)
-5. Seed data (melhora first impression)
-6. Retry WhatsApp (resiliência)
+### Pré-requisito (você precisa fazer antes):
+1. Criar app no Shopify Partner Dashboard → anotar Client ID e Secret
+2. Criar app no Nuvemshop Partner Portal → anotar Client ID e Secret
+3. Adicionar os 4 secrets no Supabase
+
+### Resultado:
+- **Shopify/Nuvemshop:** 1 clique para conectar (zero campos manuais)
+- **WooCommerce:** 2 cliques (redirect + autorizar no WP)
+- **Demais:** Manual com guia melhorado
 
