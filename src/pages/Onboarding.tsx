@@ -81,6 +81,14 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
 
 const UNSUPPORTED_PLATFORMS = ["Yampi", "Loja Integrada", "Outra", "Outro", ""];
 
+// Platforms that support OAuth (1-click connect)
+const OAUTH_PLATFORMS = ["Shopify", "Nuvemshop", "WooCommerce"] as const;
+type OAuthPlatform = typeof OAUTH_PLATFORMS[number];
+
+function isOAuthPlatform(p: string): p is OAuthPlatform {
+  return (OAUTH_PLATFORMS as readonly string[]).includes(p);
+}
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
