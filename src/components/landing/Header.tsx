@@ -38,7 +38,7 @@ export default function Header() {
           </Button>
           <Button asChild size="sm" className="gap-1.5 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
             <a href="/signup">
-              Agendar Demo <ArrowRight className="w-3.5 h-3.5" />
+              Ver Demo <ArrowRight className="w-3.5 h-3.5" />
             </a>
           </Button>
         </div>
@@ -58,7 +58,7 @@ export default function Header() {
                 <a href="/login" onClick={() => setOpen(false)}>Entrar</a>
               </Button>
               <Button asChild className="w-full">
-                <a href="/signup" onClick={() => setOpen(false)}>Agendar Demo</a>
+                <a href="/signup" onClick={() => setOpen(false)}>Ver Demo</a>
               </Button>
             </nav>
           </SheetContent>
