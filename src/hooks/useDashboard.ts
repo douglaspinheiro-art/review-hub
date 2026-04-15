@@ -567,6 +567,14 @@ export type ContactsQueryResult = {
   pageSize: number;
   rfmReport?: RfmReportCounts;
 };
+export type UseContactsOptions = {
+  variant?: "sample" | "list";
+  cursor?: string | null;
+  pageSize?: number;
+  sampleMaxRows?: number;
+  search?: string;
+  rfmSegment?: string | null;
+};
 
 export function useContacts(options: UseContactsOptions = {}) {
   const variant = options.variant ?? "sample";
@@ -1282,6 +1290,7 @@ export function useAdvancedReports(days = 30) {
 export type RfmReportCounts = {
   champions: number;
   loyal: number;
+  promising?: number;
   at_risk: number;
   lost: number;
   new: number;
