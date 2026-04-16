@@ -19,7 +19,7 @@ import { seedPilotStore } from "@/lib/pilot-seed-data";
 const TOTAL_STEPS = 4;
 
 // Platform → integration type mapping
-const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: string; label: string; placeholder: string; secret?: boolean }[]; helpUrl?: string }> = {
+const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: string; label: string; placeholder: string; secret?: boolean; helper?: string }[]; helpUrl?: string }> = {
   Shopify: {
     type: "shopify",
     fields: [
