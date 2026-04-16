@@ -118,6 +118,10 @@ export default function Onboarding() {
   const [checkout, setCheckout] = useState("");
   const [pedidos, setPedidos] = useState("");
   const [metaConversao, setMetaConversao] = useState("2.5");
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsImported, setMetricsImported] = useState(false);
+  const [metricsFetched, setMetricsFetched] = useState(false);
+  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean }>({});
 
   // Step 4 — GA4 optional
   const [ga4PropertyId, setGa4PropertyId] = useState("");
