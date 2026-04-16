@@ -549,6 +549,9 @@ export default function Onboarding() {
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
 
+      // Onboarding complete — clear in-progress draft
+      try { if (user?.id) localStorage.removeItem(`onboarding_progress_${user.id}`); } catch { /* noop */ }
+
       navigate("/analisando");
     } catch (e) {
       console.error(e);
