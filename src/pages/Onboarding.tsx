@@ -118,6 +118,10 @@ export default function Onboarding() {
   const [checkout, setCheckout] = useState("");
   const [pedidos, setPedidos] = useState("");
   const [metaConversao, setMetaConversao] = useState("2.5");
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsImported, setMetricsImported] = useState(false);
+  const [metricsFetched, setMetricsFetched] = useState(false);
+  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean }>({});
 
   // Step 4 — GA4 optional
   const [ga4PropertyId, setGa4PropertyId] = useState("");
@@ -161,6 +165,50 @@ export default function Onboarding() {
       toast.success("Loja conectada com sucesso!");
     }
   }, [searchParams]);
+
+  const fetchStoreMetrics = useCallback(async (manual = false) => {
+    if (!platformInfo || !integrationValid) return;
+    setMetricsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
+      if (error) throw error;
+      if (!data || typeof data !== "object") throw new Error("empty");
+
+      const fat = Number((data as Record<string, unknown>).faturamento);
+      const tm = Number((data as Record<string, unknown>).ticketMedio);
+      const cli = Number((data as Record<string, unknown>).totalClientes);
+      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean } = {};
+
+      if (Number.isFinite(fat) && fat > 0) {
+        setFaturamento(String(Math.round(fat)));
+        updated.faturamento = true;
+      }
+      if (Number.isFinite(tm) && tm > 0) {
+        setTicketMedio(String(Math.round(tm)));
+        updated.ticketMedio = true;
+      }
+      if (Number.isFinite(cli) && cli > 0) {
+        setNumClientes(String(Math.round(cli)));
+        updated.numClientes = true;
+      }
+      setImportedFields(updated);
+      setMetricsImported(Object.keys(updated).length > 0);
+      if (manual) toast.success("Dados atualizados da plataforma!");
+    } catch {
+      if (manual) toast.error("Não foi possível importar. Preencha manualmente.");
+      else toast.info("Não foi possível importar automaticamente. Preencha manualmente.");
+    } finally {
+      setMetricsLoading(false);
+      setMetricsFetched(true);
+    }
+  }, [platformInfo, integrationValid]);
+
+  // Auto-fetch metrics when entering Step 3 with valid integration
+  useEffect(() => {
+    if (step === 3 && integrationValid && !metricsFetched && !metricsLoading) {
+      fetchStoreMetrics(false);
+    }
+  }, [step, integrationValid, metricsFetched, metricsLoading, fetchStoreMetrics]);
 
   const handleOAuthConnect = useCallback(async () => {
     if (!user?.id) return;
@@ -722,36 +770,88 @@ export default function Onboarding() {
             </div>
 
             <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
+              {(metricsImported || metricsLoading) && (
+                <div className="rounded-xl p-4 flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/30">
+                  <div className="flex items-center gap-3">
+                    {metricsLoading ? (
+                      <Loader2 className="w-5 h-5 text-emerald-400 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-5 h-5 text-emerald-400" />
+                    )}
+                    <div>
+                      <p className="text-sm font-bold text-emerald-400">
+                        {metricsLoading
+                          ? `Importando dados de ${plataforma}...`
+                          : `Dados importados de ${plataforma} — últimos 30 dias`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Você pode ajustar manualmente se preferir.</p>
+                    </div>
+                  </div>
+                  {!metricsLoading && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => fetchStoreMetrics(true)}
+                      className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                    >
+                      Atualizar
+                    </Button>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Faturamento mensal (R$) *</Label>
-                  <Input
-                    type="number"
-                    placeholder="Ex: 50000"
-                    value={faturamento}
-                    onChange={e => setFaturamento(e.target.value)}
-                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                  />
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                    Faturamento mensal (R$) *
+                    {importedFields.faturamento && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ importado</span>}
+                  </Label>
+                  {metricsLoading ? (
+                    <div className="h-12 rounded-xl bg-background/50 border border-[#2E2E3E] animate-pulse" />
+                  ) : (
+                    <Input
+                      type="number"
+                      placeholder="Ex: 50000"
+                      value={faturamento}
+                      onChange={e => setFaturamento(e.target.value)}
+                      className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Ticket médio (R$)</Label>
-                  <Input
-                    type="number"
-                    placeholder="250"
-                    value={ticketMedio}
-                    onChange={e => setTicketMedio(e.target.value)}
-                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                  />
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                    Ticket médio (R$)
+                    {importedFields.ticketMedio && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ importado</span>}
+                  </Label>
+                  {metricsLoading ? (
+                    <div className="h-12 rounded-xl bg-background/50 border border-[#2E2E3E] animate-pulse" />
+                  ) : (
+                    <Input
+                      type="number"
+                      placeholder="250"
+                      value={ticketMedio}
+                      onChange={e => setTicketMedio(e.target.value)}
+                      className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Nº clientes ativos</Label>
-                  <Input
-                    type="number"
-                    placeholder="Ex: 1200"
-                    value={numClientes}
-                    onChange={e => setNumClientes(e.target.value)}
-                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                  />
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                    Nº clientes ativos
+                    {importedFields.numClientes && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ importado</span>}
+                  </Label>
+                  {metricsLoading ? (
+                    <div className="h-12 rounded-xl bg-background/50 border border-[#2E2E3E] animate-pulse" />
+                  ) : (
+                    <Input
+                      type="number"
+                      placeholder="Ex: 1200"
+                      value={numClientes}
+                      onChange={e => setNumClientes(e.target.value)}
+                      className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Meta de conversão (%)</Label>
