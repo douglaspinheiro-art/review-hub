@@ -242,7 +242,7 @@ serve(async (req) => {
       case "twilio": result = await testTwilio(config); break;
       case "magento": result = await testMagento(config); break;
       case "shopee": result = { ok: true, detail: "Shopee configurada (validação via Partner API)" }; break;
-      case "dizy": result = { ok: true, detail: "Dizy Commerce configurado" }; break;
+      case "dizy": result = await testMagento({ base_url: config.base_url, access_token: config.api_key }); break;
       case "google_my_business": result = { ok: true, detail: "Place ID salvo" }; break;
       case "reclame_aqui": result = { ok: true, detail: "ID da empresa salvo" }; break;
       default:
