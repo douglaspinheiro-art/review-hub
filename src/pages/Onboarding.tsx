@@ -15,6 +15,7 @@ import { VERTICALS, type EcommerceVertical } from "@/lib/strategy-profile";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
+import { normalizeStoreBaseUrl } from "@/lib/normalize-store-url";
 
 const TOTAL_STEPS = 4;
 
@@ -243,7 +244,23 @@ export default function Onboarding() {
   const handleValidateIntegration = async () => {
     if (!platformInfo) return;
 
-    const missingField = platformInfo.fields.find(f => !integrationConfig[f.key]?.trim());
+    // Normalize URL fields for Magento/Dizy-style platforms before validating
+    let normalizedConfig = integrationConfig;
+    if ((platformInfo.type === "dizy" || platformInfo.type === "magento") && integrationConfig.base_url) {
+      const norm = normalizeStoreBaseUrl(integrationConfig.base_url);
+      if (!norm) {
+        const msg = "URL da loja inválida. Use apenas o domínio (ex.: minhaloja.dize.com.br).";
+        setIntegrationError(msg);
+        toast.error(msg);
+        return;
+      }
+      normalizedConfig = { ...integrationConfig, base_url: norm };
+      if (norm !== integrationConfig.base_url) {
+        setIntegrationConfig(normalizedConfig);
+      }
+    }
+
+    const missingField = platformInfo.fields.find(f => !normalizedConfig[f.key]?.trim());
     if (missingField) {
       toast.error(`Preencha o campo "${missingField.label}".`);
       return;
@@ -255,7 +272,7 @@ export default function Onboarding() {
 
     try {
       const { data, error } = await supabase.functions.invoke("validate-integration", {
-        body: { type: platformInfo.type, config: integrationConfig },
+        body: { type: platformInfo.type, config: normalizedConfig },
       });
 
       if (error) {
@@ -621,6 +638,9 @@ export default function Onboarding() {
                         className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
                         disabled={integrationValid}
                       />
+                      {field.helper && (
+                        <p className="text-[11px] text-muted-foreground">{field.helper}</p>
+                      )}
                     </div>
                   ))}
 
