@@ -39,7 +39,7 @@ type Integration = {
   store_id?: string | null;
 };
 
-type CatalogField = { key: string; label: string; placeholder: string };
+type CatalogField = { key: string; label: string; placeholder: string; helper?: string };
 type ValidationMode = "api" | "stored";
 type CatalogItem = {
   type: string;
@@ -511,6 +511,9 @@ export default function Integracoes() {
                             onChange={(e) => setFormData((f) => ({ ...f, [field.key]: e.target.value }))}
                             className="h-8 text-xs"
                           />
+                          {field.helper && (
+                            <p className="text-[11px] text-muted-foreground">{field.helper}</p>
+                          )}
                         </div>
                       ))}
                       {validationState.status !== "idle" && connecting === item.type && (
