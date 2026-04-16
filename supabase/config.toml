@@ -33,7 +33,7 @@ verify_jwt = false
 
 # Validação de credenciais chamada só com sessão do cliente (invoke com JWT).
 [functions.validate-integration]
-verify_jwt = true
+verify_jwt = false
 
 [functions.post-integration-setup]
 verify_jwt = true
