@@ -166,6 +166,34 @@ export default function Onboarding() {
     }
   }, [searchParams]);
 
+  // Pre-load existing active integration so user doesn't reconnect
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("integrations")
+        .select("type, name, config, is_active")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .order("last_sync_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      // Map integration.type back to plataforma label
+      const matchedPlatform = Object.entries(PLATFORM_INTEGRATION_MAP).find(
+        ([, info]) => info?.type === data.type
+      )?.[0];
+      if (matchedPlatform) {
+        setPlataforma(matchedPlatform);
+        setIntegrationValid(true);
+        if (data.name) setStoreName(data.name);
+        toast.success(`Já conectado a ${matchedPlatform} — pulando para o próximo passo.`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
   const fetchStoreMetrics = useCallback(async (manual = false) => {
     if (!platformInfo || !integrationValid) return;
     setMetricsLoading(true);
