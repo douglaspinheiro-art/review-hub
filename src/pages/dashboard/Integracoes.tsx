@@ -27,6 +27,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { INTEGRATIONS_LIST_SELECT } from "@/lib/supabase-select-fragments";
+import { normalizeStoreBaseUrl } from "@/lib/normalize-store-url";
 type Integration = {
   id: string;
   type: string;
@@ -38,7 +39,7 @@ type Integration = {
   store_id?: string | null;
 };
 
-type CatalogField = { key: string; label: string; placeholder: string };
+type CatalogField = { key: string; label: string; placeholder: string; helper?: string };
 type ValidationMode = "api" | "stored";
 type CatalogItem = {
   type: string;
@@ -61,7 +62,7 @@ const CATALOG: CatalogCategory[] = [
       { type: "tray", name: "Tray", icon: Package, iconClassName: "text-amber-600", validation: "api", fields: [{ key: "api_address", label: "API Address", placeholder: "minha-loja.commercesuite.com.br" }, { key: "access_token", label: "Access Token", placeholder: "..." }] },
       { type: "vtex", name: "VTEX", icon: Layers, iconClassName: "text-orange-500", validation: "api", fields: [{ key: "account_name", label: "Account Name", placeholder: "minha-loja" }, { key: "app_key", label: "App Key", placeholder: "vtexappkey-..." }, { key: "app_token", label: "App Token", placeholder: "..." }] },
       { type: "woocommerce", name: "WooCommerce", icon: ShoppingBasket, iconClassName: "text-violet-600", validation: "api", fields: [{ key: "site_url", label: "URL do site", placeholder: "https://minha-loja.com.br" }, { key: "consumer_key", label: "Consumer Key", placeholder: "ck_..." }, { key: "consumer_secret", label: "Consumer Secret", placeholder: "cs_..." }] },
-      { type: "dizy", name: "Dizy Commerce", icon: Flame, iconClassName: "text-orange-600", validation: "api", fields: [{ key: "base_url", label: "URL da loja", placeholder: "https://minhaloja.com.br" }, { key: "api_key", label: "API Key", placeholder: "Chave da API Dizy" }] },
+      { type: "dizy", name: "Dizy Commerce", icon: Flame, iconClassName: "text-orange-600", validation: "api", fields: [{ key: "base_url", label: "URL da loja", placeholder: "minhaloja.dize.com.br", helper: "Apenas o domínio. Não inclua /rest/V1." }, { key: "api_key", label: "API Key", placeholder: "Chave da API Dizy" }] },
     ],
   },
   {
@@ -185,8 +186,22 @@ export default function Integracoes() {
   const validateAndConnect = useMutation({
     mutationFn: async ({ type, name }: { type: string; name: string }) => {
       setValidationState({ status: "validating", detail: "Testando conexão..." });
+
+      // Normalize URL fields for Magento/Dizy-style platforms
+      let configToSend = formData;
+      if ((type === "dizy" || type === "magento") && formData.base_url) {
+        const norm = normalizeStoreBaseUrl(formData.base_url);
+        if (!norm) {
+          const detail = "URL da loja inválida. Use apenas o domínio (ex.: minhaloja.dize.com.br).";
+          setValidationState({ status: "error", detail });
+          throw new Error(detail);
+        }
+        configToSend = { ...formData, base_url: norm };
+        if (norm !== formData.base_url) setFormData(configToSend);
+      }
+
       const { data: valResult, error: valError } = await supabase.functions.invoke("validate-integration", {
-        body: { type, config: formData },
+        body: { type, config: configToSend },
       });
 
       if (valError || !valResult?.ok) {
@@ -496,6 +511,9 @@ export default function Integracoes() {
                             onChange={(e) => setFormData((f) => ({ ...f, [field.key]: e.target.value }))}
                             className="h-8 text-xs"
                           />
+                          {field.helper && (
+                            <p className="text-[11px] text-muted-foreground">{field.helper}</p>
+                          )}
                         </div>
                       ))}
                       {validationState.status !== "idle" && connecting === item.type && (

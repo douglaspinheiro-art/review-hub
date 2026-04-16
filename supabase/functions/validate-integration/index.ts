@@ -163,10 +163,25 @@ async function testTwilio(config: Record<string, string>): Promise<{ ok: boolean
   }
 }
 
+function normalizeStoreBaseUrl(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  let s = String(raw).trim().replace(/^["']|["']$/g, "");
+  if (!s) return null;
+  const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  let url: URL;
+  try { url = new URL(withProto); } catch { return null; }
+  const host = url.hostname.toLowerCase();
+  if (!host || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) return null;
+  let path = url.pathname.replace(/\/+$/, "").replace(/\/rest\/V\d+$/i, "").replace(/\/admin$/i, "");
+  if (path === "/") path = "";
+  return `https://${host}${path}`;
+}
+
 async function testMagento(config: Record<string, string>): Promise<{ ok: boolean; detail: string }> {
-  const baseUrl = config.base_url?.replace(/\/$/, "");
+  const baseUrl = normalizeStoreBaseUrl(config.base_url);
   const token = config.access_token;
-  if (!baseUrl || !token) return { ok: false, detail: "URL base e Access Token são obrigatórios" };
+  if (!baseUrl) return { ok: false, detail: "URL da loja inválida. Use apenas o domínio (ex.: minhaloja.com.br)." };
+  if (!token) return { ok: false, detail: "URL base e Access Token são obrigatórios" };
 
   try {
     const res = await fetch(`${baseUrl}/rest/V1/store/storeConfigs`, {
