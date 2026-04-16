@@ -259,27 +259,13 @@ async function fetchYampi(config: Record<string, string>) {
 }
 
 // ─── Magento 2 ───────────────────────────────────────────────
-function normalizeMagentoBaseUrl(raw: string | undefined | null): string | null {
-  if (!raw) return null;
-  let s = String(raw).trim().replace(/^["']|["']$/g, "");
-  if (!s) return null;
-  const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
-  let url: URL;
-  try { url = new URL(withProto); } catch { return null; }
-  const host = url.hostname.toLowerCase();
-  if (!host || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) return null;
-  let path = url.pathname.replace(/\/+$/, "").replace(/\/rest\/V\d+$/i, "").replace(/\/admin$/i, "");
-  if (path === "/") path = "";
-  return `https://${host}${path}`;
-}
-
 async function fetchMagento(config: Record<string, string>) {
-  const baseUrl = normalizeMagentoBaseUrl(config.base_url || config.api_url);
+  const baseUrl = config.base_url?.replace(/\/$/, "") || config.api_url?.replace(/\/$/, "");
   const token = config.access_token || config.integration_token || config.bearer_token;
-  if (!baseUrl || !token) throw new Error("Credenciais Magento incompletas ou URL inválida");
+  if (!baseUrl || !token) throw new Error("Credenciais Magento incompletas");
 
   assertSafeApiAddress(baseUrl);
-  const base = `${baseUrl}/rest/V1`;
+  const base = `${baseUrl.startsWith("https://") ? baseUrl : `https://${baseUrl}`}/rest/V1`;
   const headers = {
     "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json",

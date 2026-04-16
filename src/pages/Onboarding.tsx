@@ -15,12 +15,11 @@ import { VERTICALS, type EcommerceVertical } from "@/lib/strategy-profile";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
-import { normalizeStoreBaseUrl } from "@/lib/normalize-store-url";
 
 const TOTAL_STEPS = 4;
 
 // Platform → integration type mapping
-const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: string; label: string; placeholder: string; secret?: boolean; helper?: string }[]; helpUrl?: string }> = {
+const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: string; label: string; placeholder: string; secret?: boolean }[]; helpUrl?: string }> = {
   Shopify: {
     type: "shopify",
     fields: [
@@ -72,7 +71,7 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
   "Dizy Commerce": {
     type: "dizy",
     fields: [
-      { key: "base_url", label: "URL da loja", placeholder: "minhaloja.dize.com.br", helper: "Apenas o domínio. Não inclua /rest/V1." },
+      { key: "base_url", label: "URL da loja", placeholder: "https://minhaloja.com.br" },
       { key: "api_key", label: "API Key", placeholder: "Chave da API Dizy", secret: true },
     ],
     helpUrl: "https://developer.adobe.com/commerce/webapi/get-started/authentication/",
@@ -244,23 +243,7 @@ export default function Onboarding() {
   const handleValidateIntegration = async () => {
     if (!platformInfo) return;
 
-    // Normalize URL fields for Magento/Dizy-style platforms before validating
-    let normalizedConfig = integrationConfig;
-    if ((platformInfo.type === "dizy" || platformInfo.type === "magento") && integrationConfig.base_url) {
-      const norm = normalizeStoreBaseUrl(integrationConfig.base_url);
-      if (!norm) {
-        const msg = "URL da loja inválida. Use apenas o domínio (ex.: minhaloja.dize.com.br).";
-        setIntegrationError(msg);
-        toast.error(msg);
-        return;
-      }
-      normalizedConfig = { ...integrationConfig, base_url: norm };
-      if (norm !== integrationConfig.base_url) {
-        setIntegrationConfig(normalizedConfig);
-      }
-    }
-
-    const missingField = platformInfo.fields.find(f => !normalizedConfig[f.key]?.trim());
+    const missingField = platformInfo.fields.find(f => !integrationConfig[f.key]?.trim());
     if (missingField) {
       toast.error(`Preencha o campo "${missingField.label}".`);
       return;
@@ -272,7 +255,7 @@ export default function Onboarding() {
 
     try {
       const { data, error } = await supabase.functions.invoke("validate-integration", {
-        body: { type: platformInfo.type, config: normalizedConfig },
+        body: { type: platformInfo.type, config: integrationConfig },
       });
 
       if (error) {
@@ -638,9 +621,6 @@ export default function Onboarding() {
                         className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
                         disabled={integrationValid}
                       />
-                      {field.helper && (
-                        <p className="text-[11px] text-muted-foreground">{field.helper}</p>
-                      )}
                     </div>
                   ))}
 
