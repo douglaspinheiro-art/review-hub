@@ -71,9 +71,10 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
   "Dizy Commerce": {
     type: "dizy",
     fields: [
-      { key: "api_key", label: "API Key", placeholder: "Chave da API Dizy" },
-      { key: "store_id", label: "Store ID", placeholder: "ID da loja Dizy" },
+      { key: "base_url", label: "URL da loja", placeholder: "https://minhaloja.com.br" },
+      { key: "api_key", label: "API Key", placeholder: "Chave da API Dizy", secret: true },
     ],
+    helpUrl: "https://developer.adobe.com/commerce/webapi/get-started/authentication/",
   },
 };
 

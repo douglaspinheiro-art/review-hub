@@ -61,7 +61,7 @@ const CATALOG: CatalogCategory[] = [
       { type: "tray", name: "Tray", icon: Package, iconClassName: "text-amber-600", validation: "api", fields: [{ key: "api_address", label: "API Address", placeholder: "minha-loja.commercesuite.com.br" }, { key: "access_token", label: "Access Token", placeholder: "..." }] },
       { type: "vtex", name: "VTEX", icon: Layers, iconClassName: "text-orange-500", validation: "api", fields: [{ key: "account_name", label: "Account Name", placeholder: "minha-loja" }, { key: "app_key", label: "App Key", placeholder: "vtexappkey-..." }, { key: "app_token", label: "App Token", placeholder: "..." }] },
       { type: "woocommerce", name: "WooCommerce", icon: ShoppingBasket, iconClassName: "text-violet-600", validation: "api", fields: [{ key: "site_url", label: "URL do site", placeholder: "https://minha-loja.com.br" }, { key: "consumer_key", label: "Consumer Key", placeholder: "ck_..." }, { key: "consumer_secret", label: "Consumer Secret", placeholder: "cs_..." }] },
-      { type: "dizy", name: "Dizy Commerce", icon: Flame, iconClassName: "text-orange-600", validation: "stored", fields: [{ key: "api_key", label: "API Key", placeholder: "..." }, { key: "store_id", label: "Store ID", placeholder: "..." }] },
+      { type: "dizy", name: "Dizy Commerce", icon: Flame, iconClassName: "text-orange-600", validation: "api", fields: [{ key: "base_url", label: "URL da loja", placeholder: "https://minhaloja.com.br" }, { key: "api_key", label: "API Key", placeholder: "Chave da API Dizy" }] },
     ],
   },
   {

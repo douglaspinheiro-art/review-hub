@@ -368,7 +368,7 @@ serve(async (req) => {
     const { allowed: rlAllowed } = await checkDistributedRateLimit(supabase, `fetch-store-metrics:${user.id}`, 24, 60_000);
     if (!rlAllowed) return rateLimitedResponse();
 
-    const ECOMMERCE_TYPES = ["shopify", "nuvemshop", "woocommerce", "tray", "vtex", "yampi", "magento", "shopee"];
+    const ECOMMERCE_TYPES = ["shopify", "nuvemshop", "woocommerce", "tray", "vtex", "yampi", "magento", "shopee", "dizy"];
     const { data: integration } = await supabase
       .from("integrations")
       .select("type, config")
@@ -412,6 +412,9 @@ serve(async (req) => {
         break;
       case "shopee":
         metrics = await fetchShopee(integration.config as Record<string, string>);
+        break;
+      case "dizy":
+        metrics = await fetchMagento({ base_url: (integration.config as Record<string, string>).base_url, access_token: (integration.config as Record<string, string>).api_key });
         break;
       default:
         return new Response(
