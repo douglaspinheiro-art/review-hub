@@ -166,6 +166,50 @@ export default function Onboarding() {
     }
   }, [searchParams]);
 
+  const fetchStoreMetrics = useCallback(async (manual = false) => {
+    if (!platformInfo || !integrationValid) return;
+    setMetricsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
+      if (error) throw error;
+      if (!data || typeof data !== "object") throw new Error("empty");
+
+      const fat = Number((data as Record<string, unknown>).faturamento);
+      const tm = Number((data as Record<string, unknown>).ticketMedio);
+      const cli = Number((data as Record<string, unknown>).totalClientes);
+      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean } = {};
+
+      if (Number.isFinite(fat) && fat > 0) {
+        setFaturamento(String(Math.round(fat)));
+        updated.faturamento = true;
+      }
+      if (Number.isFinite(tm) && tm > 0) {
+        setTicketMedio(String(Math.round(tm)));
+        updated.ticketMedio = true;
+      }
+      if (Number.isFinite(cli) && cli > 0) {
+        setNumClientes(String(Math.round(cli)));
+        updated.numClientes = true;
+      }
+      setImportedFields(updated);
+      setMetricsImported(Object.keys(updated).length > 0);
+      if (manual) toast.success("Dados atualizados da plataforma!");
+    } catch {
+      if (manual) toast.error("Não foi possível importar. Preencha manualmente.");
+      else toast.info("Não foi possível importar automaticamente. Preencha manualmente.");
+    } finally {
+      setMetricsLoading(false);
+      setMetricsFetched(true);
+    }
+  }, [platformInfo, integrationValid]);
+
+  // Auto-fetch metrics when entering Step 3 with valid integration
+  useEffect(() => {
+    if (step === 3 && integrationValid && !metricsFetched && !metricsLoading) {
+      fetchStoreMetrics(false);
+    }
+  }, [step, integrationValid, metricsFetched, metricsLoading, fetchStoreMetrics]);
+
   const handleOAuthConnect = useCallback(async () => {
     if (!user?.id) return;
 
