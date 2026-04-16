@@ -219,7 +219,7 @@ export default function Onboarding() {
       setIntegrationError("Erro ao iniciar conexão. Tente novamente.");
       setOauthConnecting(false);
     }
-  }, [user?.id, plataforma, integrationConfig]);
+  }, [user?.id, integrationConfig]);
 
   const handleStep1Next = () => {
     if (!storeName.trim()) { toast.error("Informe o nome da loja."); return; }
@@ -340,6 +340,7 @@ export default function Onboarding() {
         .update({
           name: storeName,
           segment: vertical,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any)
         .eq("user_id", user.id);
 

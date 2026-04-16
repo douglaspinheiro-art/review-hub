@@ -224,9 +224,11 @@ export default function Integracoes() {
       };
 
       if (existingRow?.id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: upErr } = await supabase.from("integrations").update(basePayload as any).eq("id", existingRow.id);
         if (upErr) throw upErr;
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: insErr } = await supabase.from("integrations").insert(basePayload as any);
         if (insErr) throw insErr;
       }
