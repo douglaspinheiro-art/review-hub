@@ -166,6 +166,55 @@ export default function Onboarding() {
     }
   }, [searchParams]);
 
+  // Restore in-progress onboarding from localStorage (per-user key).
+  // Runs once when user becomes available, before the integration prefill effect.
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(`onboarding_progress_${user.id}`);
+      if (!raw) return;
+      const s = JSON.parse(raw) as Partial<{
+        step: number; storeName: string; storeUrl: string; vertical: EcommerceVertical | null;
+        plataforma: string; integrationConfig: Record<string, string>; integrationValid: boolean;
+        faturamento: string; ticketMedio: string; numClientes: string; visitantes: string;
+        carrinho: string; checkout: string; pedidos: string; metaConversao: string;
+        ga4PropertyId: string; ga4Token: string;
+      }>;
+      if (s.storeName) setStoreName(s.storeName);
+      if (s.storeUrl) setStoreUrl(s.storeUrl);
+      if (s.vertical) setVertical(s.vertical);
+      if (s.plataforma) setPlataforma(s.plataforma);
+      if (s.integrationConfig) setIntegrationConfig(s.integrationConfig);
+      if (s.integrationValid) setIntegrationValid(s.integrationValid);
+      if (s.faturamento) setFaturamento(s.faturamento);
+      if (s.ticketMedio) setTicketMedio(s.ticketMedio);
+      if (s.numClientes) setNumClientes(s.numClientes);
+      if (s.visitantes) setVisitantes(s.visitantes);
+      if (s.carrinho) setCarrinho(s.carrinho);
+      if (s.checkout) setCheckout(s.checkout);
+      if (s.pedidos) setPedidos(s.pedidos);
+      if (s.metaConversao) setMetaConversao(s.metaConversao);
+      if (s.ga4PropertyId) setGa4PropertyId(s.ga4PropertyId);
+      if (s.ga4Token) setGa4Token(s.ga4Token);
+      if (s.step && s.step >= 1 && s.step <= TOTAL_STEPS) setStep(s.step);
+    } catch { /* ignore corrupt cache */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // Persist progress on every change (debounced via microtask batching is enough here).
+  useEffect(() => {
+    if (!user) return;
+    try {
+      localStorage.setItem(`onboarding_progress_${user.id}`, JSON.stringify({
+        step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
+        faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
+        metaConversao, ga4PropertyId, ga4Token,
+      }));
+    } catch { /* quota or private mode */ }
+  }, [user, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
+      faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
+      metaConversao, ga4PropertyId, ga4Token]);
+
   // Pre-load existing active integration so user doesn't reconnect
   useEffect(() => {
     if (!user) return;
@@ -499,6 +548,9 @@ export default function Onboarding() {
         store_id: storeId,
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
+
+      // Onboarding complete — clear in-progress draft
+      try { if (user?.id) localStorage.removeItem(`onboarding_progress_${user.id}`); } catch { /* noop */ }
 
       navigate("/analisando");
     } catch (e) {
