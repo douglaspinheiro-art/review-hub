@@ -224,10 +224,10 @@ export default function Integracoes() {
       };
 
       if (existingRow?.id) {
-        const { error: upErr } = await supabase.from("integrations").update(basePayload as any).eq("id", existingRow.id);
+        const { error: upErr } = await supabase.from("integrations").update(basePayload as Record<string, unknown>).eq("id", existingRow.id);
         if (upErr) throw upErr;
       } else {
-        const { error: insErr } = await supabase.from("integrations").insert(basePayload as any);
+        const { error: insErr } = await supabase.from("integrations").insert(basePayload as Record<string, unknown>);
         if (insErr) throw insErr;
       }
 

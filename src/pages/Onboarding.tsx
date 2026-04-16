@@ -219,7 +219,7 @@ export default function Onboarding() {
       setIntegrationError("Erro ao iniciar conexão. Tente novamente.");
       setOauthConnecting(false);
     }
-  }, [user?.id, plataforma, integrationConfig]);
+  }, [user?.id, integrationConfig]);
 
   const handleStep1Next = () => {
     if (!storeName.trim()) { toast.error("Informe o nome da loja."); return; }
@@ -340,7 +340,7 @@ export default function Onboarding() {
         .update({
           name: storeName,
           segment: vertical,
-        } as any)
+        } as Record<string, unknown>)
         .eq("user_id", user.id);
 
       if (storeErr) console.warn("Store update error:", storeErr.message);
