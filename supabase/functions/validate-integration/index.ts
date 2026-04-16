@@ -191,8 +191,8 @@ serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!supabaseUrl || !supabaseAnon) {
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) {
     return new Response(JSON.stringify({ ok: false, detail: "Configuração do servidor incompleta" }), {
       status: 500, headers: { ...cors, "Content-Type": "application/json" },
     });
@@ -200,7 +200,7 @@ serve(async (req) => {
 
   // Rate limit: 10 connection-test attempts per user per minute.
   // Prevents credential brute-force through the validate endpoint with a valid JWT.
-  const supabaseSvc = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+  const supabaseSvc = createClient(supabaseUrl, serviceRoleKey);
   const ip = getClientIp(req);
   const rl = await checkDistributedRateLimit(supabaseSvc, `validate-integration:${auth.userId}:${ip}`, 10, 60_000);
   if (!rl.allowed) {
