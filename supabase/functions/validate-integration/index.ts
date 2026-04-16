@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { checkDistributedRateLimit, getClientIp, rateLimitedResponseWithRetry } from "../_shared/edge-utils.ts";
+import { checkDistributedRateLimit, getClientIp, rateLimitedResponseWithRetry, verifyJwt } from "../_shared/edge-utils.ts";
 
 function corsHeaders(): Record<string, string> {
   return {
@@ -185,12 +185,9 @@ serve(async (req) => {
   const cors = corsHeaders();
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!jwt) {
-    return new Response(JSON.stringify({ ok: false, detail: "Não autorizado" }), {
-      status: 401, headers: { ...cors, "Content-Type": "application/json" },
-    });
+  const auth = await verifyJwt(req);
+  if (!auth.ok) {
+    return auth.response;
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -201,19 +198,11 @@ serve(async (req) => {
     });
   }
 
-  const supabaseAuth = createClient(supabaseUrl, supabaseAnon);
-  const { data: { user }, error: authErr } = await supabaseAuth.auth.getUser(jwt);
-  if (authErr || !user) {
-    return new Response(JSON.stringify({ ok: false, detail: "Sessão inválida ou expirada" }), {
-      status: 401, headers: { ...cors, "Content-Type": "application/json" },
-    });
-  }
-
   // Rate limit: 10 connection-test attempts per user per minute.
   // Prevents credential brute-force through the validate endpoint with a valid JWT.
   const supabaseSvc = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
   const ip = getClientIp(req);
-  const rl = await checkDistributedRateLimit(supabaseSvc, `validate-integration:${user.id}:${ip}`, 10, 60_000);
+  const rl = await checkDistributedRateLimit(supabaseSvc, `validate-integration:${auth.userId}:${ip}`, 10, 60_000);
   if (!rl.allowed) {
     return rateLimitedResponseWithRetry(rl.retryAfterSeconds);
   }
