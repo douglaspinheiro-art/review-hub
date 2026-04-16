@@ -340,7 +340,8 @@ export default function Onboarding() {
         .update({
           name: storeName,
           segment: vertical,
-        } as Record<string, unknown>)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any)
         .eq("user_id", user.id);
 
       if (storeErr) console.warn("Store update error:", storeErr.message);
