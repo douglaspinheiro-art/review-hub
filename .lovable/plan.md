@@ -1,59 +1,40 @@
 
+## Sim — podemos buscar os dados da plataforma automaticamente neste passo
 
-## Plan: Fix Portuguese Accent Issues Across All Landing Components
+A loja já está conectada e validada no Passo 2. A edge function `fetch-store-metrics` já retorna exatamente os campos do topo do formulário (`faturamento`, `ticketMedio`, `totalClientes`) para todas as plataformas suportadas (Shopify, Nuvemshop, WooCommerce, Tray, VTEX, Yampi, Magento, Shopee, **Dizy**).
 
-### Problem
-Multiple components have Portuguese text missing proper diacritical marks (acentos). Words like "medio", "operacao", "retenção" etc. are written without accents.
+### O que pode ser auto-preenchido
+| Campo | Fonte | Auto? |
+|---|---|---|
+| Faturamento mensal (R$) | API da plataforma (`fetch-store-metrics`) | ✅ |
+| Ticket médio (R$) | API da plataforma | ✅ |
+| Nº clientes ativos | API da plataforma | ✅ |
+| Meta de conversão (%) | Input do usuário | ❌ (objetivo, não dado real) |
+| Visitantes / Add to cart / Checkout / Pedidos | Apenas GA4 (não vem de APIs de e-commerce) | ⚠️ só via GA4 |
 
-### Files to Edit and Specific Fixes
+### Implementação proposta
 
-**1. `src/components/landing/Hero.tsx`**
-- Line 33: "payback medio" → "payback médio"
-- Line 34: "reativacao" → "reativação"
+1. **Auto-fetch ao entrar no Passo 3**
+   - Em `src/pages/Onboarding.tsx`, adicionar `useEffect` que dispara quando `step === 3 && integrationValid === true`.
+   - Chama `supabase.functions.invoke("fetch-store-metrics", { body: { user_id, type: platformInfo.type } })`.
+   - Pré-preenche `faturamento`, `ticketMedio` e `totalClientes` (novo state) com os valores retornados.
 
-**2. `src/components/landing/Cases.tsx`**
-- Line 11: "operacao diaria, triplicamos recorrencia" → "operação diária, triplicamos recorrência"
-- Line 24: "canal previsivel de receita" → "canal previsível de receita"
-- Line 37: "segmentacao RFM acionavel" → "segmentação RFM acionável"
+2. **Estados visuais**
+   - Banner verde no topo do card: *"✨ Dados importados de [Shopify/Dizy/etc] — últimos 30 dias"* com botão "Atualizar".
+   - Loading skeleton nos 3 inputs enquanto busca (`metricsLoading`).
+   - Em caso de erro, fallback silencioso para inputs vazios + toast informativo: *"Não foi possível importar automaticamente. Preencha manualmente."*
+   - Inputs continuam editáveis (usuário pode ajustar se discordar).
+   - Badge ⓘ ao lado de cada campo auto-preenchido: *"Importado da [plataforma]"*.
 
-**3. `src/components/landing/Pricing.tsx`**
-- Line 41: "retencao com previsibilidade" → "retenção com previsibilidade"
-- Line 44: "R$30k a R$3M/mes. Voce paga" → "R$30k a R$3M/mês. Você paga"
-- Line 140: "Add-ons disponiveis ... benchmark preditivo, autopilot de retencao e governanca multi-loja" → "Add-ons disponíveis ... benchmark preditivo, autopilot de retenção e governança multi-loja"
+3. **Funil (visitantes/cart/checkout/pedidos)**
+   - Esses 4 campos **não** vêm das APIs de e-commerce — apenas GA4 tem esses eventos.
+   - Manter como opcionais (já estão), mas adicionar CTA discreto: *"Conectar GA4 para importar dados do funil"* → abre o modal já existente de GA4.
 
-**4. `src/components/landing/CategoryPositioning.tsx`**
-- Line 8: "Operacoes de R$80k a R$500k/mes" → "Operações de R$80k a R$500k/mês"
-- Line 9: "Ticket medio acima de R$120" → "Ticket médio acima de R$120"
-- Line 9: "Reposicao e recorrencia guiada" → "Reposição e recorrência guiada"
-- Line 10: "Catalogo amplo" → "Catálogo amplo"
-- Line 10: "pos-venda" → "pós-venda"
-- Line 29: "Retencao" → "Retenção"
-- Line 32: "Voce nao compra automacao isolada. Voce liga um ritmo diario de receita ... IA de decisao e atribuicao" → "Você não compra automação isolada. Você liga um ritmo diário de receita ... IA de decisão e atribuição"
-- Line 63: "agencias" → "agências"
-- Line 70: "clinica de otimizacao" → "clínica de otimização"
-- Line 75: "Distribuicao orientada" → "Distribuição orientada"
-- Line 77: "aquisicao" → "aquisição"
+4. **Fallback para Dizy / plataformas novas**
+   - Se a chamada falhar por API ainda não madura, manter inputs manuais — sem bloquear o fluxo.
 
-**5. `src/components/landing/HowItWorks.tsx`**
-- Line 27: "voce entra em producao" → "você entra em produção"
-- Line 32: "acao diario" → "ação diário"
-- Line 42: "recomendacao de proxima melhor acao" → "recomendação de próxima melhor ação"
-
-**6. `src/components/landing/FooterCTA.tsx`**
-- Line 41: "modo dominancia" → "modo dominância"
-- Line 44: "proximos 90 dias com metas de retencao, distribuicao e expansao" → "próximos 90 dias com metas de retenção, distribuição e expansão"
-
-**7. `src/components/landing/Metrics.tsx`**
-- Line 11: "últimos" is correct, no changes needed in this file.
-
-**8. `src/components/landing/TickerBar.tsx`** — All text correct, no changes.
-
-**9. `src/components/landing/ScarcityBanner.tsx`** — All text correct, no changes.
-
-**10. `src/components/landing/Footer.tsx`** — All text correct, no changes.
-
-### Summary
-- **7 files** to edit
-- ~25 individual accent corrections
-- No logic or structural changes — text-only fixes
-
+### Detalhes técnicos
+- **Arquivo**: `src/pages/Onboarding.tsx` (Passo 3, ~linhas 712-810).
+- **Hook reutiliza**: a edge function `fetch-store-metrics` já existe — sem precisar de novas migrações nem novos secrets.
+- **Backend**: nenhuma alteração necessária (Dizy já mapeado via Magento engine).
+- **Race condition**: adicionar guard para evitar fetch duplo se usuário voltar e avançar.
