@@ -65,7 +65,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.fetch-store-metrics]
-verify_jwt = true
+verify_jwt = false
 
 [functions.calculate-rfm]
 verify_jwt = true
