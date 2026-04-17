@@ -98,8 +98,9 @@ export default function Contato() {
                   <div>
                     <p className="font-semibold">WhatsApp</p>
                     <p className="text-sm text-muted-foreground mb-2">Resposta em até 1 hora útil</p>
+                    <p className="text-sm text-muted-foreground mb-2">(11) 98706-4584</p>
                     <Button asChild size="sm" variant="outline">
-                      <a href="https://wa.me/5511999999999" target="_blank" rel="noopener noreferrer">
+                      <a href="https://wa.me/5511987064584" target="_blank" rel="noopener noreferrer">
                         Abrir conversa
                       </a>
                     </Button>
