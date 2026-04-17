@@ -252,6 +252,25 @@ export default function Integracoes() {
           return;
         }
 
+        if (platformType === "tray") {
+          const apiAddress = formData.api_address?.trim();
+          if (!apiAddress) {
+            toast.error("Informe o endereço da API Tray (ex: minha-loja.commercesuite.com.br).");
+            return;
+          }
+          const q =
+            `action=start&store_id=${encodeURIComponent(storeId)}` +
+            `&api_address=${encodeURIComponent(apiAddress)}&return_to=integracoes`;
+          const res = await fetch(`${base}/functions/v1/oauth-tray?${q}`, { headers });
+          const j = await res.json();
+          if (!j?.url) {
+            toast.error("Não foi possível iniciar o OAuth Tray.");
+            return;
+          }
+          window.open(j.url, "oauth-tray", "width=600,height=700,scrollbars=yes");
+          return;
+        }
+
         const site = formData.site_url?.trim();
         if (!site) {
           toast.error("Informe a URL do site WooCommerce.");
@@ -274,7 +293,7 @@ export default function Integracoes() {
         setOauthBusy(null);
       }
     },
-    [user?.id, scope.activeStoreId, formData.shop_url, formData.site_url],
+    [user?.id, scope.activeStoreId, formData.shop_url, formData.site_url, formData.api_address],
   );
 
   const {
