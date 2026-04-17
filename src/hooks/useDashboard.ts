@@ -507,8 +507,11 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
         });
       }
 
-      // Fallback: fetch campaigns directly (no storeId or prescription-filtered)
+      // Fallback: fetch campaigns directly (prescription-filtered or storeless account).
+      // Multi-tenant safety: when an active store IS resolved, scope the fallback to it
+      // so cross-store data never leaks while the page is hydrating.
       let campQuery = supabase.from("campaigns").select(CAMPAIGN_LIST_SELECT).eq("user_id", effectiveUserId).order("created_at", { ascending: false }).limit(limit);
+      if (storeId) campQuery = campQuery.eq("store_id", storeId);
       if (createdSince) campQuery = campQuery.gte("created_at", createdSince);
       if (sourcePrescriptionIds && sourcePrescriptionIds.length > 0) {
         campQuery = campQuery.in("source_prescription_id", sourcePrescriptionIds);
@@ -1072,14 +1075,34 @@ export function useConversionBaseline(days = 30) {
         return { data: [] as Record<string, unknown>[], error: null as null };
       };
 
-      const [sendsRes, sendsPrevRes, conversationsRes, attributionRes, campaignsScopeRes] = await Promise.all([
+      // Fetch the store's campaign IDs FIRST so we can scope attribution_events
+      // server-side instead of pulling every event for the user across all stores.
+      const campaignsScopeRes = await (storeId
+        ? supabase.from("campaigns").select("id").eq("store_id", storeId)
+        : supabase.from("campaigns").select("id").eq("user_id", effectiveUserId));
+      const storeCampaignIdsEarly = (campaignsScopeRes.data ?? []).map((r: { id: string }) => r.id);
+
+      // Build the attribution query: when scoped to a store, filter by its campaign IDs
+      // OR include rows without a campaign (UTM-only / pure-automation conversions).
+      // This keeps multi-tenant accounts from transferring sibling stores' rows over the wire.
+      const attributionQuery = supabase
+        .from("attribution_events")
+        .select("order_value,order_date,attributed_campaign_id")
+        .eq("user_id", effectiveUserId)
+        .gte("order_date", sinceIso);
+      const scopedAttributionQuery = storeId && storeCampaignIdsEarly.length > 0
+        ? attributionQuery.or(
+            `attributed_campaign_id.in.(${storeCampaignIdsEarly.join(",")}),attributed_campaign_id.is.null`,
+          )
+        : storeId
+          ? attributionQuery.is("attributed_campaign_id", null) // store has no campaigns yet → only campaign-less rows
+          : attributionQuery;
+
+      const [sendsRes, sendsPrevRes, conversationsRes, attributionRes] = await Promise.all([
         fetchSendsSince(sinceIso),
         fetchSendsPrevWindow(),
         fetchConversationsBaseline(),
-        supabase.from("attribution_events").select("order_value,order_date,attributed_campaign_id").eq("user_id", effectiveUserId).gte("order_date", sinceIso),
-        storeId
-          ? supabase.from("campaigns").select("id").eq("store_id", storeId)
-          : supabase.from("campaigns").select("id").eq("user_id", effectiveUserId),
+        scopedAttributionQuery,
       ]);
 
       const sends = sendsRes.data ?? [];
@@ -1096,11 +1119,11 @@ export function useConversionBaseline(days = 30) {
         Database["public"]["Tables"]["attribution_events"]["Row"],
         "order_value" | "order_date" | "attributed_campaign_id"
       >;
-      const storeCampaignIds = (campaignsScopeRes.data ?? []).map((r: { id: string }) => r.id);
+      // `scopedAttributionQuery` already filters server-side; the helper is a defense-in-depth pass.
       const attribution = scopeAttributionEventsForStore(
         (attributionRes.data ?? []) as AttributionScopeRow[],
         storeId,
-        storeCampaignIds,
+        storeCampaignIdsEarly,
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
