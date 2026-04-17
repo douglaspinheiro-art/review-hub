@@ -116,13 +116,13 @@ export default function Signup() {
 
           <div className="space-y-4 pt-4">
             <div className="flex items-center gap-3 text-sm font-bold text-muted-foreground">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> 14 dias de teste grátis
+              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Diagnóstico gratuito e personalizado
             </div>
             <div className="flex items-center gap-3 text-sm font-bold text-muted-foreground">
               <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Sem cartão de crédito
             </div>
             <div className="flex items-center gap-3 text-sm font-bold text-muted-foreground">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Cancele quando quiser, sem multa
+              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Resultado em menos de 1 minuto
             </div>
           </div>
 
@@ -165,7 +165,7 @@ export default function Signup() {
               <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[9px] font-black">1</span>
               Passo 1 de 3 — Criar conta
             </div>
-            <h1 className="text-3xl font-black font-syne tracking-tighter">Comece em 30 segundos</h1>
+            <h1 className="text-3xl font-black font-syne tracking-tighter">Faça seu diagnóstico grátis</h1>
             <p className="text-muted-foreground text-sm font-medium">
               Já tem conta?{" "}
               <Link to="/login" className="text-primary hover:underline font-bold">
@@ -199,20 +199,6 @@ export default function Signup() {
               />
               {errors.email && (
                 <p className="text-xs text-destructive font-bold">{errors.email.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="password" title="Mínimo 8 caracteres" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                className="h-12 rounded-xl bg-muted/30 border-border/50"
-                {...register("password")}
-              />
-              {errors.password && (
-                <p className="text-xs text-destructive font-bold">{errors.password.message}</p>
               )}
             </div>
 
@@ -253,8 +239,22 @@ export default function Signup() {
               )}
             </div>
 
+            <div className="space-y-1.5">
+              <Label htmlFor="password" title="Mínimo 8 caracteres" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Senha</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                className="h-12 rounded-xl bg-muted/30 border-border/50"
+                {...register("password")}
+              />
+              {errors.password && (
+                <p className="text-xs text-destructive font-bold">{errors.password.message}</p>
+              )}
+            </div>
+
             <Button type="submit" className="w-full h-14 text-lg font-black bg-primary text-primary-foreground rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all" disabled={loading}>
-              {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : "Criar conta e ir para o diagnóstico →"}
+              {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : "Fazer diagnóstico grátis →"}
             </Button>
           </form>
 
