@@ -1464,7 +1464,7 @@ export default function Onboarding() {
               onClick={handleStep1Next}
               className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group"
             >
-              {isUnsupportedPlatform ? "Próximo: Dados do funil" : `Próximo: Conectar ${plataforma || "plataforma"}`} <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              {isUnsupportedPlatform ? "Próximo: Conectar GA4" : `Próximo: Conectar ${plataforma || "plataforma"}`} <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           )}
 
