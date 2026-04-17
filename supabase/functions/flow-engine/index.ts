@@ -80,11 +80,13 @@ if (!journeys || journeys.length === 0) {
   return new Response(JSON.stringify({ ok: true, status: "no_active_journeys" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-// Fix N+1: fetch customer once before the journey loop
+// Fix N+1: fetch customer once before the journey loop.
+// Security: bind customer lookup to the same tenant (store_id).
 const { data: customer } = await supabase
   .from("customers_v3")
   .select(CUSTOMERS_V3_FLOW_SELECT)
   .eq("id", customer_id)
+  .eq("store_id", store_id)
   .single();
 if (!customer) {
   return new Response(JSON.stringify({ ok: false, status: "customer_not_found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });

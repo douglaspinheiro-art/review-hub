@@ -124,18 +124,18 @@ create policy "profiles_own" on profiles
 create policy "whatsapp_own" on whatsapp_connections
   for all using (auth.uid() = user_id);
 
--- Campaigns: own only (or no user_id for seed data — allow all for now)
+-- Campaigns: own only
 create policy "campaigns_own" on campaigns
-  for all using (user_id = auth.uid() or user_id is null);
+  for all using (user_id = auth.uid());
 
--- Contacts: own only (or no user_id for seed data)
+-- Contacts: own only
 create policy "contacts_own" on contacts
-  for all using (user_id = auth.uid() or user_id is null);
+  for all using (user_id = auth.uid());
 
 -- Conversations: own only
 create policy "conversations_own" on conversations
   for all using (
-    contact_id in (select id from contacts where user_id = auth.uid() or user_id is null)
+    contact_id in (select id from contacts where user_id = auth.uid())
   );
 
 -- Messages: via conversation ownership
@@ -144,19 +144,19 @@ create policy "messages_own" on messages
     conversation_id in (
       select c.id from conversations c
       join contacts ct on c.contact_id = ct.id
-      where ct.user_id = auth.uid() or ct.user_id is null
+      where ct.user_id = auth.uid()
     )
   );
 
 -- Campaign segments: via campaign ownership
 create policy "segments_own" on campaign_segments
   for all using (
-    campaign_id in (select id from campaigns where user_id = auth.uid() or user_id is null)
+    campaign_id in (select id from campaigns where user_id = auth.uid())
   );
 
 -- Abandoned carts: own only
 create policy "abandoned_carts_own" on abandoned_carts
-  for all using (user_id = auth.uid() or user_id is null);
+  for all using (user_id = auth.uid());
 
 -- Analytics: all authenticated users can read (aggregate data)
 create policy "analytics_read" on analytics_daily

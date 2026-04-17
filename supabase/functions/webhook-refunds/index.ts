@@ -197,16 +197,28 @@ Deno.serve(async (req) => {
   let signatureOk = true;
   if (source === "shopify") {
     const secretResult = await getVerifierSecretForStore(supabase, storeId, "shopify");
-    if (secretResult.ok) signatureOk = await verifyShopifyHmac(req, rawBody, secretResult.secret);
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
+    }
+    signatureOk = await verifyShopifyHmac(req, rawBody, secretResult.secret);
   } else if (source === "woocommerce") {
     const secretResult = await getVerifierSecretForStore(supabase, storeId, "woocommerce");
-    if (secretResult.ok) signatureOk = await verifyWooCommerceHmac(req, rawBody, secretResult.secret);
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
+    }
+    signatureOk = await verifyWooCommerceHmac(req, rawBody, secretResult.secret);
   } else if (source === "nuvemshop") {
     const secretResult = await getVerifierSecretForStore(supabase, storeId, "nuvemshop");
-    if (secretResult.ok) signatureOk = verifyNuvemshopToken(req, secretResult.secret);
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
+    }
+    signatureOk = verifyNuvemshopToken(req, secretResult.secret);
   } else if (source === "vtex") {
     const secretResult = await getVerifierSecretForStore(supabase, storeId, "vtex");
-    if (secretResult.ok) signatureOk = verifyVtexAppKey(req, secretResult.secret);
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
+    }
+    signatureOk = verifyVtexAppKey(req, secretResult.secret);
   }
 
   if (!signatureOk) {

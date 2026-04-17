@@ -43,6 +43,24 @@ async function canDispatchCampaign(
   return !!team;
 }
 
+async function validateInternalTenantScope(
+  supabase: ReturnType<typeof createClient>,
+  req: Request,
+  campaign: { user_id: string; store_id: string | null },
+): Promise<boolean> {
+  const internalStoreId = req.headers.get("x-internal-store-id");
+  const internalOwnerId = req.headers.get("x-internal-owner-id");
+
+  if (!campaign.store_id || !internalStoreId || !internalOwnerId) return false;
+  if (campaign.store_id !== internalStoreId) return false;
+
+  const { data: store } = await supabase.from("stores").select("user_id").eq("id", campaign.store_id).maybeSingle();
+  if (!store?.user_id) return false;
+  if (store.user_id !== campaign.user_id) return false;
+
+  return store.user_id === internalOwnerId;
+}
+
 serve(async (req: Request) => {
   const requestId = crypto.randomUUID();
 
@@ -87,6 +105,9 @@ serve(async (req: Request) => {
       .single();
 
     if (campError || !campaign) return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
+    if (isInternal && !(await validateInternalTenantScope(supabase, req, campaign))) {
+      return new Response(JSON.stringify({ error: "Invalid internal tenant scope" }), { status: 403 });
+    }
     if (!isInternal && requesterUserId && !(await canDispatchCampaign(supabase, requesterUserId, campaign))) {
       return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
     }

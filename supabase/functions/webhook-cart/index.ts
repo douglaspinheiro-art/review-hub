@@ -116,20 +116,22 @@ Deno.serve(async (req) => {
     hmacOk = verifyNuvemshopToken(req, secretResult.secret);
   } else if (source === "vtex") {
     const secretResult = await getVerifierSecretForStore(supabase, storeId, "vtex");
-    if (secretResult.ok) {
-      hmacOk = verifyVtexAppKey(req, secretResult.secret);
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
     }
-    // If no secret configured, fall through to blanket auth (already verified above)
+    hmacOk = verifyVtexAppKey(req, secretResult.secret);
   } else if (source === "tray") {
     const secretResult = await getVerifierSecretForStore(supabase, storeId, "tray");
-    if (secretResult.ok) {
-      hmacOk = await verifyTrayHmac(req, rawBody, secretResult.secret);
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
     }
+    hmacOk = await verifyTrayHmac(req, rawBody, secretResult.secret);
   } else if (source === "yampi") {
     const secretResult = await getVerifierSecretForStore(supabase, storeId, "yampi");
-    if (secretResult.ok) {
-      hmacOk = await verifyYampiHmac(req, rawBody, secretResult.secret);
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
     }
+    hmacOk = await verifyYampiHmac(req, rawBody, secretResult.secret);
   }
 
   if (!hmacOk) {
