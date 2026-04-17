@@ -297,7 +297,15 @@ export default function Onboarding() {
         setTaxaAbandono((abd * 100).toFixed(1));
         updated.taxaAbandono = true;
       }
-      setImportedFields(updated);
+      // Derive monthly orders from integration revenue / avg ticket (only field e-commerce APIs know)
+      if (Number.isFinite(fat) && fat > 0 && Number.isFinite(tm) && tm > 0) {
+        const derivedPedidos = Math.round(fat / tm);
+        if (derivedPedidos > 0) {
+          setPedidos(String(derivedPedidos));
+          updated.pedidos = true;
+        }
+      }
+      setImportedFields(prev => ({ ...prev, ...updated }));
       setImportedPlatform(plat);
       setZeroFields(zeros);
       setMetricsImported(Object.keys(updated).length > 0);
