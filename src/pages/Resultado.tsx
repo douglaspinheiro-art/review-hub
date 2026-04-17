@@ -124,14 +124,34 @@ export default function Resultado() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, recommendation.tier]);
 
-  const handleActivate = () => {
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+
+  const handleSubscribe = async (planKey: "starter" | "growth" | "scale") => {
+    if (checkoutLoading) return;
+    setCheckoutLoading(planKey);
     void trackFunnelEvent({
       event: "checkout_started",
       recommendedPlan: recommendation.tier,
-      selectedPlan: recommendation.tier,
-      metadata: { source: "resultado", chs, perdaMensal },
+      selectedPlan: planKey,
+      metadata: { source: "resultado_inline", chs, perdaMensal, billing_cycle: billingCycle },
     });
-    navigate(`/planos?recommended=${recommendation.tier}&from=diagnostico`);
+    try {
+      const { data, error } = await supabase.functions.invoke("mercadopago-create-preference", {
+        body: { plan_key: planKey, billing_cycle: billingCycle },
+      });
+      if (error) throw error;
+      const url = (data as { init_point?: string; sandbox_init_point?: string } | null)?.init_point
+        ?? (data as { sandbox_init_point?: string } | null)?.sandbox_init_point;
+      if (!url) throw new Error("URL de pagamento não retornada.");
+      window.location.href = url;
+    } catch (e) {
+      console.error("[resultado] checkout error", e);
+      // Fallback: leva para /planos preservando o tier selecionado
+      navigate(`/planos?recommended=${planKey}&from=diagnostico&cycle=${billingCycle}`);
+    } finally {
+      setCheckoutLoading(null);
+    }
   };
 
   if (loading) {
