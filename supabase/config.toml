@@ -42,10 +42,7 @@ verify_jwt = false
 [functions.post-integration-setup]
 verify_jwt = false
 
-[functions.stripe-billing-portal]
-verify_jwt = true
-
-[functions.stripe-webhook]
+[functions.mercadopago-webhook]
 verify_jwt = false
 
 # ── User-facing functions (called with Supabase JWT from the browser) ──────────

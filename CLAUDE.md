@@ -129,7 +129,7 @@ Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those fea
 - **Agendamento:** no Dashboard Supabase (Scheduled Functions / pg\_cron) ou job externo: POST diário em `.../functions/v1/sync-funil-ga4` e `.../functions/v1/data-pipeline-cron` com header `Authorization: Bearer <CRON_SECRET>`.
 - **Migrações remotas:** se `supabase db push --linked` avisar de ordem divergente, alinhar com `npm run supabase:migration-list` / `docs/supabase-migrations-sync.md` ou aplicar o SQL da migração manualmente no Editor quando apropriado.
 
-**Beta UI scope (channel/stripe-poor environments):** Set `VITE_BETA_LIMITED_SCOPE=true` on the frontend build. This hides WhatsApp, Newsletter, Campanhas, Inbox, Automações, and Carrinho abandonado from the sidebar and redirects direct URLs to `/dashboard`. Routes under `/demo/*` ignore this flag.
+**Beta UI scope (channel-poor environments):** Set `VITE_BETA_LIMITED_SCOPE=true` on the frontend build. This hides WhatsApp, Newsletter, Campanhas, Inbox, Automações, and Carrinho abandonado from the sidebar and redirects direct URLs to `/dashboard`. Routes under `/demo/*` ignore this flag.
 
 ### Build
 
