@@ -181,12 +181,23 @@ async function testMagento(config: Record<string, string>): Promise<{ ok: boolea
   }
 }
 
+function logValidate(
+  requestId: string,
+  phase: "start" | "callback" | "persist",
+  fields: Record<string, unknown>,
+) {
+  console.log(JSON.stringify({ request_id: requestId, fn: "validate-integration", phase, ...fields }));
+}
+
 serve(async (req) => {
   const cors = corsHeaders();
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
+  const requestId = crypto.randomUUID();
+
   const auth = await verifyJwt(req);
   if (!auth.ok) {
+    logValidate(requestId, "start", { ok: false, detail: "unauthorized" });
     return auth.response;
   }
 
@@ -216,6 +227,8 @@ serve(async (req) => {
       });
     }
 
+    logValidate(requestId, "start", { ok: true, platform: type, user_id: auth.userId });
+
     let result: { ok: boolean; detail: string };
 
     switch (type) {
@@ -238,11 +251,18 @@ serve(async (req) => {
         result = { ok: false, detail: `Plataforma "${type}" não suportada para validação` };
     }
 
+    logValidate(requestId, "persist", {
+      platform: type,
+      ok: result.ok,
+      detail: String(result.detail ?? "").slice(0, 200),
+    });
+
     return new Response(JSON.stringify(result), {
       status: result.ok ? 200 : 422,
       headers: { ...cors, "Content-Type": "application/json" },
     });
   } catch (err: unknown) {
+    logValidate(requestId, "persist", { ok: false, detail: (err as Error).message });
     return new Response(JSON.stringify({ ok: false, detail: (err as Error).message }), {
       status: 500, headers: { ...cors, "Content-Type": "application/json" },
     });

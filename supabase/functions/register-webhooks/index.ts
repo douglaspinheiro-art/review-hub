@@ -32,6 +32,10 @@ const BodySchema = z.object({
   platform: z.enum(["shopify", "woocommerce", "nuvemshop", "vtex", "yampi", "tray"]),
 });
 
+const InternalBodySchema = BodySchema.extend({
+  user_id: uuidSchema,
+});
+
 interface WebhookResult {
   topic: string;
   status: "created" | "already_exists" | "failed";
@@ -259,6 +263,103 @@ Deno.serve(async (req) => {
   const supabaseSvc = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
   const supabaseAuth = createClient(supabaseUrl, supabaseAnon);
 
+  let body: unknown;
+  try { body = await req.json(); } catch { return errorResponse("Invalid JSON", 400); }
+
+  const internalSecret = Deno.env.get("EDGE_INTERNAL_CALLBACK_SECRET");
+  const incomingSecret = req.headers.get("x-internal-secret") ?? "";
+
+  if (internalSecret && incomingSecret === internalSecret) {
+    const parsedInternal = InternalBodySchema.safeParse(body);
+    if (!parsedInternal.success) {
+      return new Response(
+        JSON.stringify({ error: "Validation failed", details: parsedInternal.error.flatten().fieldErrors }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
+    const { store_id, platform, user_id } = parsedInternal.data;
+    const { data: store } = await supabaseSvc.from("stores").select("user_id").eq("id", store_id).single();
+    if (!store || store.user_id !== user_id) return errorResponse("Store not found", 403);
+
+    const rl = await checkDistributedRateLimit(
+      supabaseSvc,
+      `register-webhooks-internal:${store_id}`,
+      8,
+      60_000,
+    );
+    if (!rl.allowed) return rateLimitedResponseWithRetry(rl.retryAfterSeconds);
+
+    // Inline continue: platform + store_id set; jump to integration fetch
+    const { data: integration } = await supabaseSvc
+      .from("integrations")
+      .select("id, type, config, config_encrypted")
+      .eq("store_id", store_id)
+      .eq("is_active", true)
+      .ilike("type", `%${platform}%`)
+      .limit(1)
+      .single();
+
+    if (!integration) return errorResponse(`No active ${platform} integration found`, 404);
+
+    let config: Record<string, unknown>;
+    try {
+      config = await decryptIntegrationConfig(supabaseSvc as any, integration.id);
+    } catch (e) {
+      return errorResponse(`Config error: ${(e as Error).message}`, 500);
+    }
+
+    let results: WebhookResult[];
+    try {
+      switch (platform) {
+        case "shopify": results = await registerShopify(config, store_id); break;
+        case "woocommerce": results = await registerWooCommerce(config, store_id); break;
+        case "nuvemshop": results = await registerNuvemshop(config, store_id); break;
+        case "vtex": results = await registerVTEX(config, store_id); break;
+        case "yampi": results = await registerYampi(config, store_id); break;
+        case "tray": results = await registerTray(config, store_id); break;
+        default: return errorResponse(`Platform ${platform} not supported`, 422);
+      }
+    } catch (e) {
+      return new Response(JSON.stringify({ error: (e as Error).message }), {
+        status: 500, headers: corsHeaders,
+      });
+    }
+
+    const registeredWebhooks = results
+      .filter((r) => r.status === "created")
+      .map((r) => ({ topic: r.topic, webhook_id: r.webhook_id }));
+
+    if (registeredWebhooks.length > 0) {
+      const existingJson = (integration as any).config_json ?? {};
+      await supabaseSvc
+        .from("integrations")
+        .update({
+          config_json: {
+            ...existingJson,
+            registered_webhooks: [
+              ...(existingJson.registered_webhooks ?? []),
+              ...registeredWebhooks,
+            ],
+          },
+        })
+        .eq("id", integration.id);
+    }
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        platform,
+        results,
+        summary: {
+          created: results.filter((r) => r.status === "created").length,
+          already_exists: results.filter((r) => r.status === "already_exists").length,
+          failed: results.filter((r) => r.status === "failed").length,
+        },
+      }),
+      { status: 200, headers: corsHeaders },
+    );
+  }
+
   const jwt = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
   if (!jwt) return errorResponse("Unauthorized", 401);
 
@@ -268,9 +369,6 @@ Deno.serve(async (req) => {
   const ip = getClientIp(req);
   const rl = await checkDistributedRateLimit(supabaseSvc, `register-webhooks:${user.id}:${ip}`, 5, 60_000);
   if (!rl.allowed) return rateLimitedResponseWithRetry(rl.retryAfterSeconds);
-
-  let body: unknown;
-  try { body = await req.json(); } catch { return errorResponse("Invalid JSON", 400); }
 
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {

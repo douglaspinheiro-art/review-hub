@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, errorResponse, jsonResponse, verifyJwt } from "../_shared/edge-utils.ts";
+import {
+  invokePostIntegrationSetupFromCallback,
+  invokeRegisterWebhooksFromCallback,
+} from "../_shared/internal-callback.ts";
 
 const SHOPIFY_CLIENT_ID = Deno.env.get("SHOPIFY_CLIENT_ID") ?? "";
 const SHOPIFY_CLIENT_SECRET = Deno.env.get("SHOPIFY_CLIENT_SECRET") ?? "";
@@ -9,9 +13,18 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SCOPES = "read_orders,read_customers,read_products,read_checkouts";
 
+function logOAuth(
+  requestId: string,
+  phase: "start" | "callback" | "persist",
+  fields: Record<string, unknown>,
+) {
+  console.log(JSON.stringify({ request_id: requestId, platform: "shopify", phase, ...fields }));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
@@ -33,7 +46,10 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
     );
     const { error: aclErr } = await authClient.rpc("assert_store_access", { p_store_id: storeId });
-    if (aclErr) return errorResponse("Forbidden: store access denied", 403);
+    if (aclErr) {
+      logOAuth(requestId, "start", { store_id: storeId, ok: false, detail: "store_access_denied" });
+      return errorResponse("Forbidden: store access denied", 403);
+    }
 
     const stateToken = crypto.randomUUID();
 
@@ -49,6 +65,7 @@ Deno.serve(async (req) => {
     const callbackUrl = `${SUPABASE_URL}/functions/v1/oauth-shopify?action=callback`;
     const authUrl = `https://${shopDomain}/admin/oauth/authorize?client_id=${SHOPIFY_CLIENT_ID}&scope=${SCOPES}&redirect_uri=${encodeURIComponent(callbackUrl)}&state=${stateToken}`;
 
+    logOAuth(requestId, "start", { store_id: storeId, ok: true });
     return jsonResponse({ url: authUrl });
   }
 
@@ -97,14 +114,16 @@ Deno.serve(async (req) => {
         name: "Shopify",
         config: { shop_url: shop, access_token: accessToken },
         is_active: true,
+        connection_mode: "oauth",
+        connection_status: "connected",
       },
       { onConflict: "store_id,type" }
     );
 
-    // Trigger post-integration-setup (best-effort)
-    admin.functions.invoke("post-integration-setup", {
-      body: { store_id: st.store_id, platform: "shopify" },
-    }).catch(() => {});
+    logOAuth(requestId, "callback", { store_id: st.store_id, ok: true, detail: "token_exchanged" });
+
+    invokePostIntegrationSetupFromCallback(st.user_id).catch(() => {});
+    invokeRegisterWebhooksFromCallback(st.store_id, st.user_id, "shopify").catch(() => {});
 
     return new Response(redirectHtml(APP_URL, true), {
       status: 200, headers: { "Content-Type": "text/html" },

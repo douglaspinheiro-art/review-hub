@@ -1,12 +1,12 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Check, Plus, Trash2, RefreshCw, Loader2,
   ShoppingCart, BarChart3, MessageSquare, Star, Sparkles, ArrowRight,
   ShieldCheck, ShieldX, Store, Cloud, Package, Layers, ShoppingBasket,
   Flame, Target, Radio, Mail, MapPin, MessageCircleWarning, Smartphone, Phone,
-  ShoppingBag, Webhook, Activity, type LucideIcon,
+  ShoppingBag, Webhook, Activity, Plug, type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,8 @@ type Integration = {
   last_sync_at: string | null;
   created_at: string;
   store_id?: string | null;
+  connection_mode?: string | null;
+  connection_status?: string | null;
 };
 
 type CatalogField = { key: string; label: string; placeholder: string };
@@ -131,22 +133,140 @@ const PARCEIROS_OFICIAIS = [
 ];
 
 function formatConnectedSubtitle(integration: Integration): string | null {
-  if (integration.last_sync_at) {
-    return `Última sincronização de dados: ${new Date(integration.last_sync_at).toLocaleString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`;
-  }
-  return `Conectado em ${new Date(integration.created_at).toLocaleDateString("pt-BR")}`;
+  const mode =
+    integration.connection_mode === "oauth"
+      ? "OAuth / app"
+      : integration.connection_mode === "assisted"
+        ? "Conexão assistida"
+        : integration.connection_mode === "manual"
+          ? "Credenciais manuais"
+          : null;
+  const time = integration.last_sync_at
+    ? `Última sincronização: ${new Date(integration.last_sync_at).toLocaleString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+    : `Conectado em ${new Date(integration.created_at).toLocaleDateString("pt-BR")}`;
+  return mode ? `${mode} · ${time}` : time;
+}
+
+function supportsOauthConnect(type: string): boolean {
+  return type === "shopify" || type === "nuvemshop" || type === "woocommerce";
+}
+
+function isAssistedOnlyPlatform(type: string): boolean {
+  return type === "vtex" || type === "tray";
 }
 
 export default function Integracoes() {
   const { user } = useAuth();
   const scope = useStoreScope();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [connecting, setConnecting] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [validationState, setValidationState] = useState<{ status: "idle" | "validating" | "success" | "error"; detail: string }>({ status: "idle", detail: "" });
   const [disconnectTarget, setDisconnectTarget] = useState<Integration | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<string | null>(null);
 
   const activeStoreId = scope.activeStoreId;
+
+  useEffect(() => {
+    const oauth = searchParams.get("oauth");
+    const platform = searchParams.get("platform");
+    if (oauth === "connected") {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast.success(
+        platform === "woocommerce"
+          ? "WooCommerce conectado."
+          : "Integração conectada.",
+      );
+      navigate("/dashboard/integracoes", { replace: true });
+    }
+  }, [searchParams, queryClient, navigate]);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "oauth_result" && event.data?.success) {
+        queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        toast.success("Integração conectada.");
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [queryClient]);
+
+  const startOauthConnect = useCallback(
+    async (platformType: "shopify" | "nuvemshop" | "woocommerce") => {
+      const storeId = scope.activeStoreId;
+      if (!user?.id || !storeId) {
+        toast.error("Selecione uma loja ativa.");
+        return;
+      }
+      setOauthBusy(platformType);
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        const base = import.meta.env.VITE_SUPABASE_URL ?? "";
+        const anon = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          apikey: anon,
+        };
+
+        if (platformType === "shopify") {
+          const shop = formData.shop_url?.trim();
+          if (!shop) {
+            toast.error("Informe o domínio Shopify (ex: loja.myshopify.com).");
+            return;
+          }
+          const q =
+            `action=start&store_id=${encodeURIComponent(storeId)}&shop=${encodeURIComponent(shop)}`;
+          const res = await fetch(`${base}/functions/v1/oauth-shopify?${q}`, { headers });
+          const j = await res.json();
+          if (!j?.url) {
+            toast.error("Não foi possível iniciar o OAuth Shopify.");
+            return;
+          }
+          window.open(j.url, "oauth-shopify", "width=600,height=700,scrollbars=yes");
+          return;
+        }
+
+        if (platformType === "nuvemshop") {
+          const res = await fetch(
+            `${base}/functions/v1/oauth-nuvemshop?action=start&store_id=${encodeURIComponent(storeId)}`,
+            { headers },
+          );
+          const j = await res.json();
+          if (!j?.url) {
+            toast.error("Não foi possível iniciar a conexão Nuvemshop.");
+            return;
+          }
+          window.open(j.url, "oauth-nuvemshop", "width=600,height=700,scrollbars=yes");
+          return;
+        }
+
+        const site = formData.site_url?.trim();
+        if (!site) {
+          toast.error("Informe a URL do site WooCommerce.");
+          return;
+        }
+        const q =
+          `action=start&store_id=${encodeURIComponent(storeId)}` +
+          `&site_url=${encodeURIComponent(site)}&return_to=integracoes`;
+        const res = await fetch(`${base}/functions/v1/oauth-woocommerce?${q}`, { headers });
+        const j = await res.json();
+        if (!j?.url) {
+          toast.error("Não foi possível iniciar a conexão assistida WooCommerce.");
+          return;
+        }
+        window.location.href = j.url as string;
+      } catch (e) {
+        console.error(e);
+        toast.error("Erro ao iniciar conexão.");
+      } finally {
+        setOauthBusy(null);
+      }
+    },
+    [user?.id, scope.activeStoreId, formData.shop_url, formData.site_url],
+  );
 
   const {
     data: integrations = [],
@@ -225,6 +345,8 @@ export default function Integracoes() {
         config: formData as unknown as Record<string, unknown>,
         is_active: true,
         updated_at: now,
+        connection_mode: isAssistedOnlyPlatform(type) ? "assisted" : "manual",
+        connection_status: "connected",
       };
 
       if (existingRow?.id) {
@@ -249,6 +371,13 @@ export default function Integracoes() {
         toast.warning("Integração guardada", {
           description: `${detail}. Pode tentar guardar de novo ou contactar o suporte.`,
         });
+      }
+
+      const webhookPlatforms = ["shopify", "woocommerce", "nuvemshop", "tray", "vtex", "yampi"] as const;
+      if ((webhookPlatforms as readonly string[]).includes(type)) {
+        supabase.functions
+          .invoke("register-webhooks", { body: { store_id: storeId, platform: type } })
+          .catch(() => { /* best-effort */ });
       }
 
       return { name, replaced: !!existingRow?.id };
@@ -523,6 +652,53 @@ export default function Integracoes() {
 
                   {isExpanded && !connected && (
                     <div className="border-t px-4 pb-4 pt-3 space-y-3 bg-muted/20">
+                      {isAssistedOnlyPlatform(item.type) && (
+                        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[11px] text-muted-foreground leading-snug">
+                          <span className="font-semibold text-amber-800 dark:text-amber-400">Conexão assistida — </span>
+                          não utilizamos OAuth clássico. Obtenha as chaves no painel {item.name}, preencha os campos e use &quot;Testar e Conectar&quot;.
+                        </div>
+                      )}
+                      {supportsOauthConnect(item.type) && (
+                        <div className="space-y-2 rounded-lg border bg-background/50 px-3 py-2">
+                          <p className="text-[11px] font-semibold text-muted-foreground">Ligação rápida</p>
+                          {item.type === "shopify" && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Informe o domínio no campo &quot;URL da loja&quot; abaixo (ex: loja.myshopify.com).
+                            </p>
+                          )}
+                          {item.type === "woocommerce" && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Informe a URL do site no campo abaixo; em seguida autorize no WooCommerce (fallback manual disponível).
+                            </p>
+                          )}
+                          {item.type === "nuvemshop" && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Abre a Nuvemshop para autorizar em um clique. Alternativa: preencher token manualmente abaixo.
+                            </p>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="h-8 gap-1.5 w-full sm:w-auto"
+                            disabled={oauthBusy === item.type}
+                            onClick={() =>
+                              void startOauthConnect(
+                                item.type as "shopify" | "nuvemshop" | "woocommerce",
+                              )
+                            }
+                          >
+                            {oauthBusy === item.type ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Plug className="w-3.5 h-3.5" />
+                            )}
+                            {item.type === "woocommerce"
+                              ? "Conexão assistida WooCommerce"
+                              : `Conectar ${item.name}`}
+                          </Button>
+                        </div>
+                      )}
                       {item.validation === "stored" && (
                         <p className="text-[11px] text-muted-foreground leading-snug">
                           Esta integração não chama a API externa a partir daqui: os dados são guardados para uso nas funcionalidades que já as suportam (ex.: SMS com Zenvia na edge).

@@ -75,8 +75,12 @@ export const TEAM_MEMBERS_LIST_SELECT =
  * explicitly needs to view or edit credentials.
  */
 export const INTEGRATIONS_SAFE_SELECT =
-  "id,user_id,store_id,name,type,is_active,last_sync_at,created_at,updated_at";
+  "id,user_id,store_id,name,type,is_active,last_sync_at,created_at,updated_at,connection_mode,connection_status";
 
+/**
+ * @deprecated Evitar em novas telas — preferir `INTEGRATIONS_SAFE_SELECT`.
+ * Mantido apenas para fluxos legados que precisam editar credenciais no cliente (alto risco XSS).
+ */
 export const INTEGRATIONS_LIST_SELECT =
   "id,user_id,store_id,name,type,is_active,config,config_json,last_sync_at,created_at,updated_at";
 

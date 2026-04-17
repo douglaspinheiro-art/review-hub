@@ -81,12 +81,20 @@ const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: st
 
 const UNSUPPORTED_PLATFORMS = ["Yampi", "Loja Integrada", "Outra", "Outro", ""];
 
-// Platforms that support OAuth (1-click connect)
-const OAUTH_PLATFORMS = ["Shopify"] as const;
+// Platforms that support OAuth / app-auth (1-click or assisted redirect)
+const OAUTH_PLATFORMS = ["Shopify", "Nuvemshop", "WooCommerce"] as const;
 type OAuthPlatform = typeof OAUTH_PLATFORMS[number];
+
+/** VTEX / Tray: conexão assistida (sem OAuth clássico). */
+const ASSISTED_PLATFORMS = ["VTEX", "Tray"] as const;
+type AssistedPlatform = typeof ASSISTED_PLATFORMS[number];
 
 function isOAuthPlatform(p: string): p is OAuthPlatform {
   return (OAUTH_PLATFORMS as readonly string[]).includes(p);
+}
+
+function isAssistedPlatform(p: string): p is AssistedPlatform {
+  return (ASSISTED_PLATFORMS as readonly string[]).includes(p);
 }
 
 export default function Onboarding() {
@@ -147,16 +155,48 @@ export default function Onboarding() {
   const platformInfo = PLATFORM_INTEGRATION_MAP[plataforma];
   const isUnsupportedPlatform = UNSUPPORTED_PLATFORMS.includes(plataforma);
   const isOAuth = isOAuthPlatform(plataforma);
+  const isAssisted = isAssistedPlatform(plataforma);
+
+  const [onboardingStoreId, setOnboardingStoreId] = useState<string | null>(null);
+  const [showManualOAuthFallback, setShowManualOAuthFallback] = useState(false);
+  const [assistedStep, setAssistedStep] = useState(1);
+
+  // Resolver loja para chave de rascunho (multi-tenant por store_id).
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const active = storeScope?.activeStoreId;
+      if (active) {
+        if (!cancelled) setOnboardingStoreId(active);
+        return;
+      }
+      const { data } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled) setOnboardingStoreId(data?.id ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, storeScope?.activeStoreId]);
+
+  const progressStorageKey = user?.id
+    ? `onboarding_progress_v2_${user.id}_${onboardingStoreId ?? "draft"}`
+    : null;
 
   // Listen for OAuth popup result
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "oauth_result") {
         setOauthConnecting(false);
-        if (event.data.success) {
+        const p = event.data.platform as string | undefined;
+        if (event.data.success && (!p || p === PLATFORM_INTEGRATION_MAP[plataforma]?.type || p === plataforma.toLowerCase())) {
           setIntegrationValid(true);
           toast.success(`${plataforma} conectado com sucesso!`);
-        } else {
+        } else if (!event.data.success) {
           setIntegrationError(event.data.error || "Falha na conexão OAuth.");
           toast.error("Falha na conexão. Tente novamente.");
         }
@@ -166,22 +206,34 @@ export default function Onboarding() {
     return () => window.removeEventListener("message", handler);
   }, [plataforma]);
 
-  // Check URL params for OAuth redirect result (WooCommerce uses redirect, not popup)
+  // Check URL params for OAuth redirect result (ex.: WooCommerce return_url)
   useEffect(() => {
     const oauthParam = searchParams.get("oauth");
+    const platformParam = searchParams.get("platform");
     if (oauthParam === "connected") {
       setIntegrationValid(true);
       setStep(2);
-      toast.success("Loja conectada com sucesso!");
+      if (platformParam === "woocommerce") {
+        toast.success("WooCommerce conectado com sucesso!");
+      } else {
+        toast.success("Loja conectada com sucesso!");
+      }
     }
   }, [searchParams]);
 
-  // Restore in-progress onboarding from localStorage (per-user key).
-  // Runs once when user becomes available, before the integration prefill effect.
+  // Restore in-progress onboarding from localStorage (per user + loja).
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id || !progressStorageKey) return;
     try {
-      const raw = localStorage.getItem(`onboarding_progress_${user.id}`);
+      let raw = localStorage.getItem(progressStorageKey);
+      if (!raw) {
+        const legacy = localStorage.getItem(`onboarding_progress_${user.id}`);
+        if (legacy) {
+          raw = legacy;
+          localStorage.setItem(progressStorageKey, legacy);
+          localStorage.removeItem(`onboarding_progress_${user.id}`);
+        }
+      }
       if (!raw) return;
       const s = JSON.parse(raw) as Partial<{
         step: number; storeName: string; storeUrl: string; vertical: EcommerceVertical | null;
@@ -189,6 +241,7 @@ export default function Onboarding() {
         faturamento: string; ticketMedio: string; numClientes: string; visitantes: string;
         carrinho: string; checkout: string; pedidos: string; metaConversao: string;
         ga4PropertyId: string; ga4Token: string;
+        assistedStep: number; showManualOAuthFallback: boolean;
       }>;
       if (s.storeName) setStoreName(s.storeName);
       if (s.storeUrl) setStoreUrl(s.storeUrl);
@@ -207,18 +260,17 @@ export default function Onboarding() {
       if (s.ga4PropertyId) setGa4PropertyId(s.ga4PropertyId);
       if (s.ga4Token) setGa4Token(s.ga4Token);
       if (s.step && s.step >= 1 && s.step <= TOTAL_STEPS) setStep(s.step);
+      if (s.assistedStep && s.assistedStep >= 1 && s.assistedStep <= 4) setAssistedStep(s.assistedStep);
+      if (typeof s.showManualOAuthFallback === "boolean") setShowManualOAuthFallback(s.showManualOAuthFallback);
     } catch { /* ignore corrupt cache */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, progressStorageKey]);
 
   // Persist progress on every change. SECURITY: never persist OAuth tokens,
   // API keys, or GA4 access tokens in localStorage (XSS exfiltration risk).
-  // Only store non-sensitive metadata; credentials must be re-entered if the
-  // user abandons and resumes the flow.
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id || !progressStorageKey) return;
     try {
-      // Strip secret fields from integrationConfig before persisting.
       const info = PLATFORM_INTEGRATION_MAP[plataforma];
       const safeIntegrationConfig: Record<string, string> = {};
       if (info) {
@@ -228,28 +280,28 @@ export default function Onboarding() {
           }
         }
       }
-      localStorage.setItem(`onboarding_progress_${user.id}`, JSON.stringify({
+      localStorage.setItem(progressStorageKey, JSON.stringify({
         step, storeName, storeUrl, vertical, plataforma,
         integrationConfig: safeIntegrationConfig, integrationValid,
         faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
         metaConversao, ga4PropertyId,
-        // ga4Token intentionally omitted (sensitive).
+        assistedStep, showManualOAuthFallback,
       }));
     } catch { /* quota or private mode */ }
-  }, [user, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
+  }, [user, progressStorageKey, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
       faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-      metaConversao, ga4PropertyId]);
+      metaConversao, ga4PropertyId, assistedStep, showManualOAuthFallback]);
 
-  // Pre-load existing active integration so user doesn't reconnect.
-  // SECURITY: uses SAFE select (no `config`) to avoid loading tokens into the browser.
+  // Pre-load existing active integration for esta loja (evita cruzar tenant/loja).
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id || !onboardingStoreId) return;
     let cancelled = false;
     (async () => {
       const { data } = await supabase
         .from("integrations")
         .select("type, name, is_active")
         .eq("user_id", user.id)
+        .eq("store_id", onboardingStoreId)
         .eq("is_active", true)
         .order("last_sync_at", { ascending: false, nullsFirst: false })
         .limit(1)
@@ -262,11 +314,11 @@ export default function Onboarding() {
         setPlataforma(matchedPlatform);
         setIntegrationValid(true);
         if (data.name) setStoreName(data.name);
-        toast.success(`Já conectado a ${matchedPlatform} — pulando para o próximo passo.`);
+        toast.success(`Já conectado a ${matchedPlatform} nesta loja — pode avançar.`);
       }
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, onboardingStoreId]);
 
   const fetchStoreMetrics = useCallback(async (manual = false, force = false) => {
     if (!platformInfo) return;
@@ -369,6 +421,8 @@ export default function Onboarding() {
       throw new Error("missing_user_or_platform");
     }
 
+    const connectionMode = isAssisted ? "assisted" : "manual";
+
     // onConflict: "store_id,type" so the same user can connect the same platform
     // to different stores without clobbering each other (multi-store isolation).
     const { error } = await supabase.from("integrations").upsert(
@@ -379,6 +433,8 @@ export default function Onboarding() {
         name: plataforma,
         config: integrationConfig,
         is_active: true,
+        connection_mode: connectionMode,
+        connection_status: "connected",
       },
       { onConflict: "store_id,type" }
     );
@@ -390,7 +446,7 @@ export default function Onboarding() {
       .catch((setupError) => {
         console.warn("post-integration-setup failed:", setupError);
       });
-  }, [user?.id, platformInfo, plataforma, integrationConfig]);
+  }, [user?.id, platformInfo, plataforma, integrationConfig, isAssisted]);
 
   const handleOAuthConnect = useCallback(async () => {
     if (!user?.id) return;
@@ -406,43 +462,86 @@ export default function Onboarding() {
     setIntegrationError(null);
 
     try {
-      const functionName = "oauth-shopify";
-      const shop = integrationConfig.shop_url?.trim();
-      if (!shop) {
-        toast.error("Informe o domínio da loja Shopify (ex: minhaloja.myshopify.com).");
-        setOauthConnecting(false);
-        return;
-      }
-      const queryParams = `action=start&store_id=${storeId}&shop=${encodeURIComponent(shop)}`;
-
       const session = (await supabase.auth.getSession()).data.session;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ydkglitowqlpizpnnofy.supabase.co";
-      const res = await fetch(`${supabaseUrl}/functions/v1/${functionName}?${queryParams}`, {
-        headers: {
-          Authorization: `Bearer ${session?.access_token}`,
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlka2dsaXRvd3FscGl6cG5ub2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTc2NjEsImV4cCI6MjA5MDYzMzY2MX0.kJTWWxWN8cP4r1AtmM2XraJtjPM_qy8sxE2gHU9f8QE",
-        },
-      });
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+      const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${session?.access_token ?? ""}`,
+        apikey: anon,
+      };
 
-      const resData = await res.json();
-
-      if (!resData?.url) {
-        setIntegrationError("Não foi possível gerar a URL de autorização.");
-        setOauthConnecting(false);
+      if (plataforma === "Shopify") {
+        const shop = integrationConfig.shop_url?.trim();
+        if (!shop) {
+          toast.error("Informe o domínio da loja Shopify (ex: minhaloja.myshopify.com).");
+          setOauthConnecting(false);
+          return;
+        }
+        const queryParams =
+          `action=start&store_id=${encodeURIComponent(storeId)}&shop=${encodeURIComponent(shop)}`;
+        const res = await fetch(`${supabaseUrl}/functions/v1/oauth-shopify?${queryParams}`, { headers });
+        const resData = await res.json();
+        if (!resData?.url) {
+          setIntegrationError("Não foi possível gerar a URL de autorização.");
+          setOauthConnecting(false);
+          return;
+        }
+        const popup = window.open(resData.url, "oauth-shopify", "width=600,height=700,scrollbars=yes");
+        if (!popup) {
+          toast.error("Popup bloqueado. Permita popups para este site.");
+          setOauthConnecting(false);
+        }
         return;
       }
 
-      const popup = window.open(resData.url, "oauth-shopify", "width=600,height=700,scrollbars=yes");
-      if (!popup) {
-        toast.error("Popup bloqueado. Permita popups para este site.");
-        setOauthConnecting(false);
+      if (plataforma === "Nuvemshop") {
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/oauth-nuvemshop?action=start&store_id=${encodeURIComponent(storeId)}`,
+          { headers },
+        );
+        const resData = await res.json();
+        if (!resData?.url) {
+          setIntegrationError((resData as { error?: string })?.error ?? "Não foi possível iniciar a conexão Nuvemshop.");
+          setOauthConnecting(false);
+          return;
+        }
+        const popup = window.open(resData.url, "oauth-nuvemshop", "width=600,height=700,scrollbars=yes");
+        if (!popup) {
+          toast.error("Popup bloqueado. Permita popups para este site.");
+          setOauthConnecting(false);
+        }
+        return;
       }
+
+      if (plataforma === "WooCommerce") {
+        const site = integrationConfig.site_url?.trim();
+        if (!site) {
+          toast.error("Informe a URL do site (https://sualoja.com.br).");
+          setOauthConnecting(false);
+          return;
+        }
+        const q =
+          `action=start&store_id=${encodeURIComponent(storeId)}` +
+          `&site_url=${encodeURIComponent(site)}&return_to=onboarding`;
+        const res = await fetch(`${supabaseUrl}/functions/v1/oauth-woocommerce?${q}`, { headers });
+        const resData = await res.json();
+        if (!resData?.url) {
+          setIntegrationError("Não foi possível iniciar a conexão assistida WooCommerce.");
+          setOauthConnecting(false);
+          return;
+        }
+        window.location.href = resData.url as string;
+        return;
+      }
+
+      setIntegrationError("Plataforma sem fluxo OAuth configurado.");
+      setOauthConnecting(false);
     } catch (e) {
       console.error("OAuth error:", e);
       setIntegrationError("Erro ao iniciar conexão. Tente novamente.");
       setOauthConnecting(false);
     }
-  }, [user?.id, integrationConfig, getPrimaryStoreId]);
+  }, [user?.id, integrationConfig, plataforma, getPrimaryStoreId]);
 
   const handleStep1Next = () => {
     if (!storeName.trim()) { toast.error("Informe o nome da loja."); return; }
@@ -759,8 +858,17 @@ export default function Onboarding() {
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
 
-      // Onboarding complete — clear in-progress draft
-      try { if (user?.id) localStorage.removeItem(`onboarding_progress_${user.id}`); } catch { /* noop */ }
+      // Onboarding complete — clear in-progress draft (v2 + legado)
+      try {
+        if (progressStorageKey) localStorage.removeItem(progressStorageKey);
+        if (user?.id) {
+          localStorage.removeItem(`onboarding_progress_${user.id}`);
+          if (onboardingStoreId) {
+            localStorage.removeItem(`onboarding_progress_v2_${user.id}_${onboardingStoreId}`);
+          }
+          localStorage.removeItem(`onboarding_progress_v2_${user.id}_draft`);
+        }
+      } catch { /* noop */ }
 
       navigate("/analisando");
     } catch (e) {
@@ -833,7 +941,14 @@ export default function Onboarding() {
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Plataforma *</Label>
-                <Select value={plataforma} onValueChange={(v) => { setPlataforma(v); setIntegrationConfig({}); setIntegrationValid(false); setIntegrationError(null); }}>
+                <Select value={plataforma} onValueChange={(v) => {
+                  setPlataforma(v);
+                  setIntegrationConfig({});
+                  setIntegrationValid(false);
+                  setIntegrationError(null);
+                  setShowManualOAuthFallback(false);
+                  setAssistedStep(1);
+                }}>
                   <SelectTrigger className="h-12 rounded-xl bg-background/50 border-[#2E2E3E]">
                     <SelectValue placeholder="Selecione sua plataforma" />
                   </SelectTrigger>
@@ -881,9 +996,11 @@ export default function Onboarding() {
                 Integre sua loja
               </h1>
               <p className="text-muted-foreground max-w-lg mx-auto font-medium">
-                {isOAuth
-                  ? `Conecte com 1 clique — autorizamos via ${plataforma} diretamente.`
-                  : `A integração com o ${plataforma} permite que o diagnóstico use dados reais da sua loja.`}
+                {isAssisted
+                  ? "Conexão assistida: seguimos o passo a passo da sua plataforma — não é OAuth clássico."
+                  : isOAuth
+                    ? `Conecte com mínimo atrito — ${plataforma === "WooCommerce" ? "fluxo assistido no WooCommerce" : "autorização segura na plataforma"}.`
+                    : `A integração com o ${plataforma} permite que o diagnóstico use dados reais da sua loja.`}
               </p>
             </div>
 
@@ -895,10 +1012,14 @@ export default function Onboarding() {
                 <div>
                   <p className="font-bold text-sm">{plataforma}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {isOAuth ? "Conexão automática via OAuth" : "Preencha as credenciais da API"}
+                    {isAssisted
+                      ? "Conexão assistida (credenciais de API)"
+                      : isOAuth
+                        ? "Conexão automática / app auth"
+                        : "Preencha as credenciais da API"}
                   </p>
                 </div>
-                {platformInfo?.helpUrl && !isOAuth && (
+                {platformInfo?.helpUrl && (!isOAuth || showManualOAuthFallback) && !isAssisted && (
                   <a
                     href={platformInfo.helpUrl}
                     target="_blank"
@@ -908,10 +1029,52 @@ export default function Onboarding() {
                     Como obter? <ExternalLink className="w-3 h-3" />
                   </a>
                 )}
+                {platformInfo?.helpUrl && isAssisted && (
+                  <a
+                    href={platformInfo.helpUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1 transition-colors"
+                  >
+                    Documentação <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
               </div>
 
-              {/* ── OAuth Flow (Shopify / Nuvemshop / WooCommerce) ── */}
-              {isOAuth && !integrationValid && (
+              {isAssisted && !integrationValid && platformInfo && (
+                <div className="rounded-xl bg-amber-500/5 border border-amber-500/20 p-4 space-y-3">
+                  <p className="text-xs font-bold text-amber-400">Conexão assistida</p>
+                  <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+                    <li>
+                      Abra o painel da {plataforma} em outra aba e gere as chaves de API conforme a documentação.
+                      {plataforma === "VTEX" && " Depois volte aqui e cole Account name, App Key e App Token."}
+                      {plataforma === "Tray" && " Depois volte aqui e cole o API Address e o Access Token."}
+                    </li>
+                    <li>Preencha os campos abaixo e use &quot;Conectar e validar&quot; — testamos a API antes de guardar.</li>
+                    <li>Se o painel exigir URL de retorno ou webhook, use a Central de Integrações no dashboard após conectar.</li>
+                  </ol>
+                  <div className="flex gap-2 pt-1">
+                    {[1, 2, 3].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setAssistedStep(s)}
+                        className={cn(
+                          "text-[10px] font-black px-2 py-1 rounded-md border transition-colors",
+                          assistedStep === s
+                            ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                            : "border-[#2E2E3E] text-muted-foreground hover:border-amber-500/30",
+                        )}
+                      >
+                        Passo {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── OAuth / app-auth (Shopify / Nuvemshop / WooCommerce) ── */}
+              {isOAuth && !integrationValid && !showManualOAuthFallback && (
                 <>
                   {plataforma === "Shopify" && (
                     <div className="space-y-1.5">
@@ -927,8 +1090,25 @@ export default function Onboarding() {
                     </div>
                   )}
 
+                  {plataforma === "WooCommerce" && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        URL do site WooCommerce *
+                      </Label>
+                      <Input
+                        placeholder="https://sualoja.com.br"
+                        value={integrationConfig.site_url || ""}
+                        onChange={e => handleIntegrationFieldChange("site_url", e.target.value)}
+                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Usamos o endpoint oficial wc-auth. Se o seu host bloquear o fluxo, use &quot;Credenciais manuais&quot; abaixo.
+                      </p>
+                    </div>
+                  )}
+
                   <Button
-                    onClick={handleOAuthConnect}
+                    onClick={() => void handleOAuthConnect()}
                     disabled={oauthConnecting}
                     className="w-full h-14 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-base"
                   >
@@ -940,14 +1120,35 @@ export default function Onboarding() {
                   </Button>
 
                   <p className="text-[10px] text-muted-foreground text-center">
-                    Você será redirecionado para o {plataforma} para autorizar o acesso. Nenhuma senha é compartilhada.
+                    {plataforma === "WooCommerce"
+                      ? "Você será enviado ao WooCommerce para aprovar o app — em seguida retornamos ao onboarding."
+                      : `Você será redirecionado para o ${plataforma} para autorizar o acesso. Nenhuma senha da sua conta LTV Boost é compartilhada.`}
                   </p>
+
+                  {(plataforma === "Nuvemshop" || plataforma === "WooCommerce") && (
+                    <button
+                      type="button"
+                      className="w-full text-center text-[11px] text-violet-400 hover:underline"
+                      onClick={() => { setShowManualOAuthFallback(true); setIntegrationError(null); }}
+                    >
+                      Usar credenciais manuais (token / consumer key)
+                    </button>
+                  )}
                 </>
               )}
 
-              {/* ── Manual Flow (VTEX / Tray / Magento / Dizy) ── */}
-              {!isOAuth && platformInfo && (
+              {/* ── Manual Flow (inclui fallback OAuth e VTEX/Tray assistido) ── */}
+              {platformInfo && (!isOAuth || showManualOAuthFallback || isAssisted) && (
                 <>
+                  {isOAuth && showManualOAuthFallback && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-violet-400 hover:underline text-left"
+                      onClick={() => { setShowManualOAuthFallback(false); setIntegrationError(null); }}
+                    >
+                      Voltar ao fluxo automático
+                    </button>
+                  )}
                   {platformInfo.fields.map(field => (
                     <div key={field.key} className="space-y-1.5">
                       <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{field.label}</Label>
@@ -1477,10 +1678,21 @@ export default function Onboarding() {
             <button
               onClick={() => {
                 if (!confirm("Tem certeza que deseja resetar todos os dados do onboarding? Esta ação não pode ser desfeita.")) return;
-                try { if (user?.id) localStorage.removeItem(`onboarding_progress_${user.id}`); } catch { /* noop */ }
+                try {
+                  if (user?.id) {
+                    localStorage.removeItem(`onboarding_progress_${user.id}`);
+                    localStorage.removeItem(`onboarding_progress_v2_${user.id}_draft`);
+                    if (onboardingStoreId) {
+                      localStorage.removeItem(`onboarding_progress_v2_${user.id}_${onboardingStoreId}`);
+                    }
+                  }
+                  if (progressStorageKey) localStorage.removeItem(progressStorageKey);
+                } catch { /* noop */ }
                 setStep(1);
                 setStoreName(""); setStoreUrl(""); setVertical(null); setPlataforma("");
                 setIntegrationConfig({}); setIntegrationValid(false); setIntegrationError(null);
+                setShowManualOAuthFallback(false);
+                setAssistedStep(1);
                 setFaturamento(""); setTicketMedio("250"); setNumClientes("");
                 setVisitantes(""); setCarrinho(""); setCheckout(""); setPedidos("");
                 setMetaConversao("2.5"); setMetricsImported(false); setMetricsFetched(false);

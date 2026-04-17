@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, errorResponse, jsonResponse, verifyJwt } from "../_shared/edge-utils.ts";
+import {
+  invokePostIntegrationSetupFromCallback,
+  invokeRegisterWebhooksFromCallback,
+} from "../_shared/internal-callback.ts";
 
 const NS_CLIENT_ID = Deno.env.get("NUVEMSHOP_CLIENT_ID") ?? "";
 const NS_CLIENT_SECRET = Deno.env.get("NUVEMSHOP_CLIENT_SECRET") ?? "";
@@ -7,9 +11,18 @@ const APP_URL = Deno.env.get("APP_URL") ?? "https://ltvboost.lovable.app";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+function logOAuth(
+  requestId: string,
+  phase: "start" | "callback" | "persist",
+  fields: Record<string, unknown>,
+) {
+  console.log(JSON.stringify({ request_id: requestId, platform: "nuvemshop", phase, ...fields }));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
@@ -29,7 +42,10 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
     );
     const { error: aclErr } = await authClient.rpc("assert_store_access", { p_store_id: storeId });
-    if (aclErr) return errorResponse("Forbidden: store access denied", 403);
+    if (aclErr) {
+      logOAuth(requestId, "start", { store_id: storeId, ok: false, detail: "store_access_denied" });
+      return errorResponse("Forbidden: store access denied", 403);
+    }
 
     const stateToken = crypto.randomUUID();
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -43,6 +59,7 @@ Deno.serve(async (req) => {
     const callbackUrl = `${SUPABASE_URL}/functions/v1/oauth-nuvemshop?action=callback`;
     const authUrl = `https://www.tiendanube.com/apps/${NS_CLIENT_ID}/authorize?state=${stateToken}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
 
+    logOAuth(requestId, "start", { store_id: storeId, ok: true });
     return jsonResponse({ url: authUrl });
   }
 
@@ -70,7 +87,9 @@ Deno.serve(async (req) => {
     });
 
     if (!tokenRes.ok) {
-      console.error("[oauth-nuvemshop] token exchange failed:", await tokenRes.text());
+      const errTxt = await tokenRes.text();
+      logOAuth(requestId, "callback", { store_id: st.store_id, ok: false, detail: errTxt.slice(0, 200) });
+      console.error("[oauth-nuvemshop] token exchange failed:", errTxt);
       return new Response(redirectHtml(APP_URL, false, "Falha na troca de código"), {
         status: 200, headers: { "Content-Type": "text/html" },
       });
@@ -86,13 +105,16 @@ Deno.serve(async (req) => {
         name: "Nuvemshop",
         config: { user_id: String(tokenData.user_id), access_token: tokenData.access_token },
         is_active: true,
+        connection_mode: "oauth",
+        connection_status: "connected",
       },
       { onConflict: "store_id,type" }
     );
 
-    admin.functions.invoke("post-integration-setup", {
-      body: { store_id: st.store_id, platform: "nuvemshop" },
-    }).catch(() => {});
+    logOAuth(requestId, "callback", { store_id: st.store_id, ok: true, detail: "persisted" });
+
+    invokePostIntegrationSetupFromCallback(st.user_id).catch(() => {});
+    invokeRegisterWebhooksFromCallback(st.store_id, st.user_id, "nuvemshop").catch(() => {});
 
     return new Response(redirectHtml(APP_URL, true), {
       status: 200, headers: { "Content-Type": "text/html" },

@@ -299,6 +299,8 @@ export default function WhatsApp() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_bundle_v2"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_connections_status"] });
       setInstanceName("");
       setShowForm(false);
       toast({
@@ -334,6 +336,8 @@ export default function WhatsApp() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_bundle_v2"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_connections_status"] });
       setShowApiConfig(false);
       toast({ title: "Configurações atualizadas", description: "Apenas a conexão selecionada foi alterada." });
     },
@@ -353,6 +357,8 @@ export default function WhatsApp() {
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_bundle_v2"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_connections_status"] });
       toast({
         title: "Meta validado",
         description: res.data?.display_phone_number
@@ -380,6 +386,8 @@ export default function WhatsApp() {
     onSuccess: () => {
       setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ["whatsapp_connections"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_bundle_v2"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_connections_status"] });
       toast({ title: "Instância removida" });
     },
     onError: (e: Error) =>

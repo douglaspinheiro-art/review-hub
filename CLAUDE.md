@@ -116,6 +116,8 @@ LTV Boost is a WhatsApp marketing SaaS for Brazilian e-commerces. The app has tw
 
 Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, **`stripe-webhook`**, **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, `sync-funil-ga4`, `data-pipeline-cron`, and others present in the repo.
 
+- **OAuth / integrações e-commerce:** definir `EDGE_INTERNAL_CALLBACK_SECRET` (valor forte, só servidor) nas Secrets do Supabase. O mesmo segredo é enviado no header `x-internal-secret` quando as funções `oauth-shopify`, `oauth-nuvemshop` e `oauth-woocommerce` chamam `post-integration-setup` e `register-webhooks` após o callback (sem JWT do browser). Sem esse secret, a integração ainda é persistida, mas o seed de jornadas e o registo automático de webhooks podem falhar em silêncio nos logs.
+
 ### Dados operacionais (funil GA4 + qualidade)
 
 - **Migração:** `supabase/migrations/20260410140000_operational_data_blueprint.sql` — `funil_diario`, `data_quality_snapshots`, `v_orders_net_revenue`, colunas extras em `orders_v3`, `abandon_step`, etc.

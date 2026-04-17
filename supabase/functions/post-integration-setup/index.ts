@@ -8,8 +8,71 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 function cors(): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": Deno.env.get("INTEGRATIONS_CORS_ORIGIN") ?? "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-internal-secret",
   };
+}
+
+async function runSeeding(
+  client: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ automationsSeeded: boolean; journeysStoresSeeded: number }> {
+  let automationsSeeded = false;
+  const { count: autoCount, error: autoCountErr } = await client
+    .from("automations")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (autoCountErr) throw autoCountErr;
+
+  if ((autoCount ?? 0) === 0) {
+    const rows = AUTOMATION_SEED.map((a) => ({
+      user_id: userId,
+      name: a.name,
+      trigger: a.trigger,
+      message_template: a.message_template,
+      delay_minutes: a.delay_minutes,
+      is_active: a.is_active,
+    }));
+    const { error: insAuto } = await client.from("automations").insert(rows);
+    if (insAuto) throw insAuto;
+    automationsSeeded = true;
+  }
+
+  const { data: stores, error: storesErr } = await client
+    .from("stores")
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (storesErr) throw storesErr;
+
+  let journeysStoresSeeded = 0;
+  const nowIso = new Date().toISOString();
+
+  for (const row of stores ?? []) {
+    const { count: jc, error: jcErr } = await client
+      .from("journeys_config")
+      .select("id", { count: "exact", head: true })
+      .eq("store_id", row.id);
+
+    if (jcErr) throw jcErr;
+    if ((jc ?? 0) > 0) continue;
+
+    const jrows = JOURNEY_SEED.map((j) => ({
+      ...j,
+      store_id: row.id,
+      kpi_atual: 0,
+      updated_at: nowIso,
+    }));
+    const { error: upErr } = await client.from("journeys_config").upsert(jrows, {
+      onConflict: "store_id,tipo_jornada",
+    });
+    if (upErr) throw upErr;
+    journeysStoresSeeded += 1;
+  }
+
+  return { automationsSeeded, journeysStoresSeeded };
 }
 
 const AUTOMATION_SEED: {
@@ -160,6 +223,49 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY");
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const internalSecret = Deno.env.get("EDGE_INTERNAL_CALLBACK_SECRET");
+  const incomingSecret = req.headers.get("x-internal-secret") ?? "";
+
+  // OAuth / server callbacks (no browser JWT)
+  if (
+    req.method === "POST" &&
+    internalSecret &&
+    incomingSecret === internalSecret &&
+    serviceRole &&
+    supabaseUrl
+  ) {
+    try {
+      const body = await req.json().catch(() => ({})) as { user_id?: string };
+      const userId = body.user_id;
+      if (!userId || typeof userId !== "string") {
+        return new Response(JSON.stringify({ ok: false, detail: "user_id obrigatório" }), {
+          status: 400,
+          headers: { ...c, "Content-Type": "application/json" },
+        });
+      }
+      const admin = createClient(supabaseUrl, serviceRole);
+      const { data: authUser, error: authLookupErr } = await admin.auth.admin.getUserById(userId);
+      if (authLookupErr || !authUser?.user) {
+        return new Response(JSON.stringify({ ok: false, detail: "user_id inválido" }), {
+          status: 403,
+          headers: { ...c, "Content-Type": "application/json" },
+        });
+      }
+      const { automationsSeeded, journeysStoresSeeded } = await runSeeding(admin, userId);
+      return new Response(
+        JSON.stringify({ ok: true, automationsSeeded, journeysStoresSeeded }),
+        { status: 200, headers: { ...c, "Content-Type": "application/json" } },
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(JSON.stringify({ ok: false, detail: msg }), {
+        status: 500,
+        headers: { ...c, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const authHeader = req.headers.get("Authorization") ?? "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
 
@@ -183,60 +289,7 @@ serve(async (req) => {
   }
 
   try {
-    let automationsSeeded = false;
-    const { count: autoCount, error: autoCountErr } = await sb
-      .from("automations")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id);
-
-    if (autoCountErr) throw autoCountErr;
-
-    if ((autoCount ?? 0) === 0) {
-      const rows = AUTOMATION_SEED.map((a) => ({
-        user_id: user.id,
-        name: a.name,
-        trigger: a.trigger,
-        message_template: a.message_template,
-        delay_minutes: a.delay_minutes,
-        is_active: a.is_active,
-      }));
-      const { error: insAuto } = await sb.from("automations").insert(rows);
-      if (insAuto) throw insAuto;
-      automationsSeeded = true;
-    }
-
-    const { data: stores, error: storesErr } = await sb
-      .from("stores")
-      .select("id")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true });
-
-    if (storesErr) throw storesErr;
-
-    let journeysStoresSeeded = 0;
-    const nowIso = new Date().toISOString();
-
-    for (const row of stores ?? []) {
-      const { count: jc, error: jcErr } = await sb
-        .from("journeys_config")
-        .select("id", { count: "exact", head: true })
-        .eq("store_id", row.id);
-
-      if (jcErr) throw jcErr;
-      if ((jc ?? 0) > 0) continue;
-
-      const jrows = JOURNEY_SEED.map((j) => ({
-        ...j,
-        store_id: row.id,
-        kpi_atual: 0,
-        updated_at: nowIso,
-      }));
-      const { error: upErr } = await sb.from("journeys_config").upsert(jrows, {
-        onConflict: "store_id,tipo_jornada",
-      });
-      if (upErr) throw upErr;
-      journeysStoresSeeded += 1;
-    }
+    const { automationsSeeded, journeysStoresSeeded } = await runSeeding(sb, user.id);
 
     return new Response(
       JSON.stringify({ ok: true, automationsSeeded, journeysStoresSeeded }),

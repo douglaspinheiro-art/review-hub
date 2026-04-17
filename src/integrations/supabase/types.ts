@@ -2046,6 +2046,8 @@ export type Database = {
         Row: {
           config: Json
           config_json: Json | null
+          connection_mode: string | null
+          connection_status: string | null
           created_at: string
           id: string
           is_active: boolean
@@ -2061,6 +2063,8 @@ export type Database = {
         Insert: {
           config?: Json
           config_json?: Json | null
+          connection_mode?: string | null
+          connection_status?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -2076,6 +2080,8 @@ export type Database = {
         Update: {
           config?: Json
           config_json?: Json | null
+          connection_mode?: string | null
+          connection_status?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
