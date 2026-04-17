@@ -247,7 +247,14 @@ export default function Onboarding() {
     if (!platformInfo || !integrationValid) return;
     setMetricsLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
+      let { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
+      // Retry once after a short delay if integration row was just persisted
+      if (error) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const retry = await supabase.functions.invoke("fetch-store-metrics", {});
+        data = retry.data;
+        error = retry.error;
+      }
       if (error) throw error;
       if (!data || typeof data !== "object") throw new Error("empty");
 
