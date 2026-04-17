@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-import { corsHeaders, checkRateLimit, rateLimitedResponse, anthropicFetch } from "../_shared/edge-utils.ts";
+import { corsHeaders, checkRateLimit, rateLimitedResponse, anthropicFetch, verifyJwt, errorResponse } from "../_shared/edge-utils.ts";
 import { ANALYTICS_DAILY_WEEK_SELECT } from "../_shared/db-select-fragments.ts";
 
 const BodySchema = z.object({ store_id: z.string().uuid() });
@@ -10,6 +10,10 @@ const BodySchema = z.object({ store_id: z.string().uuid() });
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    // P0: Validate JWT before doing anything
+    const auth = await verifyJwt(req);
+    if (!auth.ok) return auth.response;
+
     const body = await req.json();
     const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
@@ -17,11 +21,21 @@ serve(async (req) => {
     }
     const { store_id } = parsed.data;
 
-    if (!checkRateLimit(`relatorio-semanal:${store_id}`, 10, 60_000)) {
+    if (!checkRateLimit(`relatorio-semanal:${auth.userId}:${store_id}`, 10, 60_000)) {
       return rateLimitedResponse();
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+
+    // P0: Ownership check via RPC (covers owner + active team members)
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+    );
+    const { error: aclErr } = await authClient.rpc("assert_store_access", { p_store_id: store_id });
+    if (aclErr) return errorResponse("Forbidden: store access denied", 403);
+
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
     const { data: analytics } = await supabase
