@@ -41,7 +41,7 @@ import {
   verifyYampiHmac,
 } from "../_shared/normalize-webhook.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
-import { isOrderPaid, type SignaturePlatform } from "../_shared/order-payment-status.ts";
+import { isOrderPaid } from "../_shared/order-payment-status.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
