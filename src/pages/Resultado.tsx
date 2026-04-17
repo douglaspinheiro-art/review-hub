@@ -69,17 +69,20 @@ export default function Resultado() {
         .limit(1)
         .maybeSingle();
 
-      if (diagData) {
-        setDiagnostic(diagData.diagnostic_json as DiagnosticData);
-        setChs(diagData.chs ?? 47);
-        setChsLabel(diagData.chs_label ?? "Regular");
-        const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
-        if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
+      if (!diagData) {
+        navigate("/diagnostico", { replace: true });
+        return;
       }
+
+      setDiagnostic(diagData.diagnostic_json as DiagnosticData);
+      setChs(diagData.chs ?? 47);
+      setChsLabel(diagData.chs_label ?? "Regular");
+      const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
+      if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
       setLoading(false);
       void trackFunnelEvent({
         event: "diagnostic_viewed",
-        metadata: { has_diagnostic: !!diagData, chs: diagData?.chs ?? null },
+        metadata: { has_diagnostic: true, chs: diagData?.chs ?? null },
       });
     }
 
