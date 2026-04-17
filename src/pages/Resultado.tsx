@@ -69,17 +69,20 @@ export default function Resultado() {
         .limit(1)
         .maybeSingle();
 
-      if (diagData) {
-        setDiagnostic(diagData.diagnostic_json as DiagnosticData);
-        setChs(diagData.chs ?? 47);
-        setChsLabel(diagData.chs_label ?? "Regular");
-        const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
-        if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
+      if (!diagData) {
+        navigate("/diagnostico", { replace: true });
+        return;
       }
+
+      setDiagnostic(diagData.diagnostic_json as DiagnosticData);
+      setChs(diagData.chs ?? 47);
+      setChsLabel(diagData.chs_label ?? "Regular");
+      const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
+      if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
       setLoading(false);
       void trackFunnelEvent({
         event: "diagnostic_viewed",
-        metadata: { has_diagnostic: !!diagData, chs: diagData?.chs ?? null },
+        metadata: { has_diagnostic: true, chs: diagData?.chs ?? null },
       });
     }
 
@@ -316,25 +319,6 @@ export default function Resultado() {
           </div>
         )}
 
-        {/* No diagnostic fallback — real empty state, no fake numbers */}
-        {!diagnostic && (
-          <div className="text-center space-y-6 py-16 border border-dashed border-[#1E1E2E] rounded-3xl">
-            <Sparkles className="w-12 h-12 text-muted-foreground mx-auto" />
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold font-syne tracking-tighter">Você ainda não rodou um diagnóstico</h2>
-              <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Em 60 segundos, a IA analisa seu funil real e mostra exatamente onde está perdendo receita.
-              </p>
-            </div>
-            <Button
-              size="lg"
-              onClick={() => navigate("/diagnostico")}
-              className="font-black rounded-xl gap-2"
-            >
-              Rodar diagnóstico agora <ArrowRight className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
 
         {/* Plan recommendation block — hidden when user already has an active plan */}
         {!isActive && diagnostic && (
