@@ -268,6 +268,27 @@ export default function Integracoes() {
     },
   });
 
+  const dizyBackfillMutation = useMutation({
+    mutationFn: async (storeId: string) => {
+      const { data, error } = await supabase.functions.invoke<{ ok: boolean; error?: string; importedOrders?: number; fetched?: number }>(
+        "sync-dizy-orders?backfill=90",
+        { body: { store_id: storeId } },
+      );
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "Falha ao sincronizar histórico Dizy");
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success("Sincronização iniciada", {
+        description: `${data.importedOrders ?? 0} novos pedidos importados (de ${data.fetched ?? 0} encontrados).`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+    },
+    onError: (err: Error) => {
+      toast.error("Erro ao sincronizar Dizy", { description: err.message });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("integrations").delete().eq("id", id);
