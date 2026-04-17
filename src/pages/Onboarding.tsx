@@ -247,7 +247,14 @@ export default function Onboarding() {
     if (!platformInfo || !integrationValid) return;
     setMetricsLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
+      let { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
+      // Retry once after a short delay if integration row was just persisted
+      if (error) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const retry = await supabase.functions.invoke("fetch-store-metrics", {});
+        data = retry.data;
+        error = retry.error;
+      }
       if (error) throw error;
       if (!data || typeof data !== "object") throw new Error("empty");
 
@@ -405,7 +412,7 @@ export default function Onboarding() {
               .maybeSingle();
             const storeId = storeRow?.id;
             if (storeId) {
-              await supabase.from("integrations").upsert(
+              const { error: upsertErr } = await supabase.from("integrations").upsert(
                 {
                   user_id: user.id,
                   store_id: storeId,
@@ -416,9 +423,16 @@ export default function Onboarding() {
                 },
                 { onConflict: "store_id,type" }
               );
-              supabase.functions
-                .invoke("post-integration-setup", { body: { store_id: storeId, platform: platformInfo.type } })
-                .catch(() => {});
+              if (upsertErr) {
+                console.error("Persist integration failed:", upsertErr);
+                toast.error("Conectado, mas não foi possível salvar. Tente novamente.");
+              } else {
+                supabase.functions
+                  .invoke("post-integration-setup", { body: { store_id: storeId, platform: platformInfo.type } })
+                  .catch(() => {});
+              }
+            } else {
+              console.warn("No store found for user; integration not persisted");
             }
           }
         } catch (persistErr) {
