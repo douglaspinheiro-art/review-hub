@@ -31,10 +31,12 @@ export default function Signup() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Fix 4: redirect already-authenticated users
+  // If already logged in, do NOT just push to /dashboard — could throw a paying
+  // user back into a paywall loop or skip onboarding. Send them to /login which
+  // resolves the right next step.
   useEffect(() => {
     if (!authLoading && user) {
-      navigate("/dashboard", { replace: true });
+      navigate("/login", { replace: true });
     }
   }, [user, authLoading, navigate]);
 

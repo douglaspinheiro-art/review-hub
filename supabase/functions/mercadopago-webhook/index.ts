@@ -201,10 +201,12 @@ serve(async (req) => {
       if (status === "approved") {
         if (plan) patch.plan = plan;
         if (mpCustomerId) patch.mp_customer_id = mpCustomerId;
+        patch.subscription_status = "active";
         console.log(`[mp-webhook] payment approved for user ${userId}, plan: ${plan}`);
       } else if (status === "cancelled" || status === "refunded" || status === "rejected") {
         patch.plan = "starter";
         patch.mp_subscription_id = null;
+        patch.subscription_status = status === "rejected" ? "past_due" : "canceled";
         console.log(`[mp-webhook] payment ${status} for user ${userId}, downgrade to starter`);
       } else {
         console.log(`[mp-webhook] payment status ${status} for user ${userId}, no action`);
@@ -244,9 +246,11 @@ serve(async (req) => {
           if (status === "authorized" || status === "active") {
             patch.mp_subscription_id = sub.id;
             if (resolvedPlan) patch.plan = resolvedPlan;
+            patch.subscription_status = "active";
             console.log(`[mp-webhook] subscription ${status} for user ${userId}, plan: ${resolvedPlan}`);
           } else if (status === "cancelled" || status === "paused") {
             patch.mp_subscription_id = null;
+            patch.subscription_status = status === "paused" ? "past_due" : "canceled";
             if (status === "cancelled") patch.plan = "starter";
             console.log(`[mp-webhook] subscription ${status} for user ${userId}`);
           }
