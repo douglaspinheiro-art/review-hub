@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
+import { getMetaAppId } from "@/lib/whatsapp/meta-app-config";
 
 export default function Setup() {
   const navigate = useNavigate();
@@ -23,8 +24,6 @@ export default function Setup() {
   const [userStoreId, setUserStoreId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
-
-  const metaAppId = import.meta.env.VITE_META_APP_ID as string | undefined;
 
   useEffect(() => {
     if (!user?.id) return;
@@ -41,16 +40,13 @@ export default function Setup() {
   }, [user?.id]);
 
   const handleConnectWhatsApp = useCallback(async () => {
-    if (!metaAppId) {
-      toast.error("META_APP_ID not configured.");
-      return;
-    }
     if (!userStoreId) {
       toast.error("Store not found. Please go back to onboarding.");
       return;
     }
     setWaConnecting(true);
     try {
+      const metaAppId = await getMetaAppId();
       const result = await launchEmbeddedSignup({
         appId: metaAppId,
         storeId: userStoreId,
@@ -62,12 +58,12 @@ export default function Setup() {
       } else {
         toast.error(result.error || "Could not connect.");
       }
-    } catch {
-      toast.error("Error connecting WhatsApp. Try again.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error connecting WhatsApp. Try again.");
     } finally {
       setWaConnecting(false);
     }
-  }, [metaAppId, userStoreId]);
+  }, [userStoreId]);
 
   const handleGoToDashboard = async () => {
     setIsLaunching(true);

@@ -33,6 +33,7 @@ import {
   shouldWarnIncompleteSetup,
 } from "@/lib/whatsapp/connection-ui";
 import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
+import { getMetaAppId } from "@/lib/whatsapp/meta-app-config";
 
 type Connection = {
   id: string;
@@ -96,17 +97,13 @@ export default function WhatsApp() {
   const queryClient = useQueryClient();
 
   const handleEmbeddedSignup = useCallback(async () => {
-    const metaAppIdVal = (import.meta.env.VITE_META_APP_ID as string | undefined);
-    if (!metaAppIdVal) {
-      toast({ title: "META_APP_ID não configurado", description: "Defina VITE_META_APP_ID no build.", variant: "destructive" });
-      return;
-    }
     if (!selectedStoreId) {
       toast({ title: "Selecione uma loja primeiro", variant: "destructive" });
       return;
     }
     setEmbeddedSignupLoading(true);
     try {
+      const metaAppIdVal = await getMetaAppId();
       const result = await launchEmbeddedSignup({
         appId: metaAppIdVal,
         storeId: selectedStoreId,
