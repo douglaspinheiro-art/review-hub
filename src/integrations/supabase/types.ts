@@ -91,6 +91,9 @@ export type Database = {
           store_id: string | null
           updated_at: string
           user_id: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
         }
         Insert: {
           abandon_step?: string | null
@@ -115,6 +118,9 @@ export type Database = {
           store_id?: string | null
           updated_at?: string
           user_id?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Update: {
           abandon_step?: string | null
@@ -139,6 +145,9 @@ export type Database = {
           store_id?: string | null
           updated_at?: string
           user_id?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Relationships: [
           {
@@ -1159,11 +1168,14 @@ export type Database = {
       conversations: {
         Row: {
           assigned_to: string | null
+          assigned_to_name: string | null
           contact_id: string
           created_at: string
           id: string
           last_message: string | null
           last_message_at: string | null
+          priority: string
+          sla_due_at: string | null
           status: string
           store_id: string | null
           unread_count: number
@@ -1172,11 +1184,14 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          assigned_to_name?: string | null
           contact_id: string
           created_at?: string
           id?: string
           last_message?: string | null
           last_message_at?: string | null
+          priority?: string
+          sla_due_at?: string | null
           status?: string
           store_id?: string | null
           unread_count?: number
@@ -1185,11 +1200,14 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          assigned_to_name?: string | null
           contact_id?: string
           created_at?: string
           id?: string
           last_message?: string | null
           last_message_at?: string | null
+          priority?: string
+          sla_due_at?: string | null
           status?: string
           store_id?: string | null
           unread_count?: number
@@ -3955,9 +3973,11 @@ export type Database = {
           ga4_token_expires_at: string | null
           high_ticket_threshold_brl: number | null
           id: string
+          meta_conversao: number
           name: string
           pix_key: string | null
           segment: string | null
+          ticket_medio: number
           updated_at: string | null
           user_id: string
         }
@@ -3973,9 +3993,11 @@ export type Database = {
           ga4_token_expires_at?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
+          meta_conversao?: number
           name: string
           pix_key?: string | null
           segment?: string | null
+          ticket_medio?: number
           updated_at?: string | null
           user_id: string
         }
@@ -3991,9 +4013,11 @@ export type Database = {
           ga4_token_expires_at?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
+          meta_conversao?: number
           name?: string
           pix_key?: string | null
           segment?: string | null
+          ticket_medio?: number
           updated_at?: string | null
           user_id?: string
         }
