@@ -2000,6 +2000,39 @@ export type Database = {
           },
         ]
       }
+      funnel_telemetry_events: {
+        Row: {
+          created_at: string
+          event_name: string
+          id: string
+          metadata: Json
+          recommended_plan: string | null
+          route: string | null
+          selected_plan: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_name: string
+          id?: string
+          metadata?: Json
+          recommended_plan?: string | null
+          route?: string | null
+          selected_plan?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_name?: string
+          id?: string
+          metadata?: Json
+          recommended_plan?: string | null
+          route?: string | null
+          selected_plan?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       inbox_routing_settings: {
         Row: {
           agent_names: string[]
