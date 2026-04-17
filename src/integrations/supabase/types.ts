@@ -944,7 +944,7 @@ export type Database = {
           plataforma: string | null
           reputacao_json: Json | null
           status_sync: string | null
-          store_id: string | null
+          store_id: string
           tipo: string
           user_id: string
         }
@@ -959,7 +959,7 @@ export type Database = {
           plataforma?: string | null
           reputacao_json?: Json | null
           status_sync?: string | null
-          store_id?: string | null
+          store_id: string
           tipo: string
           user_id: string
         }
@@ -974,7 +974,7 @@ export type Database = {
           plataforma?: string | null
           reputacao_json?: Json | null
           status_sync?: string | null
-          store_id?: string | null
+          store_id?: string
           tipo?: string
           user_id?: string
         }

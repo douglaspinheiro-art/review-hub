@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { INTEGRATIONS_LIST_SELECT } from "@/lib/supabase-select-fragments";
@@ -139,11 +140,14 @@ function formatConnectedSubtitle(integration: Integration): string | null {
 
 export default function Integracoes() {
   const { user } = useAuth();
+  const scope = useStoreScope();
   const queryClient = useQueryClient();
   const [connecting, setConnecting] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [validationState, setValidationState] = useState<{ status: "idle" | "validating" | "success" | "error"; detail: string }>({ status: "idle", detail: "" });
   const [disconnectTarget, setDisconnectTarget] = useState<Integration | null>(null);
+
+  const activeStoreId = scope.activeStoreId;
 
   const {
     data: integrations = [],
@@ -153,17 +157,18 @@ export default function Integracoes() {
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ["integrations", user?.id ?? null],
+    queryKey: ["integrations", user?.id ?? null, activeStoreId ?? ""],
     queryFn: async () => {
-      const { data, error: qError } = await supabase
+      let query = supabase
         .from("integrations")
         .select(INTEGRATIONS_LIST_SELECT)
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false });
+        .eq("user_id", user!.id);
+      if (activeStoreId) query = query.eq("store_id", activeStoreId);
+      const { data, error: qError } = await query.order("created_at", { ascending: false });
       if (qError) throw new Error(qError.message);
       return (data ?? []) as Integration[];
     },
-    enabled: !!user,
+    enabled: !!user && !!activeStoreId,
   });
 
   const interestMutation = useMutation({
@@ -184,6 +189,13 @@ export default function Integracoes() {
 
   const validateAndConnect = useMutation({
     mutationFn: async ({ type, name }: { type: string; name: string }) => {
+      const storeId = scope.activeStoreId;
+      if (!storeId) {
+        const detail = "Selecione uma loja ativa antes de conectar a integração.";
+        setValidationState({ status: "error", detail });
+        throw new Error(detail);
+      }
+
       setValidationState({ status: "validating", detail: "Testando conexão..." });
       const { data: valResult, error: valError } = await supabase.functions.invoke("validate-integration", {
         body: { type, config: formData },
@@ -197,19 +209,12 @@ export default function Integracoes() {
 
       setValidationState({ status: "success", detail: (valResult as { detail?: string }).detail ?? "" });
 
-      const { data: allStores } = await supabase
-        .from("stores")
-        .select("id")
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: true });
-
-      const storeId = allStores?.[0]?.id ?? null;
-
       const { data: existingRow } = await supabase
         .from("integrations")
         .select("id")
         .eq("user_id", user!.id)
         .eq("type", type)
+        .eq("store_id", storeId)
         .maybeSingle();
 
       const now = new Date().toISOString();
