@@ -73,6 +73,10 @@ export default function Resultado() {
         setChsLabel(diagData.chs_label ?? "Regular");
       }
       setLoading(false);
+      void trackFunnelEvent({
+        event: "diagnostic_viewed",
+        metadata: { has_diagnostic: !!diagData, chs: diagData?.chs ?? null },
+      });
     }
 
     fetchDiagnostic();
