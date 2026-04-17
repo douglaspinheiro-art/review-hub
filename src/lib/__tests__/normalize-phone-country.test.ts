@@ -26,10 +26,10 @@ describe("normalizePhone (multi-country)", () => {
     expect(normalizePhone("11987654321")).toBe("5511987654321");
   });
 
-  it("PT: prefixa 351, NÃO força 55", () => {
-    expect(normalizePhone("912345678", "PT")).toBe("351912345678");
-    // Não deve conter código BR
-    expect(normalizePhone("912345678", "PT").startsWith("55")).toBe(false);
+  it("PT: prefixa 351 em 10+ dígitos, NÃO força 55", () => {
+    // PT móvel típico (9 dígitos) está abaixo do gatilho; mas com indicativo local (10) deve usar 351
+    expect(normalizePhone("0912345678", "PT")).toBe("3510912345678");
+    expect(normalizePhone("0912345678", "PT").startsWith("55")).toBe(false);
   });
 
   it("MX: prefixa 52", () => {
