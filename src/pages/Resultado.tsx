@@ -102,6 +102,17 @@ export default function Resultado() {
   });
   const recommendedPlan = PLANS[recommendation.tier];
 
+  useEffect(() => {
+    if (!loading && diagnostic) {
+      void trackFunnelEvent({
+        event: "plan_recommended",
+        recommendedPlan: recommendation.tier,
+        metadata: { chs, perdaMensal },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, recommendation.tier]);
+
   const handleActivate = () => {
     void trackFunnelEvent({
       event: "checkout_started",
