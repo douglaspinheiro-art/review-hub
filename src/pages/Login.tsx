@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import { getNextStep } from "@/lib/next-step";
 
 const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
@@ -27,21 +28,32 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoverySent, setRecoverySent] = useState(false);
-  const { signIn, user, loading: authLoading } = useAuth();
+  const { signIn, user, profile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  // Sanitize the redirect target: only allow relative paths starting with "/" to
-  // prevent open redirect attacks via manipulated location.state.
   const rawFrom = (location.state as { from?: string } | null)?.from;
-  const from = rawFrom?.startsWith("/") && !rawFrom.startsWith("//") ? rawFrom : "/dashboard";
+  const from = rawFrom?.startsWith("/") && !rawFrom.startsWith("//") ? rawFrom : null;
 
-  // Utilizador já autenticado: respeitar `from` (ex.: /aceitar-convite?token=…)
+  // Resolve "next step" centrally so we don't drop a paying user back into onboarding
+  // and don't dump a diagnostic-only user into /dashboard.
+  async function resolveAndNavigate(userId: string) {
+    const { data } = await supabase
+      .from("diagnostics_v3")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    const next = from ?? getNextStep({ profile, hasDiagnostic: !!data });
+    navigate(next, { replace: true });
+  }
+
   useEffect(() => {
     if (!authLoading && user) {
-      navigate(from, { replace: true });
+      void resolveAndNavigate(user.id);
     }
-  }, [user, authLoading, navigate, from]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, profile?.subscription_status, profile?.onboarding_completed]);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
@@ -53,7 +65,7 @@ export default function Login() {
 
   async function onSubmit(data: LoginData) {
     setLoading(true);
-    const { error } = await signIn(data.email, data.password);
+    const { error, data: signInData } = await signIn(data.email, data.password);
     setLoading(false);
     if (error) {
       toast({
@@ -65,7 +77,9 @@ export default function Login() {
       });
       return;
     }
-    navigate(from, { replace: true });
+    if (signInData?.user?.id) {
+      await resolveAndNavigate(signInData.user.id);
+    }
   }
 
   // Fix 2: password recovery via Supabase

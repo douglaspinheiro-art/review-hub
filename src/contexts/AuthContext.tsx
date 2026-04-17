@@ -3,6 +3,8 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { PROFILE_SESSION_SELECT } from "@/lib/supabase-select-fragments";
 
+export type SubscriptionStatus = "diagnostic_only" | "active" | "past_due" | "canceled";
+
 export interface Profile {
   id: string;
   full_name: string | null;
@@ -11,6 +13,8 @@ export interface Profile {
   role: "user" | "admin";
   trial_ends_at: string | null;
   onboarding_completed: boolean;
+  /** Paywall state: only "active" unlocks /setup and /dashboard/*. */
+  subscription_status: SubscriptionStatus;
   ia_negotiation_enabled: boolean | null;
   ia_max_discount_pct: number | null;
   social_proof_enabled: boolean | null;
@@ -87,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: "user",
         trial_ends_at: null,
         onboarding_completed: false,
+        subscription_status: "diagnostic_only",
         ia_negotiation_enabled: false,
         ia_max_discount_pct: 0,
         social_proof_enabled: false,
@@ -156,7 +161,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Do NOT trust plan data from a synthetic profile — block premium features
   // until the real profile loads (auto-retry fires every 30s after a DB failure).
-  const isPaid = !!profile && profile.plan !== "starter" && !profileFallbackUsed;
+  // Paywall: only `subscription_status === "active"` unlocks paid surfaces.
+  const isPaid =
+    !!profile && profile.subscription_status === "active" && !profileFallbackUsed;
 
   const value = {
     user,

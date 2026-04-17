@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Check, X, MessageCircle, Zap, Users, Mail, Smartphone,
 } from "lucide-react";
@@ -111,6 +111,13 @@ export default function Planos({
   const [tab, setTab] = useState<"planos" | "simulador">(() =>
     defaultTab === "simulador" ? "simulador" : "planos"
   );
+  const [searchParams] = useSearchParams();
+  const recommendedParam = searchParams.get("recommended");
+  const fromDiagnostico = searchParams.get("from") === "diagnostico";
+  const recommendedKey: PlanKey | null =
+    recommendedParam === "growth" || recommendedParam === "scale" || recommendedParam === "starter"
+      ? recommendedParam
+      : null;
 
   return (
     <div className={cn("flex flex-col bg-background", embedInDashboard ? "min-h-0" : "min-h-screen")}>
@@ -150,10 +157,20 @@ export default function Planos({
             </TabsContent>
 
             <TabsContent value="planos" className="mt-0 space-y-10 outline-none">
+          {fromDiagnostico && recommendedKey && (
+            <div className="max-w-3xl mx-auto bg-primary/10 border border-primary/30 rounded-2xl p-5 text-center space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-primary">
+                Plano recomendado para você
+              </p>
+              <p className="text-sm text-foreground">
+                Com base no seu diagnóstico, o plano <strong>{PLANS[recommendedKey].name}</strong> cobre o gargalo principal e libera o painel completo.
+              </p>
+            </div>
+          )}
           <div className="text-center space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
               <Zap className="w-3.5 h-3.5" />
-              14 dias grátis em qualquer plano
+              {fromDiagnostico ? "Ative seu diagnóstico — sem trial em planos pagos" : "Investimento por resultado"}
             </div>
             <h1 className="text-3xl md:text-5xl font-bold tracking-tight">Investimento por Resultado</h1>
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">
@@ -168,14 +185,21 @@ export default function Planos({
                   const p = PLANS[d.key];
                   const m = p.planPage;
                   const exUsed = Math.round(p.maxContacts * 0.65);
+                  const isRecommended = recommendedKey === d.key;
                   return (
                     <div
                       key={d.key}
                       className={cn(
                         "bg-card border rounded-2xl p-6 space-y-5 relative flex flex-col",
-                        d.cardClass
+                        d.cardClass,
+                        isRecommended && "ring-2 ring-primary shadow-[0_0_40px_rgba(16,185,129,0.18)] scale-[1.03]"
                       )}
                     >
+                      {isRecommended && (
+                        <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                          Recomendado para você
+                        </span>
+                      )}
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
