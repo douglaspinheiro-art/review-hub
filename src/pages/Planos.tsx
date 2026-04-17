@@ -4,7 +4,7 @@ import {
   Check, X, MessageCircle, Zap, Users, Mail, Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import Header from "@/components/landing/Header";
