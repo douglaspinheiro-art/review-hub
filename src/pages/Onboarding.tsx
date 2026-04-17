@@ -265,21 +265,36 @@ export default function Onboarding() {
       const fat = Number((data as Record<string, unknown>).faturamento);
       const tm = Number((data as Record<string, unknown>).ticketMedio);
       const cli = Number((data as Record<string, unknown>).totalClientes);
-      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean } = {};
+      const abd = Number((data as Record<string, unknown>).taxaAbandono);
+      const plat = String((data as Record<string, unknown>).plataforma ?? "");
+      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean } = {};
+      const zeros: string[] = [];
 
       if (Number.isFinite(fat) && fat > 0) {
         setFaturamento(String(Math.round(fat)));
         updated.faturamento = true;
+      } else if (Number.isFinite(fat)) {
+        zeros.push("Faturamento");
       }
       if (Number.isFinite(tm) && tm > 0) {
         setTicketMedio(String(Math.round(tm)));
         updated.ticketMedio = true;
+      } else if (Number.isFinite(tm)) {
+        zeros.push("Ticket médio");
       }
       if (Number.isFinite(cli) && cli > 0) {
         setNumClientes(String(Math.round(cli)));
         updated.numClientes = true;
+      } else if (Number.isFinite(cli)) {
+        zeros.push("Nº clientes");
+      }
+      if (Number.isFinite(abd) && abd > 0) {
+        setTaxaAbandono((abd * 100).toFixed(1));
+        updated.taxaAbandono = true;
       }
       setImportedFields(updated);
+      setImportedPlatform(plat);
+      setZeroFields(zeros);
       setMetricsImported(Object.keys(updated).length > 0);
       if (manual) toast.success("Dados atualizados da plataforma!");
     } catch {
