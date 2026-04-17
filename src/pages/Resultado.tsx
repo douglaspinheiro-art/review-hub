@@ -306,7 +306,7 @@ export default function Resultado() {
           </div>
 
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-            {recommendedPlan.landingFeatures.slice(0, 6).map((f) => (
+            {recommendedPlan.landingFeatures.slice(0, 6).map((f: string) => (
               <li key={f} className="flex items-start gap-2">
                 <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                 <span className="text-white/80">{f}</span>
