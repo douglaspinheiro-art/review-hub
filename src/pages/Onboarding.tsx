@@ -839,6 +839,14 @@ export default function Onboarding() {
         });
       }
 
+      // 5b. Mark onboarding complete; subscription_status fica em diagnostic_only
+      // até o checkout ativar (webhook de pagamento). Mantém active se já ativo.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from("profiles")
+        .update({ onboarding_completed: true })
+        .eq("id", user.id);
+
       // 6. Seed demo data for pilot users (best-effort)
       const isPilot = user?.user_metadata?.pilot === true || searchParams.get("ref") === "pilot";
       if (isPilot && storeId) {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Zap, TrendingUp, AlertCircle, Loader2, Sparkles
+  Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { CHSGauge } from "@/components/dashboard/CHSGauge";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { recommendPlan } from "@/lib/plan-recommendation";
+import { PLANS } from "@/lib/pricing-constants";
 
 type DiagnosticData = {
   resumo?: string;
@@ -38,24 +40,24 @@ export default function Resultado() {
   const [diagnostic, setDiagnostic] = useState<DiagnosticData | null>(null);
   const [chs, setChs] = useState(0);
   const [chsLabel, setChsLabel] = useState("Regular");
-  const [storeName, setStoreName] = useState("Your Store");
+  const [storeName, setStoreName] = useState("Sua Loja");
 
   useEffect(() => {
     async function fetchDiagnostic() {
       if (!user?.id) return;
 
-      // Get store name
       const { data: storeData } = await supabase
         .from("stores")
-        .select("nome")
+        .select("name")
         .eq("user_id", user.id)
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
 
-      if ((storeData as any)?.nome) setStoreName((storeData as any).nome);
+      if ((storeData as { name?: string } | null)?.name) {
+        setStoreName((storeData as { name: string }).name);
+      }
 
-      // Get latest diagnostic
       const { data: diagData } = await supabase
         .from("diagnostics_v3")
         .select("*")
@@ -83,12 +85,20 @@ export default function Resultado() {
   const visitantesNum = funnel?.visitantes || 12400;
   const pedidosNum = funnel?.pedido || 174;
   const conversaoAtual = visitantesNum > 0 ? (pedidosNum / visitantesNum) * 100 : 1.4;
-  const perdaMensal = Math.round(
-    ((metaConversao / 100) - (conversaoAtual / 100)) * visitantesNum * ticketMedio
+  const perdaMensal = Math.max(
+    0,
+    Math.round(((metaConversao / 100) - (conversaoAtual / 100)) * visitantesNum * ticketMedio),
   );
 
-  const handleContinue = () => {
-    navigate("/setup");
+  const recommendation = recommendPlan({
+    chs,
+    perdaMensal,
+    problemas: diagnostic?.problemas,
+  });
+  const recommendedPlan = PLANS[recommendation.tier];
+
+  const handleActivate = () => {
+    navigate(`/planos?recommended=${recommendation.tier}&from=diagnostico`);
   };
 
   if (loading) {
@@ -111,8 +121,8 @@ export default function Resultado() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
             <span className="font-bold tracking-tighter">LTV BOOST</span>
           </div>
-          <Button size="sm" onClick={handleContinue} className="font-bold rounded-xl h-9">
-            Continue Setup →
+          <Button size="sm" onClick={handleActivate} className="font-bold rounded-xl h-9 gap-1">
+            Ativar plano {recommendedPlan.name} <ArrowRight className="w-3.5 h-3.5" />
           </Button>
         </div>
       </div>
@@ -122,10 +132,10 @@ export default function Resultado() {
         <div className="text-center space-y-8">
           <div className="space-y-2">
             <h1 className="text-4xl font-black font-syne tracking-tighter uppercase italic">
-              Diagnostic: {storeName}
+              Diagnóstico: {storeName}
             </h1>
             <p className="text-muted-foreground text-sm">
-              Based on {visitantesNum.toLocaleString("pt-BR")} visitors · {pedidosNum} orders · Conversion {conversaoAtual.toFixed(2)}%
+              Baseado em {visitantesNum.toLocaleString("pt-BR")} visitantes · {pedidosNum} pedidos · Conversão {conversaoAtual.toFixed(2)}%
             </p>
           </div>
 
@@ -145,16 +155,16 @@ export default function Resultado() {
               <AlertCircle className="w-16 h-16 text-red-500" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-bold uppercase tracking-widest text-red-500/80">You are losing</p>
+              <p className="text-sm font-bold uppercase tracking-widest text-red-500/80">Você está perdendo</p>
               <div className="text-5xl font-black font-jetbrains text-red-500 tracking-tighter">
-                R$ {perdaMensal.toLocaleString("pt-BR")} <span className="text-lg opacity-50">/ month</span>
+                R$ {perdaMensal.toLocaleString("pt-BR")} <span className="text-lg opacity-50">/ mês</span>
               </div>
-              <p className="text-xs text-muted-foreground">vs. segment benchmark ({metaConversao}%)</p>
+              <p className="text-xs text-muted-foreground">vs. benchmark do setor ({metaConversao}%)</p>
             </div>
 
             <div className="grid grid-cols-3 gap-4 pt-6 border-t border-red-500/10">
               <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Your CVR</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Sua CVR</p>
                 <p className="text-lg font-black">{conversaoAtual.toFixed(2)}%</p>
               </div>
               <div>
@@ -162,7 +172,7 @@ export default function Resultado() {
                 <p className="text-lg font-black text-emerald-500">{metaConversao}%</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Loss/day</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Perda/dia</p>
                 <p className="text-lg font-black text-red-500">R$ {Math.round(perdaMensal / 30).toLocaleString("pt-BR")}</p>
               </div>
             </div>
@@ -174,15 +184,15 @@ export default function Resultado() {
           <div className="bg-primary/5 border-l-4 border-primary rounded-2xl p-6 space-y-3">
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-primary" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-primary">AI Analysis</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-primary">Análise da IA</span>
             </div>
             <p className="text-sm text-white/90 leading-relaxed">{diagnostic.resumo}</p>
             {diagnostic.perda_principal && (
               <p className="text-xs text-muted-foreground">
-                Main bottleneck: <strong className="text-white">{diagnostic.perda_principal}</strong>
+                Gargalo principal: <strong className="text-white">{diagnostic.perda_principal}</strong>
                 {diagnostic.percentual_explicado && (
                   <Badge className="ml-2 bg-primary/20 text-primary border-none text-[9px]">
-                    {diagnostic.percentual_explicado}% of losses explained
+                    {diagnostic.percentual_explicado}% das perdas explicadas
                   </Badge>
                 )}
               </p>
@@ -194,7 +204,7 @@ export default function Resultado() {
         {problemas.length > 0 && (
           <div className="space-y-6">
             <h2 className="text-xl font-bold font-syne uppercase tracking-tighter flex items-center gap-2">
-              <Zap className="w-5 h-5 text-primary" /> Priority Issues
+              <Zap className="w-5 h-5 text-primary" /> Problemas prioritários
             </h2>
             <div className="space-y-4">
               {problemas.map((p, i) => (
@@ -212,9 +222,9 @@ export default function Resultado() {
                       p.severidade === "alto" ? "text-orange-500 border-orange-500/50" :
                       "text-yellow-500 border-yellow-500/50"
                     )}>
-                      {p.severidade === "critico" ? "CRITICAL" : p.severidade === "alto" ? "HIGH" : "MEDIUM"}
+                      {p.severidade === "critico" ? "CRÍTICO" : p.severidade === "alto" ? "ALTO" : "MÉDIO"}
                     </Badge>
-                    <span className="text-sm font-bold text-red-500">R$ {p.impacto_reais?.toLocaleString("pt-BR")}/mo</span>
+                    <span className="text-sm font-bold text-red-500">R$ {p.impacto_reais?.toLocaleString("pt-BR")}/mês</span>
                   </div>
                   <h3 className="text-lg font-bold mb-2">{p.titulo}</h3>
                   <p className="text-sm text-muted-foreground">{p.descricao}</p>
@@ -228,7 +238,7 @@ export default function Resultado() {
         {recomendacoes.length > 0 && (
           <div className="space-y-6">
             <h2 className="text-xl font-bold font-syne uppercase tracking-tighter flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-500" /> Action Plan
+              <TrendingUp className="w-5 h-5 text-emerald-500" /> Plano de ação
             </h2>
             <div className="space-y-4">
               {recomendacoes.map((r, i) => (
@@ -247,17 +257,17 @@ export default function Resultado() {
                       r.tipo === "ab_test" ? "bg-blue-500/20 text-blue-500" :
                       "bg-amber-500/20 text-amber-500"
                     )}>
-                      {r.tipo === "quick_win" ? "⚡ Quick Win" : r.tipo === "ab_test" ? "🧪 A/B Test" : "📅 Medium Term"}
+                      {r.tipo === "quick_win" ? "⚡ Quick Win" : r.tipo === "ab_test" ? "🧪 Teste A/B" : "📅 Médio Prazo"}
                     </Badge>
                     <Badge variant="outline" className="text-[9px] ml-auto">
-                      {r.esforco === "baixo" ? "Low effort" : r.esforco === "medio" ? "Medium effort" : "High effort"}
+                      {r.esforco === "baixo" ? "Esforço baixo" : r.esforco === "medio" ? "Esforço médio" : "Esforço alto"}
                     </Badge>
                   </div>
                   <h3 className="text-base font-bold mb-2">{r.titulo}</h3>
                   <p className="text-sm text-muted-foreground mb-4">{r.descricao}</p>
                   <div className="flex gap-6 text-xs">
-                    <span className="text-emerald-500 font-bold">+{r.impacto_pp}pp conversion</span>
-                    <span className="text-muted-foreground">{r.prazo_semanas} week{r.prazo_semanas > 1 ? "s" : ""}</span>
+                    <span className="text-emerald-500 font-bold">+{r.impacto_pp}pp de conversão</span>
+                    <span className="text-muted-foreground">{r.prazo_semanas} semana{r.prazo_semanas > 1 ? "s" : ""}</span>
                   </div>
                 </div>
               ))}
@@ -269,25 +279,62 @@ export default function Resultado() {
         {!diagnostic && (
           <div className="text-center space-y-4 py-12">
             <Sparkles className="w-12 h-12 text-muted-foreground mx-auto" />
-            <h2 className="text-xl font-bold">Diagnostic not available yet</h2>
-            <p className="text-sm text-muted-foreground">The AI may still be processing your data. You can proceed to setup your account.</p>
+            <h2 className="text-xl font-bold">Diagnóstico ainda não disponível</h2>
+            <p className="text-sm text-muted-foreground">A IA pode estar processando seus dados. Você já pode escolher um plano para começar.</p>
           </div>
         )}
 
-        {/* CTA */}
-        <div className="text-center space-y-6 pt-8 border-t border-[#1E1E2E]">
+        {/* Plan recommendation block */}
+        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/30 rounded-3xl p-8 space-y-6">
           <div className="space-y-2">
-            <h2 className="text-2xl font-black font-syne tracking-tighter">Ready to recover this revenue?</h2>
-            <p className="text-sm text-muted-foreground">Connect WhatsApp and start executing AI prescriptions automatically.</p>
+            <Badge className="bg-primary/20 text-primary border-none text-[10px] font-black tracking-widest uppercase">
+              Plano recomendado para sua loja
+            </Badge>
+            <h2 className="text-3xl font-black font-syne tracking-tighter">
+              {recommendedPlan.emoji} {recommendedPlan.name}
+              <span className="text-muted-foreground text-base font-bold ml-2">
+                · R$ {recommendedPlan.base.toLocaleString("pt-BR")}/mês
+              </span>
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Com o seu CHS em <strong className="text-white">{chs}</strong>
+              {perdaMensal > 0 && (
+                <> e perda estimada de <strong className="text-red-400">R$ {perdaMensal.toLocaleString("pt-BR")}/mês</strong></>
+              )}
+              , {recommendation.reason}
+            </p>
           </div>
+
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+            {recommendedPlan.landingFeatures.slice(0, 6).map((f) => (
+              <li key={f} className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span className="text-white/80">{f}</span>
+              </li>
+            ))}
+          </ul>
+
           <Button
-            onClick={handleContinue}
+            onClick={handleActivate}
             size="lg"
-            className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-lg shadow-emerald-500/20 hover:scale-[1.02] transition-all"
+            className="w-full h-14 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-lg shadow-emerald-500/20 hover:scale-[1.01] transition-all gap-2 group"
           >
-            Continue Setup →
+            Ativar plano {recommendedPlan.name} agora
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </Button>
-          <p className="text-[10px] text-muted-foreground">🛡️ 14-day guarantee · Cancel anytime</p>
+          <p className="text-[10px] text-muted-foreground text-center">
+            🛡️ Garantia de 14 dias · Cancele quando quiser
+          </p>
+        </div>
+
+        {/* Secondary CTA: see all plans */}
+        <div className="text-center">
+          <button
+            onClick={() => navigate("/planos?from=diagnostico")}
+            className="text-xs text-muted-foreground hover:text-white underline-offset-4 hover:underline"
+          >
+            Comparar todos os planos
+          </button>
         </div>
       </div>
     </div>

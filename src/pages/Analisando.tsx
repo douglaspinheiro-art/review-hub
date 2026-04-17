@@ -5,14 +5,14 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 
 const STEPS = [
-  { label: "Establishing secure connection...", ms: 1200 },
-  { label: "Mapping transactions from the last 6 months...", ms: 1800 },
-  { label: "Identifying unique multichannel customers...", ms: 1500 },
-  { label: "Detecting abandoned carts (last 48h)...", ms: 2000, highlight: true },
-  { label: "Calculating Conversion Health Score (CHS)...", ms: 1500 },
-  { label: "Cross-referencing with segment benchmarks...", ms: 1500 },
-  { label: "Quantifying revenue lost to UX bottlenecks...", ms: 1200 },
-  { label: "Finalizing prescriptive diagnosis...", ms: 2500, special: true },
+  { label: "Estabelecendo conexão segura...", ms: 1200 },
+  { label: "Mapeando transações dos últimos 6 meses...", ms: 1800 },
+  { label: "Identificando clientes únicos multicanal...", ms: 1500 },
+  { label: "Detectando carrinhos abandonados (últimas 48h)...", ms: 2000, highlight: true },
+  { label: "Calculando Conversion Health Score (CHS)...", ms: 1500 },
+  { label: "Cruzando com benchmarks do segmento...", ms: 1500 },
+  { label: "Quantificando receita perdida em gargalos de UX...", ms: 1200 },
+  { label: "Finalizando diagnóstico prescritivo...", ms: 2500, special: true },
 ];
 
 export default function Analisando() {
@@ -47,13 +47,55 @@ export default function Analisando() {
         )
         .subscribe();
 
-      // 2. Call gerar-diagnostico with real data from sessionStorage
+      // 2. Resolve funnel payload — sessionStorage cache, fallback to DB.
+      let funnel: {
+        visitantes: number;
+        produto_visto: number;
+        carrinho: number;
+        checkout: number;
+        pedido: number;
+        ticket_medio: number;
+        meta_conversao: number;
+        store_id?: string | null;
+      } | null = null;
+
+      const rawFunnel = sessionStorage.getItem("ltv_funnel_data");
+      if (rawFunnel) {
+        try { funnel = JSON.parse(rawFunnel); } catch { funnel = null; }
+      }
+
+      if (!funnel) {
+        // Fallback: latest funnel_metrics row in DB
+        const { data: fm } = await supabase
+          .from("funnel_metrics")
+          .select("store_id,visitantes,visualizacoes_produto,adicionou_carrinho,iniciou_checkout,compras,receita")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (fm) {
+          const visitantes = Number(fm.visitantes) || 0;
+          const compras = Number(fm.compras) || 0;
+          const ticket = compras > 0 ? Number(fm.receita) / compras : 250;
+          const cvr = visitantes > 0 ? (compras / visitantes) * 100 : 0;
+          funnel = {
+            visitantes,
+            produto_visto: Number(fm.visualizacoes_produto) || Math.round(visitantes * 0.72),
+            carrinho: Number(fm.adicionou_carrinho) || 0,
+            checkout: Number(fm.iniciou_checkout) || 0,
+            pedido: compras,
+            ticket_medio: Math.round(ticket) || 250,
+            meta_conversao: Number(cvr.toFixed(2)) || 2.5,
+            store_id: fm.store_id,
+          };
+        }
+      }
+
+      // 3. Call gerar-diagnostico
       if (!diagnosticCalled) {
         setDiagnosticCalled(true);
-        const rawFunnel = sessionStorage.getItem("ltv_funnel_data");
-        if (rawFunnel) {
+        if (funnel) {
           try {
-            const funnel = JSON.parse(rawFunnel);
             const { data, error } = await supabase.functions.invoke("gerar-diagnostico", {
               body: {
                 visitantes: funnel.visitantes,
@@ -67,13 +109,12 @@ export default function Analisando() {
             });
 
             if (!error && data?.success && data?.diagnostico) {
-              // Save result to diagnostics_v3
               const storeId = funnel.store_id;
               const conversao = funnel.pedido > 0 && funnel.visitantes > 0
                 ? ((funnel.pedido / funnel.visitantes) * 100)
                 : 0;
               const chs = Math.min(100, Math.max(0, Math.round(conversao / (funnel.meta_conversao || 2.5) * 50)));
-              const chsLabel = chs >= 70 ? "Good" : chs >= 40 ? "Regular" : "At risk";
+              const chsLabel = chs >= 70 ? "Bom" : chs >= 40 ? "Regular" : "Em risco";
 
               await supabase.from("diagnostics_v3").insert({
                 user_id: userId,
@@ -84,7 +125,6 @@ export default function Analisando() {
               });
               // Realtime listener will pick this up and navigate
             } else {
-              // Edge function failed — fallback navigate
               console.warn("Diagnostic generation failed:", error?.message || "unknown");
               setTimeout(() => {
                 setProgress(100);
@@ -92,14 +132,14 @@ export default function Analisando() {
               }, 3000);
             }
           } catch (e) {
-            console.error("Error calling gerar-diagnostico:", e);
+            console.error("Erro ao chamar gerar-diagnostico:", e);
             setTimeout(() => {
               setProgress(100);
               navigate("/resultado");
             }, 3000);
           }
         } else {
-          // No funnel data — navigate directly
+          // No funnel data anywhere — go to result with fallback values
           navigate("/resultado");
         }
       }
@@ -144,8 +184,8 @@ export default function Analisando() {
         </div>
 
         <div className="space-y-4">
-          <h1 className="text-3xl font-black font-syne tracking-tighter">Analyzing your store...</h1>
-          <p className="text-muted-foreground text-sm">Generating your personalized diagnostic in real time.</p>
+          <h1 className="text-3xl font-black font-syne tracking-tighter">Analisando sua loja...</h1>
+          <p className="text-muted-foreground text-sm">Gerando seu diagnóstico personalizado em tempo real.</p>
         </div>
 
         <div className="space-y-3 text-left">
@@ -178,14 +218,14 @@ export default function Analisando() {
             />
           </div>
           <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-            <span>Processing Data</span>
+            <span>Processando dados</span>
             <span>{Math.round(progress)}%</span>
           </div>
         </div>
 
         <div className="pt-8">
           <p className="text-[10px] text-muted-foreground italic font-medium">
-            "AI is cross-referencing data from 94 similar stores to find your biggest bottlenecks."
+            "A IA está cruzando dados de 94 lojas similares para encontrar seus maiores gargalos."
           </p>
         </div>
       </div>
