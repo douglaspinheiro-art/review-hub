@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import Header from "@/components/landing/Header";
 import Footer from "@/components/landing/Footer";
 import { PLANS } from "@/lib/pricing-constants";
+import { useAuth } from "@/hooks/useAuth";
 
 const CalculadoraSimulador = lazy(() => import("./Calculadora"));
 
@@ -112,6 +113,12 @@ export default function Planos({
     defaultTab === "simulador" ? "simulador" : "planos"
   );
   const [searchParams] = useSearchParams();
+  const { profile } = useAuth();
+  const isActive = profile?.subscription_status === "active";
+  const currentPlanKey: PlanKey | null =
+    isActive && (profile?.plan === "starter" || profile?.plan === "growth" || profile?.plan === "scale")
+      ? profile.plan
+      : null;
   const recommendedParam = searchParams.get("recommended");
   const fromDiagnostico = searchParams.get("from") === "diagnostico";
   const recommendedKey: PlanKey | null =
@@ -186,16 +193,23 @@ export default function Planos({
                   const m = p.planPage;
                   const exUsed = Math.round(p.maxContacts * 0.65);
                   const isRecommended = recommendedKey === d.key;
+                  const isCurrent = currentPlanKey === d.key;
                   return (
                     <div
                       key={d.key}
                       className={cn(
                         "bg-card border rounded-2xl p-6 space-y-5 relative flex flex-col",
                         d.cardClass,
-                        isRecommended && "ring-2 ring-primary shadow-[0_0_40px_rgba(16,185,129,0.18)] scale-[1.03]"
+                        isCurrent && "ring-2 ring-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.18)]",
+                        !isCurrent && isRecommended && "ring-2 ring-primary shadow-[0_0_40px_rgba(16,185,129,0.18)] scale-[1.03]"
                       )}
                     >
-                      {isRecommended && (
+                      {isCurrent && (
+                        <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                          Seu plano atual
+                        </span>
+                      )}
+                      {!isCurrent && isRecommended && (
                         <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
                           Recomendado para você
                         </span>
