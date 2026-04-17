@@ -122,7 +122,7 @@ export default function Onboarding() {
   const [metricsImported, setMetricsImported] = useState(false);
   const [metricsFetched, setMetricsFetched] = useState(false);
   const [taxaAbandono, setTaxaAbandono] = useState("");
-  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean }>({});
+  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean; visitantes?: boolean; carrinho?: boolean; checkout?: boolean; pedidos?: boolean }>({});
   const [importedPlatform, setImportedPlatform] = useState<string>("");
   const [zeroFields, setZeroFields] = useState<string[]>([]);
 
@@ -272,7 +272,7 @@ export default function Onboarding() {
       const cli = Number((data as Record<string, unknown>).totalClientes);
       const abd = Number((data as Record<string, unknown>).taxaAbandono);
       const plat = String((data as Record<string, unknown>).plataforma ?? "");
-      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean } = {};
+      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean; pedidos?: boolean } = {};
       const zeros: string[] = [];
 
       if (Number.isFinite(fat) && fat > 0) {
@@ -297,7 +297,15 @@ export default function Onboarding() {
         setTaxaAbandono((abd * 100).toFixed(1));
         updated.taxaAbandono = true;
       }
-      setImportedFields(updated);
+      // Derive monthly orders from integration revenue / avg ticket (only field e-commerce APIs know)
+      if (Number.isFinite(fat) && fat > 0 && Number.isFinite(tm) && tm > 0) {
+        const derivedPedidos = Math.round(fat / tm);
+        if (derivedPedidos > 0) {
+          setPedidos(String(derivedPedidos));
+          updated.pedidos = true;
+        }
+      }
+      setImportedFields(prev => ({ ...prev, ...updated }));
       setImportedPlatform(plat);
       setZeroFields(zeros);
       setMetricsImported(Object.keys(updated).length > 0);
@@ -311,9 +319,9 @@ export default function Onboarding() {
     }
   }, [platformInfo, integrationValid]);
 
-  // Auto-fetch metrics when entering Step 3 with valid integration
+  // Auto-fetch metrics when entering the Funnel step (now Step 4) with valid integration
   useEffect(() => {
-    if (step === 3 && integrationValid && !metricsFetched && !metricsLoading) {
+    if (step === 4 && integrationValid && !metricsFetched && !metricsLoading) {
       fetchStoreMetrics(false);
     }
   }, [step, integrationValid, metricsFetched, metricsLoading, fetchStoreMetrics]);
@@ -494,11 +502,8 @@ export default function Onboarding() {
     setStep(3);
   };
 
+  // Step 3 is now GA4 connection (optional → can always advance)
   const handleStep3Next = () => {
-    if (!faturamento || Number(faturamento) <= 0) {
-      toast.error("Informe seu faturamento mensal aproximado.");
-      return;
-    }
     setStep(4);
   };
 
@@ -606,6 +611,7 @@ export default function Onboarding() {
         setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
         setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
         setPedidos(String(m.purchases ?? m.pedido ?? ""));
+        setImportedFields(prev => ({ ...prev, visitantes: true, carrinho: true, checkout: true, pedidos: true }));
       }
       toast.success(`✅ ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados nos últimos 30 dias.`);
     } catch {
@@ -638,6 +644,7 @@ export default function Onboarding() {
           setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
           setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
           setPedidos(String(m.purchases ?? m.pedido ?? ""));
+          setImportedFields(prev => ({ ...prev, visitantes: true, carrinho: true, checkout: true, pedidos: true }));
         }
         toast.success(`✅ GA4 conectado! ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados.`);
       }
@@ -650,6 +657,10 @@ export default function Onboarding() {
   };
 
   const handleFinish = async () => {
+    if (!faturamento || Number(faturamento) <= 0) {
+      toast.error("Informe seu faturamento mensal aproximado.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       if (!user?.id) {
@@ -1009,12 +1020,12 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* STEP 3: Funnel Data */}
-        {step === 3 && (
+        {/* STEP 4: Funnel Data (auto-filled from GA4 + integration when available) */}
+        {step === 4 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-500 text-[10px] font-black px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-[0.2em]">
-                <BarChart3 className="w-3 h-3" /> Passo 3 — Dados do Funil
+                <BarChart3 className="w-3 h-3" /> Passo 4 — Dados do Funil
               </div>
               <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
                 Métricas do seu negócio
@@ -1172,47 +1183,59 @@ export default function Onboarding() {
                 <div className="flex items-center gap-2">
                   <Info className="w-3.5 h-3.5 text-muted-foreground" />
                   <p className="text-xs text-muted-foreground font-medium">
-                    Opcional: preencha os dados do funil para um diagnóstico mais preciso. Se não souber, a IA estima com base no faturamento.
+                    Visitantes e eventos de carrinho/checkout vêm do GA4. Pedidos vêm da sua loja. Se algum campo estiver vazio, a IA estima com base no faturamento.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Visitantes/mês</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Visitantes/mês
+                      {importedFields.visitantes && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ GA4</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedVisitors || "—")}
                       value={visitantes}
-                      onChange={e => setVisitantes(e.target.value)}
+                      onChange={e => { setVisitantes(e.target.value); setImportedFields(prev => ({ ...prev, visitantes: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Add to cart</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Add to cart
+                      {importedFields.carrinho && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ GA4</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedCarrinho || "—")}
                       value={carrinho}
-                      onChange={e => setCarrinho(e.target.value)}
+                      onChange={e => { setCarrinho(e.target.value); setImportedFields(prev => ({ ...prev, carrinho: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Checkout</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Checkout
+                      {importedFields.checkout && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ GA4</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedCheckout || "—")}
                       value={checkout}
-                      onChange={e => setCheckout(e.target.value)}
+                      onChange={e => { setCheckout(e.target.value); setImportedFields(prev => ({ ...prev, checkout: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pedidos/mês</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Pedidos/mês
+                      {importedFields.pedidos && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ {importedPlatform || "loja"}</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedPedidos || "—")}
                       value={pedidos}
-                      onChange={e => setPedidos(e.target.value)}
+                      onChange={e => { setPedidos(e.target.value); setImportedFields(prev => ({ ...prev, pedidos: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
@@ -1222,12 +1245,12 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* STEP 4: GA4 Optional */}
-        {step === 4 && (
+        {/* STEP 3: GA4 Optional — connect first so funnel auto-fills */}
+        {step === 3 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 text-[10px] font-black px-3 py-1 rounded-full border border-blue-500/20 uppercase tracking-[0.2em]">
-                <Globe className="w-3 h-3" /> Passo 4 — Dados em Tempo Real (Opcional)
+                <Globe className="w-3 h-3" /> Passo 3 — Dados em Tempo Real (Opcional)
               </div>
               <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
                 Conectar Google Analytics 4
@@ -1453,7 +1476,7 @@ export default function Onboarding() {
               onClick={handleStep1Next}
               className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group"
             >
-              {isUnsupportedPlatform ? "Próximo: Dados do funil" : `Próximo: Conectar ${plataforma || "plataforma"}`} <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              {isUnsupportedPlatform ? "Próximo: Conectar GA4" : `Próximo: Conectar ${plataforma || "plataforma"}`} <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           )}
 
@@ -1464,7 +1487,7 @@ export default function Onboarding() {
               disabled={!integrationValid}
               className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group disabled:opacity-50"
             >
-              Próximo: Dados do funil <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              Próximo: Conectar GA4 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           )}
 
@@ -1475,8 +1498,16 @@ export default function Onboarding() {
                 onClick={handleStep3Next}
                 className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group"
               >
-                Próximo: Conectar GA4 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                Próximo: Dados do funil <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
+              {!ga4PropertyId && (
+                <button
+                  onClick={handleStep3Next}
+                  className="text-xs text-muted-foreground hover:text-white transition-colors"
+                >
+                  Pular GA4 e usar estimativas
+                </button>
+              )}
             </div>
           )}
 
@@ -1494,15 +1525,6 @@ export default function Onboarding() {
                   <><Sparkles className="w-5 h-5" /> Gerar Diagnóstico com IA</>
                 )}
               </Button>
-              {!ga4PropertyId && (
-                <button
-                  onClick={() => void handleFinish()}
-                  disabled={isSubmitting}
-                  className="text-xs text-muted-foreground hover:text-white transition-colors"
-                >
-                  Pular GA4 e usar estimativas
-                </button>
-              )}
               <p className="text-[9px] font-black text-muted-foreground flex items-center gap-1.5 uppercase tracking-[0.2em]">
                 <Shield className="w-3.5 h-3.5 text-emerald-500" /> Dados criptografados e protegidos
               </p>
