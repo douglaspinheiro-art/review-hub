@@ -42,6 +42,7 @@ export default function Resultado() {
   const [chs, setChs] = useState(0);
   const [chsLabel, setChsLabel] = useState("Regular");
   const [storeName, setStoreName] = useState("Sua Loja");
+  const [persistedPlan, setPersistedPlan] = useState<"growth" | "scale" | null>(null);
 
   useEffect(() => {
     async function fetchDiagnostic() {
@@ -71,6 +72,8 @@ export default function Resultado() {
         setDiagnostic(diagData.diagnostic_json as DiagnosticData);
         setChs(diagData.chs ?? 47);
         setChsLabel(diagData.chs_label ?? "Regular");
+        const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
+        if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
       }
       setLoading(false);
       void trackFunnelEvent({
@@ -95,11 +98,15 @@ export default function Resultado() {
     Math.round(((metaConversao / 100) - (conversaoAtual / 100)) * visitantesNum * ticketMedio),
   );
 
-  const recommendation = recommendPlan({
+  const computed = recommendPlan({
     chs,
     perdaMensal,
     problemas: diagnostic?.problemas,
   });
+  // Prefer persisted recommendation from DB (consistency across /resultado and /planos)
+  const recommendation = persistedPlan
+    ? { tier: persistedPlan, reason: computed.reason }
+    : computed;
   const recommendedPlan = PLANS[recommendation.tier];
 
   useEffect(() => {

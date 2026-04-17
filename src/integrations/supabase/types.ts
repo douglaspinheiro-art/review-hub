@@ -1509,6 +1509,7 @@ export type Database = {
           created_at: string | null
           diagnostic_json: Json | null
           id: string
+          recommended_plan: string | null
           store_id: string | null
           user_id: string | null
         }
@@ -1518,6 +1519,7 @@ export type Database = {
           created_at?: string | null
           diagnostic_json?: Json | null
           id?: string
+          recommended_plan?: string | null
           store_id?: string | null
           user_id?: string | null
         }
@@ -1527,6 +1529,7 @@ export type Database = {
           created_at?: string | null
           diagnostic_json?: Json | null
           id?: string
+          recommended_plan?: string | null
           store_id?: string | null
           user_id?: string | null
         }
