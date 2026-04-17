@@ -216,9 +216,61 @@ serve(async (req) => {
         });
       }
 
-      const { error: updErr } = await admin.from("profiles").update(patch).eq("id", userId);
+      // Capture previous status for audit
+      const { data: prevProfile } = await admin
+        .from("profiles")
+        .select("subscription_status, plan")
+        .eq("id", userId)
+        .maybeSingle();
+      const prevStatus = prevProfile?.subscription_status ?? null;
+      const prevPlan = prevProfile?.plan ?? null;
+
+      // Update with retry/backoff (3 attempts)
+      let updErr: { message?: string } | null = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const { error } = await admin.from("profiles").update(patch).eq("id", userId);
+        if (!error) {
+          updErr = null;
+          break;
+        }
+        updErr = error;
+        console.warn(`[mp-webhook] profile update attempt ${attempt} failed:`, error.message);
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 200 * attempt));
+      }
+
       if (updErr) {
-        console.error("[mp-webhook] profile update error:", updErr.message);
+        console.error("[mp-webhook] profile update FAILED after retries:", updErr.message);
+        // Audit log for dead-letter visibility
+        await admin.from("audit_logs").insert({
+          user_id: userId,
+          action: "mp_payment_update_failed",
+          resource: "profiles",
+          result: "error",
+          metadata: {
+            payment_id: String(dataId),
+            error: updErr.message,
+            patch,
+          },
+        });
+      } else {
+        // Audit transition (e.g., diagnostic_only → active)
+        const newStatus = patch.subscription_status as string | undefined;
+        if (newStatus && prevStatus !== newStatus) {
+          await admin.from("audit_logs").insert({
+            user_id: userId,
+            action: "subscription_status_changed",
+            resource: "profiles",
+            result: "success",
+            metadata: {
+              payment_id: String(dataId),
+              from_status: prevStatus,
+              to_status: newStatus,
+              from_plan: prevPlan,
+              to_plan: patch.plan ?? prevPlan,
+              source: "mercadopago_webhook",
+            },
+          });
+        }
       }
     }
 
