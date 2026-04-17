@@ -34,32 +34,42 @@ async function fetchDizyOrders(
   sinceIso: string,
   pageSize = 100,
 ): Promise<DizyOrder[]> {
-  // Magento REST: /rest/V1/orders?searchCriteria=...
-  const params = new URLSearchParams();
-  params.set("searchCriteria[filter_groups][0][filters][0][field]", "created_at");
-  params.set("searchCriteria[filter_groups][0][filters][0][value]", sinceIso);
-  params.set("searchCriteria[filter_groups][0][filters][0][condition_type]", "gt");
-  params.set("searchCriteria[sortOrders][0][field]", "created_at");
-  params.set("searchCriteria[sortOrders][0][direction]", "ASC");
-  params.set("searchCriteria[pageSize]", String(pageSize));
+  // Magento REST: paginated. Loop until fewer than pageSize results come back.
+  // Hard ceiling of 100 pages (= 10k orders) prevents runaway loops if the cursor is broken.
+  const MAX_PAGES = 100;
+  const all: DizyOrder[] = [];
+  for (let currentPage = 1; currentPage <= MAX_PAGES; currentPage++) {
+    const params = new URLSearchParams();
+    params.set("searchCriteria[filter_groups][0][filters][0][field]", "created_at");
+    params.set("searchCriteria[filter_groups][0][filters][0][value]", sinceIso);
+    params.set("searchCriteria[filter_groups][0][filters][0][condition_type]", "gt");
+    params.set("searchCriteria[sortOrders][0][field]", "created_at");
+    params.set("searchCriteria[sortOrders][0][direction]", "ASC");
+    params.set("searchCriteria[pageSize]", String(pageSize));
+    params.set("searchCriteria[currentPage]", String(currentPage));
 
-  const url = `${baseUrl.replace(/\/$/, "")}/rest/V1/orders?${params.toString()}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) {
-    throw new Error(`Dizy API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const url = `${baseUrl.replace(/\/$/, "")}/rest/V1/orders?${params.toString()}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) {
+      throw new Error(`Dizy API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const items = (data.items ?? []) as DizyOrder[];
+    all.push(...items);
+    if (items.length < pageSize) break; // last page
   }
-  const data = await res.json();
-  return (data.items ?? []) as DizyOrder[];
+  return all;
 }
 
-function normalizePhone(raw?: string): string {
+function normalizePhone(raw: string | undefined, countryDial = "55"): string {
   if (!raw) return "";
   const digits = raw.replace(/\D/g, "");
   if (!digits) return "";
-  return digits.startsWith("55") ? digits : `55${digits}`;
+  if (digits.length >= 12) return digits;             // already has country code
+  return `${countryDial}${digits}`;
 }
 
 async function syncStore(
