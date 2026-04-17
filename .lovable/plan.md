@@ -1,93 +1,126 @@
 
 
-## Veredito sobre a auditoria: **CORRETA**
+## Análise da auditoria: **PARCIALMENTE CORRETA**
 
-Validei cada ponto:
+Vou validar cada achado com evidências do código antes de propor correções.
 
-| Achado | Status | Evidência |
-|---|---|---|
-| 4 edges com `service_role` + `store_id` sem ownership | ✅ Confirmado | grep mostrou as 4 linhas `SERVICE_ROLE_KEY` sem `getClaims`/`assert_store_access` |
-| `google-oauth-callback` state em string, sem persistência | ✅ Confirmado | Código usa `${userId}:${storeId}:${uuid}` e `split(":")` — embora `oauth_states` + `consume_oauth_state` já existam no DB e estejam sendo usados por outros OAuth (Shopify/Nuvemshop) |
-| `api_request_logs` e `rate_limits` com RLS sem policy | ✅ Confirmado | Linter + query: `rowsecurity=true`, `policies=0` |
-| `resolve_loyalty_by_phone` com EXECUTE para PUBLIC | ✅ Confirmado | `grantee=PUBLIC, privilege=EXECUTE` |
-| Frontend confia em RLS para mutações | ✅ Plausível (padrão amplo no código) |
+### 🔴 Alto 1 — OAuth start sem `assert_store_access`
 
-**Concordo com NO-GO** até P0 ser resolvido. P1 pode ir logo após.
+**Status: CONFIRMADO (risco real)**
+
+Em `oauth-shopify/index.ts` e `oauth-nuvemshop/index.ts`, o `action=start`:
+- Valida JWT via `verifyJwt(req)` ✅
+- Recebe `store_id` do query param ✅
+- **Insere em `oauth_states` sem verificar se `store_id` pertence a `auth.userId`** ❌
+
+**Impacto real:** Moderado-alto. Atacante autenticado com UUID de loja de outro tenant poderia iniciar o fluxo OAuth e, no callback, a integração seria gravada em `integrations` para o `st.user_id` da tabela `oauth_states` (que é o atacante, não o dono real da loja). Mas como o upsert usa `onConflict: store_id,type`, pode sobrescrever integração legítima de outra loja.
+
+**Correção:** Adicionar `await admin.rpc('assert_store_access', { p_store_id: storeId })` com cliente JWT-scoped antes do INSERT em `oauth_states`. Mesmo padrão já aplicado em `relatorio-semanal`, `benchmark-setor`, etc. na sessão anterior.
 
 ---
 
-## Plano de correção (ordem de execução)
+### 🔴 Alto 2 — Segredos de integrações expostos no frontend
 
-### P0 — Bloqueadores cross-tenant (1 migração + 4 edges)
+**Status: CONFIRMADO mas mitigável via RLS**
 
-**1. Hardenizar 4 edge functions** — substituir `service_role` cego por:
-- Validar `Authorization: Bearer <jwt>` via `supabase.auth.getClaims(token)`
-- Resolver `auth.uid()` e validar ownership via `assert_store_access(store_id)` (RPC já existe e cobre owner + team) antes de qualquer query
-- Manter `service_role` apenas para o trabalho interno depois do check, OU usar cliente com JWT do usuário (preferível)
+`INTEGRATIONS_LIST_SELECT` inclui `config, config_json` (linha confirmada em `src/lib/supabase-select-fragments.ts`). Tokens OAuth (access_token, shop_url, etc.) trafegam para o browser.
 
-Arquivos:
-- `supabase/functions/relatorio-semanal/index.ts`
-- `supabase/functions/benchmark-setor/index.ts`
-- `supabase/functions/verificar-frequencia/index.ts`
-- `supabase/functions/sincronizar-canal/index.ts`
+**Mitigação em camadas:**
+1. **Frontend**: criar `INTEGRATIONS_SAFE_SELECT` sem `config`/`config_json` e migrar páginas de listagem (`Integracoes.tsx`, `Canais.tsx`) para ele.
+2. **Criar fragment `INTEGRATIONS_DETAIL_SELECT`** (com config) apenas para telas de edição onde o owner precisa ver/modificar credenciais. RLS já restringe a `user_id = auth.uid()`, então mesmo com `config`, só o dono vê — o risco real é **XSS exfiltrando tokens do localStorage/memory**, não vazamento cross-tenant.
+3. Idealmente: mover campos sensíveis para tabela separada `integration_credentials` protegida por RPC `get_integration_config(id)` chamada apenas quando necessário. **Fora de escopo para hoje** (refactor grande).
 
-**2. Refatorar `google-oauth-callback`** para reutilizar `oauth_states` (tabela + RPC `consume_oauth_state` já existem):
-- No `action=start`: `INSERT INTO oauth_states (state_token, user_id, store_id, platform='google', expires_at=now()+10min)`
-- No callback: chamar `consume_oauth_state(state_token)` (DELETE + RETURNING, one-time, com expiração)
-- Eliminar `split(":")` e o user_id/store_id viajando dentro do state
+**Decisão pragmática:** Remover `config`/`config_json` do select de listagem e manter em tela de detalhe/edição. Defesa em profundidade contra XSS.
 
-**3. Migração SQL — fechar gaps de banco**:
-```sql
--- a) Revogar grant amplo
-REVOKE EXECUTE ON FUNCTION public.resolve_loyalty_by_phone(text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.resolve_loyalty_by_phone(text, text) TO authenticated;
--- (a função é chamada pela página pública /portal/Pontos; manter anon se for esse o caso — investigar antes; default = só authenticated)
+---
 
--- b) Policies para api_request_logs e rate_limits (uso interno service_role)
-CREATE POLICY "service_only_select" ON public.api_request_logs FOR SELECT TO authenticated USING (false);
-CREATE POLICY "deny_all_writes"     ON public.api_request_logs FOR ALL    TO authenticated USING (false) WITH CHECK (false);
--- mesmo padrão para rate_limits
--- (service_role bypassa RLS, então funciona; clientes não acessam)
-```
+### 🟠 Médio 1 — Onboarding usa "loja primária"
 
-> **Decisão necessária:** `resolve_loyalty_by_phone` é chamada na página pública `/p/:slug` (portal de pontos do cliente final, sem login). Se sim, manter `GRANT TO anon` e mitigar via rate-limit por IP no edge. Vou verificar antes de aplicar o REVOKE.
+**Status: PLAUSÍVEL (preciso verificar)**
 
-### P1 — Higiene pós-go-live (mesma sessão, opcional bloqueante)
+`getPrimaryStoreId()` em `Onboarding.tsx` — se realmente pega "primeira loja" sem respeitar `activeStoreId`, numa conta multi-loja, pode conectar integração à loja errada.
 
-**4. Endurecer mutações no frontend** — varrer `update()`/`delete()` em hooks e páginas críticas (`Inbox`, `EmExecucao`, `WhatsApp`, `Prescricoes`) e adicionar `.eq('store_id', activeStoreId)` redundante além do `id`. Defesa em profundidade vs. regressão de RLS.
+**Ressalva:** Onboarding é tipicamente executado por contas **novas** (1 loja só). O risco é baixo no fluxo padrão mas real se usuário re-abrir onboarding após criar segunda loja.
 
-**5. Remover fallbacks silenciosos de métricas** — em `Funil`, `Atribuicao`, `BenchmarkScore`: quando `data === null` ou erro, exibir empty state explícito ao invés de heurística mock. (Já existe mock em telas demo — restringir a `import.meta.env.DEV`).
+**Correção:** Usar `useStoreScope().activeStoreId` com fallback para primeira loja **apenas** se não houver loja ativa.
 
-### Fora de escopo (não bloqueador)
-- Leaked Password Protection: requer plano Pro
-- Extensions in public: warning de organização, sem impacto runtime
+---
+
+### 🟠 Médio 2 — `onConflict: "user_id,type"`
+
+**Status: CONFIRMADO (bug real de isolamento multi-loja)**
+
+Se um usuário tem 2 lojas e já conectou Shopify na loja A, ao conectar Shopify na loja B pelo onboarding, **sobrescreve a integração da loja A**. Isso é bug funcional + risco de isolamento.
+
+**Correção:** Mudar para `onConflict: "store_id,type"` (consistente com os OAuth callbacks de Shopify/Nuvemshop que já usam isso).
+
+**Pré-requisito SQL:** Verificar se existe `UNIQUE(store_id, type)` em `integrations`. Se não existir, adicionar via migração (com remoção do unique antigo `user_id, type` se houver).
+
+---
+
+### 🟠 Médio 3 — Credenciais em localStorage
+
+**Status: CONFIRMADO (risco XSS)**
+
+`integrationConfig` e `ga4Token` no rascunho local (`localStorage`) — tokens expostos a qualquer script com acesso ao DOM.
+
+**Correção:** 
+- Remover `integrationConfig.access_token`, `ga4Token`, e campos sensíveis do snapshot salvo em localStorage.
+- Manter apenas metadados não-sensíveis (plataforma selecionada, nome, URL da loja).
+- Re-solicitar credenciais se usuário abandonar e retomar o onboarding (UX aceitável).
+
+---
+
+## Plano de correção
+
+### P0 (mesmo nível dos blockers anteriores)
+
+**1. OAuth start ownership check** — `oauth-shopify` e `oauth-nuvemshop`:
+- Após `verifyJwt`, criar cliente JWT-scoped e chamar `assert_store_access(store_id)`. Se falhar, retornar 403.
+
+**2. onConflict multi-loja** — `src/pages/Onboarding.tsx` `persistActiveIntegration`:
+- Trocar `onConflict: "user_id,type"` → `"store_id,type"`
+- Migração SQL: garantir índice único `UNIQUE(store_id, type)` em `integrations`; drop do antigo se conflitar
+
+### P1
+
+**3. Remover credenciais do localStorage** — `Onboarding.tsx`:
+- Filtrar `integrationConfig` e `ga4Token` antes de persistir rascunho
+- Salvar apenas campos não-sensíveis
+
+**4. SAFE_SELECT de integrações** — `src/lib/supabase-select-fragments.ts`:
+- Criar `INTEGRATIONS_SAFE_SELECT` sem `config`/`config_json`
+- Migrar `Integracoes.tsx` (listagem) para o safe select
+- Manter `INTEGRATIONS_LIST_SELECT` apenas para telas de edição/detalhe onde o owner precisa gerenciar credenciais
+
+**5. Primary store → active store** — `Onboarding.tsx`:
+- `getPrimaryStoreId()` → usar `useStoreScope().activeStoreId` com fallback
 
 ---
 
 ## Arquivos a alterar
 
 ```
-supabase/functions/relatorio-semanal/index.ts        (auth + ownership)
-supabase/functions/benchmark-setor/index.ts          (auth + ownership)
-supabase/functions/verificar-frequencia/index.ts     (auth + ownership)
-supabase/functions/sincronizar-canal/index.ts        (auth + ownership)
-supabase/functions/google-oauth-callback/index.ts    (usar oauth_states)
-supabase/migrations/<novo>.sql                       (REVOKE + policies)
-```
-
-P1 (após validar P0):
-```
-src/pages/dashboard/Inbox.tsx, EmExecucao.tsx, WhatsApp.tsx, Prescricoes.tsx
-src/pages/dashboard/Funil.tsx, Atribuicao.tsx, BenchmarkScore.tsx
+supabase/functions/oauth-shopify/index.ts         (assert_store_access no start)
+supabase/functions/oauth-nuvemshop/index.ts       (assert_store_access no start)
+src/pages/Onboarding.tsx                          (onConflict + localStorage + active store)
+src/lib/supabase-select-fragments.ts              (INTEGRATIONS_SAFE_SELECT)
+src/pages/dashboard/Integracoes.tsx               (usar SAFE_SELECT)
+supabase/migrations/<novo>.sql                    (UNIQUE(store_id,type) em integrations)
 ```
 
 ---
 
-## Pergunta antes de implementar
+## Fora de escopo (não bloqueador, documentar como follow-up)
 
-A função `resolve_loyalty_by_phone` alimenta o portal público de pontos (`/p/:slug`) que clientes finais consultam **sem login** — devo:
-- (A) Manter `GRANT TO anon` e blindar via rate-limit + sem dados sensíveis no retorno (status quo funcional)
-- (B) Mover para uma edge function pública com rate-limit por IP/telefone e revogar do anon
+- Mover `config`/`config_json` para tabela `integration_credentials` com RPC gateway (refactor grande; o controle por RLS + SAFE_SELECT já mitiga 90% do risco prático hoje).
+- Auditoria completa de `localStorage` em toda a aplicação (outros drafts podem ter padrão similar).
 
-Recomendo **A** (já é seguro: retorna apenas pontos do próprio número informado). Confirme para eu aplicar.
+---
+
+## Veredito
+
+A auditoria está **~85% correta**. Os 5 achados são reais, mas a severidade de "Alto 2" (config no select) é discutível: RLS já isola por `user_id`, então o risco principal é XSS, não vazamento cross-tenant. Mesmo assim, vale corrigir para defesa em profundidade.
+
+**Recomendo aplicar P0 + P1 na mesma sessão.** Confirma?
 
