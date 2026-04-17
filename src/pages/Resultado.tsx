@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { recommendPlan } from "@/lib/plan-recommendation";
 import { PLANS } from "@/lib/pricing-constants";
+import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
 type DiagnosticData = {
   resumo?: string;
@@ -98,6 +99,12 @@ export default function Resultado() {
   const recommendedPlan = PLANS[recommendation.tier];
 
   const handleActivate = () => {
+    void trackFunnelEvent({
+      event: "checkout_started",
+      recommendedPlan: recommendation.tier,
+      selectedPlan: recommendation.tier,
+      metadata: { source: "resultado", chs, perdaMensal },
+    });
     navigate(`/planos?recommended=${recommendation.tier}&from=diagnostico`);
   };
 
