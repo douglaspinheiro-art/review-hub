@@ -41,6 +41,7 @@ import {
   verifyYampiHmac,
 } from "../_shared/normalize-webhook.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
+import { isOrderPaid } from "../_shared/order-payment-status.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -120,7 +121,7 @@ function normalizeShopifyOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr((p.payment_details as AnyRecord | undefined)?.payment_method_name || p.gateway) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.created_at) || undefined,
-    is_paid: ["paid", "partially_paid"].includes(financialStatus),
+    is_paid: isOrderPaid("shopify", { financial_status: financialStatus }),
     is_delivered: fulfillmentStatus === "fulfilled",
   };
 }
@@ -155,7 +156,7 @@ function normalizeWooCommerceOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr(p.payment_method_title || p.payment_method) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.date_created) || undefined,
-    is_paid: ["completed", "processing"].includes(status),
+    is_paid: isOrderPaid("woocommerce", { status }),
     is_delivered: status === "completed",
   };
 }
@@ -197,7 +198,7 @@ function normalizeVTEXOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr((p.paymentData as AnyRecord | undefined)?.transactions?.[0]?.payments?.[0]?.paymentSystemName) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.creationDate || p.created_at) || undefined,
-    is_paid: paidStatuses.includes(status),
+    is_paid: isOrderPaid("vtex", { status }),
     is_delivered: status === "delivered",
   };
 }
@@ -229,7 +230,7 @@ function normalizeNuvemshopOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr(p.payment_method) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.created_at) || undefined,
-    is_paid: ["paid", "approved", "captured"].includes(status),
+    is_paid: isOrderPaid("nuvemshop", { payment_status: status, status }),
     is_delivered: toStr(p.shipping_status).toLowerCase() === "delivered",
   };
 }
@@ -268,7 +269,7 @@ function normalizeMagento2Order(p: AnyRecord): NormalizedOrder {
     payment_method: toStr((p.payment as AnyRecord | undefined)?.method) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.created_at) || undefined,
-    is_paid: paidStatuses.includes(status),
+    is_paid: isOrderPaid("magento", { status }),
     is_delivered: status === "complete",
   };
 }
@@ -305,7 +306,7 @@ function normalizeTrayOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr(order.payment_method || order.payment_form) || undefined,
     produtos_json: produtos,
     created_at: toStr(order.date || order.created_at || p.created_at) || undefined,
-    is_paid: paidStatuses.includes(status),
+    is_paid: isOrderPaid("tray", { status }),
     is_delivered: ["entregue", "delivered"].includes(status),
   };
 }
@@ -340,7 +341,7 @@ function normalizeYampiOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr(p.payment_method || (p.payment as AnyRecord | undefined)?.method) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.created_at) || undefined,
-    is_paid: paidStatuses.includes(status),
+    is_paid: isOrderPaid("yampi", { status }),
     is_delivered: ["delivered", "entregue"].includes(status),
   };
 }
@@ -372,7 +373,7 @@ function normalizeCustomOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr(p.payment_method) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.created_at) || undefined,
-    is_paid: ["paid", "approved", "completed"].includes(status),
+    is_paid: isOrderPaid("custom", { status }),
     is_delivered: ["delivered", "fulfilled"].includes(status),
   };
 }
@@ -405,7 +406,7 @@ function normalizeShopeeOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr(p.payment_method) || undefined,
     produtos_json: produtos,
     created_at: p.create_time ? new Date(Number(p.create_time) * 1000).toISOString() : undefined,
-    is_paid: paidStatuses.includes(status),
+    is_paid: isOrderPaid("shopee", { status }),
     is_delivered: status === "completed",
   };
 }
