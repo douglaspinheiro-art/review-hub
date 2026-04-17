@@ -953,7 +953,7 @@ export default function Onboarding() {
                     <SelectValue placeholder="Selecione sua plataforma" />
                   </SelectTrigger>
                   <SelectContent>
-                    {["Shopify", "Nuvemshop", "VTEX", "WooCommerce", "Tray", "Magento", "Dizy Commerce", "Yampi", "Outra"].map(p => (
+                    {["Shopify", "Nuvemshop", "VTEX", "WooCommerce", "Magento", "Dizy Commerce", "Yampi", "Outra"].map(p => (
                       <SelectItem key={p} value={p}>{p}</SelectItem>
                     ))}
                   </SelectContent>

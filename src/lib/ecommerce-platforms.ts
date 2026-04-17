@@ -1,5 +1,6 @@
 /**
  * Lista canônica para cadastro e diagnóstico. "Outra" sempre por último.
+ * NOTA: Tray temporariamente oculta por problemas técnicos.
  */
 export const ECOMMERCE_PLATFORMAS = [
   "Shopify",
@@ -7,7 +8,6 @@ export const ECOMMERCE_PLATFORMAS = [
   "VTEX",
   "WooCommerce",
   "Yampi",
-  "Tray",
   "Shopee",
   "Magento",
   "Dizy Commerce",
@@ -22,7 +22,6 @@ export const ECOMMERCE_PLATFORMAS_FUNIL = [
   "VTEX",
   "WooCommerce",
   "Nuvemshop",
-  "Tray",
   "Shopee",
   "Magento",
   "Dizy Commerce",
@@ -36,7 +35,6 @@ export const ECOMMERCE_PLATFORM_CHIPS = [
   "WooCommerce",
   "VTEX",
   "Yampi",
-  "Tray",
   "Shopee",
   "Magento",
   "Dizy Commerce",
