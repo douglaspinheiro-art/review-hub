@@ -121,7 +121,10 @@ export default function Onboarding() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsImported, setMetricsImported] = useState(false);
   const [metricsFetched, setMetricsFetched] = useState(false);
-  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean }>({});
+  const [taxaAbandono, setTaxaAbandono] = useState("");
+  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean }>({});
+  const [importedPlatform, setImportedPlatform] = useState<string>("");
+  const [zeroFields, setZeroFields] = useState<string[]>([]);
 
   // Step 4 — GA4 optional
   const [ga4PropertyId, setGa4PropertyId] = useState("");
