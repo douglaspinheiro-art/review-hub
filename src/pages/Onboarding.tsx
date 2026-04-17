@@ -1002,17 +1002,32 @@ export default function Onboarding() {
                     />
                   )}
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Meta de conversão (%)</Label>
-                  <Input
-                    type="number"
-                    placeholder="2.5"
-                    value={metaConversao}
-                    onChange={e => setMetaConversao(e.target.value)}
-                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                    step="0.1"
-                  />
-                </div>
+                {(() => {
+                  const v = Number(visitantes) || 0;
+                  const p = Number(pedidos) || 0;
+                  const autoTaxa = v > 0 && p > 0 ? ((p / v) * 100) : null;
+                  const displayValue = autoTaxa !== null ? autoTaxa.toFixed(2) : metaConversao;
+                  return (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                        Taxa de conversão (%)
+                        {autoTaxa !== null && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ calculada</span>}
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder="2.5"
+                        value={displayValue}
+                        onChange={e => setMetaConversao(e.target.value)}
+                        readOnly={autoTaxa !== null}
+                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                        step="0.1"
+                      />
+                      {autoTaxa !== null && (
+                        <p className="text-[10px] text-muted-foreground">Calculada: (pedidos / visitantes) × 100</p>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                     Taxa de abandono carrinho (%)
