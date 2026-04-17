@@ -33,7 +33,7 @@ import {
   shouldWarnIncompleteSetup,
 } from "@/lib/whatsapp/connection-ui";
 import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
-import { getMetaAppId } from "@/lib/whatsapp/meta-app-config";
+import { getMetaAppConfig } from "@/lib/whatsapp/meta-app-config";
 
 type Connection = {
   id: string;
@@ -103,9 +103,11 @@ export default function WhatsApp() {
     }
     setEmbeddedSignupLoading(true);
     try {
-      const metaAppIdVal = await getMetaAppId();
+      const cfg = await getMetaAppConfig();
       const result = await launchEmbeddedSignup({
-        appId: metaAppIdVal,
+        appId: cfg.appId,
+        configId: cfg.configId,
+        graphVersion: cfg.graphVersion,
         storeId: selectedStoreId,
       });
       if (result.ok) {

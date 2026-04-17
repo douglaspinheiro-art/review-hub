@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
-import { getMetaAppId } from "@/lib/whatsapp/meta-app-config";
+import { getMetaAppConfig } from "@/lib/whatsapp/meta-app-config";
 
 export default function Setup() {
   const navigate = useNavigate();
@@ -46,9 +46,11 @@ export default function Setup() {
     }
     setWaConnecting(true);
     try {
-      const metaAppId = await getMetaAppId();
+      const cfg = await getMetaAppConfig();
       const result = await launchEmbeddedSignup({
-        appId: metaAppId,
+        appId: cfg.appId,
+        configId: cfg.configId,
+        graphVersion: cfg.graphVersion,
         storeId: userStoreId,
         instanceName: "onboarding",
       });
