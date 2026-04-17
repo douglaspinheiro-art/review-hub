@@ -639,6 +639,7 @@ export default function Onboarding() {
           setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
           setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
           setPedidos(String(m.purchases ?? m.pedido ?? ""));
+          setImportedFields(prev => ({ ...prev, visitantes: true, carrinho: true, checkout: true, pedidos: true }));
         }
         toast.success(`✅ GA4 conectado! ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados.`);
       }
