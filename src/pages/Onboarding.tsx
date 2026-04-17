@@ -1233,12 +1233,12 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* STEP 4: GA4 Optional */}
-        {step === 4 && (
+        {/* STEP 3: GA4 Optional — connect first so funnel auto-fills */}
+        {step === 3 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 text-[10px] font-black px-3 py-1 rounded-full border border-blue-500/20 uppercase tracking-[0.2em]">
-                <Globe className="w-3 h-3" /> Passo 4 — Dados em Tempo Real (Opcional)
+                <Globe className="w-3 h-3" /> Passo 3 — Dados em Tempo Real (Opcional)
               </div>
               <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
                 Conectar Google Analytics 4
