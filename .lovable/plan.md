@@ -1,126 +1,97 @@
 
 
-## Análise da auditoria: **PARCIALMENTE CORRETA**
+The user is asking my opinion on an OAuth rollout plan, not asking me to implement it. The build errors shown are a red herring — they're pre-existing TS issues in many edge functions unrelated to my recent edits. I should focus on giving a sharp opinion on the plan.
 
-Vou validar cada achado com evidências do código antes de propor correções.
+Let me evaluate:
 
-### 🔴 Alto 1 — OAuth start sem `assert_store_access`
+**Strengths:**
+- Phase 0 (hardening) correctly gates everything else
+- Reuses existing primitives (`assert_store_access`, `oauth_states`, `consume_oauth_state`, `INTEGRATIONS_SAFE_SELECT`, `register-webhooks`) — no reinvention
+- Behind-flag rollout per platform is conservative and correct
+- Acceptance criteria include forged `store_id` test (the right adversarial check)
+- Distinguishes "OAuth real" (Shopify/Nuvemshop/Woo) from "assisted connection" (VTEX/Tray) — accurate; VTEX/Tray don't have user-friendly OAuth
+- Manual fallback preserved end-to-end
 
-**Status: CONFIRMADO (risco real)**
+**Issues / refinements:**
+1. **Onboarding draft key change** (`user_id,type` → `store_id,type`): we already did this for `persistActiveIntegration` upsert. Need to check the *localStorage draft key* is also keyed per-store, otherwise switching stores leaks draft state. Worth calling out.
+2. **WooCommerce "1-click"**: WooCommerce has a real OAuth-like flow (Application Passwords / WC REST authentication endpoint with callback). Calling it "assisted" undersells it — it can be true 1-click for self-hosted Woo. But it depends on plugin config. Plan correctly hedges with manual fallback.
+3. **VTEX**: doesn't have OAuth for app installs in the typical sense — uses appKey/appToken. Calling it "assisted" is correct but the plan should be explicit that there's no callback for VTEX, only guided manual entry + validation.
+4. **Tray**: actually has OAuth 2 (consumer_key/consumer_secret + auth code). Could be real 1-click, not just assisted. Plan undersells it.
+5. **`register-webhooks` idempotency**: already handles `already_exists` per platform — good. Plan should ensure callbacks pass `x-internal-secret` (already does via `invokeRegisterWebhooksFromCallback`).
+6. **Cache invalidation (Phase 4)**: should explicitly list query keys: `integrations`, `integration-health`, `whatsapp-connections`, `dashboard-snapshot`. Otherwise vague.
+7. **Observability**: plan suggests `request_id, store_id, platform, phase` — already partially done in `oauth-nuvemshop` (`logOAuth`). Standardize a shared helper `logOAuthEvent()` in `_shared/`.
+8. **Missing: token refresh strategy**. Nuvemshop tokens don't expire, Shopify tokens are long-lived, but Woo/Tray have refresh tokens. Plan ignores expiry/rotation. Worth a Phase 4.5 note.
+9. **Missing: revoke/disconnect flow**. When user disconnects, should call provider's revoke endpoint + delete webhooks + mark integration inactive. Not in plan.
+10. **Phase ordering**: Phase 1 (Nuvemshop) is fine because Shopify/Nuvemshop are already done. Could parallelize Phase 2 (Woo) since `oauth-woocommerce` already exists.
 
-Em `oauth-shopify/index.ts` e `oauth-nuvemshop/index.ts`, o `action=start`:
-- Valida JWT via `verifyJwt(req)` ✅
-- Recebe `store_id` do query param ✅
-- **Insere em `oauth_states` sem verificar se `store_id` pertence a `auth.userId`** ❌
+**Verdict:** Solid plan, ~85% complete. The architecture and security gates are right. Add: (a) per-store draft key, (b) token refresh strategy, (c) disconnect/revoke flow, (d) explicit query keys for cache invalidation, (e) Tray as real OAuth (not just assisted).
 
-**Impacto real:** Moderado-alto. Atacante autenticado com UUID de loja de outro tenant poderia iniciar o fluxo OAuth e, no callback, a integração seria gravada em `integrations` para o `st.user_id` da tabela `oauth_states` (que é o atacante, não o dono real da loja). Mas como o upsert usa `onConflict: store_id,type`, pode sobrescrever integração legítima de outra loja.
+Build errors note: these are pre-existing in many edge functions (not caused by my recent edits). They're TS strictness issues in `bulk-import-contacts`, `data-pipeline-cron`, `dispatch-campaign`, `dispatch-newsletter`, etc. Should mention briefly that they're orthogonal to this plan but worth a separate cleanup pass.
 
-**Correção:** Adicionar `await admin.rpc('assert_store_access', { p_store_id: storeId })` com cliente JWT-scoped antes do INSERT em `oauth_states`. Mesmo padrão já aplicado em `relatorio-semanal`, `benchmark-setor`, etc. na sessão anterior.
-
----
-
-### 🔴 Alto 2 — Segredos de integrações expostos no frontend
-
-**Status: CONFIRMADO mas mitigável via RLS**
-
-`INTEGRATIONS_LIST_SELECT` inclui `config, config_json` (linha confirmada em `src/lib/supabase-select-fragments.ts`). Tokens OAuth (access_token, shop_url, etc.) trafegam para o browser.
-
-**Mitigação em camadas:**
-1. **Frontend**: criar `INTEGRATIONS_SAFE_SELECT` sem `config`/`config_json` e migrar páginas de listagem (`Integracoes.tsx`, `Canais.tsx`) para ele.
-2. **Criar fragment `INTEGRATIONS_DETAIL_SELECT`** (com config) apenas para telas de edição onde o owner precisa ver/modificar credenciais. RLS já restringe a `user_id = auth.uid()`, então mesmo com `config`, só o dono vê — o risco real é **XSS exfiltrando tokens do localStorage/memory**, não vazamento cross-tenant.
-3. Idealmente: mover campos sensíveis para tabela separada `integration_credentials` protegida por RPC `get_integration_config(id)` chamada apenas quando necessário. **Fora de escopo para hoje** (refactor grande).
-
-**Decisão pragmática:** Remover `config`/`config_json` do select de listagem e manter em tela de detalhe/edição. Defesa em profundidade contra XSS.
+I'm in plan mode (read-only) and the user asked my opinion — no implementation needed. Just present the analysis.
 
 ---
 
-### 🟠 Médio 1 — Onboarding usa "loja primária"
+## Veredito: **plano sólido (~85%), pronto para executar com 5 ajustes**
 
-**Status: PLAUSÍVEL (preciso verificar)**
+Os fundamentos estão corretos: gating em Fase 0, reúso de primitivas existentes (`assert_store_access`, `oauth_states`, `consume_oauth_state`, `INTEGRATIONS_SAFE_SELECT`, `register-webhooks`), fallback manual preservado, e behind-flag por plataforma. O critério de aceite "forjar `store_id` deve retornar 403" é exatamente o teste adversarial certo.
 
-`getPrimaryStoreId()` em `Onboarding.tsx` — se realmente pega "primeira loja" sem respeitar `activeStoreId`, numa conta multi-loja, pode conectar integração à loja errada.
+### O que está muito bom
 
-**Ressalva:** Onboarding é tipicamente executado por contas **novas** (1 loja só). O risco é baixo no fluxo padrão mas real se usuário re-abrir onboarding após criar segunda loja.
+- **Sequência de fases**: hardening primeiro, depois rollout incremental por plataforma. Correto.
+- **Distinção OAuth vs. conexão assistida**: VTEX e Tray não têm OAuth tradicional para instalação de apps em SMB — chamar de "assistido" é honesto.
+- **Reúso de infra existente**: nenhuma reinvenção. `consume_oauth_state` (one-time + TTL), `register-webhooks` (já idempotente via `already_exists`), `INTEGRATIONS_SAFE_SELECT` — tudo já está no codebase.
+- **Gate de avanço explícito**: "só seguir para Fase 1 após teste forjado retornar 403" evita rollout em cima de base insegura.
 
-**Correção:** Usar `useStoreScope().activeStoreId` com fallback para primeira loja **apenas** se não houver loja ativa.
+### 5 ajustes que recomendo incorporar
 
----
+**1. Chave de draft do onboarding por loja (não só upsert)**
+> O plano corrige o `onConflict` do upsert (já feito), mas o **localStorage draft** também precisa ser keyed por `store_id`. Se o usuário troca de loja ativa no meio do onboarding, o draft anterior vaza credenciais entre lojas. Padrão: `localStorage.setItem(\`onboarding:draft:${storeId}\`, ...)`.
 
-### 🟠 Médio 2 — `onConflict: "user_id,type"`
+**2. Tray é OAuth 2 real, não "assistido"**
+> Tray Commerce expõe `consumer_key/consumer_secret + authorization_code` flow com callback. Pode entrar na **Fase 2** (junto com Woo), não na Fase 3. VTEX sim — só tem `appKey/appToken` sem callback, fica como assistido em Fase 3.
 
-**Status: CONFIRMADO (bug real de isolamento multi-loja)**
+**3. Faltou: estratégia de refresh/expiração de tokens**
+> Nuvemshop não expira (✅), Shopify long-lived (✅), mas **Tray tem refresh_token (~24h)** e Woo Application Passwords podem ser revogadas pelo admin. Adicionar **Fase 4.5**: cron `oauth-token-refresh` por plataforma + flag `connection_status='token_expired'` na UI quando refresh falhar 3x.
 
-Se um usuário tem 2 lojas e já conectou Shopify na loja A, ao conectar Shopify na loja B pelo onboarding, **sobrescreve a integração da loja A**. Isso é bug funcional + risco de isolamento.
+**4. Faltou: fluxo de disconnect/revoke**
+> Quando usuário clica "Desconectar" em `Integracoes.tsx`, o plano não cobre: (a) chamar endpoint de revoke do provedor, (b) deletar webhooks registrados (já temos `registered_webhooks` salvo no `config_json`), (c) marcar `is_active=false`. Sem isso, webhooks órfãos continuam batendo no nosso endpoint após "desconexão".
 
-**Correção:** Mudar para `onConflict: "store_id,type"` (consistente com os OAuth callbacks de Shopify/Nuvemshop que já usam isso).
+**5. Cache invalidation (Fase 4) — listar query keys explicitamente**
+> "Garantir que mutações invalidem as query keys corretas" é vago. Listar:
+> - `['integrations', storeId]` (lista)
+> - `['integration-health', storeId]` (badge de status)
+> - `['whatsapp-connections', storeId]`
+> - `['dashboard-snapshot', storeId]` (KPIs que dependem de integração)
+> 
+> Sem essa lista, dev fica adivinhando e a UI fica stale após callback.
 
-**Pré-requisito SQL:** Verificar se existe `UNIQUE(store_id, type)` em `integrations`. Se não existir, adicionar via migração (com remoção do unique antigo `user_id, type` se houver).
+### Pontos menores / nice-to-have
 
----
+- **Logger compartilhado**: `_shared/oauth-log.ts` com `logOAuthEvent({request_id, store_id, platform, phase, ok, detail})` para padronizar (já existe um `logOAuth` inline em `oauth-nuvemshop` — extrair).
+- **Phase 1 e Phase 2 podem ser paralelas**: Nuvemshop e Woo são independentes. Se houver banda, paralelizar acelera time-to-value.
+- **Métrica de funil OAuth**: instrumentar `oauth_started` / `oauth_callback_ok` / `oauth_callback_failed` em `analytics-events` para medir conversão por plataforma.
 
-### 🟠 Médio 3 — Credenciais em localStorage
+### Sobre os build errors mostrados
 
-**Status: CONFIRMADO (risco XSS)**
+Os erros TS (`bulk-import-contacts`, `data-pipeline-cron`, `dispatch-campaign`, `dispatch-newsletter`, etc.) são **pré-existentes e ortogonais** a este plano OAuth — são problemas de tipagem do Supabase client e tipos `never` em joins. Não bloqueiam Phase 0–4, mas valem uma issue separada de "TS hygiene pass".
 
-`integrationConfig` e `ga4Token` no rascunho local (`localStorage`) — tokens expostos a qualquer script com acesso ao DOM.
+### Resumo executivo
 
-**Correção:** 
-- Remover `integrationConfig.access_token`, `ga4Token`, e campos sensíveis do snapshot salvo em localStorage.
-- Manter apenas metadados não-sensíveis (plataforma selecionada, nome, URL da loja).
-- Re-solicitar credenciais se usuário abandonar e retomar o onboarding (UX aceitável).
-
----
-
-## Plano de correção
-
-### P0 (mesmo nível dos blockers anteriores)
-
-**1. OAuth start ownership check** — `oauth-shopify` e `oauth-nuvemshop`:
-- Após `verifyJwt`, criar cliente JWT-scoped e chamar `assert_store_access(store_id)`. Se falhar, retornar 403.
-
-**2. onConflict multi-loja** — `src/pages/Onboarding.tsx` `persistActiveIntegration`:
-- Trocar `onConflict: "user_id,type"` → `"store_id,type"`
-- Migração SQL: garantir índice único `UNIQUE(store_id, type)` em `integrations`; drop do antigo se conflitar
-
-### P1
-
-**3. Remover credenciais do localStorage** — `Onboarding.tsx`:
-- Filtrar `integrationConfig` e `ga4Token` antes de persistir rascunho
-- Salvar apenas campos não-sensíveis
-
-**4. SAFE_SELECT de integrações** — `src/lib/supabase-select-fragments.ts`:
-- Criar `INTEGRATIONS_SAFE_SELECT` sem `config`/`config_json`
-- Migrar `Integracoes.tsx` (listagem) para o safe select
-- Manter `INTEGRATIONS_LIST_SELECT` apenas para telas de edição/detalhe onde o owner precisa gerenciar credenciais
-
-**5. Primary store → active store** — `Onboarding.tsx`:
-- `getPrimaryStoreId()` → usar `useStoreScope().activeStoreId` com fallback
-
----
-
-## Arquivos a alterar
+Pode executar como está, **com a Fase 0 + os 5 ajustes acima incorporados**. A ordem que eu seguiria:
 
 ```
-supabase/functions/oauth-shopify/index.ts         (assert_store_access no start)
-supabase/functions/oauth-nuvemshop/index.ts       (assert_store_access no start)
-src/pages/Onboarding.tsx                          (onConflict + localStorage + active store)
-src/lib/supabase-select-fragments.ts              (INTEGRATIONS_SAFE_SELECT)
-src/pages/dashboard/Integracoes.tsx               (usar SAFE_SELECT)
-supabase/migrations/<novo>.sql                    (UNIQUE(store_id,type) em integrations)
+Fase 0 (hardening)         ← bloqueador, já 80% feito
+  ├─ ajuste #1 (draft key per-store)
+Fase 1 (Nuvemshop) + Fase 2 (Woo + Tray)   ← paralelas
+  ├─ ajuste #2 (Tray como OAuth real)
+Fase 3 (VTEX assistido)
+Fase 4 (estado + caches + logs)
+  ├─ ajuste #5 (query keys explícitas)
+Fase 4.5 (refresh + disconnect)            ← novo
+  ├─ ajuste #3 (token refresh)
+  ├─ ajuste #4 (revoke flow)
 ```
 
----
-
-## Fora de escopo (não bloqueador, documentar como follow-up)
-
-- Mover `config`/`config_json` para tabela `integration_credentials` com RPC gateway (refactor grande; o controle por RLS + SAFE_SELECT já mitiga 90% do risco prático hoje).
-- Auditoria completa de `localStorage` em toda a aplicação (outros drafts podem ter padrão similar).
-
----
-
-## Veredito
-
-A auditoria está **~85% correta**. Os 5 achados são reais, mas a severidade de "Alto 2" (config no select) é discutível: RLS já isola por `user_id`, então o risco principal é XSS, não vazamento cross-tenant. Mesmo assim, vale corrigir para defesa em profundidade.
-
-**Recomendo aplicar P0 + P1 na mesma sessão.** Confirma?
+Quer que eu transforme isso em tasks concretas e comece pela Fase 0 + ajuste #1?
 
