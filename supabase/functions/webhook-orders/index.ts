@@ -32,6 +32,7 @@ import { uuidSchema } from "../_shared/validation.ts";
 import {
   getVerifierSecretForStore,
   normalizePhone,
+  verifyMagentoToken,
   verifyNuvemshopToken,
   verifyShopifyHmac,
   verifyWooCommerceHmac,
@@ -536,6 +537,13 @@ Deno.serve(async (req) => {
     if (secretResult.ok) {
       signatureOk = await verifyYampiHmac(req, rawBody, secretResult.secret);
     }
+  } else if (source === "magento") {
+    // Magento 2 (and Dizy white-label) — fail-closed per-store token check.
+    const secretResult = await getVerifierSecretForStore(supabase, storeId, "magento");
+    if (!secretResult.ok) {
+      return new Response(JSON.stringify({ error: secretResult.error }), { status: 401, headers: corsHeaders });
+    }
+    signatureOk = verifyMagentoToken(req, secretResult.secret);
   }
 
   if (!signatureOk) {
