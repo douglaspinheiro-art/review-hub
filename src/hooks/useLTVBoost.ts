@@ -275,19 +275,30 @@ export function useCanaisPageData(fetchEnabled: boolean) {
           };
         }
       } else {
-        const ordRes = await supabase
-          .from("orders_v3")
-          .select("canal_id, valor")
-          .eq("store_id", storeId)
-          .gte("created_at", since)
-          .limit(5000);
-        if (ordRes.error) throw ordRes.error;
-        for (const row of ordRes.data ?? []) {
-          const cid = row.canal_id;
-          if (!cid) continue;
-          if (!statsByChannelId[cid]) statsByChannelId[cid] = { pedidos: 0, receita: 0 };
-          statsByChannelId[cid].pedidos += 1;
-          statsByChannelId[cid].receita += Number(row.valor ?? 0);
+        // Paginate to avoid silently dropping data for stores with > 5000 orders/period.
+        // Hard ceiling of 50k rows (~50 pages) prevents runaway loops on misconfigured stores.
+        const PAGE = 1000;
+        const MAX_PAGES = 50;
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const from = page * PAGE;
+          const to = from + PAGE - 1;
+          const ordRes = await supabase
+            .from("orders_v3")
+            .select("canal_id, valor")
+            .eq("store_id", storeId)
+            .gte("created_at", since)
+            .order("created_at", { ascending: true })
+            .range(from, to);
+          if (ordRes.error) throw ordRes.error;
+          const rows = ordRes.data ?? [];
+          for (const row of rows) {
+            const cid = row.canal_id;
+            if (!cid) continue;
+            if (!statsByChannelId[cid]) statsByChannelId[cid] = { pedidos: 0, receita: 0 };
+            statsByChannelId[cid].pedidos += 1;
+            statsByChannelId[cid].receita += Number(row.valor ?? 0);
+          }
+          if (rows.length < PAGE) break; // last page
         }
       }
       logQueryTiming("canais-page-data", t0);

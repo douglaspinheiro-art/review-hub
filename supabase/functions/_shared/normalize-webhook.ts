@@ -216,25 +216,31 @@ export async function getVerifierSecretForStore(
 
 // ── Phone normalization ────────────────────────────────────────────────────────
 
+/** ISO 3166-1 alpha-2 → default international dial code (digits, no `+`). */
+const COUNTRY_DIAL_CODES: Record<string, string> = {
+  BR: "55", PT: "351", AR: "54", UY: "598", MX: "52", CL: "56",
+  CO: "57", PE: "51", PY: "595", US: "1", ES: "34", FR: "33",
+};
+
 /**
- * Normalizes a phone number toward E.164 format.
+ * Normalizes a phone number toward E.164-ish format (digits only, no `+`).
  *
  * Rules (in order):
- *   1. 13+ digits → already has country code, return as-is
- *   2. Starts with "55" + 10-11 digits (12-13 total) → Brazilian with code, return as-is
- *   3. 10-11 digits → assume Brazil (DDD + number), prepend "55"
- *   4. < 10 digits → return digits only (may be an extension / invalid; caller decides)
+ *   1. 12+ digits → already has a country code, return as-is.
+ *   2. Otherwise prepend the dial code derived from `countryCode` (default `BR` → 55).
+ *   3. < 10 digits and no country hint → return digits only.
  *
- * International stores: numbers that already include the country code (12+ digits)
- * are returned untouched. This covers AR (+54), UY (+598), MX (+52), PT (+351), etc.
+ * Pass the store's `country_code` to avoid forcing every short number into Brazil.
  */
-export function normalizePhone(raw: string): string {
+export function normalizePhone(raw: string, countryCode: string | null = "BR"): string {
   if (!raw) return "";
   const digits = raw.replace(/\D/g, "");
   if (!digits) return "";
-  if (digits.length >= 12) return digits;           // already has country code
-  if (digits.length >= 10) return `55${digits}`;    // Brazilian without prefix
-  return digits;                                     // short / unknown
+  if (digits.length >= 12) return digits;                  // already has country code
+  const cc = (countryCode ?? "BR").toUpperCase();
+  const dial = COUNTRY_DIAL_CODES[cc] ?? "55";
+  if (digits.length >= 10) return `${dial}${digits}`;      // local format with DDD
+  return digits;                                            // short / unknown
 }
 
 // ── HMAC verification ──────────────────────────────────────────────────────────

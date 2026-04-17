@@ -4013,6 +4013,7 @@ export type Database = {
           brand_primary_color: string | null
           chs_history: Json | null
           conversion_health_score: number | null
+          country_code: string
           created_at: string | null
           email_from_address: string | null
           email_reply_to: string | null
@@ -4033,6 +4034,7 @@ export type Database = {
           brand_primary_color?: string | null
           chs_history?: Json | null
           conversion_health_score?: number | null
+          country_code?: string
           created_at?: string | null
           email_from_address?: string | null
           email_reply_to?: string | null
@@ -4053,6 +4055,7 @@ export type Database = {
           brand_primary_color?: string | null
           chs_history?: Json | null
           conversion_health_score?: number | null
+          country_code?: string
           created_at?: string | null
           email_from_address?: string | null
           email_reply_to?: string | null

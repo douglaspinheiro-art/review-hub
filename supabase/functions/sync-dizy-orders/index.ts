@@ -34,32 +34,42 @@ async function fetchDizyOrders(
   sinceIso: string,
   pageSize = 100,
 ): Promise<DizyOrder[]> {
-  // Magento REST: /rest/V1/orders?searchCriteria=...
-  const params = new URLSearchParams();
-  params.set("searchCriteria[filter_groups][0][filters][0][field]", "created_at");
-  params.set("searchCriteria[filter_groups][0][filters][0][value]", sinceIso);
-  params.set("searchCriteria[filter_groups][0][filters][0][condition_type]", "gt");
-  params.set("searchCriteria[sortOrders][0][field]", "created_at");
-  params.set("searchCriteria[sortOrders][0][direction]", "ASC");
-  params.set("searchCriteria[pageSize]", String(pageSize));
+  // Magento REST: paginated. Loop until fewer than pageSize results come back.
+  // Hard ceiling of 100 pages (= 10k orders) prevents runaway loops if the cursor is broken.
+  const MAX_PAGES = 100;
+  const all: DizyOrder[] = [];
+  for (let currentPage = 1; currentPage <= MAX_PAGES; currentPage++) {
+    const params = new URLSearchParams();
+    params.set("searchCriteria[filter_groups][0][filters][0][field]", "created_at");
+    params.set("searchCriteria[filter_groups][0][filters][0][value]", sinceIso);
+    params.set("searchCriteria[filter_groups][0][filters][0][condition_type]", "gt");
+    params.set("searchCriteria[sortOrders][0][field]", "created_at");
+    params.set("searchCriteria[sortOrders][0][direction]", "ASC");
+    params.set("searchCriteria[pageSize]", String(pageSize));
+    params.set("searchCriteria[currentPage]", String(currentPage));
 
-  const url = `${baseUrl.replace(/\/$/, "")}/rest/V1/orders?${params.toString()}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) {
-    throw new Error(`Dizy API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const url = `${baseUrl.replace(/\/$/, "")}/rest/V1/orders?${params.toString()}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) {
+      throw new Error(`Dizy API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const items = (data.items ?? []) as DizyOrder[];
+    all.push(...items);
+    if (items.length < pageSize) break; // last page
   }
-  const data = await res.json();
-  return (data.items ?? []) as DizyOrder[];
+  return all;
 }
 
-function normalizePhone(raw?: string): string {
+function normalizePhone(raw: string | undefined, countryDial = "55"): string {
   if (!raw) return "";
   const digits = raw.replace(/\D/g, "");
   if (!digits) return "";
-  return digits.startsWith("55") ? digits : `55${digits}`;
+  if (digits.length >= 12) return digits;             // already has country code
+  return `${countryDial}${digits}`;
 }
 
 async function syncStore(
@@ -68,22 +78,33 @@ async function syncStore(
   userId: string,
   options: { backfillDays?: number },
 ) {
-  // 1. Buscar credenciais Dizy do channel desta loja
-  const { data: channel, error: chErr } = await supabase
-    .from("channels")
-    .select("credenciais_json")
-    .eq("store_id", storeId)
-    .eq("plataforma", "Dizy Commerce")
-    .eq("ativo", true)
-    .maybeSingle();
-  if (chErr) throw new Error(`channel query: ${chErr.message}`);
-  if (!channel) throw new Error("Dizy channel not configured for this store");
+  // 1. Buscar credenciais Dizy do channel desta loja + country code
+  const [channelRes, storeRes] = await Promise.all([
+    supabase
+      .from("channels")
+      .select("credenciais_json")
+      .eq("store_id", storeId)
+      .eq("plataforma", "Dizy Commerce")
+      .eq("ativo", true)
+      .maybeSingle(),
+    supabase.from("stores").select("country_code").eq("id", storeId).maybeSingle(),
+  ]);
+  if (channelRes.error) throw new Error(`channel query: ${channelRes.error.message}`);
+  if (!channelRes.data) throw new Error("Dizy channel not configured for this store");
 
-  const creds = channel.credenciais_json as { base_url?: string; token?: string; api_key?: string } | null;
+  const creds = channelRes.data.credenciais_json as { base_url?: string; token?: string; api_key?: string } | null;
   const apiToken = creds?.token ?? creds?.api_key;
   if (!creds?.base_url || !apiToken) {
     throw new Error("Dizy credentials incomplete (base_url + token/api_key required)");
   }
+
+  // ISO 3166-1 alpha-2 → dial code (digits, no `+`). Defaults to BR.
+  const countryDialMap: Record<string, string> = {
+    BR: "55", PT: "351", AR: "54", UY: "598", MX: "52", CL: "56",
+    CO: "57", PE: "51", PY: "595", US: "1", ES: "34",
+  };
+  const cc = ((storeRes.data as { country_code?: string } | null)?.country_code ?? "BR").toUpperCase();
+  const countryDial = countryDialMap[cc] ?? "55";
 
   // 2. Determinar cursor (último created_at) ou backfill
   const { data: state } = await supabase
@@ -121,7 +142,7 @@ async function syncStore(
   let lastExternalId: string | null = null;
 
   for (const order of orders) {
-    const phone = normalizePhone(order.billing_address?.telephone);
+    const phone = normalizePhone(order.billing_address?.telephone, countryDial);
     if (!phone) continue; // Pedido sem telefone não entra no CRM
 
     const name = [order.customer_firstname, order.customer_lastname].filter(Boolean).join(" ") || null;
