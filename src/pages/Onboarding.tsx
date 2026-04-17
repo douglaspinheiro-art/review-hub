@@ -126,11 +126,16 @@ export default function Onboarding() {
   const [importedPlatform, setImportedPlatform] = useState<string>("");
   const [zeroFields, setZeroFields] = useState<string[]>([]);
 
-  // Step 4 — GA4 optional
+  // Step 4 — GA4 (OAuth flow + manual fallback)
   const [ga4PropertyId, setGa4PropertyId] = useState("");
   const [ga4Token, setGa4Token] = useState("");
   const [ga4Testing, setGa4Testing] = useState(false);
   const [ga4Result, setGa4Result] = useState<{ ok: boolean; visitors?: number } | null>(null);
+  const [ga4OauthConnecting, setGa4OauthConnecting] = useState(false);
+  const [ga4ConnectedEmail, setGa4ConnectedEmail] = useState<string | null>(null);
+  const [ga4Properties, setGa4Properties] = useState<Array<{ id: string; name: string; account_name: string }>>([]);
+  const [ga4LoadingProperties, setGa4LoadingProperties] = useState(false);
+  const [ga4ManualMode, setGa4ManualMode] = useState(false);
 
   const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
@@ -497,6 +502,120 @@ export default function Onboarding() {
     setStep(4);
   };
 
+  const handleGA4Connect = useCallback(async () => {
+    if (!user?.id) return;
+    const storeId = await getPrimaryStoreId();
+    if (!storeId) {
+      toast.error("Crie sua loja primeiro (passo 1).");
+      return;
+    }
+    setGa4OauthConnecting(true);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ydkglitowqlpizpnnofy.supabase.co";
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/google-oauth-callback?action=start&store_id=${storeId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+          },
+        },
+      );
+      const json = await res.json();
+      if (!json?.url) {
+        toast.error("Não foi possível iniciar o OAuth do Google.");
+        setGa4OauthConnecting(false);
+        return;
+      }
+      const popup = window.open(json.url, "google-oauth", "width=520,height=640,scrollbars=yes");
+      if (!popup) {
+        toast.error("Popup bloqueado. Permita popups para este site.");
+        setGa4OauthConnecting(false);
+      }
+    } catch (e) {
+      console.error("GA4 OAuth error:", e);
+      toast.error("Erro ao conectar com Google.");
+      setGa4OauthConnecting(false);
+    }
+  }, [user?.id, getPrimaryStoreId]);
+
+  const fetchGa4Properties = useCallback(async () => {
+    const storeId = await getPrimaryStoreId();
+    if (!storeId) return;
+    setGa4LoadingProperties(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("list-ga4-properties", {
+        body: { store_id: storeId },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error || "Não foi possível listar suas propriedades GA4.");
+        return;
+      }
+      setGa4Properties(data.properties ?? []);
+      if (!data.properties?.length) {
+        toast.info("Nenhuma propriedade GA4 encontrada nesta conta Google.");
+      }
+    } catch (e) {
+      console.error("list-ga4-properties failed:", e);
+      toast.error("Erro ao buscar propriedades GA4.");
+    } finally {
+      setGa4LoadingProperties(false);
+    }
+  }, [getPrimaryStoreId]);
+
+  // Listen for OAuth popup callback
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type !== "ga4_oauth_result") return;
+      setGa4OauthConnecting(false);
+      if (event.data.success) {
+        setGa4ConnectedEmail(event.data.email ?? "Conta Google conectada");
+        toast.success("✅ Google conectado! Carregando propriedades…");
+        void fetchGa4Properties();
+      } else {
+        toast.error(event.data.error || "Falha na conexão com o Google.");
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [fetchGa4Properties]);
+
+  const handleSelectGa4Property = useCallback(async (propertyId: string) => {
+    setGa4PropertyId(propertyId);
+    const storeId = await getPrimaryStoreId();
+    if (!storeId) return;
+    // ga4_property_id is a new column; types may not be regenerated yet
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await supabase.from("stores").update({ ga4_property_id: propertyId } as any).eq("id", storeId);
+    setGa4Testing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("buscar-ga4", {
+        body: { store_id: storeId, periodo: "30d" },
+      });
+      if (error || !data?.success) {
+        setGa4Result({ ok: false });
+        toast.error("Propriedade selecionada, mas não foi possível buscar dados.");
+        return;
+      }
+      const m = data.metrics ?? data.metricas ?? {};
+      const visitors = m.visitors ?? m.visitantes;
+      setGa4Result({ ok: true, visitors });
+      if (visitors) {
+        setVisitantes(String(visitors));
+        setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
+        setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
+        setPedidos(String(m.purchases ?? m.pedido ?? ""));
+      }
+      toast.success(`✅ ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados nos últimos 30 dias.`);
+    } catch {
+      setGa4Result({ ok: false });
+      toast.error("Erro ao testar GA4.");
+    } finally {
+      setGa4Testing(false);
+    }
+  }, [getPrimaryStoreId]);
+
   const handleTestGA4 = async () => {
     if (!ga4PropertyId.trim() || !ga4Token.trim()) {
       toast.error("Preencha o Property ID e o Access Token.");
@@ -511,15 +630,16 @@ export default function Onboarding() {
         setGa4Result({ ok: false });
         toast.error("Não foi possível conectar ao GA4. Verifique as credenciais.");
       } else {
-        setGa4Result({ ok: true, visitors: data.metricas?.visitantes });
-        if (data.metricas) {
-          const m = data.metricas;
-          setVisitantes(String(m.visitantes || ""));
-          setCarrinho(String(m.carrinho || ""));
-          setCheckout(String(m.checkout || ""));
-          setPedidos(String(m.pedido || ""));
+        const m = data.metrics ?? data.metricas ?? {};
+        const visitors = m.visitors ?? m.visitantes;
+        setGa4Result({ ok: true, visitors });
+        if (visitors) {
+          setVisitantes(String(visitors));
+          setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
+          setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
+          setPedidos(String(m.purchases ?? m.pedido ?? ""));
         }
-        toast.success(`✅ GA4 conectado! ${data.metricas?.visitantes?.toLocaleString("pt-BR")} visitantes encontrados.`);
+        toast.success(`✅ GA4 conectado! ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados.`);
       }
     } catch {
       setGa4Result({ ok: false });
@@ -1117,61 +1237,174 @@ export default function Onboarding() {
               </p>
             </div>
 
-            <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">GA4 Property ID</Label>
-                <Input
-                  placeholder="Ex: 123456789"
-                  value={ga4PropertyId}
-                  onChange={e => setGa4PropertyId(e.target.value)}
-                  className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Access Token</Label>
-                <Input
-                  type="password"
-                  placeholder="ya29.a0..."
-                  value={ga4Token}
-                  onChange={e => setGa4Token(e.target.value)}
-                  className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                />
-              </div>
+            {/* ── OAuth Flow (recommended) ── */}
+            {!ga4ManualMode && (
+              <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
+                {!ga4ConnectedEmail && ga4Properties.length === 0 && (
+                  <>
+                    <div className="text-center space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Em 1 clique, autorizamos via Google e listamos suas propriedades GA4 automaticamente. Sem copiar Property IDs ou tokens.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleGA4Connect}
+                      disabled={ga4OauthConnecting}
+                      className="w-full h-14 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-base"
+                    >
+                      {ga4OauthConnecting ? (
+                        <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Conectando…</>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5 mr-2" viewBox="0 0 48 48" aria-hidden>
+                            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/>
+                            <path fill="#FF3D00" d="M6.3 14.1l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.1z"/>
+                            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.6 39.6 16.2 44 24 44z"/>
+                            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.3-4.1 5.6l6.2 5.2C42 35.3 44 30 44 24c0-1.3-.1-2.6-.4-3.5z"/>
+                          </svg>
+                          Conectar com Google
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      Você será redirecionado ao Google para autorizar acesso de leitura ao Analytics. Nenhuma senha é compartilhada.
+                    </p>
+                  </>
+                )}
 
-              {ga4Result && (
-                <div className={cn(
-                  "rounded-xl p-4 flex items-center gap-3",
-                  ga4Result.ok ? "bg-emerald-500/10 border border-emerald-500/30" : "bg-red-500/10 border border-red-500/30"
-                )}>
-                  {ga4Result.ok ? (
-                    <>
-                      <Sparkles className="w-5 h-5 text-emerald-500" />
-                      <div>
-                        <p className="text-sm font-bold text-emerald-400">Conectado!</p>
-                        <p className="text-xs text-muted-foreground">{ga4Result.visitors?.toLocaleString("pt-BR")} visitantes encontrados nos últimos 30 dias.</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <Info className="w-5 h-5 text-red-400" />
-                      <p className="text-sm text-red-400">Falha na conexão. Verifique as credenciais.</p>
-                    </>
-                  )}
-                </div>
-              )}
+                {ga4ConnectedEmail && (
+                  <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground">Conectado como</p>
+                      <p className="text-sm font-bold truncate">{ga4ConnectedEmail}</p>
+                    </div>
+                  </div>
+                )}
 
-              <div className="flex gap-3">
-                <Button
-                  onClick={handleTestGA4}
-                  disabled={ga4Testing || !ga4PropertyId.trim() || !ga4Token.trim()}
-                  variant="outline"
-                  className="flex-1 h-11 rounded-xl border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                {ga4LoadingProperties && (
+                  <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Buscando propriedades GA4…
+                  </div>
+                )}
+
+                {ga4Properties.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Selecione a propriedade GA4
+                    </Label>
+                    <Select value={ga4PropertyId} onValueChange={handleSelectGa4Property}>
+                      <SelectTrigger className="h-12 rounded-xl bg-background/50 border-[#2E2E3E]">
+                        <SelectValue placeholder="Escolha uma propriedade…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ga4Properties.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name} <span className="opacity-60">— {p.account_name}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {ga4Result && (
+                  <div className={cn(
+                    "rounded-xl p-4 flex items-center gap-3",
+                    ga4Result.ok ? "bg-emerald-500/10 border border-emerald-500/30" : "bg-red-500/10 border border-red-500/30"
+                  )}>
+                    {ga4Result.ok ? (
+                      <>
+                        <Sparkles className="w-5 h-5 text-emerald-500" />
+                        <div>
+                          <p className="text-sm font-bold text-emerald-400">Conectado!</p>
+                          <p className="text-xs text-muted-foreground">{ga4Result.visitors?.toLocaleString("pt-BR")} visitantes nos últimos 30 dias.</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Info className="w-5 h-5 text-red-400" />
+                        <p className="text-sm text-red-400">Falha ao buscar dados. Tente outra propriedade.</p>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setGa4ManualMode(true)}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
                 >
-                  {ga4Testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <TrendingUp className="w-4 h-4 mr-2" />}
-                  Testar Conexão
-                </Button>
+                  Usar Property ID e Access Token manualmente
+                </button>
               </div>
-            </div>
+            )}
+
+            {/* ── Manual fallback ── */}
+            {ga4ManualMode && (
+              <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">GA4 Property ID</Label>
+                  <Input
+                    placeholder="Ex: 123456789"
+                    value={ga4PropertyId}
+                    onChange={e => setGa4PropertyId(e.target.value)}
+                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Access Token</Label>
+                  <Input
+                    type="password"
+                    placeholder="ya29.a0..."
+                    value={ga4Token}
+                    onChange={e => setGa4Token(e.target.value)}
+                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                  />
+                </div>
+
+                {ga4Result && (
+                  <div className={cn(
+                    "rounded-xl p-4 flex items-center gap-3",
+                    ga4Result.ok ? "bg-emerald-500/10 border border-emerald-500/30" : "bg-red-500/10 border border-red-500/30"
+                  )}>
+                    {ga4Result.ok ? (
+                      <>
+                        <Sparkles className="w-5 h-5 text-emerald-500" />
+                        <div>
+                          <p className="text-sm font-bold text-emerald-400">Conectado!</p>
+                          <p className="text-xs text-muted-foreground">{ga4Result.visitors?.toLocaleString("pt-BR")} visitantes nos últimos 30 dias.</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Info className="w-5 h-5 text-red-400" />
+                        <p className="text-sm text-red-400">Falha na conexão. Verifique as credenciais.</p>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    onClick={handleTestGA4}
+                    disabled={ga4Testing || !ga4PropertyId.trim() || !ga4Token.trim()}
+                    variant="outline"
+                    className="flex-1 h-11 rounded-xl border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                  >
+                    {ga4Testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <TrendingUp className="w-4 h-4 mr-2" />}
+                    Testar Conexão
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setGa4ManualMode(false)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                  >
+                    ← Voltar para conexão automática
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-3">
               <Sparkles className="w-5 h-5 text-primary shrink-0" />

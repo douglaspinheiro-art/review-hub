@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { verifyJwt, checkDistributedRateLimit, rateLimitedResponse } from "../_shared/edge-utils.ts";
+import { ensureFreshGa4AccessToken } from "../_shared/refresh-ga4-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -9,11 +10,16 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+// Either pass explicit credentials (legacy manual flow) OR a store_id (OAuth flow → token auto-refreshed).
 const BodySchema = z.object({
-  ga4_property_id: z.string().min(1),
-  access_token: z.string().min(1),
+  ga4_property_id: z.string().min(1).optional(),
+  access_token: z.string().min(1).optional(),
+  store_id: z.string().uuid().optional(),
   periodo: z.enum(["7d", "30d", "90d"]).default("30d"),
-});
+}).refine(
+  (v) => (v.ga4_property_id && v.access_token) || v.store_id,
+  { message: "Provide either { ga4_property_id + access_token } or { store_id }" },
+);
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -34,7 +40,25 @@ serve(async (req: Request) => {
     if (!parsed.success) {
       return new Response(JSON.stringify({ success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors }), { status: 400, headers: corsHeaders });
     }
-    const { ga4_property_id, access_token, periodo } = parsed.data;
+    const { periodo } = parsed.data;
+    let { ga4_property_id, access_token } = parsed.data;
+
+    // OAuth flow: resolve credentials from store_id
+    if (parsed.data.store_id) {
+      const { data: store } = await supabase
+        .from("stores")
+        .select("user_id, ga4_property_id")
+        .eq("id", parsed.data.store_id)
+        .maybeSingle();
+      if (!store || store.user_id !== auth.userId) {
+        return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403, headers: corsHeaders });
+      }
+      ga4_property_id = ga4_property_id || (store.ga4_property_id as string | null) || undefined;
+      if (!ga4_property_id) {
+        return new Response(JSON.stringify({ success: false, error: "ga4_property_id missing for this store" }), { status: 400, headers: corsHeaders });
+      }
+      access_token = await ensureFreshGa4AccessToken(supabase, parsed.data.store_id);
+    }
 
     const diasMap: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90 };
     const dias = diasMap[periodo] ?? 30;
