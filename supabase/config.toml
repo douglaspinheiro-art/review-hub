@@ -7,6 +7,10 @@ verify_jwt = false
 [functions.data-pipeline-cron]
 verify_jwt = false
 
+# Sincronização Dizy → CRM. Cron usa CRON_SECRET; chamadas de usuário validam JWT no handler.
+[functions.sync-dizy-orders]
+verify_jwt = false
+
 # Webhook Meta Cloud — autenticação via x-hub-signature-256 (HMAC com META_APP_SECRET).
 [functions.meta-whatsapp-webhook]
 verify_jwt = false
