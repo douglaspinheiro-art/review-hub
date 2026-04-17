@@ -42,7 +42,7 @@ function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
 
 function DashboardRoute({ children, requiredPlan, routeLabel }: { children: React.ReactNode; requiredPlan?: "starter" | "growth" | "scale" | "enterprise"; routeLabel?: string }) {
   return (
-    <ProtectedRoute requiredPlan={requiredPlan}>
+    <ProtectedRoute requiredPlan={requiredPlan} requirePaidSubscription>
       <DashboardLayout>
         <RouteErrorBoundary routeLabel={routeLabel}>
           {children}
@@ -164,7 +164,7 @@ const App = () => (
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/analisando" element={<ProtectedRoute><Analisando /></ProtectedRoute>} />
           <Route path="/resultado" element={<ProtectedRoute><Resultado /></ProtectedRoute>} />
-          <Route path="/setup" element={<ProtectedRoute><Setup /></ProtectedRoute>} />
+          <Route path="/setup" element={<ProtectedRoute requirePaidSubscription><Setup /></ProtectedRoute>} />
           <Route path="/sobre" element={<Sobre />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/carreiras" element={<Carreiras />} />

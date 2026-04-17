@@ -16,9 +16,11 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredPlan?: PlanTier;
   requireStepUp?: boolean;
+  /** When true, blocks users without an active paid subscription and redirects to /planos. */
+  requirePaidSubscription?: boolean;
 }
 
-export default function ProtectedRoute({ children, requiredPlan, requireStepUp }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, requiredPlan, requireStepUp, requirePaidSubscription }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
   const [stepUpOk, setStepUpOk] = useState(false);
@@ -145,6 +147,12 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp }
       result: "failure",
     });
     return <Navigate to="/security/step-up" state={{ from: location.pathname }} replace />;
+  }
+
+  if (requirePaidSubscription) {
+    if (!profile || profile.subscription_status !== "active") {
+      return <Navigate to="/planos?from=diagnostico" state={{ from: location.pathname }} replace />;
+    }
   }
 
   if (requiredPlan) {
