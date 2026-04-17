@@ -13,7 +13,7 @@ export function useAuth() {
     return { data, error };
   }
 
-  async function signUp(email: string, password: string, meta: { full_name: string; plataforma?: string; company_name?: string }) {
+  async function signUp(email: string, password: string, meta: { full_name: string; plataforma?: string; company_name?: string; whatsapp?: string; pilot?: boolean }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

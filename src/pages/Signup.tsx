@@ -16,6 +16,10 @@ const schema = z.object({
   full_name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("E-mail inválido"),
   password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
+  whatsapp: z
+    .string()
+    .min(10, "WhatsApp inválido")
+    .regex(/^[\d\s()+-]+$/, "Use apenas números, espaços, parênteses, + ou -"),
   plataforma: z.string().min(1, "Selecione sua plataforma"),
 });
 
@@ -49,6 +53,7 @@ export default function Signup() {
     const { error } = await signUp(data.email, data.password, {
       full_name: data.full_name,
       plataforma: data.plataforma,
+      whatsapp: data.whatsapp,
       ...(isPilot ? { pilot: true } : {}),
     });
     setLoading(false);
@@ -208,6 +213,20 @@ export default function Signup() {
               />
               {errors.password && (
                 <p className="text-xs text-destructive font-bold">{errors.password.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="whatsapp" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">WhatsApp</Label>
+              <Input
+                id="whatsapp"
+                type="tel"
+                placeholder="(11) 98765-4321"
+                className="h-12 rounded-xl bg-muted/30 border-border/50"
+                {...register("whatsapp")}
+              />
+              {errors.whatsapp && (
+                <p className="text-xs text-destructive font-bold">{errors.whatsapp.message}</p>
               )}
             </div>
 

@@ -4,7 +4,7 @@ import {
   Check, X, MessageCircle, Zap, Users, Mail, Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import Header from "@/components/landing/Header";
@@ -316,72 +316,6 @@ export default function Planos({
                     </div>
                   );
                 })}
-              </div>
-
-              <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 bg-muted/20 border rounded-3xl p-8">
-                <div className="space-y-3">
-                  <h3 className="text-xl font-bold flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-primary" /> Como funciona o Success Fee?
-                  </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Nós ganhamos quando você ganha. O percentual é cobrado apenas sobre vendas <strong>diretamente recuperadas</strong> por nossas automações — carrinho abandonado, boletos e PIX. Se não recuperarmos nada, você não paga comissão.
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  <h3 className="text-xl font-bold flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5 text-emerald-500" /> Custos de Excedente
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    {[
-                      { label: "WhatsApp", price: "R$ 0,50/msg" },
-                      { label: "E-mail",   price: "R$ 0,01/msg" },
-                      { label: "SMS",      price: "R$ 0,20/msg" },
-                      { label: "WhatsApp Meta Cloud", price: "Incluso" },
-                    ].map(({ label, price }) => (
-                      <div key={label} className="space-y-0.5">
-                        <p className="font-bold uppercase tracking-widest opacity-40">{label}</p>
-                        <p className="text-base font-black">{price}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between gap-8">
-                <div className="space-y-3 text-center md:text-left">
-                  <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/30 text-primary">Enterprise</Badge>
-                  <h2 className="text-3xl font-bold">Acima de R$ 2M/mês?</h2>
-                  <p className="text-muted-foreground max-w-lg">
-                    Soluções sob medida com instâncias ilimitadas, treinamento de IA com seus dados e Customer Success Manager dedicado.
-                  </p>
-                </div>
-                <div className="space-y-2 text-center md:text-right shrink-0">
-                  <p className="text-sm text-muted-foreground font-medium">A partir de</p>
-                  <p className="text-3xl font-black">R$ 3.497<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
-                  <Link to="/contato">
-                    <Button size="lg" className="mt-2 px-8">Falar com consultor</Button>
-                  </Link>
-                </div>
-              </div>
-
-              <div className="max-w-5xl mx-auto bg-card border rounded-2xl p-6 space-y-4">
-                <h3 className="text-lg font-bold">Add-ons de expansão de LTV</h3>
-                <p className="text-sm text-muted-foreground">
-                  Faça upgrade por maturidade, sem migrar de plataforma: ative camadas de inteligência conforme seu ROI evolui.
-                </p>
-                <div className="grid md:grid-cols-3 gap-3 text-sm">
-                  {[
-                    { name: "Predictive Benchmarks", price: "R$ 297/mês", detail: "Benchmarks anonimizados por vertical e faixa de GMV" },
-                    { name: "Autopilot de Retenção", price: "R$ 497/mês", detail: "Priorização automática de jornadas com guardrails de margem" },
-                    { name: "Governança Multi-loja", price: "R$ 697/mês", detail: "Consolidação de performance para grupos e agências" },
-                  ].map((addon) => (
-                    <div key={addon.name} className="rounded-xl border p-4 bg-muted/20">
-                      <p className="font-semibold">{addon.name}</p>
-                      <p className="text-primary font-black mt-1">{addon.price}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{addon.detail}</p>
-                    </div>
-                  ))}
-                </div>
               </div>
 
               <div className="space-y-4">
