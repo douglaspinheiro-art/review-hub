@@ -161,7 +161,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Do NOT trust plan data from a synthetic profile — block premium features
   // until the real profile loads (auto-retry fires every 30s after a DB failure).
-  const isPaid = !!profile && profile.plan !== "starter" && !profileFallbackUsed;
+  // Paywall: only `subscription_status === "active"` unlocks paid surfaces.
+  const isPaid =
+    !!profile && profile.subscription_status === "active" && !profileFallbackUsed;
 
   const value = {
     user,
