@@ -65,6 +65,18 @@ export const JOURNEYS_CONFIG_SELECT =
 export const TEAM_MEMBERS_LIST_SELECT =
   "id,account_owner_id,invited_email,invited_user_id,role,status,invited_at,accepted_at,invite_expires_at";
 
+/**
+ * Safe select for integration listings (sidebar cards, catalog grid). Excludes
+ * `config` / `config_json` to keep OAuth tokens and API keys out of the browser
+ * memory/DOM — defense in depth vs XSS token exfiltration (RLS already scopes
+ * rows to the owner, so this is not a cross-tenant concern).
+ *
+ * Use `INTEGRATIONS_LIST_SELECT` only on detail/edit screens where the owner
+ * explicitly needs to view or edit credentials.
+ */
+export const INTEGRATIONS_SAFE_SELECT =
+  "id,user_id,store_id,name,type,is_active,last_sync_at,created_at,updated_at";
+
 export const INTEGRATIONS_LIST_SELECT =
   "id,user_id,store_id,name,type,is_active,config,config_json,last_sync_at,created_at,updated_at";
 
