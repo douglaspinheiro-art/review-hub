@@ -1,11 +1,15 @@
 
-User is asking what to do next after completing all 4 fronts of the audit follow-up (regression tests, RLS hardening, observability, status matrix). System is hardened. Now I should propose what comes after multi-tenant hardening — production readiness, growth, or product polish.
+User just finished all 4 audit fronts + the "Other: Todos acima" execution (production validation, payment-status alignment, admin observability UI, lint debt). System is hardened and shipped. They're asking "what's the action plan?" — meaning what comes next strategically.
 
-Logical next directions:
-1. **Production go-live validation** — run audit queries (`list_integrations_audit`, `list_channels_audit`) against real data, validate Stripe webhook + cron secrets, smoke E2E in staging
-2. **Apply order-payment-status everywhere** — the new helper exists but normalize-webhook.ts may not use it yet end-to-end; align webhook-orders/refunds/integration-gateway to call `isOrderPaid()` directly
-3. **Fix existing TS/lint debt** — `docs/lint-debt-reduction.md` exists, suggests technical debt
-4. **Observability dashboards** — surface the audit views in an admin UI page (`/admin`) so non-SQL operators can see RLS denials and webhook rejection reasons
-5. **Loja Integrada decision** — was removed in Fase A, decide permanent removal vs reimplementation
+Looking at what's actually been delivered vs what the broader product needs (per CLAUDE.md and project knowledge), the multi-tenant/security work is done. The natural next phase shifts from **infrastructure hardening** to **go-live + product/growth**.
 
-Best to present concise prioritized list, ask which to pursue.
+Concrete gaps remaining based on docs:
+- `docs/staging-go-no-go.md`, `docs/production-env-checklist.md`, `docs/deploy-rollback-runbook.md` exist but no evidence the actual go-live ritual was performed
+- E2E suite exists (`e2e/critical-flows.spec.ts`, `e2e/smoke-routes.spec.ts`) — should run against staging with the new `isOrderPaid` and audit views in place
+- Cron secrets rotation is documented but recurring task
+- WhatsApp Embedded Signup (per memory) — onboarding flow polish
+- Beta limited scope flag exists — decision to expand or maintain
+- Pulse reports + AI agent — product depth
+- Stripe webhook flow — verify end-to-end with test mode
+
+Best plan: 3-phase action plan (Stabilize → Validate → Grow), concise, then ask which phase to start.
