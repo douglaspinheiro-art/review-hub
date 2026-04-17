@@ -444,7 +444,9 @@ export default function Onboarding() {
         try {
           await persistActiveIntegration(storeId);
           setIntegrationValid(true);
-          toast.success(data.detail || "Integração conectada com sucesso!");
+          toast.success("✓ Loja conectada — sincronizando dados…");
+          // Fetch metrics imediatamente para que o passo 3 já apareça preenchido
+          fetchStoreMetrics(false, true).catch(() => { /* fallback no step 3 */ });
         } catch (persistErr) {
           console.error("Persist integration failed:", persistErr);
           setIntegrationError("A integração foi validada, mas não conseguimos salvá-la.");
