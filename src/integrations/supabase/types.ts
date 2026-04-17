@@ -5129,6 +5129,8 @@ export type Database = {
         Args: { retention_days?: number }
         Returns: number
       }
+      assert_owner_access: { Args: { p_user_id: string }; Returns: undefined }
+      assert_store_access: { Args: { p_store_id: string }; Returns: undefined }
       auth_row_read_user_store: {
         Args: { p_store_id: string; p_user_id: string }
         Returns: boolean
