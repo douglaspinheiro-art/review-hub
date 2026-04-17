@@ -153,9 +153,20 @@ export default function Resultado() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
             <span className="font-bold tracking-tighter">LTV BOOST</span>
           </div>
-          <Button size="sm" onClick={handleActivate} className="font-bold rounded-xl h-9 gap-1">
-            Ativar plano {recommendedPlan.name} <ArrowRight className="w-3.5 h-3.5" />
-          </Button>
+          {isActive ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate("/dashboard")}
+              className="font-bold rounded-xl h-9 gap-1"
+            >
+              Ir para o painel <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          ) : (
+            <Button size="sm" onClick={handleActivate} className="font-bold rounded-xl h-9 gap-1">
+              Ativar plano {recommendedPlan.name} <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -307,57 +318,92 @@ export default function Resultado() {
           </div>
         )}
 
-        {/* No diagnostic fallback */}
+        {/* No diagnostic fallback — real empty state, no fake numbers */}
         {!diagnostic && (
-          <div className="text-center space-y-4 py-12">
+          <div className="text-center space-y-6 py-16 border border-dashed border-[#1E1E2E] rounded-3xl">
             <Sparkles className="w-12 h-12 text-muted-foreground mx-auto" />
-            <h2 className="text-xl font-bold">Diagnóstico ainda não disponível</h2>
-            <p className="text-sm text-muted-foreground">A IA pode estar processando seus dados. Você já pode escolher um plano para começar.</p>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold font-syne tracking-tighter">Você ainda não rodou um diagnóstico</h2>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                Em 60 segundos, a IA analisa seu funil real e mostra exatamente onde está perdendo receita.
+              </p>
+            </div>
+            <Button
+              size="lg"
+              onClick={() => navigate("/diagnostico")}
+              className="font-black rounded-xl gap-2"
+            >
+              Rodar diagnóstico agora <ArrowRight className="w-4 h-4" />
+            </Button>
           </div>
         )}
 
-        {/* Plan recommendation block */}
-        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/30 rounded-3xl p-8 space-y-6">
-          <div className="space-y-2">
-            <Badge className="bg-primary/20 text-primary border-none text-[10px] font-black tracking-widest uppercase">
-              Plano recomendado para sua loja
-            </Badge>
-            <h2 className="text-3xl font-black font-syne tracking-tighter">
-              {recommendedPlan.emoji} {recommendedPlan.name}
-              <span className="text-muted-foreground text-base font-bold ml-2">
-                · R$ {recommendedPlan.base.toLocaleString("pt-BR")}/mês
-              </span>
-            </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Com o seu CHS em <strong className="text-white">{chs}</strong>
-              {perdaMensal > 0 && (
-                <> e perda estimada de <strong className="text-red-400">R$ {perdaMensal.toLocaleString("pt-BR")}/mês</strong></>
-              )}
-              , {recommendation.reason}
+        {/* Plan recommendation block — hidden when user already has an active plan */}
+        {!isActive && diagnostic && (
+          <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/30 rounded-3xl p-8 space-y-6">
+            <div className="space-y-2">
+              <Badge className="bg-primary/20 text-primary border-none text-[10px] font-black tracking-widest uppercase">
+                Plano recomendado para sua loja
+              </Badge>
+              <h2 className="text-3xl font-black font-syne tracking-tighter">
+                {recommendedPlan.emoji} {recommendedPlan.name}
+                <span className="text-muted-foreground text-base font-bold ml-2">
+                  · R$ {recommendedPlan.base.toLocaleString("pt-BR")}/mês
+                </span>
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Com o seu CHS em <strong className="text-white">{chs}</strong>
+                {perdaMensal > 0 && (
+                  <> e perda estimada de <strong className="text-red-400">R$ {perdaMensal.toLocaleString("pt-BR")}/mês</strong></>
+                )}
+                , {recommendation.reason}
+              </p>
+            </div>
+
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              {recommendedPlan.landingFeatures.slice(0, 6).map((f: string) => (
+                <li key={f} className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <span className="text-white/80">{f}</span>
+                </li>
+              ))}
+            </ul>
+
+            <Button
+              onClick={handleActivate}
+              size="lg"
+              className="w-full h-14 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-lg shadow-emerald-500/20 hover:scale-[1.01] transition-all gap-2 group"
+            >
+              Ativar plano {recommendedPlan.name} agora
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </Button>
+            <p className="text-[10px] text-muted-foreground text-center">
+              🛡️ Garantia de 14 dias · Cancele quando quiser
             </p>
           </div>
+        )}
 
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-            {recommendedPlan.landingFeatures.slice(0, 6).map((f: string) => (
-              <li key={f} className="flex items-start gap-2">
-                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span className="text-white/80">{f}</span>
-              </li>
-            ))}
-          </ul>
-
-          <Button
-            onClick={handleActivate}
-            size="lg"
-            className="w-full h-14 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-lg shadow-emerald-500/20 hover:scale-[1.01] transition-all gap-2 group"
-          >
-            Ativar plano {recommendedPlan.name} agora
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </Button>
-          <p className="text-[10px] text-muted-foreground text-center">
-            🛡️ Garantia de 14 dias · Cancele quando quiser
-          </p>
-        </div>
+        {/* Active user — invite to dashboard instead of upsell */}
+        {isActive && diagnostic && (
+          <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-3xl p-8 space-y-4 text-center">
+            <Badge className="bg-emerald-500/20 text-emerald-500 border-none text-[10px] font-black tracking-widest uppercase">
+              Plano ativo
+            </Badge>
+            <h2 className="text-2xl font-black font-syne tracking-tighter">
+              Seu painel já está liberado
+            </h2>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Use o diagnóstico como guia: cada problema acima vira uma campanha pronta no painel.
+            </p>
+            <Button
+              onClick={() => navigate("/dashboard")}
+              size="lg"
+              className="font-black rounded-xl gap-2"
+            >
+              Ir para o painel <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Secondary CTA: see all plans */}
         <div className="text-center">
