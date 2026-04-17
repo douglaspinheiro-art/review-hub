@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Check, Plus, Trash2, RefreshCw, Loader2,
   ShoppingCart, BarChart3, MessageSquare, Star, Sparkles, ArrowRight,
-  ShieldCheck, ShieldX, Store, Cloud, Package, Layers, ShoppingBasket,
+  ShieldCheck, ShieldX, Store, Cloud, Layers, ShoppingBasket,
   Flame, Target, Radio, Mail, MapPin, MessageCircleWarning, Smartphone, Phone,
   ShoppingBag, Webhook, Activity, Plug, type LucideIcon,
 } from "lucide-react";
