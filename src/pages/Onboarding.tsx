@@ -121,7 +121,10 @@ export default function Onboarding() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsImported, setMetricsImported] = useState(false);
   const [metricsFetched, setMetricsFetched] = useState(false);
-  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean }>({});
+  const [taxaAbandono, setTaxaAbandono] = useState("");
+  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean }>({});
+  const [importedPlatform, setImportedPlatform] = useState<string>("");
+  const [zeroFields, setZeroFields] = useState<string[]>([]);
 
   // Step 4 — GA4 optional
   const [ga4PropertyId, setGa4PropertyId] = useState("");
@@ -262,21 +265,36 @@ export default function Onboarding() {
       const fat = Number((data as Record<string, unknown>).faturamento);
       const tm = Number((data as Record<string, unknown>).ticketMedio);
       const cli = Number((data as Record<string, unknown>).totalClientes);
-      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean } = {};
+      const abd = Number((data as Record<string, unknown>).taxaAbandono);
+      const plat = String((data as Record<string, unknown>).plataforma ?? "");
+      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean } = {};
+      const zeros: string[] = [];
 
       if (Number.isFinite(fat) && fat > 0) {
         setFaturamento(String(Math.round(fat)));
         updated.faturamento = true;
+      } else if (Number.isFinite(fat)) {
+        zeros.push("Faturamento");
       }
       if (Number.isFinite(tm) && tm > 0) {
         setTicketMedio(String(Math.round(tm)));
         updated.ticketMedio = true;
+      } else if (Number.isFinite(tm)) {
+        zeros.push("Ticket médio");
       }
       if (Number.isFinite(cli) && cli > 0) {
         setNumClientes(String(Math.round(cli)));
         updated.numClientes = true;
+      } else if (Number.isFinite(cli)) {
+        zeros.push("Nº clientes");
+      }
+      if (Number.isFinite(abd) && abd > 0) {
+        setTaxaAbandono((abd * 100).toFixed(1));
+        updated.taxaAbandono = true;
       }
       setImportedFields(updated);
+      setImportedPlatform(plat);
+      setZeroFields(zeros);
       setMetricsImported(Object.keys(updated).length > 0);
       if (manual) toast.success("Dados atualizados da plataforma!");
     } catch {
@@ -895,13 +913,27 @@ export default function Onboarding() {
                     ) : (
                       <Sparkles className="w-5 h-5 text-emerald-400" />
                     )}
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-bold text-emerald-400">
                         {metricsLoading
-                          ? `Importando dados de ${plataforma}...`
-                          : `Dados importados de ${plataforma} — últimos 30 dias`}
+                          ? `Importando dados de ${importedPlatform || plataforma}...`
+                          : `Dados importados de ${importedPlatform || plataforma} — últimos 30 dias`}
                       </p>
-                      <p className="text-xs text-muted-foreground">Você pode ajustar manualmente se preferir.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {metricsLoading
+                          ? "Buscando faturamento, ticket médio, clientes e abandono…"
+                          : `Importados: ${[
+                              importedFields.faturamento && "faturamento",
+                              importedFields.ticketMedio && "ticket médio",
+                              importedFields.numClientes && "clientes",
+                              importedFields.taxaAbandono && "taxa de abandono",
+                            ].filter(Boolean).join(", ") || "nenhum campo"}. Você pode ajustar manualmente.`}
+                      </p>
+                      {!metricsLoading && zeroFields.length > 0 && (
+                        <p className="text-[11px] text-amber-400 mt-1">
+                          ⚠ A plataforma retornou zero para: {zeroFields.join(", ")}. Preencha manualmente se tiver os valores.
+                        </p>
+                      )}
                     </div>
                   </div>
                   {!metricsLoading && (
@@ -980,6 +1012,24 @@ export default function Onboarding() {
                     className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
                     step="0.1"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                    Taxa de abandono carrinho (%)
+                    {importedFields.taxaAbandono && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ importado</span>}
+                  </Label>
+                  {metricsLoading ? (
+                    <div className="h-12 rounded-xl bg-background/50 border border-[#2E2E3E] animate-pulse" />
+                  ) : (
+                    <Input
+                      type="number"
+                      placeholder="Ex: 70"
+                      value={taxaAbandono}
+                      onChange={e => setTaxaAbandono(e.target.value)}
+                      className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                      step="0.1"
+                    />
+                  )}
                 </div>
               </div>
 
