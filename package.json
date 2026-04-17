@@ -25,7 +25,7 @@
     "supabase:db-push:include-all": "npx supabase db push --linked --include-all",
     "supabase:deploy:meta-whatsapp": "npx supabase functions deploy meta-whatsapp-webhook --no-verify-jwt && npx supabase functions deploy meta-whatsapp-send",
     "supabase:deploy:operational-data": "npx supabase functions deploy sync-funil-ga4 && npx supabase functions deploy data-pipeline-cron",
-    "supabase:deploy:stripe-webhook": "npx supabase functions deploy stripe-webhook --no-verify-jwt",
+    "supabase:deploy:mercadopago": "npx supabase functions deploy mercadopago-webhook --no-verify-jwt && npx supabase functions deploy mercadopago-create-preference",
     "supabase:sql:operational-blueprint": "npx supabase db query --linked -f supabase/migrations/20260410140000_operational_data_blueprint.sql",
     "release:check": "node scripts/ci/release-readiness.mjs",
     "ci:smoke": "npm run test:smoke-ui && npm run test && npx tsc --noEmit && npm run build",
