@@ -3950,6 +3950,9 @@ export type Database = {
           created_at: string | null
           email_from_address: string | null
           email_reply_to: string | null
+          ga4_account_email: string | null
+          ga4_refresh_token: string | null
+          ga4_token_expires_at: string | null
           high_ticket_threshold_brl: number | null
           id: string
           name: string
@@ -3965,6 +3968,9 @@ export type Database = {
           created_at?: string | null
           email_from_address?: string | null
           email_reply_to?: string | null
+          ga4_account_email?: string | null
+          ga4_refresh_token?: string | null
+          ga4_token_expires_at?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
           name: string
@@ -3980,6 +3986,9 @@ export type Database = {
           created_at?: string | null
           email_from_address?: string | null
           email_reply_to?: string | null
+          ga4_account_email?: string | null
+          ga4_refresh_token?: string | null
+          ga4_token_expires_at?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
           name?: string
