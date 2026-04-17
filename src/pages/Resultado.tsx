@@ -13,8 +13,6 @@ import { recommendPlan } from "@/lib/plan-recommendation";
 import { PLANS } from "@/lib/pricing-constants";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
-const EMPTY_STATE_REDIRECT_MS = 2500;
-
 type DiagnosticData = {
   resumo?: string;
   perda_principal?: string;
