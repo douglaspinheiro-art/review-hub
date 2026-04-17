@@ -78,22 +78,33 @@ async function syncStore(
   userId: string,
   options: { backfillDays?: number },
 ) {
-  // 1. Buscar credenciais Dizy do channel desta loja
-  const { data: channel, error: chErr } = await supabase
-    .from("channels")
-    .select("credenciais_json")
-    .eq("store_id", storeId)
-    .eq("plataforma", "Dizy Commerce")
-    .eq("ativo", true)
-    .maybeSingle();
-  if (chErr) throw new Error(`channel query: ${chErr.message}`);
-  if (!channel) throw new Error("Dizy channel not configured for this store");
+  // 1. Buscar credenciais Dizy do channel desta loja + country code
+  const [channelRes, storeRes] = await Promise.all([
+    supabase
+      .from("channels")
+      .select("credenciais_json")
+      .eq("store_id", storeId)
+      .eq("plataforma", "Dizy Commerce")
+      .eq("ativo", true)
+      .maybeSingle(),
+    supabase.from("stores").select("country_code").eq("id", storeId).maybeSingle(),
+  ]);
+  if (channelRes.error) throw new Error(`channel query: ${channelRes.error.message}`);
+  if (!channelRes.data) throw new Error("Dizy channel not configured for this store");
 
-  const creds = channel.credenciais_json as { base_url?: string; token?: string; api_key?: string } | null;
+  const creds = channelRes.data.credenciais_json as { base_url?: string; token?: string; api_key?: string } | null;
   const apiToken = creds?.token ?? creds?.api_key;
   if (!creds?.base_url || !apiToken) {
     throw new Error("Dizy credentials incomplete (base_url + token/api_key required)");
   }
+
+  // ISO 3166-1 alpha-2 → dial code (digits, no `+`). Defaults to BR.
+  const countryDialMap: Record<string, string> = {
+    BR: "55", PT: "351", AR: "54", UY: "598", MX: "52", CL: "56",
+    CO: "57", PE: "51", PY: "595", US: "1", ES: "34",
+  };
+  const cc = ((storeRes.data as { country_code?: string } | null)?.country_code ?? "BR").toUpperCase();
+  const countryDial = countryDialMap[cc] ?? "55";
 
   // 2. Determinar cursor (último created_at) ou backfill
   const { data: state } = await supabase
@@ -131,7 +142,7 @@ async function syncStore(
   let lastExternalId: string | null = null;
 
   for (const order of orders) {
-    const phone = normalizePhone(order.billing_address?.telephone);
+    const phone = normalizePhone(order.billing_address?.telephone, countryDial);
     if (!phone) continue; // Pedido sem telefone não entra no CRM
 
     const name = [order.customer_firstname, order.customer_lastname].filter(Boolean).join(" ") || null;
