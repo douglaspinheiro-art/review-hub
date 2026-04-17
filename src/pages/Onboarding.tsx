@@ -1119,15 +1119,36 @@ export default function Onboarding() {
 
         {/* Action Footer */}
         <div className="pt-12 border-t border-[#1E1E2E] flex flex-col items-center gap-4">
-          {step > 1 && (
+          <div className="w-full flex items-center justify-between">
+            {step > 1 ? (
+              <button
+                onClick={() => setStep((s) => Math.max(1, s - 1))}
+                disabled={isSubmitting}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <ArrowLeft className="w-4 h-4" /> Voltar
+              </button>
+            ) : <span />}
             <button
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
+              onClick={() => {
+                if (!confirm("Tem certeza que deseja resetar todos os dados do onboarding? Esta ação não pode ser desfeita.")) return;
+                try { if (user?.id) localStorage.removeItem(`onboarding_progress_${user.id}`); } catch { /* noop */ }
+                setStep(1);
+                setStoreName(""); setStoreUrl(""); setVertical(null); setPlataforma("");
+                setIntegrationConfig({}); setIntegrationValid(false); setIntegrationError(null);
+                setFaturamento(""); setTicketMedio("250"); setNumClientes("");
+                setVisitantes(""); setCarrinho(""); setCheckout(""); setPedidos("");
+                setMetaConversao("2.5"); setMetricsImported(false); setMetricsFetched(false);
+                setImportedFields({});
+                setGa4PropertyId(""); setGa4Token(""); setGa4Result(null);
+                toast.success("Dados do onboarding resetados");
+              }}
               disabled={isSubmitting}
-              className="self-start text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              className="text-sm text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
             >
-              <ArrowLeft className="w-4 h-4" /> Voltar
+              Resetar dados
             </button>
-          )}
+          </div>
           {step === 1 && (
             <Button
               size="lg"
