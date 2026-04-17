@@ -25,6 +25,16 @@ Deno.serve(async (req) => {
     if (!storeId || !shopDomain) return errorResponse("store_id and shop are required", 400);
     if (!SHOPIFY_CLIENT_ID) return errorResponse("SHOPIFY_CLIENT_ID not configured", 500);
 
+    // P0: Verify caller owns/can access the store before issuing OAuth state.
+    // Prevents authenticated attacker from initiating an OAuth flow bound to another tenant's store_id.
+    const authClient = createClient(
+      SUPABASE_URL,
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+    );
+    const { error: aclErr } = await authClient.rpc("assert_store_access", { p_store_id: storeId });
+    if (aclErr) return errorResponse("Forbidden: store access denied", 403);
+
     const stateToken = crypto.randomUUID();
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);

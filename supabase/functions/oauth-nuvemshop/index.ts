@@ -22,6 +22,15 @@ Deno.serve(async (req) => {
     if (!storeId) return errorResponse("store_id required", 400);
     if (!NS_CLIENT_ID) return errorResponse("NUVEMSHOP_CLIENT_ID not configured", 500);
 
+    // P0: Verify caller owns/can access the store before issuing OAuth state.
+    const authClient = createClient(
+      SUPABASE_URL,
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+    );
+    const { error: aclErr } = await authClient.rpc("assert_store_access", { p_store_id: storeId });
+    if (aclErr) return errorResponse("Forbidden: store access denied", 403);
+
     const stateToken = crypto.randomUUID();
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     await admin.from("oauth_states").insert({

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { VERTICALS, type EcommerceVertical } from "@/lib/strategy-profile";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
 
 const TOTAL_STEPS = 4;
@@ -92,6 +93,7 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const storeScope = useStoreScopeOptional();
 
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -209,35 +211,50 @@ export default function Onboarding() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // Persist progress on every change (debounced via microtask batching is enough here).
+  // Persist progress on every change. SECURITY: never persist OAuth tokens,
+  // API keys, or GA4 access tokens in localStorage (XSS exfiltration risk).
+  // Only store non-sensitive metadata; credentials must be re-entered if the
+  // user abandons and resumes the flow.
   useEffect(() => {
     if (!user) return;
     try {
+      // Strip secret fields from integrationConfig before persisting.
+      const info = PLATFORM_INTEGRATION_MAP[plataforma];
+      const safeIntegrationConfig: Record<string, string> = {};
+      if (info) {
+        for (const f of info.fields) {
+          if (!f.secret && integrationConfig[f.key]) {
+            safeIntegrationConfig[f.key] = integrationConfig[f.key];
+          }
+        }
+      }
       localStorage.setItem(`onboarding_progress_${user.id}`, JSON.stringify({
-        step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
+        step, storeName, storeUrl, vertical, plataforma,
+        integrationConfig: safeIntegrationConfig, integrationValid,
         faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-        metaConversao, ga4PropertyId, ga4Token,
+        metaConversao, ga4PropertyId,
+        // ga4Token intentionally omitted (sensitive).
       }));
     } catch { /* quota or private mode */ }
   }, [user, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
       faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-      metaConversao, ga4PropertyId, ga4Token]);
+      metaConversao, ga4PropertyId]);
 
-  // Pre-load existing active integration so user doesn't reconnect
+  // Pre-load existing active integration so user doesn't reconnect.
+  // SECURITY: uses SAFE select (no `config`) to avoid loading tokens into the browser.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
       const { data } = await supabase
         .from("integrations")
-        .select("type, name, config, is_active")
+        .select("type, name, is_active")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .order("last_sync_at", { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle();
       if (cancelled || !data) return;
-      // Map integration.type back to plataforma label
       const matchedPlatform = Object.entries(PLATFORM_INTEGRATION_MAP).find(
         ([, info]) => info?.type === data.type
       )?.[0];
@@ -329,6 +346,11 @@ export default function Onboarding() {
   const getPrimaryStoreId = useCallback(async () => {
     if (!user?.id) return null;
 
+    // Prefer the currently active store from StoreScope (multi-store safety).
+    // Only fall back to the oldest store if no active store is selected.
+    const active = storeScope?.activeStoreId;
+    if (active) return active;
+
     const { data, error } = await supabase
       .from("stores")
       .select("id")
@@ -340,13 +362,15 @@ export default function Onboarding() {
     if (error) throw error;
 
     return data?.id ?? null;
-  }, [user?.id]);
+  }, [user?.id, storeScope?.activeStoreId]);
 
   const persistActiveIntegration = useCallback(async (storeId: string) => {
     if (!user?.id || !platformInfo) {
       throw new Error("missing_user_or_platform");
     }
 
+    // onConflict: "store_id,type" so the same user can connect the same platform
+    // to different stores without clobbering each other (multi-store isolation).
     const { error } = await supabase.from("integrations").upsert(
       {
         user_id: user.id,
@@ -356,7 +380,7 @@ export default function Onboarding() {
         config: integrationConfig,
         is_active: true,
       },
-      { onConflict: "user_id,type" }
+      { onConflict: "store_id,type" }
     );
 
     if (error) throw error;
