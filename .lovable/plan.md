@@ -1,35 +1,43 @@
 
-## Fase 3 — correção do drift de schema
+Vou conduzir auditoria estruturada em 5 fases, focando nos riscos que ainda podem existir após Fases 1–3 já aplicadas (lockdown de RPCs, BFF com JWT, drift de schema corrigido).
 
-**Diagnóstico (confirmado via SQL no remoto):**
+**Escopo da investigação (read-only):**
+1. Mapear integrações reais (Dizy/Shopify/Nuvemshop/etc, WhatsApp Meta, Email Resend, GA4, Stripe, Mercado Pago, webhooks, crons).
+2. Auditar isolamento multi-tenant em **todas** as queries `.from(...)` do frontend (procurar `.select` sem `.eq("store_id"|"user_id")`, sem `enabled` gating, e sem `auth_row_*`).
+3. Auditar **edge functions sensíveis** quanto a uso indevido de `SERVICE_ROLE_KEY` em handlers user-facing, ausência de `getClaims()`, ausência de validação de tenant, CORS aberto em endpoints autenticados.
+4. Auditar cada uma das 21 páginas do dashboard (+ /resultado, /setup) com matriz: integrações | endpoint | tenant explícito? | risco de vazamento | erro silencioso.
+5. Caçar falhas latentes: cache cross-tenant em `localStorage`/`sessionStorage`/TanStack Query, race conditions ao trocar de loja, RPCs ainda sem `assert_*`, RLS com `USING (true)` ou predicates fracos, tabelas sem RLS, webhooks sem HMAC, segredos compartilhados rotacionáveis.
 
-| Coluna esperada pelo código | Status remoto | Ação |
-|---|---|---|
-| `conversations.sla_due_at` | ❌ ausente | adicionar coluna `timestamptz` |
-| `conversations.assigned_to_name` | ❌ ausente | adicionar coluna `text` |
-| `conversations.priority` | ❌ ausente | adicionar coluna `text` default `'normal'` |
-| `message_sends.created_at` | ❌ ausente (existe `sent_at`) | já há fallback no `useDashboard`; padronizar para `sent_at` |
-| `abandoned_carts.utm_source` | ❌ ausente | adicionar (campanhas usam UTM) |
-| `stores.ticket_medio` | ❌ ausente | adicionar `numeric` default `0` |
-| `stores.meta_conversao` | ❌ ausente | adicionar `numeric` default `2.5` |
-| `messages.phone_number` | ❌ ausente | só aparece em UI como `conn.phone_number` (whatsapp_connections) — falso positivo, **nada a fazer** |
+**Ferramentas que usarei (todas read-only):**
+- `code--search_files` para varrer queries sem filtro de tenant, uso de `SERVICE_ROLE_KEY`, `verify_jwt = false`, `localStorage.setItem` com dados de tenant.
+- `code--view` para inspecionar páginas, hooks (`useDashboard`, `useConvertIQ`, etc.), edge functions críticas e `supabase/config.toml`.
+- `supabase--read_query` para: (a) listar todas as RPCs `SECURITY DEFINER` e confirmar quais ainda **não** têm `assert_store_access`/`assert_owner_access`; (b) listar tabelas com RLS desabilitado; (c) listar policies com `USING (true)`; (d) verificar grants residuais para `anon`/`PUBLIC`.
+- `supabase--linter` para issues automáticos (RLS off, search_path mutável, SECURITY DEFINER sem search_path).
+- `supabase--analytics_query` em `postgres_logs` e `function_edge_logs` (últimas 24h) para capturar 401/403/500 reais e queries que ainda batem em colunas inexistentes.
+- `security--run_security_scan` + `security--get_table_schema` para checagem cruzada.
 
-**Status das RPCs antes consideradas "404/400":**
-- `get_whatsapp_bundle_v2`, `get_abandoned_carts_v2`, `get_roi_attribution_bundle_v2`, `get_analytics_super_bundle_v2` — todas existem com a assinatura usada pelo frontend.
-- 400/404 anteriores nos logs eram causados por: (a) `get-cached-data` rodando com service-role sem JWT do caller, (b) ausência das guardas — ambos já corrigidos na Fase 1+2.
+**Entregável (relatório único, em chat):**
+Estrutura fixa por achado:
+```
+[SEVERIDADE 🔴/🟠/🟡/🟢] Título
+Local: arquivo:linha ou rpc/edge function
+Evidência: trecho de código + (quando aplicável) query SQL/log
+Causa raiz: 1–2 frases
+Impacto: o que vaza / quebra / quem sente
+Correção: patch sugerido (código)
+```
 
-**Plano:**
+Seções do relatório:
+1. **Inventário de integrações** (tabela: integração | auth | onde configura | onde consome | risco residual).
+2. **Lockdown multi-tenant — gaps remanescentes** (RPCs sem `assert_*`, queries frontend sem `.eq(store_id)`, edge functions com service-role indevido, cache keys sem `userId`).
+3. **Auditoria página-a-página** (21 páginas + /resultado + /setup, formato matriz).
+4. **Falhas críticas de integração** (Dizy → `customers_v3` vazio, Meta WA `META_APP_ID`, webhooks sem HMAC se houver, Stripe/MP sem `verify_jwt=false` correto).
+5. **Riscos latentes** (RLS fraco, policies permissivas, segredos compartilhados, drift residual, race conditions em troca de loja, possível bypass via cache TanStack quando `activeStoreId` muda).
+6. **Plano de remediação priorizado** — agrupado por:
+   - **Fase A (P0, mesmo PR)**: itens que ainda permitem vazamento entre tenants.
+   - **Fase B (P1)**: integrações quebradas (Dizy ingest pipeline, WA secrets).
+   - **Fase C (P2)**: hardening (rotação de segredos, HMAC, observabilidade).
 
-1. **Migração única** adicionando as colunas ausentes (idempotente, `IF NOT EXISTS`):
-   - `conversations`: `sla_due_at timestamptz`, `assigned_to_name text`, `priority text default 'normal'`
-   - `abandoned_carts`: `utm_source text`, `utm_medium text`, `utm_campaign text`
-   - `stores`: `ticket_medio numeric default 0`, `meta_conversao numeric default 2.5`
-   - Índice em `conversations (store_id, sla_due_at)` para o cálculo de SLA breaches.
+**O que NÃO faço nesta etapa:** nenhum código é alterado. O relatório fecha com lista de migrations/edits necessários para você aprovar antes da execução.
 
-2. **Code-fix em `useDashboard.ts`** — remover o caminho `created_at` em `message_sends` (já que a coluna oficial é `sent_at`) para eliminar o fallback frágil.
-
-**O que NÃO entra nesta fase:**
-- Pipeline Dizy → `customers_v3` (causa raiz funcional do "Contatos vazio") — fica para o próximo ciclo, isolado.
-- Reescrever as RPCs `get_funil_page_data` para consumir `stores.ticket_medio` (a coluna existirá após a migration; lógica continua igual).
-
-Após aprovação, aplico a migration e o code-fix em sequência.
+Pronto para executar a auditoria — ao aprovar este plano, troco para modo default e devolvo o relatório completo em uma única resposta (sem alterar nada ainda). As correções vêm em PRs separados, um por fase, cada um aguardando aprovação individual.
