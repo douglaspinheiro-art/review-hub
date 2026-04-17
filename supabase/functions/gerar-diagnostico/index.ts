@@ -354,6 +354,19 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
       throw new Error("Diagnóstico gerado sem problemas identificados. Tente novamente.");
     }
 
+    // Compute recommended_plan server-side (mirror of frontend recommendPlan rules)
+    // Keeps /resultado and /planos consistent even if the rule changes later.
+    const problemasArr = Array.isArray(diag.problemas) ? (diag.problemas as Array<{ severidade?: string }>) : [];
+    const problemasCriticos = problemasArr.filter(
+      (p) => String(p?.severidade ?? "").toLowerCase() === "critico",
+    ).length;
+    let recommendedPlan: "growth" | "scale" = "growth";
+    if (chs < 25 || perda > 200_000) {
+      recommendedPlan = "scale";
+    } else if (chs < 40 || perda > 50_000 || problemasCriticos >= 2) {
+      recommendedPlan = "growth";
+    }
+
     // Salvar diagnóstico no banco
     if (loja_id) {
       // Verify the authenticated user owns this store
@@ -368,7 +381,8 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
         user_id: storeUserId,
         diagnostic_json: diag,
         chs,
-        chs_label
+        chs_label,
+        recommended_plan: recommendedPlan,
       });
 
       // Atualizar CHS da loja — rpc() não é serializável dentro de .update(),
@@ -436,6 +450,7 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
 
     return new Response(
       JSON.stringify({ success: true, diagnostico: diag, chs,
+        recommended_plan: recommendedPlan,
         desconto_por_segmento: DESCONTO_POR_SEGMENTO }),
       { headers: { ...cors, "Content-Type": "application/json" } }
     );
