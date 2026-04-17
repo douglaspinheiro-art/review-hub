@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ArrowRight, Loader2, Shield, Sparkles, Info,
+  ArrowRight, ArrowLeft, Loader2, Shield, Sparkles, Info,
   Store, BarChart3, Globe, TrendingUp, Plug, CheckCircle2, ExternalLink, AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
