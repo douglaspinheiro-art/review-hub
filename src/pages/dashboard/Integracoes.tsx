@@ -173,10 +173,16 @@ export default function Integracoes() {
     const oauth = searchParams.get("oauth");
     const platform = searchParams.get("platform");
     if (oauth === "connected") {
+      // Phase 4: invalidate all caches that depend on integrations state
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["integration-health"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-snapshot"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-connections"] });
       toast.success(
         platform === "woocommerce"
           ? "WooCommerce conectado."
+          : platform === "tray"
+          ? "Tray conectada."
           : "Integração conectada.",
       );
       navigate("/dashboard/integracoes", { replace: true });
@@ -187,6 +193,9 @@ export default function Integracoes() {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "oauth_result" && event.data?.success) {
         queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        queryClient.invalidateQueries({ queryKey: ["integration-health"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-snapshot"] });
+        queryClient.invalidateQueries({ queryKey: ["whatsapp-connections"] });
         toast.success("Integração conectada.");
       }
     };
@@ -195,7 +204,7 @@ export default function Integracoes() {
   }, [queryClient]);
 
   const startOauthConnect = useCallback(
-    async (platformType: "shopify" | "nuvemshop" | "woocommerce") => {
+    async (platformType: "shopify" | "nuvemshop" | "woocommerce" | "tray") => {
       const storeId = scope.activeStoreId;
       if (!user?.id || !storeId) {
         toast.error("Selecione uma loja ativa.");
