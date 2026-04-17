@@ -502,11 +502,8 @@ export default function Onboarding() {
     setStep(3);
   };
 
+  // Step 3 is now GA4 connection (optional → can always advance)
   const handleStep3Next = () => {
-    if (!faturamento || Number(faturamento) <= 0) {
-      toast.error("Informe seu faturamento mensal aproximado.");
-      return;
-    }
     setStep(4);
   };
 
