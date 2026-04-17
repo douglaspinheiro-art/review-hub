@@ -450,18 +450,42 @@ export default function Integracoes() {
     },
   });
 
+  const OAUTH_REVOKE_TYPES = new Set(["shopify", "nuvemshop", "woocommerce", "tray"]);
+
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("integrations").delete().eq("id", id);
+    mutationFn: async (target: Integration) => {
+      // Para plataformas OAuth: usar edge oauth-disconnect (revoga webhooks remotos + scrub secrets)
+      if (OAUTH_REVOKE_TYPES.has(target.type) && target.store_id) {
+        const { data, error } = await supabase.functions.invoke<{ success: boolean; revoked: boolean; detail?: string | null }>(
+          "oauth-disconnect",
+          { body: { store_id: target.store_id, type: target.type } },
+        );
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.detail ?? "Falha ao desconectar");
+        return { revoked: !!data.revoked, remote: true };
+      }
+      // Outras integrações: delete direto
+      const { error } = await supabase.from("integrations").delete().eq("id", target.id);
       if (error) throw error;
+      return { revoked: false, remote: false };
     },
-    onSuccess: () => {
-      toast.success("Integração removida");
+    onSuccess: (result) => {
+      if (result.remote) {
+        toast.success("Integração desconectada", {
+          description: result.revoked
+            ? "Webhooks revogados na plataforma e credenciais removidas."
+            : "Credenciais removidas. Não foi possível confirmar revogação remota dos webhooks.",
+        });
+      } else {
+        toast.success("Integração removida");
+      }
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["integration-health"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-snapshot"] });
       setDisconnectTarget(null);
     },
     onError: (err: Error) => {
-      toast.error("Erro ao remover", { description: err.message });
+      toast.error("Erro ao desconectar", { description: err.message });
     },
   });
 
