@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ArrowRight, Loader2, Shield, Sparkles, Info,
+  ArrowRight, ArrowLeft, Loader2, Shield, Sparkles, Info,
   Store, BarChart3, Globe, TrendingUp, Plug, CheckCircle2, ExternalLink, AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -1119,6 +1119,15 @@ export default function Onboarding() {
 
         {/* Action Footer */}
         <div className="pt-12 border-t border-[#1E1E2E] flex flex-col items-center gap-4">
+          {step > 1 && (
+            <button
+              onClick={() => setStep((s) => Math.max(1, s - 1))}
+              disabled={isSubmitting}
+              className="self-start text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <ArrowLeft className="w-4 h-4" /> Voltar
+            </button>
+          )}
           {step === 1 && (
             <Button
               size="lg"
