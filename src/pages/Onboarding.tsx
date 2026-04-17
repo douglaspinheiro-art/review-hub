@@ -122,7 +122,7 @@ export default function Onboarding() {
   const [metricsImported, setMetricsImported] = useState(false);
   const [metricsFetched, setMetricsFetched] = useState(false);
   const [taxaAbandono, setTaxaAbandono] = useState("");
-  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean }>({});
+  const [importedFields, setImportedFields] = useState<{ faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean; visitantes?: boolean; carrinho?: boolean; checkout?: boolean; pedidos?: boolean }>({});
   const [importedPlatform, setImportedPlatform] = useState<string>("");
   const [zeroFields, setZeroFields] = useState<string[]>([]);
 
