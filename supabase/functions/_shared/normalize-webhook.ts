@@ -374,6 +374,25 @@ export async function verifyYampiHmac(
   return expected === header;
 }
 
+/**
+ * Magento 2 / Dizy: per-store token validated via header `x-magento-token`,
+ * `x-webhook-token`, or `Authorization: Bearer <token>`. Magento has no native
+ * HMAC for webhooks, so we rely on a shared per-store secret.
+ */
+export function verifyMagentoToken(req: Request, secret: string): boolean {
+  if (!secret) return false;
+  const auth = req.headers.get("authorization") ?? "";
+  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  const header = req.headers.get("x-magento-token") ?? req.headers.get("x-webhook-token") ?? bearer;
+  if (!header) return false;
+  const enc = new TextEncoder();
+  const a = enc.encode(header);
+  const b = enc.encode(secret);
+  if (a.length !== b.length) return false;
+  // @ts-expect-error Deno runtime expõe timingSafeEqual em crypto.subtle.
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
 // ── Source detection ───────────────────────────────────────────────────────────
 
 /**
