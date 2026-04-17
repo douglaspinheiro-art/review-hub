@@ -422,6 +422,17 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
       const effectiveUserId = scope?.effectiveUserId ?? null;
       if (!userId || !effectiveUserId) return [];
 
+      // Multi-tenant safety: if the account has stores, REQUIRE an activeStoreId.
+      // Never fall back to user_id queries when stores exist — that path can mix
+      // data across the user's own stores. Only allow the legacy fallback when:
+      //   (a) the account has no stores at all, or
+      //   (b) we're filtering by source_prescription_ids (explicit cross-store feature).
+      const hasStores = (scope?.storeOptions?.length ?? 0) > 0;
+      if (hasStores && !storeId && !sourcePrescriptionIds) {
+        // Scope not yet resolved to an active store — return empty until it is.
+        return [];
+      }
+
       if (storeId && !sourcePrescriptionIds) {
         const { data, error } = await supabase.rpc("get_campaigns_bundle_v2", {
           p_store_id: storeId,
