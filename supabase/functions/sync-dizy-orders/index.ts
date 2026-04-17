@@ -79,9 +79,10 @@ async function syncStore(
   if (chErr) throw new Error(`channel query: ${chErr.message}`);
   if (!channel) throw new Error("Dizy channel not configured for this store");
 
-  const creds = channel.credenciais_json as { base_url?: string; token?: string } | null;
-  if (!creds?.base_url || !creds?.token) {
-    throw new Error("Dizy credentials incomplete (base_url + token required)");
+  const creds = channel.credenciais_json as { base_url?: string; token?: string; api_key?: string } | null;
+  const apiToken = creds?.token ?? creds?.api_key;
+  if (!creds?.base_url || !apiToken) {
+    throw new Error("Dizy credentials incomplete (base_url + token/api_key required)");
   }
 
   // 2. Determinar cursor (último created_at) ou backfill
@@ -113,7 +114,7 @@ async function syncStore(
   }, { onConflict: "store_id" });
 
   // 4. Buscar pedidos
-  const orders = await fetchDizyOrders(creds.base_url, creds.token, sinceIso);
+  const orders = await fetchDizyOrders(creds.base_url, apiToken, sinceIso);
   let importedOrders = 0;
   let importedCustomers = 0;
   let lastCreatedAt: string | null = null;
