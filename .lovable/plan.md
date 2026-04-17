@@ -1,52 +1,26 @@
 
+O usuário tem razão. O fluxo correto é:
 
-O usuário está em `/resultado` e pergunta se há plano de melhoria. Vou propor melhorias incrementais focadas no que ainda está pendente após o paywall implementado.
+`/diagnostico` (form) → `/analisando` (loading IA) → `/resultado` (mostra diagnóstico + CTA de venda)
 
-## Plano de melhorias — próximas iterações
+`/resultado` **nunca** deveria mostrar empty state pedindo "rodar diagnóstico" — se o usuário chegou ali, é porque acabou de rodar. Se não há `diagnostics_v3`, é bug (falha na geração) ou acesso direto fora do fluxo, não estado normal.
 
-Foco: fechar pontas soltas do funil e aumentar conversão pós-diagnóstico.
+Eu introduzi esse erro na iteração anterior quando trocamos os números fake por "empty state". A solução correta é:
 
-### 1. Persistir recomendação no diagnóstico (v2 da regra)
-- Adicionar coluna `recommended_plan` em `diagnostics_v3` via migração.
-- Gravar resultado de `recommendPlan()` no momento da geração (edge `gerar-diagnostico`).
-- `/resultado` e `/planos` lêem da BD em vez de recalcular no cliente — garante consistência se a regra mudar.
+## Correção do `/resultado`
 
-### 2. Limpeza do legacy `trial_ends_at`
-- Remover banner "Acesso demonstração" (visto no QA anterior) que ainda lê `trial_ends_at`.
-- Migração: dropar coluna ou marcar como deprecated; remover `isTrialActive` do `AuthContext`.
-- Atualizar `Billing.tsx` para mostrar apenas `subscription_status`.
+**Comportamento atual (errado):**
+- Sem diagnóstico no DB → mostra card "Você ainda não rodou um diagnóstico" + CTA `/diagnostico`
 
-### 3. Telemetria do funil pago
-- Eventos: `diagnostic_viewed`, `plan_recommended`, `checkout_started`, `checkout_completed`, `paywall_blocked`.
-- Dashboard interno (admin) com taxa de conversão diagnóstico → checkout por tier recomendado.
-- Permite A/B do copy de venda em `/resultado` na próxima iteração.
+**Comportamento correto:**
+- `/resultado` é página de resultado de venda. Sempre assume que veio do funil.
+- Se `diagnostics_v3` está vazio → redirecionar automaticamente para `/diagnostico` (usuário entrou pela URL direta sem ter rodado).
+- Se há diagnóstico → renderiza normal com CTA de venda (já está correto).
+- Remove o bloco fallback "empty state".
 
-### 4. UX do paywall
-- Quando guard bloqueia `/dashboard/*`, mostrar **modal explicativo** ("Seu diagnóstico está pronto. Ative seu plano para acessar o dashboard") antes de redirecionar para `/planos` — reduz fricção/confusão.
-- Estado vazio em `/dashboard` para usuários `past_due` com CTA de reativação.
+**Mudança em `src/pages/Resultado.tsx`:**
+1. Após `setLoading(false)`, se `!diagData` e `user?.id` existe → `navigate("/diagnostico", { replace: true })`.
+2. Remover o bloco JSX `{!diagnostic && (...)}` (empty state).
+3. Manter loader enquanto decide redirect.
 
-### 5. Robustez do webhook Mercado Pago
-- Garantir idempotência por `payment.id` (tabela `webhook_events` já existe?).
-- Retry/dead-letter para falhas no `update profiles`.
-- Logar transição `diagnostic_only → active` em `audit_logs` com `payment_id`.
-
-### 6. E2E Playwright do funil completo
-- `signup → onboarding → analisando → resultado → planos` (sem pagamento).
-- Mock do webhook MP para validar `diagnostic_only → active → /dashboard`.
-- Adicionar ao CI como smoke crítico.
-
-### Ordem sugerida
-1. UX do paywall (modal) — quick win, alta percepção
-2. Limpeza `trial_ends_at` — remove confusão visual
-3. Telemetria — base para decisões futuras
-4. Persistir `recommended_plan` — consistência
-5. Robustez webhook — resiliência
-6. E2E — proteção contra regressão
-
-### Fora deste plano
-- A/B do copy `/resultado` (depende de telemetria #3)
-- Multi-gateway (Stripe foi removido por decisão)
-- Refatorar `pricing-constants` para incluir copy localizado por tier recomendado
-
-Quer que eu execute na ordem proposta, ou prefere priorizar diferente (ex: só #1 e #2 primeiro)?
-
+Resultado: usuário no funil sempre vê diagnóstico + CTA de venda. Acesso direto sem dados → vai para o form. Zero confusão.
