@@ -155,9 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
-  const isTrialActive = profile?.trial_ends_at
-    ? new Date(profile.trial_ends_at) > new Date()
-    : false;
+  // Legacy trial removido — paywall agora é via subscription_status === "active".
+  // Mantemos a flag exportada como `false` para compatibilidade enquanto callers migram.
+  const isTrialActive = false;
 
   // Do NOT trust plan data from a synthetic profile — block premium features
   // until the real profile loads (auto-retry fires every 30s after a DB failure).

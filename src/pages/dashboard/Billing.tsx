@@ -175,11 +175,8 @@ export default function Billing() {
     }
   };
 
-  const trialDaysLeft = profile?.trial_ends_at
-
-    ? Math.max(0, Math.ceil((new Date(profile.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-    : 0;
-  const isTrialActive = trialDaysLeft > 0;
+  // Paywall: produto completo só com subscription_status === "active".
+  const requiresPayment = !!profile && profile.subscription_status !== "active";
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -227,49 +224,29 @@ export default function Billing() {
         </Alert>
       )}
 
-      {/* Trial banner */}
-      {isTrialActive && (
-        <div className={cn(
-          "border rounded-2xl p-5 space-y-4",
-          trialDaysLeft <= 3
-            ? "bg-red-500/5 border-red-500/30"
-            : trialDaysLeft <= 7
-            ? "bg-amber-500/5 border-amber-500/30"
-            : "bg-primary/5 border-primary/20"
-        )}>
+      {/* Plano não ativo */}
+      {requiresPayment && (
+        <div className="border rounded-2xl p-5 space-y-3 bg-amber-500/5 border-amber-500/30">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className={cn(
-                  "w-2 h-2 rounded-full animate-pulse",
-                  trialDaysLeft <= 3 ? "bg-red-500" : trialDaysLeft <= 7 ? "bg-amber-500" : "bg-primary"
-                )} />
-                <p className={cn(
-                  "font-black text-sm uppercase tracking-widest",
-                  trialDaysLeft <= 3 ? "text-red-500" : trialDaysLeft <= 7 ? "text-amber-500" : "text-primary"
-                )}>
-                  {trialDaysLeft <= 3 ? "⚠️ Trial encerrando" : "Trial gratuito ativo"}
-                </p>
-              </div>
+              <p className="font-black text-sm uppercase tracking-widest text-amber-500">
+                Plano não ativo
+              </p>
               <p className="font-bold text-base">
-                {trialDaysLeft <= 3
-                  ? `Restam apenas ${trialDaysLeft} dias. Após isso, suas automações serão pausadas.`
-                  : `Você tem ${trialDaysLeft} dias restantes para testar tudo gratuitamente.`}
+                Ative seu plano para liberar campanhas, automações e o Agente IA.
               </p>
               <p className="text-sm text-muted-foreground">
-                {trialDaysLeft <= 7
-                  ? "Faça o upgrade agora para não perder campanhas ativas e histórico de mensagens."
-                  : "Nenhuma cobrança até o fim do período. Cancele quando quiser."}
+                Sem teste grátis no produto completo — ative e comece a usar imediatamente.
               </p>
             </div>
             <div className="flex flex-col gap-2 shrink-0">
               <Button
                 className="gap-1.5 font-black h-11 px-6 rounded-xl"
-                onClick={() => navigate("/dashboard/planos")}
+                onClick={() => navigate("/planos")}
               >
-                Fazer upgrade agora <ArrowRight className="w-3.5 h-3.5" />
+                Ver planos <ArrowRight className="w-3.5 h-3.5" />
               </Button>
-              {supportWaHref ? (
+              {supportWaHref && (
                 <a
                   href={supportWaHref}
                   target="_blank"
@@ -278,27 +255,7 @@ export default function Billing() {
                 >
                   Falar com especialista via WhatsApp
                 </a>
-              ) : (
-                <p className="text-center text-[10px] text-muted-foreground">
-                  Defina <code className="text-[10px]">VITE_SUPPORT_WHATSAPP_E164</code> no ambiente para mostrar o link de suporte.
-                </p>
               )}
-            </div>
-          </div>
-          {/* Urgency bar */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              <span>Progresso do trial</span>
-              <span>{trialDaysLeft} dias restantes</span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  trialDaysLeft <= 3 ? "bg-red-500" : trialDaysLeft <= 7 ? "bg-amber-500" : "bg-primary"
-                )}
-                style={{ width: `${Math.max(5, (trialDaysLeft / 14) * 100)}%` }}
-              />
             </div>
           </div>
         </div>

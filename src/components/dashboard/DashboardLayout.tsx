@@ -135,13 +135,12 @@ function isActive(href: string, pathname: string) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
-  const { signOut, user, profile, isTrialActive, profileFallbackUsed } = useAuth();
+  const { signOut, user, profile, profileFallbackUsed } = useAuth();
   const { data: teamAccess } = useTeamAccess();
   const { data: isPlatformStaff } = useIsAdmin();
 
-  const trialDaysLeft = profile?.trial_ends_at
-    ? Math.max(0, Math.ceil((new Date(profile.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-    : 0;
+  // Paywall state — só active libera o produto completo.
+  const requiresPayment = !!profile && profile.subscription_status !== "active";
   const navigate = useNavigate();
 
   const activeProfile = profile;
@@ -264,37 +263,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ))}
       </nav>
 
-      {/* Upgrade CTA — trial users */}
-      {(isTrialActive || plan === "starter") && activeProfile && (
+      {/* Upgrade CTA — usuários sem plano ativo */}
+      {requiresPayment && activeProfile && (
         <div className="px-4 pb-2">
-          <div className={cn(
-            "p-4 rounded-2xl border space-y-2.5",
-            isTrialActive
-              ? "bg-amber-500/5 border-amber-500/20"
-              : "bg-primary/5 border-primary/20"
-          )}>
-            {isTrialActive && trialDaysLeft > 0 ? (
-              <div className="flex items-center gap-1.5">
-                <Clock className="w-3 h-3 text-amber-500 shrink-0" />
-                <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">
-                  {trialDaysLeft} {trialDaysLeft === 1 ? "dia" : "dias"} restantes
-                </p>
-              </div>
-            ) : (
-              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Plano Starter</p>
-            )}
+          <div className="p-4 rounded-2xl border space-y-2.5 bg-amber-500/5 border-amber-500/20">
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+              Plano não ativo
+            </p>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Ative agora para liberar campanhas, automações e o Agente IA.
+              Ative seu plano para liberar campanhas, automações e o Agente IA.
             </p>
             <Button
               size="sm"
-              className={cn(
-                "w-full h-8 text-[10px] font-black rounded-xl gap-1",
-                isTrialActive && "bg-amber-500 hover:bg-amber-400 text-black"
-              )}
-              onClick={() => navigate('/upgrade')}
+              className="w-full h-8 text-[10px] font-black rounded-xl gap-1 bg-amber-500 hover:bg-amber-400 text-black"
+              onClick={() => navigate('/planos')}
             >
-              Ativar plano <ArrowRight className="w-3 h-3" />
+              Ver planos <ArrowRight className="w-3 h-3" />
             </Button>
           </div>
         </div>
@@ -374,7 +358,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="font-black text-xs uppercase tracking-tighter italic truncate">LTV Boost</span>
                 {activeProfile && (
                   <Badge variant="outline" className={cn("shrink-0 text-[9px] font-black border-none", planColors[plan])}>
-                    {isTrialActive ? "Trial" : planLabels[plan]}
+                    {planLabels[plan]}
                   </Badge>
                 )}
                 <StoreSwitcher />
@@ -382,29 +366,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <NotificationBell />
             </div>
 
-            {/* Trial countdown bar */}
-            {isTrialActive && (
-              <div className={cn(
-                "shrink-0 px-6 py-2 flex items-center justify-between gap-4 border-b text-xs font-bold",
-                trialDaysLeft <= 2
-                  ? "bg-red-500/10 border-red-500/20 text-red-600"
-                  : trialDaysLeft <= 5
-                  ? "bg-amber-500/10 border-amber-500/20 text-amber-600"
-                  : "bg-primary/5 border-primary/10 text-primary"
-              )}>
+            {/* Banner: plano não ativo (raro — guard normalmente bloqueia antes) */}
+            {requiresPayment && (
+              <div className="shrink-0 px-6 py-2 flex items-center justify-between gap-4 border-b text-xs font-bold bg-amber-500/10 border-amber-500/20 text-amber-600">
                 <div className="flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5 shrink-0" />
                   <span>
-                    Acesso demonstração —{" "}
-                    <span className="font-black">{trialDaysLeft} {trialDaysLeft === 1 ? "dia restante" : "dias restantes"}</span>.
-                    {" "}Execute ações ilimitadas ao ativar um plano.
+                    Seu plano não está ativo. Ative para liberar campanhas, automações e Agente IA.
                   </span>
                 </div>
                 <button
-                  onClick={() => navigate("/upgrade")}
+                  onClick={() => navigate("/planos")}
                   className="shrink-0 underline font-black hover:no-underline"
                 >
-                  Ativar agora →
+                  Ver planos →
                 </button>
               </div>
             )}

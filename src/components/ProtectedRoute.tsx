@@ -8,6 +8,7 @@ import { hasValidStepUp } from "@/lib/security-stepup";
 import { logSecurityEvent } from "@/lib/security-logger";
 import { supabase } from "@/lib/supabase";
 import { PLAN_LEVELS, type PlanTier } from "@/lib/pricing-constants";
+import PaywallModal from "@/components/PaywallModal";
 
 const PASSWORD_ROTATION_CACHE_KEY = "ltv_pw_rotation_v1";
 const PASSWORD_ROTATION_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -151,7 +152,7 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp, 
 
   if (requirePaidSubscription) {
     if (!profile || profile.subscription_status !== "active") {
-      return <Navigate to="/planos?from=diagnostico" state={{ from: location.pathname }} replace />;
+      return <PaywallModal redirectTo="/planos?from=diagnostico" />;
     }
   }
 
