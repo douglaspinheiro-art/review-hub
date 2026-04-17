@@ -817,10 +817,12 @@ export default function Integracoes() {
       <AlertDialog open={!!disconnectTarget} onOpenChange={(open) => { if (!open) setDisconnectTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover integração?</AlertDialogTitle>
+            <AlertDialogTitle>Desconectar integração?</AlertDialogTitle>
             <AlertDialogDescription>
               {disconnectTarget
-                ? `Isto remove "${disconnectTarget.name}" desta conta. Funcionalidades que dependem destas credenciais podem deixar de funcionar até voltar a conectar.`
+                ? OAUTH_REVOKE_TYPES.has(disconnectTarget.type)
+                  ? `Isto vai parar webhooks e sync de "${disconnectTarget.name}" na plataforma e remover as credenciais armazenadas. Você poderá reconectar a qualquer momento.`
+                  : `Isto remove "${disconnectTarget.name}" desta conta. Funcionalidades que dependem destas credenciais podem deixar de funcionar até voltar a conectar.`
                 : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -831,9 +833,11 @@ export default function Integracoes() {
               disabled={deleteMutation.isPending}
               onClick={(e) => {
                 e.preventDefault();
-                if (disconnectTarget) deleteMutation.mutate(disconnectTarget.id);
+                if (disconnectTarget) deleteMutation.mutate(disconnectTarget);
               }}
             >
+              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Desconectar"}
+            </AlertDialogAction>
               {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remover"}
             </AlertDialogAction>
           </AlertDialogFooter>
