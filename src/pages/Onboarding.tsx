@@ -657,6 +657,10 @@ export default function Onboarding() {
   };
 
   const handleFinish = async () => {
+    if (!faturamento || Number(faturamento) <= 0) {
+      toast.error("Informe seu faturamento mensal aproximado.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       if (!user?.id) {
