@@ -405,7 +405,7 @@ export default function Onboarding() {
               .maybeSingle();
             const storeId = storeRow?.id;
             if (storeId) {
-              await supabase.from("integrations").upsert(
+              const { error: upsertErr } = await supabase.from("integrations").upsert(
                 {
                   user_id: user.id,
                   store_id: storeId,
@@ -416,9 +416,16 @@ export default function Onboarding() {
                 },
                 { onConflict: "store_id,type" }
               );
-              supabase.functions
-                .invoke("post-integration-setup", { body: { store_id: storeId, platform: platformInfo.type } })
-                .catch(() => {});
+              if (upsertErr) {
+                console.error("Persist integration failed:", upsertErr);
+                toast.error("Conectado, mas não foi possível salvar. Tente novamente.");
+              } else {
+                supabase.functions
+                  .invoke("post-integration-setup", { body: { store_id: storeId, platform: platformInfo.type } })
+                  .catch(() => {});
+              }
+            } else {
+              console.warn("No store found for user; integration not persisted");
             }
           }
         } catch (persistErr) {
