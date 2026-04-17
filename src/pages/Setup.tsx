@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { launchEmbeddedSignup } from "@/lib/whatsapp/meta-embedded-signup";
 import { getMetaAppConfig } from "@/lib/whatsapp/meta-app-config";
+import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
 export default function Setup() {
   const navigate = useNavigate();
@@ -24,6 +25,11 @@ export default function Setup() {
   const [userStoreId, setUserStoreId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
+
+  useEffect(() => {
+    // Setup só é alcançado com subscription_status = "active" → registra a conversão.
+    void trackFunnelEvent({ event: "checkout_completed", route: "/setup" });
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;

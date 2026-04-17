@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { recommendPlan } from "@/lib/plan-recommendation";
 import { PLANS } from "@/lib/pricing-constants";
+import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
 type DiagnosticData = {
   resumo?: string;
@@ -72,6 +73,10 @@ export default function Resultado() {
         setChsLabel(diagData.chs_label ?? "Regular");
       }
       setLoading(false);
+      void trackFunnelEvent({
+        event: "diagnostic_viewed",
+        metadata: { has_diagnostic: !!diagData, chs: diagData?.chs ?? null },
+      });
     }
 
     fetchDiagnostic();
@@ -97,7 +102,24 @@ export default function Resultado() {
   });
   const recommendedPlan = PLANS[recommendation.tier];
 
+  useEffect(() => {
+    if (!loading && diagnostic) {
+      void trackFunnelEvent({
+        event: "plan_recommended",
+        recommendedPlan: recommendation.tier,
+        metadata: { chs, perdaMensal },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, recommendation.tier]);
+
   const handleActivate = () => {
+    void trackFunnelEvent({
+      event: "checkout_started",
+      recommendedPlan: recommendation.tier,
+      selectedPlan: recommendation.tier,
+      metadata: { source: "resultado", chs, perdaMensal },
+    });
     navigate(`/planos?recommended=${recommendation.tier}&from=diagnostico`);
   };
 

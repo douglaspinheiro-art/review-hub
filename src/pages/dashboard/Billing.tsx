@@ -15,6 +15,7 @@ import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { CancellationModal } from "@/components/dashboard/CancellationModal";
 import { toast } from "sonner";
 import { PLAN_LIMITS, PLANS as PRICING_PLANS } from "@/lib/pricing-constants";
+import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
 const BILLING_PLANS = [
   { key: "starter", name: PRICING_PLANS.starter.name, price: PRICING_PLANS.starter.base, contacts: PRICING_PLANS.starter.maxContacts, messages: PRICING_PLANS.starter.includedWA },
@@ -142,6 +143,11 @@ export default function Billing() {
   const openMercadoPagoCheckout = async () => {
     setPortalLoading(true);
     try {
+      void trackFunnelEvent({
+        event: "checkout_started",
+        selectedPlan: "growth",
+        metadata: { source: "billing", billing_cycle: "monthly" },
+      });
       const { data, error } = await supabase.functions.invoke<{ init_point?: string }>("mercadopago-create-preference", {
         body: { plan_key: "growth", billing_cycle: "monthly" },
       });
