@@ -1825,6 +1825,60 @@ export type Database = {
           },
         ]
       }
+      funil_page_metricas: {
+        Row: {
+          created_at: string
+          id: string
+          last_ingested_at: string | null
+          last_manual_updated_at: string | null
+          metricas: Json
+          periodo: string
+          source: string
+          store_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_ingested_at?: string | null
+          last_manual_updated_at?: string | null
+          metricas?: Json
+          periodo: string
+          source?: string
+          store_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_ingested_at?: string | null
+          last_manual_updated_at?: string | null
+          metricas?: Json
+          periodo?: string
+          source?: string
+          store_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funil_page_metricas_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funil_page_metricas_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funnel_metrics: {
         Row: {
           adicionou_carrinho: number
