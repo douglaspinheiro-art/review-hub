@@ -153,6 +153,7 @@ export default function Contatos() {
   };
 
   const showEmptyResults = !isLoading && contacts.length === 0 && hasListFilters;
+  const showEmptyBase = !isLoading && totalCount === 0 && !hasListFilters;
 
   if (isLoading && contactsResult === undefined) {
     return (
@@ -261,6 +262,39 @@ export default function Contatos() {
         </div>
 
         <div className="divide-y divide-border/50">
+          {showEmptyBase && (
+            <div className="p-12 text-center space-y-4 bg-muted/5">
+              <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <DatabaseZap className="w-6 h-6 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-base font-bold">Sua base de contatos está vazia</p>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  Conecte sua loja (Dizy, Shopify, Nuvemshop…) ou importe um CSV para
+                  popular esta lista. Os contatos chegam automaticamente após a integração.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-xl font-bold"
+                  onClick={() => navigate("/dashboard/integracoes")}
+                >
+                  Conectar loja
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl font-bold"
+                  onClick={() => navigate("/dashboard/integracoes?tab=import")}
+                >
+                  Importar CSV
+                </Button>
+              </div>
+            </div>
+          )}
           {showEmptyResults && (
             <div className="p-12 text-center space-y-3 bg-muted/5">
               <p className="text-sm text-muted-foreground">
@@ -271,7 +305,7 @@ export default function Contatos() {
               </Button>
             </div>
           )}
-          {!showEmptyResults &&
+          {!showEmptyResults && !showEmptyBase &&
             contacts.map((c) => {
               const effectiveSeg = rfmCtx.segmentOf(c);
               const lastPurchase = c.last_purchase_at
