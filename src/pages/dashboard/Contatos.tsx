@@ -153,6 +153,7 @@ export default function Contatos() {
   };
 
   const showEmptyResults = !isLoading && contacts.length === 0 && hasListFilters;
+  const showEmptyBase = !isLoading && totalCount === 0 && !hasListFilters;
 
   if (isLoading && contactsResult === undefined) {
     return (
