@@ -502,6 +502,118 @@ export default function Onboarding() {
     setStep(4);
   };
 
+  const handleGA4Connect = useCallback(async () => {
+    if (!user?.id) return;
+    const storeId = await getPrimaryStoreId();
+    if (!storeId) {
+      toast.error("Crie sua loja primeiro (passo 1).");
+      return;
+    }
+    setGa4OauthConnecting(true);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ydkglitowqlpizpnnofy.supabase.co";
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/google-oauth-callback?action=start&store_id=${storeId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+          },
+        },
+      );
+      const json = await res.json();
+      if (!json?.url) {
+        toast.error("Não foi possível iniciar o OAuth do Google.");
+        setGa4OauthConnecting(false);
+        return;
+      }
+      const popup = window.open(json.url, "google-oauth", "width=520,height=640,scrollbars=yes");
+      if (!popup) {
+        toast.error("Popup bloqueado. Permita popups para este site.");
+        setGa4OauthConnecting(false);
+      }
+    } catch (e) {
+      console.error("GA4 OAuth error:", e);
+      toast.error("Erro ao conectar com Google.");
+      setGa4OauthConnecting(false);
+    }
+  }, [user?.id, getPrimaryStoreId]);
+
+  const fetchGa4Properties = useCallback(async () => {
+    const storeId = await getPrimaryStoreId();
+    if (!storeId) return;
+    setGa4LoadingProperties(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("list-ga4-properties", {
+        body: { store_id: storeId },
+      });
+      if (error || !data?.success) {
+        toast.error(data?.error || "Não foi possível listar suas propriedades GA4.");
+        return;
+      }
+      setGa4Properties(data.properties ?? []);
+      if (!data.properties?.length) {
+        toast.info("Nenhuma propriedade GA4 encontrada nesta conta Google.");
+      }
+    } catch (e) {
+      console.error("list-ga4-properties failed:", e);
+      toast.error("Erro ao buscar propriedades GA4.");
+    } finally {
+      setGa4LoadingProperties(false);
+    }
+  }, [getPrimaryStoreId]);
+
+  // Listen for OAuth popup callback
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type !== "ga4_oauth_result") return;
+      setGa4OauthConnecting(false);
+      if (event.data.success) {
+        setGa4ConnectedEmail(event.data.email ?? "Conta Google conectada");
+        toast.success("✅ Google conectado! Carregando propriedades…");
+        void fetchGa4Properties();
+      } else {
+        toast.error(event.data.error || "Falha na conexão com o Google.");
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [fetchGa4Properties]);
+
+  const handleSelectGa4Property = useCallback(async (propertyId: string) => {
+    setGa4PropertyId(propertyId);
+    const storeId = await getPrimaryStoreId();
+    if (!storeId) return;
+    await supabase.from("stores").update({ ga4_property_id: propertyId }).eq("id", storeId);
+    setGa4Testing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("buscar-ga4", {
+        body: { store_id: storeId, periodo: "30d" },
+      });
+      if (error || !data?.success) {
+        setGa4Result({ ok: false });
+        toast.error("Propriedade selecionada, mas não foi possível buscar dados.");
+        return;
+      }
+      const m = data.metrics ?? data.metricas ?? {};
+      const visitors = m.visitors ?? m.visitantes;
+      setGa4Result({ ok: true, visitors });
+      if (visitors) {
+        setVisitantes(String(visitors));
+        setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
+        setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
+        setPedidos(String(m.purchases ?? m.pedido ?? ""));
+      }
+      toast.success(`✅ ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados nos últimos 30 dias.`);
+    } catch {
+      setGa4Result({ ok: false });
+      toast.error("Erro ao testar GA4.");
+    } finally {
+      setGa4Testing(false);
+    }
+  }, [getPrimaryStoreId]);
+
   const handleTestGA4 = async () => {
     if (!ga4PropertyId.trim() || !ga4Token.trim()) {
       toast.error("Preencha o Property ID e o Access Token.");
@@ -516,15 +628,16 @@ export default function Onboarding() {
         setGa4Result({ ok: false });
         toast.error("Não foi possível conectar ao GA4. Verifique as credenciais.");
       } else {
-        setGa4Result({ ok: true, visitors: data.metricas?.visitantes });
-        if (data.metricas) {
-          const m = data.metricas;
-          setVisitantes(String(m.visitantes || ""));
-          setCarrinho(String(m.carrinho || ""));
-          setCheckout(String(m.checkout || ""));
-          setPedidos(String(m.pedido || ""));
+        const m = data.metrics ?? data.metricas ?? {};
+        const visitors = m.visitors ?? m.visitantes;
+        setGa4Result({ ok: true, visitors });
+        if (visitors) {
+          setVisitantes(String(visitors));
+          setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
+          setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
+          setPedidos(String(m.purchases ?? m.pedido ?? ""));
         }
-        toast.success(`✅ GA4 conectado! ${data.metricas?.visitantes?.toLocaleString("pt-BR")} visitantes encontrados.`);
+        toast.success(`✅ GA4 conectado! ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados.`);
       }
     } catch {
       setGa4Result({ ok: false });
