@@ -41,7 +41,7 @@ export default function Setup() {
 
   const handleConnectWhatsApp = useCallback(async () => {
     if (!userStoreId) {
-      toast.error("Store not found. Please go back to onboarding.");
+      toast.error("Loja não encontrada. Volte ao onboarding.");
       return;
     }
     setWaConnecting(true);
@@ -56,12 +56,12 @@ export default function Setup() {
       });
       if (result.ok) {
         setWaConnected({ phone: result.display_phone_number });
-        toast.success("✅ WhatsApp connected successfully!");
+        toast.success("✅ WhatsApp conectado com sucesso!");
       } else {
-        toast.error(result.error || "Could not connect.");
+        toast.error(result.error || "Não foi possível conectar.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error connecting WhatsApp. Try again.");
+      toast.error(error instanceof Error ? error.message : "Erro ao conectar WhatsApp. Tente novamente.");
     } finally {
       setWaConnecting(false);
     }
@@ -75,7 +75,7 @@ export default function Setup() {
       sessionStorage.removeItem("ltv_company");
       navigate("/dashboard?setup=complete&firstweek=true");
     } catch {
-      toast.error("Could not proceed. Try again.");
+      toast.error("Não foi possível continuar. Tente novamente.");
     } finally {
       setIsLaunching(false);
     }
@@ -91,7 +91,7 @@ export default function Setup() {
             <span className="font-bold tracking-tighter">LTV BOOST</span>
           </div>
           <Badge variant="outline" className="text-[10px] font-black tracking-widest text-primary border-primary/30">
-            FINAL STEP
+            ÚLTIMO PASSO
           </Badge>
         </div>
 
@@ -99,13 +99,13 @@ export default function Setup() {
         <div className="space-y-8">
           <div className="text-center space-y-4">
             <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-500 text-[10px] font-black px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-[0.2em]">
-              <MessageCircle className="w-3 h-3" /> Connect WhatsApp
+              <MessageCircle className="w-3 h-3" /> Conectar WhatsApp
             </div>
             <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
-              Activate your recovery engine
+              Ative o seu motor de recuperação
             </h1>
             <p className="text-muted-foreground max-w-lg mx-auto font-medium">
-              WhatsApp is where AI prescriptions are executed automatically. Connect now or set up later in dashboard.
+              O WhatsApp é onde as prescrições da IA são executadas automaticamente. Conecte agora ou configure depois no dashboard.
             </p>
           </div>
 
@@ -117,8 +117,8 @@ export default function Setup() {
                     <Smartphone className="w-5 h-5 text-emerald-500" />
                   </div>
                   <div>
-                    <h3 className="font-bold">Meta Cloud API Connection</h3>
-                    <p className="text-xs text-muted-foreground">Official WhatsApp Business (Graph API).</p>
+                    <h3 className="font-bold">Conexão Meta Cloud API</h3>
+                    <p className="text-xs text-muted-foreground">WhatsApp Business oficial (Graph API).</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -126,8 +126,8 @@ export default function Setup() {
                     <Zap className="w-5 h-5 text-blue-500" />
                   </div>
                   <div>
-                    <h3 className="font-bold">Instant Recovery</h3>
-                    <p className="text-xs text-muted-foreground">Carts and expired payments recovered in real time.</p>
+                    <h3 className="font-bold">Recuperação instantânea</h3>
+                    <p className="text-xs text-muted-foreground">Carrinhos e pagamentos vencidos recuperados em tempo real.</p>
                   </div>
                 </div>
               </div>
@@ -137,7 +137,7 @@ export default function Setup() {
                   <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center gap-3 animate-in fade-in zoom-in">
                     <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0" />
                     <div>
-                      <p className="font-bold text-emerald-400 text-sm">WhatsApp connected!</p>
+                      <p className="font-bold text-emerald-400 text-sm">WhatsApp conectado!</p>
                       {waConnected.phone && (
                         <p className="text-xs text-muted-foreground font-mono">{waConnected.phone}</p>
                       )}
@@ -150,9 +150,9 @@ export default function Setup() {
                     className="w-full h-12 bg-[#1877F2] hover:bg-[#1877F2]/90 text-white font-bold rounded-xl gap-2"
                   >
                     {waConnecting ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Connecting...</>
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Conectando...</>
                     ) : (
-                      <><Facebook className="w-4 h-4" /> Connect with Facebook</>
+                      <><Facebook className="w-4 h-4" /> Conectar com Facebook</>
                     )}
                   </Button>
                 )}
@@ -164,7 +164,7 @@ export default function Setup() {
                   <CollapsibleTrigger asChild>
                     <button className="flex items-center gap-2 text-xs text-muted-foreground hover:text-white transition-colors w-full group">
                       <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
-                      <span className="font-bold">Need help connecting?</span>
+                      <span className="font-bold">Precisa de ajuda para conectar?</span>
                       <ChevronDown className={cn("w-3.5 h-3.5 ml-auto transition-transform", showGuide && "rotate-180")} />
                     </button>
                   </CollapsibleTrigger>
@@ -173,16 +173,16 @@ export default function Setup() {
                       <div className="flex items-start gap-2">
                         <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
                         <p className="text-xs text-blue-300/90 leading-relaxed">
-                          You <strong>don't need to create a Meta Developers app</strong>. LTV Boost handles everything automatically.
-                          Just have a <strong>verified Business Manager</strong> on Facebook.
+                          Você <strong>não precisa criar um app no Meta Developers</strong>. O LTV Boost cuida de tudo automaticamente.
+                          Basta ter um <strong>Business Manager verificado</strong> no Facebook.
                         </p>
                       </div>
                       <div className="space-y-2">
                         {[
-                          { num: "1", title: "Create or access your Business Manager", link: "https://business.facebook.com/overview", linkLabel: "Open Business Manager" },
-                          { num: "2", title: "Verify your business", desc: "Settings → Security Center → Verification. You'll need your company ID.", link: "https://business.facebook.com/settings/security", linkLabel: "Go to Verification" },
-                          { num: "3", title: "Add a WhatsApp number", desc: "Use a number not linked to personal WhatsApp." },
-                          { num: "4", title: 'Click "Connect with Facebook" above', desc: "LTV Boost handles tokens, webhooks, and number setup automatically." },
+                          { num: "1", title: "Crie ou acesse seu Business Manager", link: "https://business.facebook.com/overview", linkLabel: "Abrir Business Manager" },
+                          { num: "2", title: "Verifique sua empresa", desc: "Configurações → Centro de Segurança → Verificação. Você precisará do CNPJ.", link: "https://business.facebook.com/settings/security", linkLabel: "Ir para Verificação" },
+                          { num: "3", title: "Adicione um número de WhatsApp", desc: "Use um número que não esteja vinculado ao WhatsApp pessoal." },
+                          { num: "4", title: 'Clique em "Conectar com Facebook" acima', desc: "O LTV Boost cuida de tokens, webhooks e configuração do número automaticamente." },
                         ].map((item) => (
                           <div key={item.num} className="flex gap-3 items-start">
                             <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 text-[10px] font-black mt-0.5">
@@ -203,7 +203,7 @@ export default function Setup() {
                       <div className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-amber-300/80 leading-relaxed">
-                          If the popup closes without completing, check that pop-ups are allowed in your browser and you're logged into the correct Facebook account.
+                          Se o popup fechar sem concluir, verifique se pop-ups estão permitidos no navegador e se você está logado na conta Facebook correta.
                         </p>
                       </div>
                     </div>
@@ -220,18 +220,18 @@ export default function Setup() {
                     <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-emerald-500/10">
                       <CheckCircle2 className="w-24 h-24 text-emerald-500 animate-in zoom-in" />
                     </div>
-                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Connected ✓</p>
+                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Conectado ✓</p>
                   </>
                 ) : (
                   <>
                     <div className="w-48 h-48 rounded-xl flex items-center justify-center bg-[#1877F2]/10 border border-[#1877F2]/20">
                       <div className="text-center space-y-3">
                         <Facebook className="w-16 h-16 text-[#1877F2] mx-auto" />
-                        <p className="text-xs text-muted-foreground font-medium">Automatic connection<br />via Meta Business</p>
+                        <p className="text-xs text-muted-foreground font-medium">Conexão automática<br />via Meta Business</p>
                       </div>
                     </div>
                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                      {waConnecting ? "Connecting..." : "Awaiting Connection..."}
+                      {waConnecting ? "Conectando..." : "Aguardando conexão..."}
                     </p>
                   </>
                 )}
@@ -249,9 +249,9 @@ export default function Setup() {
             className="h-14 px-12 text-lg font-black bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/20 hover:scale-105 transition-all gap-2 group"
           >
             {isLaunching ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Loading...</>
+              <><Loader2 className="w-5 h-5 animate-spin" /> Carregando...</>
             ) : (
-              <>Go to Dashboard <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" /></>
+              <>Ir para o Dashboard <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" /></>
             )}
           </Button>
           {!waConnected && (
@@ -259,11 +259,11 @@ export default function Setup() {
               onClick={() => void handleGoToDashboard()}
               className="text-xs text-muted-foreground hover:text-white transition-colors"
             >
-              Skip for now — connect later in settings
+              Pular por agora — conectar depois nas configurações
             </button>
           )}
           <p className="text-[9px] font-black text-muted-foreground flex items-center gap-1.5 uppercase tracking-[0.2em]">
-            <Shield className="w-3.5 h-3.5 text-emerald-500" /> End-to-end encryption active
+            <Shield className="w-3.5 h-3.5 text-emerald-500" /> Criptografia ponta a ponta ativa
           </p>
         </div>
       </div>
