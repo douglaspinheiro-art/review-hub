@@ -173,10 +173,16 @@ export default function Integracoes() {
     const oauth = searchParams.get("oauth");
     const platform = searchParams.get("platform");
     if (oauth === "connected") {
+      // Phase 4: invalidate all caches that depend on integrations state
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["integration-health"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-snapshot"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-connections"] });
       toast.success(
         platform === "woocommerce"
           ? "WooCommerce conectado."
+          : platform === "tray"
+          ? "Tray conectada."
           : "Integração conectada.",
       );
       navigate("/dashboard/integracoes", { replace: true });
@@ -187,6 +193,9 @@ export default function Integracoes() {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "oauth_result" && event.data?.success) {
         queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        queryClient.invalidateQueries({ queryKey: ["integration-health"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-snapshot"] });
+        queryClient.invalidateQueries({ queryKey: ["whatsapp-connections"] });
         toast.success("Integração conectada.");
       }
     };
@@ -195,7 +204,7 @@ export default function Integracoes() {
   }, [queryClient]);
 
   const startOauthConnect = useCallback(
-    async (platformType: "shopify" | "nuvemshop" | "woocommerce") => {
+    async (platformType: "shopify" | "nuvemshop" | "woocommerce" | "tray") => {
       const storeId = scope.activeStoreId;
       if (!user?.id || !storeId) {
         toast.error("Selecione uma loja ativa.");
@@ -243,6 +252,25 @@ export default function Integracoes() {
           return;
         }
 
+        if (platformType === "tray") {
+          const apiAddress = formData.api_address?.trim();
+          if (!apiAddress) {
+            toast.error("Informe o endereço da API Tray (ex: minha-loja.commercesuite.com.br).");
+            return;
+          }
+          const q =
+            `action=start&store_id=${encodeURIComponent(storeId)}` +
+            `&api_address=${encodeURIComponent(apiAddress)}&return_to=integracoes`;
+          const res = await fetch(`${base}/functions/v1/oauth-tray?${q}`, { headers });
+          const j = await res.json();
+          if (!j?.url) {
+            toast.error("Não foi possível iniciar o OAuth Tray.");
+            return;
+          }
+          window.open(j.url, "oauth-tray", "width=600,height=700,scrollbars=yes");
+          return;
+        }
+
         const site = formData.site_url?.trim();
         if (!site) {
           toast.error("Informe a URL do site WooCommerce.");
@@ -265,7 +293,7 @@ export default function Integracoes() {
         setOauthBusy(null);
       }
     },
-    [user?.id, scope.activeStoreId, formData.shop_url, formData.site_url],
+    [user?.id, scope.activeStoreId, formData.shop_url, formData.site_url, formData.api_address],
   );
 
   const {
