@@ -1020,12 +1020,12 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* STEP 3: Funnel Data */}
-        {step === 3 && (
+        {/* STEP 4: Funnel Data (auto-filled from GA4 + integration when available) */}
+        {step === 4 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-500 text-[10px] font-black px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-[0.2em]">
-                <BarChart3 className="w-3 h-3" /> Passo 3 — Dados do Funil
+                <BarChart3 className="w-3 h-3" /> Passo 4 — Dados do Funil
               </div>
               <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
                 Métricas do seu negócio
