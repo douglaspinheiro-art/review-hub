@@ -4,7 +4,7 @@
  * Usage at the top of an Edge Function handler:
  *
  *   import { requireSecrets } from "../_shared/require-secrets.ts";
- *   const secretsCheck = requireSecrets(["STRIPE_WEBHOOK_SECRET", "STRIPE_SECRET_KEY"], "stripe-webhook");
+ *   const secretsCheck = requireSecrets(["MERCADOPAGO_ACCESS_TOKEN", "MERCADOPAGO_WEBHOOK_SECRET"], "mercadopago-webhook");
  *   if (secretsCheck) return secretsCheck; // 503 with structured error
  *
  * Logs a `CRON_ALERT`-tagged JSON line so observability can detect missing
