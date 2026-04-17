@@ -243,8 +243,9 @@ export default function Onboarding() {
     return () => { cancelled = true; };
   }, [user]);
 
-  const fetchStoreMetrics = useCallback(async (manual = false) => {
-    if (!platformInfo || !integrationValid) return;
+  const fetchStoreMetrics = useCallback(async (manual = false, force = false) => {
+    if (!platformInfo) return;
+    if (!force && !integrationValid) return;
     setMetricsLoading(true);
     try {
       let { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
