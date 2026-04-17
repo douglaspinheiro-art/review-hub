@@ -114,7 +114,7 @@ async function syncStore(
   }, { onConflict: "store_id" });
 
   // 4. Buscar pedidos
-  const orders = await fetchDizyOrders(creds.base_url, creds.token, sinceIso);
+  const orders = await fetchDizyOrders(creds.base_url, apiToken, sinceIso);
   let importedOrders = 0;
   let importedCustomers = 0;
   let lastCreatedAt: string | null = null;
