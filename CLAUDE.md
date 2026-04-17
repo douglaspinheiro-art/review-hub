@@ -24,7 +24,7 @@ npm run test:e2e              # Playwright (e2e/); CI usa preview em :4173 + PLA
 ## Produção / compliance (checklist curto)
 
 - **Migrações:** alinhar remoto com `npm run supabase:migration-list` / `supabase db push --linked` (ver `docs/supabase-migrations-sync.md`).
-- **Stripe:** deploy Edge `stripe-webhook` (sem JWT); secrets `STRIPE_WEBHOOK_SECRET`, opcional `STRIPE_PRICE_TO_PLAN` JSON; Checkout com `client_reference_id` = `profiles.id` e metadata `plan_tier` quando aplicável.
+- **Pagamento (Mercado Pago):** deploy Edge `mercadopago-webhook` (sem JWT) e `mercadopago-create-preference`; secrets `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`, opcional `MP_PLAN_TO_TIER` JSON. Checkout via `external_reference` = `{ user_id, plan_key, billing_cycle }` e metadata `plan_tier`. Único provedor suportado.
 - **Crons:** `CRON_SECRET`, `PROCESS_SCHEDULED_MESSAGES_SECRET` — rotacionar periodicamente; monitorizar logs com tag `CRON_ALERT`.
   - `PROCESS_SCHEDULED_MESSAGES_SECRET` é aceito por `process-scheduled-messages` **e** por `dispatch-newsletter` (header `x-internal-secret`) para disparar newsletters em background. Escopo: apenas campanhas de e-mail já criadas pelo owner da loja. Se vazar, um atacante pode disparar newsletters de qualquer loja — rotacionar imediatamente e auditar `audit_logs` com `action = "newsletter_internal_dispatch"`.
   - `DISPATCH_CAMPAIGN_SECRET` é aceito por `dispatch-campaign` para campanhas WhatsApp internas (cron/automations). Escopo: campanhas já vinculadas a uma loja. Rotacionar junto com `PROCESS_SCHEDULED_MESSAGES_SECRET`.
@@ -112,9 +112,10 @@ LTV Boost is a WhatsApp marketing SaaS for Brazilian e-commerces. The app has tw
 | `meta-whatsapp-send` | `meta-whatsapp-send` (envio Cloud API; JWT + `connectionId`) |
 | `sync-funil-ga4` | `sync-funil-ga4` — grava `funil_diario` a partir do GA4 da loja (`stores.ga4_*`); **cron** com `Authorization: Bearer CRON_SECRET` |
 | `data-pipeline-cron` | `data-pipeline-cron` — `data_quality_snapshots`, `customer_cohorts`, `catalog_snapshot`; **cron** com `Authorization: Bearer CRON_SECRET` (body opcional `{ "jobs": ["quality","cohorts","catalog"] }`) |
-| Stripe Dashboard → webhooks | `stripe-webhook` — assinatura `STRIPE_WEBHOOK_SECRET`; `verify_jwt = false` |
+| Mercado Pago Dashboard → webhooks | `mercadopago-webhook` — assinatura `MERCADOPAGO_WEBHOOK_SECRET`; `verify_jwt = false` |
+| `mercadopago-create-preference` | criação de preferência de checkout (JWT do usuário) |
 
-Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, **`stripe-webhook`**, **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, `sync-funil-ga4`, `data-pipeline-cron`, and others present in the repo.
+Additional folders (webhooks, cron, SMS, WA, etc.) must be deployed if those features are enabled: e.g. `webhook-cart`, **`mercadopago-webhook`**, **`meta-whatsapp-webhook` (Meta Cloud)**, `integration-gateway`, `process-scheduled-messages`, `trigger-automations`, `flow-engine`, `send-sms`, `ai-agent`, `ai-copy`, `sync-funil-ga4`, `data-pipeline-cron`, and others present in the repo.
 
 - **OAuth / integrações e-commerce:** definir `EDGE_INTERNAL_CALLBACK_SECRET` (valor forte, só servidor) nas Secrets do Supabase. O mesmo segredo é enviado no header `x-internal-secret` quando as funções `oauth-shopify`, `oauth-nuvemshop` e `oauth-woocommerce` chamam `post-integration-setup` e `register-webhooks` após o callback (sem JWT do browser). Sem esse secret, a integração ainda é persistida, mas o seed de jornadas e o registo automático de webhooks podem falhar em silêncio nos logs.
 
