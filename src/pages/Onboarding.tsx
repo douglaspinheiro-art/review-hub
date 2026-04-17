@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
+import { getPostLoginRoute } from "@/lib/post-login-route";
 
 const TOTAL_STEPS = 4;
 
@@ -182,6 +183,21 @@ export default function Onboarding() {
     })();
     return () => { cancelled = true; };
   }, [user?.id, storeScope?.activeStoreId]);
+
+  // Se o usuário já tem diagnóstico mas ainda não pagou, mandar pra /resultado
+  // (evita refazer o onboarding ao voltar pro app sem ter completado o checkout).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const next = await getPostLoginRoute(user.id, null);
+      if (!cancelled && next === "/resultado") {
+        navigate("/resultado", { replace: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, navigate]);
 
   const progressStorageKey = user?.id
     ? `onboarding_progress_v2_${user.id}_${onboardingStoreId ?? "draft"}`
