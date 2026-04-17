@@ -33,8 +33,20 @@ Deno.serve(async (req) => {
     });
   }
 
-  return new Response(JSON.stringify({ app_id: appId }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  // Optional: Embedded Signup config_id (created in Meta App Dashboard → WhatsApp → Configuration)
+  const configId = Deno.env.get("META_EMBEDDED_SIGNUP_CONFIG_ID")?.trim() ?? "";
+  // Graph API version (default v21.0)
+  const graphVersion = Deno.env.get("META_GRAPH_VERSION")?.trim() || "v21.0";
+
+  return new Response(
+    JSON.stringify({
+      app_id: appId,
+      config_id: configId || null,
+      graph_version: graphVersion,
+    }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
 });
