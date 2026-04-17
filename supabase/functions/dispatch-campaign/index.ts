@@ -152,9 +152,9 @@ serve(async (req: Request) => {
       p_max_recipients: Number(filters.max_recipients ?? 0),
       p_cooldown_hours: Number(filters.cooldown_hours ?? 24),
       p_message_template: campaign.message,
-      p_meta_template_name: (campaign.blocks as any)?.whatsapp?.meta_template_name || null,
-      p_content_type: (campaign.blocks as any)?.whatsapp?.content_type || "text",
-      p_media_url: (campaign.blocks as any)?.whatsapp?.media_url || null,
+      p_meta_template_name: (campaign.blocks as Record<string, { meta_template_name?: string; content_type?: string; media_url?: string }> | null)?.whatsapp?.meta_template_name || null,
+      p_content_type: (campaign.blocks as Record<string, { meta_template_name?: string; content_type?: string; media_url?: string }> | null)?.whatsapp?.content_type || "text",
+      p_media_url: (campaign.blocks as Record<string, { meta_template_name?: string; content_type?: string; media_url?: string }> | null)?.whatsapp?.media_url || null,
       p_campaign_name: campaign.name
     });
 
