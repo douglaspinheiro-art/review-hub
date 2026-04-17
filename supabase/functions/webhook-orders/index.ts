@@ -121,7 +121,7 @@ function normalizeShopifyOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr((p.payment_details as AnyRecord | undefined)?.payment_method_name || p.gateway) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.created_at) || undefined,
-    is_paid: ["paid", "partially_paid"].includes(financialStatus),
+    is_paid: isOrderPaid("shopify", { financial_status: financialStatus }),
     is_delivered: fulfillmentStatus === "fulfilled",
   };
 }
@@ -156,7 +156,7 @@ function normalizeWooCommerceOrder(p: AnyRecord): NormalizedOrder {
     payment_method: toStr(p.payment_method_title || p.payment_method) || undefined,
     produtos_json: produtos,
     created_at: toStr(p.date_created) || undefined,
-    is_paid: ["completed", "processing"].includes(status),
+    is_paid: isOrderPaid("woocommerce", { status }),
     is_delivered: status === "completed",
   };
 }
