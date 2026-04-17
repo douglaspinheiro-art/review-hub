@@ -294,11 +294,10 @@ export default function Onboarding() {
     }
   }, [step, integrationValid, metricsFetched, metricsLoading, fetchStoreMetrics]);
 
-  const handleOAuthConnect = useCallback(async () => {
-    if (!user?.id) return;
+  const getPrimaryStoreId = useCallback(async () => {
+    if (!user?.id) return null;
 
-    // Get store_id
-    const { data: storeData } = await supabase
+    const { data, error } = await supabase
       .from("stores")
       .select("id")
       .eq("user_id", user.id)
@@ -306,7 +305,43 @@ export default function Onboarding() {
       .limit(1)
       .maybeSingle();
 
-    if (!storeData?.id) {
+    if (error) throw error;
+
+    return data?.id ?? null;
+  }, [user?.id]);
+
+  const persistActiveIntegration = useCallback(async (storeId: string) => {
+    if (!user?.id || !platformInfo) {
+      throw new Error("missing_user_or_platform");
+    }
+
+    const { error } = await supabase.from("integrations").upsert(
+      {
+        user_id: user.id,
+        store_id: storeId,
+        type: platformInfo.type,
+        name: plataforma,
+        config: integrationConfig,
+        is_active: true,
+      },
+      { onConflict: "user_id,type" }
+    );
+
+    if (error) throw error;
+
+    supabase.functions
+      .invoke("post-integration-setup", { body: { store_id: storeId, platform: platformInfo.type } })
+      .catch((setupError) => {
+        console.warn("post-integration-setup failed:", setupError);
+      });
+  }, [user?.id, platformInfo, plataforma, integrationConfig]);
+
+  const handleOAuthConnect = useCallback(async () => {
+    if (!user?.id) return;
+
+    const storeId = await getPrimaryStoreId();
+
+    if (!storeId) {
       toast.error("Crie sua loja primeiro (passo 1).");
       return;
     }
@@ -322,7 +357,7 @@ export default function Onboarding() {
         setOauthConnecting(false);
         return;
       }
-      const queryParams = `action=start&store_id=${storeData.id}&shop=${encodeURIComponent(shop)}`;
+      const queryParams = `action=start&store_id=${storeId}&shop=${encodeURIComponent(shop)}`;
 
       const session = (await supabase.auth.getSession()).data.session;
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ydkglitowqlpizpnnofy.supabase.co";
@@ -351,7 +386,7 @@ export default function Onboarding() {
       setIntegrationError("Erro ao iniciar conexão. Tente novamente.");
       setOauthConnecting(false);
     }
-  }, [user?.id, integrationConfig]);
+  }, [user?.id, integrationConfig, getPrimaryStoreId]);
 
   const handleStep1Next = () => {
     if (!storeName.trim()) { toast.error("Informe o nome da loja."); return; }
@@ -397,46 +432,22 @@ export default function Onboarding() {
       }
 
       if (data?.ok) {
-        setIntegrationValid(true);
-        toast.success(data.detail || "Integração conectada com sucesso!");
+        const storeId = await getPrimaryStoreId();
 
-        // Persist integration immediately so step 3 (fetch-store-metrics) finds it.
+        if (!storeId) {
+          setIntegrationError("Sua loja ainda não foi criada. Recarregue a página e tente novamente.");
+          toast.error("Validação concluída, mas não encontramos a loja para salvar a integração.");
+          return;
+        }
+
         try {
-          if (user?.id) {
-            const { data: storeRow } = await supabase
-              .from("stores")
-              .select("id")
-              .eq("user_id", user.id)
-              .order("created_at", { ascending: true })
-              .limit(1)
-              .maybeSingle();
-            const storeId = storeRow?.id;
-            if (storeId) {
-              const { error: upsertErr } = await supabase.from("integrations").upsert(
-                {
-                  user_id: user.id,
-                  store_id: storeId,
-                  type: platformInfo.type,
-                  name: plataforma,
-                  config: integrationConfig,
-                  is_active: true,
-                },
-                { onConflict: "store_id,type" }
-              );
-              if (upsertErr) {
-                console.error("Persist integration failed:", upsertErr);
-                toast.error("Conectado, mas não foi possível salvar. Tente novamente.");
-              } else {
-                supabase.functions
-                  .invoke("post-integration-setup", { body: { store_id: storeId, platform: platformInfo.type } })
-                  .catch(() => {});
-              }
-            } else {
-              console.warn("No store found for user; integration not persisted");
-            }
-          }
+          await persistActiveIntegration(storeId);
+          setIntegrationValid(true);
+          toast.success(data.detail || "Integração conectada com sucesso!");
         } catch (persistErr) {
-          console.warn("Persist integration (step 2) failed:", persistErr);
+          console.error("Persist integration failed:", persistErr);
+          setIntegrationError("A integração foi validada, mas não conseguimos salvá-la.");
+          toast.error("Integração validada, mas não foi possível salvá-la.");
         }
       } else {
         setIntegrationError(data?.detail || "Falha na validação. Verifique as credenciais.");
@@ -518,34 +529,11 @@ export default function Onboarding() {
       if (storeErr) console.warn("Store update error:", storeErr.message);
 
       // 2. Get store_id
-      const { data: storeData } = await supabase
-        .from("stores")
-        .select("id")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      const storeId = storeData?.id;
+      const storeId = await getPrimaryStoreId();
 
       // 3. Save integration if validated
       if (storeId && integrationValid && platformInfo) {
-        await supabase.from("integrations").upsert(
-          {
-            user_id: user.id,
-            store_id: storeId,
-            type: platformInfo.type,
-            name: plataforma,
-            config: integrationConfig,
-            is_active: true,
-          },
-          { onConflict: "store_id,type" }
-        );
-
-        // Trigger post-integration-setup (best-effort)
-        supabase.functions.invoke("post-integration-setup", {
-          body: { store_id: storeId, platform: platformInfo.type },
-        }).catch(() => {});
+        await persistActiveIntegration(storeId);
       }
 
       // 4. Register interest for unsupported platforms
