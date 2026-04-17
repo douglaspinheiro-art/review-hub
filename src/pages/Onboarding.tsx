@@ -1475,7 +1475,7 @@ export default function Onboarding() {
               disabled={!integrationValid}
               className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group disabled:opacity-50"
             >
-              Próximo: Dados do funil <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              Próximo: Conectar GA4 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           )}
 
@@ -1486,8 +1486,16 @@ export default function Onboarding() {
                 onClick={handleStep3Next}
                 className="h-14 px-12 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all gap-2 group"
               >
-                Próximo: Conectar GA4 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                Próximo: Dados do funil <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
+              {!ga4PropertyId && (
+                <button
+                  onClick={handleStep3Next}
+                  className="text-xs text-muted-foreground hover:text-white transition-colors"
+                >
+                  Pular GA4 e usar estimativas
+                </button>
+              )}
             </div>
           )}
 
@@ -1505,15 +1513,6 @@ export default function Onboarding() {
                   <><Sparkles className="w-5 h-5" /> Gerar Diagnóstico com IA</>
                 )}
               </Button>
-              {!ga4PropertyId && (
-                <button
-                  onClick={() => void handleFinish()}
-                  disabled={isSubmitting}
-                  className="text-xs text-muted-foreground hover:text-white transition-colors"
-                >
-                  Pular GA4 e usar estimativas
-                </button>
-              )}
               <p className="text-[9px] font-black text-muted-foreground flex items-center gap-1.5 uppercase tracking-[0.2em]">
                 <Shield className="w-3.5 h-3.5 text-emerald-500" /> Dados criptografados e protegidos
               </p>
