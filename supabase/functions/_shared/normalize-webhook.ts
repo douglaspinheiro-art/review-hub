@@ -40,7 +40,7 @@ export interface NormalizedCartPayload {
   abandon_step: string | null;
 }
 
-type SignatureSource = "shopify" | "woocommerce" | "nuvemshop" | "vtex" | "tray" | "yampi" | "shopee";
+type SignatureSource = "shopify" | "woocommerce" | "nuvemshop" | "vtex" | "tray" | "yampi" | "shopee" | "magento";
 
 interface IntegrationRow {
   id: string;
@@ -79,6 +79,7 @@ const SOURCE_ALIASES: Record<SignatureSource, string[]> = {
   tray: ["tray"],
   yampi: ["yampi"],
   shopee: ["shopee"],
+  magento: ["magento", "dizy"],
 };
 
 function readString(value: unknown): string | null {
@@ -137,6 +138,14 @@ function extractSecretFromRow(row: IntegrationRow, source: SignatureSource): str
     return (
       readString(row.webhook_secret) ??
       pickFromConfig(mergedConfig, ["webhook_secret", "secret_key", "token"])
+    );
+  }
+
+  if (source === "magento") {
+    return (
+      readString(row.webhook_secret) ??
+      readString(row.webhook_token) ??
+      pickFromConfig(mergedConfig, ["webhook_secret", "webhook_token", "api_key", "access_token", "token"])
     );
   }
 
