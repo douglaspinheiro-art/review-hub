@@ -97,10 +97,12 @@ function pickFromConfig(config: Record<string, unknown> | null, keys: string[]):
 }
 
 function rowMatchesSource(row: IntegrationRow, source: SignatureSource): boolean {
+  // Strict match by `type` only — substring matching on `name` allowed
+  // duplicate or unrelated integrations (e.g. type=custom name="Shopify outlet")
+  // to be picked as verifier, so we now require exact alias on `type`.
   const aliases = SOURCE_ALIASES[source];
-  const type = (row.type ?? "").toLowerCase();
-  const name = (row.name ?? "").toLowerCase();
-  return aliases.some((alias) => type.includes(alias) || name.includes(alias));
+  const type = (row.type ?? "").toLowerCase().trim();
+  return aliases.includes(type);
 }
 
 function extractSecretFromRow(row: IntegrationRow, source: SignatureSource): string | null {
