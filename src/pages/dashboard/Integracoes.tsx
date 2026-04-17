@@ -27,12 +27,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { INTEGRATIONS_LIST_SELECT } from "@/lib/supabase-select-fragments";
+import { INTEGRATIONS_SAFE_SELECT } from "@/lib/supabase-select-fragments";
 type Integration = {
   id: string;
   type: string;
   name: string;
-  config: Record<string, string>;
   is_active: boolean;
   last_sync_at: string | null;
   created_at: string;
@@ -161,7 +160,7 @@ export default function Integracoes() {
     queryFn: async () => {
       let query = supabase
         .from("integrations")
-        .select(INTEGRATIONS_LIST_SELECT)
+        .select(INTEGRATIONS_SAFE_SELECT)
         .eq("user_id", user!.id);
       if (activeStoreId) query = query.eq("store_id", activeStoreId);
       const { data, error: qError } = await query.order("created_at", { ascending: false });
