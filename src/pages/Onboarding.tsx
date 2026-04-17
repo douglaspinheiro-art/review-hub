@@ -599,7 +599,7 @@ export default function Onboarding() {
         checkout: funnelCheckout,
         pedido: funnelPedidos,
         ticket_medio: Number(ticketMedio) || 250,
-        meta_conversao: Number(metaConversao) || 2.5,
+        meta_conversao: (funnelVisitors > 0 && funnelPedidos > 0) ? Number(((funnelPedidos / funnelVisitors) * 100).toFixed(2)) : (Number(metaConversao) || 2.5),
         store_id: storeId,
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
