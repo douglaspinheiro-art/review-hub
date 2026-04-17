@@ -913,13 +913,27 @@ export default function Onboarding() {
                     ) : (
                       <Sparkles className="w-5 h-5 text-emerald-400" />
                     )}
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-bold text-emerald-400">
                         {metricsLoading
-                          ? `Importando dados de ${plataforma}...`
-                          : `Dados importados de ${plataforma} — últimos 30 dias`}
+                          ? `Importando dados de ${importedPlatform || plataforma}...`
+                          : `Dados importados de ${importedPlatform || plataforma} — últimos 30 dias`}
                       </p>
-                      <p className="text-xs text-muted-foreground">Você pode ajustar manualmente se preferir.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {metricsLoading
+                          ? "Buscando faturamento, ticket médio, clientes e abandono…"
+                          : `Importados: ${[
+                              importedFields.faturamento && "faturamento",
+                              importedFields.ticketMedio && "ticket médio",
+                              importedFields.numClientes && "clientes",
+                              importedFields.taxaAbandono && "taxa de abandono",
+                            ].filter(Boolean).join(", ") || "nenhum campo"}. Você pode ajustar manualmente.`}
+                      </p>
+                      {!metricsLoading && zeroFields.length > 0 && (
+                        <p className="text-[11px] text-amber-400 mt-1">
+                          ⚠ A plataforma retornou zero para: {zeroFields.join(", ")}. Preencha manualmente se tiver os valores.
+                        </p>
+                      )}
                     </div>
                   </div>
                   {!metricsLoading && (
