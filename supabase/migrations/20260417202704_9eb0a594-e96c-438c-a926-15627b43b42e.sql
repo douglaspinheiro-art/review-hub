@@ -18,6 +18,9 @@ CREATE INDEX IF NOT EXISTS idx_funnel_telemetry_event_created
 
 ALTER TABLE public.funnel_telemetry_events ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS funnel_telemetry_insert_own ON public.funnel_telemetry_events;
+DROP POLICY IF EXISTS funnel_telemetry_select_own_or_admin ON public.funnel_telemetry_events;
+
 -- Insert: o próprio usuário pode registar seus eventos
 CREATE POLICY funnel_telemetry_insert_own
   ON public.funnel_telemetry_events
