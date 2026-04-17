@@ -1183,47 +1183,59 @@ export default function Onboarding() {
                 <div className="flex items-center gap-2">
                   <Info className="w-3.5 h-3.5 text-muted-foreground" />
                   <p className="text-xs text-muted-foreground font-medium">
-                    Opcional: preencha os dados do funil para um diagnóstico mais preciso. Se não souber, a IA estima com base no faturamento.
+                    Visitantes e eventos de carrinho/checkout vêm do GA4. Pedidos vêm da sua loja. Se algum campo estiver vazio, a IA estima com base no faturamento.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Visitantes/mês</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Visitantes/mês
+                      {importedFields.visitantes && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ GA4</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedVisitors || "—")}
                       value={visitantes}
-                      onChange={e => setVisitantes(e.target.value)}
+                      onChange={e => { setVisitantes(e.target.value); setImportedFields(prev => ({ ...prev, visitantes: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Add to cart</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Add to cart
+                      {importedFields.carrinho && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ GA4</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedCarrinho || "—")}
                       value={carrinho}
-                      onChange={e => setCarrinho(e.target.value)}
+                      onChange={e => { setCarrinho(e.target.value); setImportedFields(prev => ({ ...prev, carrinho: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Checkout</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Checkout
+                      {importedFields.checkout && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ GA4</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedCheckout || "—")}
                       value={checkout}
-                      onChange={e => setCheckout(e.target.value)}
+                      onChange={e => { setCheckout(e.target.value); setImportedFields(prev => ({ ...prev, checkout: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pedidos/mês</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                      Pedidos/mês
+                      {importedFields.pedidos && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ {importedPlatform || "loja"}</span>}
+                    </Label>
                     <Input
                       type="number"
                       placeholder={String(estimatedPedidos || "—")}
                       value={pedidos}
-                      onChange={e => setPedidos(e.target.value)}
+                      onChange={e => { setPedidos(e.target.value); setImportedFields(prev => ({ ...prev, pedidos: false })); }}
                       className="h-10 rounded-lg bg-background/50 border-[#2E2E3E] font-mono text-sm"
                     />
                   </div>
