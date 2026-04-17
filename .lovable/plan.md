@@ -1,15 +1,26 @@
+The user wants a production go/no-go audit. This is a research/analysis task, not an implementation task. But they want a thorough audit with findings. Given READ-ONLY mode, I should explore extensively and present findings as a structured audit report.
 
-User just finished all 4 audit fronts + the "Other: Todos acima" execution (production validation, payment-status alignment, admin observability UI, lint debt). System is hardened and shipped. They're asking "what's the action plan?" — meaning what comes next strategically.
+Strategy: Run audit queries on the actual production DB, check RLS state, scan recent edge function logs for errors, check for cross-tenant leaks, validate critical hooks for store_id filtering, then deliver a verdict.
 
-Looking at what's actually been delivered vs what the broader product needs (per CLAUDE.md and project knowledge), the multi-tenant/security work is done. The natural next phase shifts from **infrastructure hardening** to **go-live + product/growth**.
+Key things to check:
 
-Concrete gaps remaining based on docs:
-- `docs/staging-go-no-go.md`, `docs/production-env-checklist.md`, `docs/deploy-rollback-runbook.md` exist but no evidence the actual go-live ritual was performed
-- E2E suite exists (`e2e/critical-flows.spec.ts`, `e2e/smoke-routes.spec.ts`) — should run against staging with the new `isOrderPaid` and audit views in place
-- Cron secrets rotation is documented but recurring task
-- WhatsApp Embedded Signup (per memory) — onboarding flow polish
-- Beta limited scope flag exists — decision to expand or maintain
-- Pulse reports + AI agent — product depth
-- Stripe webhook flow — verify end-to-end with test mode
+1. RLS enabled on all tenant tables (linter)
+2. Recent RLS denials / errors in logs
+3. Integrations audit view (orphan store_id)
+4. Channels audit
+5. Whether critical hooks filter by store_id
+6. Webhook secrets present
+7. Cron secrets present
+8. Stripe webhook deployed
+9. Recent edge function failures
+10. Sample queries on key pages' hooks
 
-Best plan: 3-phase action plan (Stabilize → Validate → Grow), concise, then ask which phase to start.
+Let me run parallel investigations and present the audit. Since this is fundamentally an audit/report task (not implementation), I can deliver the report directly without entering plan mode — but the instructions say to put thinking inside presentation-plan. I'll do the investigation now and present the structured audit as the plan content itself.
+
+Actually re-reading: "Present plans for implementation tasks. Skip for research." This is research/audit. I should NOT use presentation-plan. I should deliver the audit as my response.
+
+Wait — but I'm in plan mode. The instructions say research = no plan needed. So I can answer directly. But I'm read-only. An audit IS a read-only deliverable. Let me investigate then deliver the audit verdict directly as my answer.
+
+Let me first gather data in parallel, then deliver verdict.  
+  
+Faça um plano de implementação se tiver correção
