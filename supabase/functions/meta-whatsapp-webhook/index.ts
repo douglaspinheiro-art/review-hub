@@ -29,8 +29,11 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
-  const verifyToken = Deno.env.get("META_WHATSAPP_VERIFY_TOKEN") ?? "";
-  const appSecret = Deno.env.get("META_APP_SECRET") ?? "";
+  const secretsCheck = requireSecrets(["META_WHATSAPP_VERIFY_TOKEN", "META_APP_SECRET"], "meta-whatsapp-webhook");
+  if (secretsCheck) return secretsCheck;
+
+  const verifyToken = Deno.env.get("META_WHATSAPP_VERIFY_TOKEN")!;
+  const appSecret = Deno.env.get("META_APP_SECRET")!;
 
   if (req.method === "GET") {
     const u = new URL(req.url);
