@@ -248,13 +248,7 @@ export default function Onboarding() {
     setMetricsLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-store-metrics", {});
-      // 404 (no integration) and other edge errors → silently fall back to manual entry
-      if (error) {
-        if (manual) toast.info("Sem integração ativa para importar. Preencha manualmente.");
-        setMetricsFetched(true);
-        setMetricsLoading(false);
-        return;
-      }
+      if (error) throw error;
       if (!data || typeof data !== "object") throw new Error("empty");
 
       const fat = Number((data as Record<string, unknown>).faturamento);
