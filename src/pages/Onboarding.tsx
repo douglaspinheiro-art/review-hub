@@ -392,6 +392,38 @@ export default function Onboarding() {
       if (data?.ok) {
         setIntegrationValid(true);
         toast.success(data.detail || "Integração conectada com sucesso!");
+
+        // Persist integration immediately so step 3 (fetch-store-metrics) finds it.
+        try {
+          if (user?.id) {
+            const { data: storeRow } = await supabase
+              .from("stores")
+              .select("id")
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            const storeId = storeRow?.id;
+            if (storeId) {
+              await supabase.from("integrations").upsert(
+                {
+                  user_id: user.id,
+                  store_id: storeId,
+                  type: platformInfo.type,
+                  name: plataforma,
+                  config: integrationConfig,
+                  is_active: true,
+                },
+                { onConflict: "store_id,type" }
+              );
+              supabase.functions
+                .invoke("post-integration-setup", { body: { store_id: storeId, platform: platformInfo.type } })
+                .catch(() => {});
+            }
+          }
+        } catch (persistErr) {
+          console.warn("Persist integration (step 2) failed:", persistErr);
+        }
       } else {
         setIntegrationError(data?.detail || "Falha na validação. Verifique as credenciais.");
         toast.error(data?.detail || "Falha na validação.");
