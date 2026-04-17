@@ -236,10 +236,10 @@ export default function Relatorios() {
 
   const hasSparseData =
     !snapshotLoading &&
-    snapshot?.analytics.total_revenue === 0 &&
-    snapshot?.rfm.total_customers === 0;
+    snapshot?.analytics?.total_revenue === 0 &&
+    snapshot?.rfm?.total_customers === 0;
 
-  const revenueFmt = snapshot?.analytics.total_revenue != null
+  const revenueFmt = snapshot?.analytics?.total_revenue != null
     ? snapshot.analytics.total_revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
     : "—";
 
