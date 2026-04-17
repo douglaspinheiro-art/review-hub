@@ -1016,42 +1016,23 @@ export function useConversionBaseline(days = 30) {
       const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
       const prevSinceIso = new Date(Date.now() - days * 2 * 86_400_000).toISOString();
 
-      // Each Promise.all entry needs its own builder to avoid shared mutable state.
+      // `message_sends.sent_at` é a coluna oficial de timestamp (não há `created_at` na tabela).
       const buildSends = () =>
         storeId
-          ? supabase.from("message_sends").select("status,created_at").eq("store_id", storeId)
-          : supabase.from("message_sends").select("status,created_at").eq("user_id", effectiveUserId);
+          ? supabase.from("message_sends").select("status,sent_at").eq("store_id", storeId)
+          : supabase.from("message_sends").select("status,sent_at").eq("user_id", effectiveUserId);
 
-      /** Bases antigas (ex. fase1): só `sent_at`; outras migrações: `created_at`. PostgREST 400 se a coluna não existir. */
       const fetchSendsSince = async (since: string) => {
-        const primary = await buildSends().gte("created_at", since);
-        if (!primary.error) return primary;
-        const fallback = storeId
-          ? await supabase.from("message_sends").select("status,sent_at").eq("store_id", storeId).gte("sent_at", since)
-          : await supabase.from("message_sends").select("status,sent_at").eq("user_id", effectiveUserId).gte("sent_at", since);
-        if (!fallback.error) return fallback;
-        console.warn("message_sends (baseline, since):", primary.error.message, fallback.error.message);
+        const res = await buildSends().gte("sent_at", since);
+        if (!res.error) return res;
+        console.warn("message_sends (since):", res.error.message);
         return { data: [] as { status: string | null }[], error: null as null };
       };
 
       const fetchSendsPrevWindow = async () => {
-        const primary = await buildSends().gte("created_at", prevSinceIso).lt("created_at", sinceIso);
-        if (!primary.error) return primary;
-        const fallback = storeId
-          ? await supabase
-              .from("message_sends")
-              .select("status,sent_at")
-              .eq("store_id", storeId)
-              .gte("sent_at", prevSinceIso)
-              .lt("sent_at", sinceIso)
-          : await supabase
-              .from("message_sends")
-              .select("status,sent_at")
-              .eq("user_id", effectiveUserId)
-              .gte("sent_at", prevSinceIso)
-              .lt("sent_at", sinceIso);
-        if (!fallback.error) return fallback;
-        console.warn("message_sends (baseline, prev window):", primary.error.message, fallback.error.message);
+        const res = await buildSends().gte("sent_at", prevSinceIso).lt("sent_at", sinceIso);
+        if (!res.error) return res;
+        console.warn("message_sends (prev window):", res.error.message);
         return { data: [] as { status: string | null }[], error: null as null };
       };
 
