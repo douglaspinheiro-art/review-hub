@@ -153,17 +153,17 @@ export default function Relatorios() {
     period === 7 ? "últimos 7 dias" : period === 30 ? "últimos 30 dias" : "últimos 90 dias";
   const periodLabel = `${periodPhrase} (${new Date().toLocaleDateString("pt-BR")})`;
 
-  const prescricoesAtivas = snapshot?.prescriptions.active_count ?? 0;
-  const prescricoesPendentes = snapshot?.prescriptions.pending_count ?? 0;
+  const prescricoesAtivas = snapshot?.prescriptions?.active_count ?? 0;
+  const prescricoesPendentes = snapshot?.prescriptions?.pending_count ?? 0;
   const atribuidoPedidos = snapshot?.attributed_order_count ?? 0;
   const atribuidoReceitaPedidos = snapshot?.attributed_order_revenue ?? 0;
 
   const sharePayload: SharePayload = useMemo(
     () => ({
       periodLabel,
-      recuperado: snapshot?.analytics.total_revenue ?? 0,
-      novosContatos: snapshot?.analytics.total_new_contacts ?? 0,
-      avgChs: snapshot?.rfm.avg_chs ?? null,
+      recuperado: snapshot?.analytics?.total_revenue ?? 0,
+      novosContatos: snapshot?.analytics?.total_new_contacts ?? 0,
+      avgChs: snapshot?.rfm?.avg_chs ?? null,
       prescricoesAtivas,
       prescricoesPendentes,
       atribuidoPedidos,
@@ -187,10 +187,10 @@ export default function Relatorios() {
   const retentionNodes = useMemo(
     () =>
       buildRetentionGraph({
-        recoveredRevenue: snapshot?.analytics.total_revenue ?? 0,
+        recoveredRevenue: snapshot?.analytics?.total_revenue ?? 0,
         activeOpportunities: snapshot?.opportunities ?? 0,
         unreadConversations: snapshot?.unread ?? 0,
-        chs: snapshot?.rfm.avg_chs ?? 0,
+        chs: snapshot?.rfm?.avg_chs ?? 0,
       }),
     [snapshot],
   );
