@@ -91,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: "user",
         trial_ends_at: null,
         onboarding_completed: false,
+        subscription_status: "diagnostic_only",
         ia_negotiation_enabled: false,
         ia_max_discount_pct: 0,
         social_proof_enabled: false,
