@@ -1937,6 +1937,13 @@ export type Database = {
             referencedRelation: "channels"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "metricas_funil_v3_canal_id_fkey"
+            columns: ["canal_id"]
+            isOneToOne: false
+            referencedRelation: "v_channels_audit"
+            referencedColumns: ["id"]
+          },
         ]
       }
       inbox_routing_settings: {
@@ -2951,6 +2958,13 @@ export type Database = {
             referencedRelation: "channels"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "pedidos_v3_canal_id_fkey"
+            columns: ["canal_id"]
+            isOneToOne: false
+            referencedRelation: "v_channels_audit"
+            referencedColumns: ["id"]
+          },
         ]
       }
       prescription_results: {
@@ -3188,6 +3202,13 @@ export type Database = {
             columns: ["canal_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "produtos_canal_id_fkey"
+            columns: ["canal_id"]
+            isOneToOne: false
+            referencedRelation: "v_channels_audit"
             referencedColumns: ["id"]
           },
         ]
@@ -4869,6 +4890,13 @@ export type Database = {
             referencedRelation: "channels"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "pedidos_v3_canal_id_fkey"
+            columns: ["canal_id"]
+            isOneToOne: false
+            referencedRelation: "v_channels_audit"
+            referencedColumns: ["id"]
+          },
         ]
       }
       prescricoes: {
@@ -5108,6 +5136,13 @@ export type Database = {
             referencedRelation: "channels"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "produtos_canal_id_fkey"
+            columns: ["canal_id"]
+            isOneToOne: false
+            referencedRelation: "v_channels_audit"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sistema_config_legacy: {
@@ -5130,6 +5165,94 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      v_channels_audit: {
+        Row: {
+          ativo: boolean | null
+          audit_status: string | null
+          created_at: string | null
+          id: string | null
+          plataforma: string | null
+          store_id: string | null
+          tipo: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          audit_status?: never
+          created_at?: string | null
+          id?: string | null
+          plataforma?: string | null
+          store_id?: string | null
+          tipo?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          audit_status?: never
+          created_at?: string | null
+          id?: string | null
+          plataforma?: string | null
+          store_id?: string | null
+          tipo?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      v_integrations_audit: {
+        Row: {
+          audit_status: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+          store_id: string | null
+          type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          audit_status?: never
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          store_id?: string | null
+          type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          audit_status?: never
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          store_id?: string | null
+          type?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrations_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       v_order_line_items: {
         Row: {
@@ -5477,6 +5600,44 @@ export type Database = {
         Returns: Json
       }
       is_password_rotation_due: { Args: { _user_id: string }; Returns: boolean }
+      list_channels_audit: {
+        Args: never
+        Returns: {
+          ativo: boolean | null
+          audit_status: string | null
+          created_at: string | null
+          id: string | null
+          plataforma: string | null
+          store_id: string | null
+          tipo: string | null
+          user_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "v_channels_audit"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      list_integrations_audit: {
+        Args: never
+        Returns: {
+          audit_status: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+          store_id: string | null
+          type: string | null
+          user_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "v_integrations_audit"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       prune_api_request_logs: {
         Args: { p_retention_days?: number }
         Returns: number
