@@ -272,7 +272,7 @@ export default function Onboarding() {
       const cli = Number((data as Record<string, unknown>).totalClientes);
       const abd = Number((data as Record<string, unknown>).taxaAbandono);
       const plat = String((data as Record<string, unknown>).plataforma ?? "");
-      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean } = {};
+      const updated: { faturamento?: boolean; ticketMedio?: boolean; numClientes?: boolean; taxaAbandono?: boolean; pedidos?: boolean } = {};
       const zeros: string[] = [];
 
       if (Number.isFinite(fat) && fat > 0) {
