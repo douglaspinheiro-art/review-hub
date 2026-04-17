@@ -427,7 +427,7 @@ export default function Inbox() {
 
   useEffect(() => {
     if (!selectedId || selectedConv == null || (selectedConv.unread_count ?? 0) === 0) return;
-    supabase.from("conversations").update({ unread_count: 0 }).eq("id", selectedId).then(() => {
+    supabase.from("conversations").update({ unread_count: 0 }).eq("id", selectedId).eq("user_id", user!.id).then(() => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     }, (err: unknown) => {
       console.error("[Inbox] Failed to mark conversation as read:", err);
@@ -478,12 +478,14 @@ export default function Inbox() {
       await supabase
         .from("messages")
         .update({ status: finalStatus, external_id: externalId ?? null })
-        .eq("id", inserted.id);
+        .eq("id", inserted.id)
+        .eq("user_id", user!.id);
 
       await supabase
         .from("conversations")
         .update({ last_message: payload.content, last_message_at: new Date().toISOString() })
-        .eq("id", selectedId);
+        .eq("id", selectedId)
+        .eq("user_id", user!.id);
     },
     onSuccess: () => {
       setDraft("");
@@ -516,7 +518,8 @@ export default function Inbox() {
           priority,
           sla_due_at: slaDueAt ? new Date(slaDueAt).toISOString() : null,
         })
-        .eq("id", selectedId);
+        .eq("id", selectedId)
+        .eq("user_id", user!.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -563,7 +566,8 @@ export default function Inbox() {
       const { error } = await supabase
         .from("messages")
         .update({ status: "pending", error_message: null } as any)
-        .eq("id", messageId);
+        .eq("id", messageId)
+        .eq("user_id", user!.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -584,7 +588,8 @@ export default function Inbox() {
         const { error } = await supabase
           .from("conversations")
           .update({ unread_count: 0 })
-          .in("id", chunk);
+          .in("id", chunk)
+          .eq("user_id", user!.id);
         if (error) throw error;
       }
     },
