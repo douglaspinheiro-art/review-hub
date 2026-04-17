@@ -245,7 +245,7 @@ begin
           ms.store_id = p_store_id
           or (ms.store_id is null and ms.user_id = v_owner)
         )
-        and coalesce(ms.created_at, ms.sent_at) >= v_since
+        and ms.sent_at >= v_since
     ),
     sends_prev as (
       select status
@@ -254,8 +254,8 @@ begin
           ms.store_id = p_store_id
           or (ms.store_id is null and ms.user_id = v_owner)
         )
-        and coalesce(ms.created_at, ms.sent_at) >= v_prev_start
-        and coalesce(ms.created_at, ms.sent_at) < v_prev_end
+        and ms.sent_at >= v_prev_start
+        and ms.sent_at < v_prev_end
     ),
     conv as (
       select id, sla_due_at, last_message_at, priority, status

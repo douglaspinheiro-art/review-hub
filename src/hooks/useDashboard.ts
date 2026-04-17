@@ -1488,6 +1488,33 @@ export type ProblemsQueryResult = {
 
 const DEFAULT_PROBLEMS_LIST_LIMIT = 50;
 const MAX_PROBLEMS_LIST_LIMIT = 120;
+const OPPORTUNITIES_SUM_BATCH_SIZE = 1000;
+
+async function fetchOpenOpportunitiesImpactSum(storeId: string | null, effectiveUserId: string): Promise<number> {
+  let offset = 0;
+  let total = 0;
+
+  while (true) {
+    const baseQuery = storeId
+      ? supabase.from("opportunities").select("estimated_impact").eq("store_id", storeId)
+      : supabase.from("opportunities").select("estimated_impact").eq("user_id", effectiveUserId);
+
+    const { data, error } = await baseQuery
+      .neq("status", "resolvido")
+      .neq("status", "ignorado")
+      .range(offset, offset + OPPORTUNITIES_SUM_BATCH_SIZE - 1);
+
+    if (error) throw error;
+
+    const rows = data ?? [];
+    total += rows.reduce((acc, row) => acc + Number(row.estimated_impact ?? 0), 0);
+
+    if (rows.length < OPPORTUNITIES_SUM_BATCH_SIZE) break;
+    offset += OPPORTUNITIES_SUM_BATCH_SIZE;
+  }
+
+  return Number.isFinite(total) ? total : 0;
+}
 
 /**
  * Oportunidades não resolvidas/ignoradas: lista limitada + totais (contagem e soma de impacto) sem trazer 500 linhas completas.
@@ -1522,27 +1549,17 @@ export function useProblems(opts?: { listLimit?: number }) {
         applyTenant(supabase.from("opportunities").select("id", { count: "exact", head: true })),
       );
 
-      const sumQuery = applyOpen(
-        applyTenant(supabase.from("opportunities").select("estimated_impact.sum()")),
-      ).maybeSingle();
-
-      const [listRes, countRes, sumRes] = await Promise.all([listQuery, countQuery, sumQuery]);
+      const [listRes, countRes, totalEstimatedImpact] = await Promise.all([
+        listQuery,
+        countQuery,
+        fetchOpenOpportunitiesImpactSum(storeId, effectiveUserId),
+      ]);
 
       if (listRes.error) throw listRes.error;
       if (countRes.error) throw countRes.error;
 
       const items = (listRes.data ?? []) as OpportunityRow[];
       const totalCount = countRes.count ?? 0;
-
-      let totalEstimatedImpact = 0;
-      if (!sumRes.error && sumRes.data != null) {
-        const row = sumRes.data as Record<string, unknown>;
-        const raw = row.sum ?? row["estimated_impact.sum"];
-        totalEstimatedImpact = Number(raw ?? 0);
-        if (!Number.isFinite(totalEstimatedImpact)) totalEstimatedImpact = 0;
-      } else {
-        totalEstimatedImpact = items.reduce((acc, p) => acc + Number(p.estimated_impact ?? 0), 0);
-      }
 
       return { items, totalCount, totalEstimatedImpact };
     },
