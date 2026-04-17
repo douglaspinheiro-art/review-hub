@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.get_automacoes_bundle_v2(uuid) TO authenticated;
