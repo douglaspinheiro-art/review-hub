@@ -40,7 +40,7 @@ export interface NormalizedCartPayload {
   abandon_step: string | null;
 }
 
-type SignatureSource = "shopify" | "woocommerce" | "nuvemshop" | "vtex" | "tray" | "yampi" | "shopee";
+type SignatureSource = "shopify" | "woocommerce" | "nuvemshop" | "vtex" | "tray" | "yampi" | "shopee" | "magento";
 
 interface IntegrationRow {
   id: string;
@@ -79,6 +79,7 @@ const SOURCE_ALIASES: Record<SignatureSource, string[]> = {
   tray: ["tray"],
   yampi: ["yampi"],
   shopee: ["shopee"],
+  magento: ["magento", "dizy"],
 };
 
 function readString(value: unknown): string | null {
@@ -97,10 +98,12 @@ function pickFromConfig(config: Record<string, unknown> | null, keys: string[]):
 }
 
 function rowMatchesSource(row: IntegrationRow, source: SignatureSource): boolean {
+  // Strict match by `type` only — substring matching on `name` allowed
+  // duplicate or unrelated integrations (e.g. type=custom name="Shopify outlet")
+  // to be picked as verifier, so we now require exact alias on `type`.
   const aliases = SOURCE_ALIASES[source];
-  const type = (row.type ?? "").toLowerCase();
-  const name = (row.name ?? "").toLowerCase();
-  return aliases.some((alias) => type.includes(alias) || name.includes(alias));
+  const type = (row.type ?? "").toLowerCase().trim();
+  return aliases.includes(type);
 }
 
 function extractSecretFromRow(row: IntegrationRow, source: SignatureSource): string | null {
@@ -135,6 +138,14 @@ function extractSecretFromRow(row: IntegrationRow, source: SignatureSource): str
     return (
       readString(row.webhook_secret) ??
       pickFromConfig(mergedConfig, ["webhook_secret", "secret_key", "token"])
+    );
+  }
+
+  if (source === "magento") {
+    return (
+      readString(row.webhook_secret) ??
+      readString(row.webhook_token) ??
+      pickFromConfig(mergedConfig, ["webhook_secret", "webhook_token", "api_key", "access_token", "token"])
     );
   }
 
@@ -361,6 +372,25 @@ export async function verifyYampiHmac(
   const signature = await crypto.subtle.sign("HMAC", key, rawBody as BufferSource);
   const expected = btoa(String.fromCharCode(...new Uint8Array(signature)));
   return expected === header;
+}
+
+/**
+ * Magento 2 / Dizy: per-store token validated via header `x-magento-token`,
+ * `x-webhook-token`, or `Authorization: Bearer <token>`. Magento has no native
+ * HMAC for webhooks, so we rely on a shared per-store secret.
+ */
+export function verifyMagentoToken(req: Request, secret: string): boolean {
+  if (!secret) return false;
+  const auth = req.headers.get("authorization") ?? "";
+  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  const header = req.headers.get("x-magento-token") ?? req.headers.get("x-webhook-token") ?? bearer;
+  if (!header) return false;
+  const enc = new TextEncoder();
+  const a = enc.encode(header);
+  const b = enc.encode(secret);
+  if (a.length !== b.length) return false;
+  // @ts-expect-error Deno runtime expõe timingSafeEqual em crypto.subtle.
+  return crypto.subtle.timingSafeEqual(a, b);
 }
 
 // ── Source detection ───────────────────────────────────────────────────────────

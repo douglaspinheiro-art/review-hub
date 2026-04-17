@@ -10,7 +10,6 @@ export const ECOMMERCE_PLATFORMAS = [
   "Tray",
   "Shopee",
   "Magento",
-  "Loja Integrada",
   "Dizy Commerce",
   "Outra",
 ] as const;
