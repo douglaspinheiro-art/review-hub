@@ -139,9 +139,13 @@ serve(async (req) => {
     const taxa_checkout  = p(checkout, carrinho);
     const taxa_pedido    = p(pedido, checkout);
     const conversao      = ((pedido / visitantes) * 100).toFixed(2);
-    const bench          = BENCHMARKS[segmento] ?? 2.5;
-    const perda          = Math.round(
-      ((meta_conversao / 100) - (Number(conversao) / 100)) * visitantes * ticket_medio
+    const bench          = BENCHMARKS[segmento as string] ?? 2.5;
+    // Lacuna vs benchmark de segmento (não usar meta_conversao do body — o cliente às vezes enviava a CVR medida)
+    const perda = Math.max(
+      0,
+      Math.round(
+        ((bench / 100) - (Number(conversao) / 100)) * visitantes * ticket_medio,
+      ),
     );
 
     // CHS com mais dimensões

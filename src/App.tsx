@@ -179,6 +179,7 @@ const App = () => (
           <Route path="/planos" element={<PlanosPage />} />
           <Route path="/planos/simulador" element={<PlanosPage defaultTab="simulador" />} />
           <Route path="/upgrade" element={<Upgrade />} />
+          {/* Signup funnel lands on /resultado (inline checkout); this path stays dashboard + paid via DashboardRoute. */}
           <Route path="/diagnostico" element={<Navigate to="/dashboard/diagnostico" replace />} />
           <Route path="/dashboard/diagnostico" element={<DashboardRoute routeLabel="Simulador de receita"><Diagnostico embedInDashboard /></DashboardRoute>} />
           <Route path="/calculadora-abandono-carrinho" element={<Calculadora />} />

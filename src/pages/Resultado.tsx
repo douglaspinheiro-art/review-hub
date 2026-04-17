@@ -39,13 +39,20 @@ export default function Resultado() {
   const isActive = profile?.subscription_status === "active";
 
   const [loading, setLoading] = useState(true);
+  const [missingDiagnostic, setMissingDiagnostic] = useState(false);
   const [diagnostic, setDiagnostic] = useState<DiagnosticData | null>(null);
   const [chs, setChs] = useState(0);
   const [chsLabel, setChsLabel] = useState("Regular");
   const [storeName, setStoreName] = useState("Sua Loja");
   const [persistedPlan, setPersistedPlan] = useState<"growth" | "scale" | null>(null);
 
+  /** Aguarda o insert em `diagnostics_v3` (pós-/analisando) sem mandar o usuário para /dashboard/diagnostico (paywall). */
+  const POLL_MS = 1000;
+  const POLL_MAX_ATTEMPTS = 45;
+
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchDiagnostic() {
       if (!user?.id) return;
 
@@ -57,49 +64,97 @@ export default function Resultado() {
         .limit(1)
         .maybeSingle();
 
+      if (cancelled) return;
+
       if ((storeData as { name?: string } | null)?.name) {
         setStoreName((storeData as { name: string }).name);
       }
 
-      const { data: diagData } = await supabase
-        .from("diagnostics_v3")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+        if (cancelled) return;
 
-      if (!diagData) {
-        navigate("/diagnostico", { replace: true });
-        return;
+        const { data: diagData } = await supabase
+          .from("diagnostics_v3")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (diagData) {
+          setDiagnostic(diagData.diagnostic_json as DiagnosticData);
+          setChs(diagData.chs ?? 47);
+          setChsLabel(diagData.chs_label ?? "Regular");
+          const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
+          if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
+          setLoading(false);
+          setMissingDiagnostic(false);
+          void trackFunnelEvent({
+            event: "diagnostic_viewed",
+            metadata: { has_diagnostic: true, chs: diagData?.chs ?? null },
+          });
+          return;
+        }
+
+        if (attempt < POLL_MAX_ATTEMPTS - 1) {
+          await new Promise((r) => setTimeout(r, POLL_MS));
+        }
       }
 
-      setDiagnostic(diagData.diagnostic_json as DiagnosticData);
-      setChs(diagData.chs ?? 47);
-      setChsLabel(diagData.chs_label ?? "Regular");
-      const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
-      if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
-      setLoading(false);
-      void trackFunnelEvent({
-        event: "diagnostic_viewed",
-        metadata: { has_diagnostic: true, chs: diagData?.chs ?? null },
-      });
+      if (!cancelled) {
+        setMissingDiagnostic(true);
+        setLoading(false);
+        void trackFunnelEvent({
+          event: "diagnostic_viewed",
+          metadata: { has_diagnostic: false, reason: "not_found_after_poll" },
+        });
+      }
     }
 
-    fetchDiagnostic();
+    void fetchDiagnostic();
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id]);
 
-  // Compute loss from funnel data
+  // Compute loss from funnel data — meta_conversao = benchmark de setor; taxa_conversao = CVR medida (payload novo)
   const rawFunnel = sessionStorage.getItem("ltv_funnel_data");
-  const funnel = rawFunnel ? JSON.parse(rawFunnel) : null;
+  const funnel = rawFunnel ? JSON.parse(rawFunnel) : null as {
+    ticket_medio?: number;
+    visitantes?: number;
+    pedido?: number;
+    meta_conversao?: number;
+    taxa_conversao?: number;
+  } | null;
   const ticketMedio = funnel?.ticket_medio || 250;
-  const metaConversao = funnel?.meta_conversao || 2.5;
   const visitantesNum = funnel?.visitantes || 12400;
-  const pedidosNum = funnel?.pedido || 174;
-  const conversaoAtual = visitantesNum > 0 ? (pedidosNum / visitantesNum) * 100 : 1.4;
+  const pedidosNum = funnel?.pedido ?? 174;
+  const hasTaxaConversaoField = typeof funnel?.taxa_conversao === "number";
+  const derivedCvrPct =
+    visitantesNum > 0 ? (pedidosNum / visitantesNum) * 100 : null;
+  const taxaConversaoAtual =
+    derivedCvrPct !== null
+      ? derivedCvrPct
+      : (hasTaxaConversaoField ? Number(funnel?.taxa_conversao) : 1.4);
+
+  const rawBench = Number(funnel?.meta_conversao);
+  /** Payloads antigos gravavam a CVR medida em meta_conversao; detectar e usar default de benchmark. */
+  let benchmarkConversao = 2.5;
+  if (hasTaxaConversaoField) {
+    benchmarkConversao = Number.isFinite(rawBench) ? rawBench : 2.5;
+  } else if (
+    derivedCvrPct !== null &&
+    Number.isFinite(rawBench) &&
+    Math.abs(rawBench - derivedCvrPct) < 0.2
+  ) {
+    benchmarkConversao = 2.5;
+  } else if (Number.isFinite(rawBench)) {
+    benchmarkConversao = rawBench;
+  }
+
   const perdaMensal = Math.max(
     0,
-    Math.round(((metaConversao / 100) - (conversaoAtual / 100)) * visitantesNum * ticketMedio),
+    Math.round(((benchmarkConversao / 100) - (taxaConversaoAtual / 100)) * visitantesNum * ticketMedio),
   );
 
   const computed = recommendPlan({
@@ -156,8 +211,30 @@ export default function Resultado() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F] text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[#0A0A0F] text-white flex flex-col items-center justify-center gap-4 p-6 text-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground max-w-sm">Carregando seu diagnóstico…</p>
+      </div>
+    );
+  }
+
+  if (missingDiagnostic || !diagnostic) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] text-white flex flex-col items-center justify-center gap-6 p-6 text-center">
+        <AlertCircle className="w-12 h-12 text-amber-500" />
+        <div className="space-y-2 max-w-md">
+          <h1 className="text-2xl font-black font-syne tracking-tighter">Diagnóstico ainda não disponível</h1>
+          <p className="text-sm text-muted-foreground">
+            Não encontramos seu diagnóstico salvo. Isso pode acontecer se a análise ainda estiver finalizando ou se houve uma falha ao salvar.
+          </p>
+        </div>
+        <Button
+          size="lg"
+          className="font-black rounded-xl gap-2"
+          onClick={() => navigate("/analisando", { replace: true })}
+        >
+          Tentar gerar novamente <ArrowRight className="w-4 h-4" />
+        </Button>
       </div>
     );
   }
@@ -205,7 +282,7 @@ export default function Resultado() {
               Diagnóstico: {storeName}
             </h1>
             <p className="text-muted-foreground text-sm">
-              Baseado em {visitantesNum.toLocaleString("pt-BR")} visitantes · {pedidosNum} pedidos · Conversão {conversaoAtual.toFixed(2)}%
+              Baseado em {visitantesNum.toLocaleString("pt-BR")} visitantes · {pedidosNum} pedidos · Taxa de conversão {taxaConversaoAtual.toFixed(2)}%
             </p>
           </div>
 
@@ -229,17 +306,17 @@ export default function Resultado() {
               <div className="text-5xl font-black font-jetbrains text-red-500 tracking-tighter">
                 R$ {perdaMensal.toLocaleString("pt-BR")} <span className="text-lg opacity-50">/ mês</span>
               </div>
-              <p className="text-xs text-muted-foreground">vs. benchmark do setor ({metaConversao}%)</p>
+              <p className="text-xs text-muted-foreground">vs. benchmark do setor ({benchmarkConversao}%)</p>
             </div>
 
             <div className="grid grid-cols-3 gap-4 pt-6 border-t border-red-500/10">
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Sua CVR</p>
-                <p className="text-lg font-black">{conversaoAtual.toFixed(2)}%</p>
+                <p className="text-lg font-black">{taxaConversaoAtual.toFixed(2)}%</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Benchmark</p>
-                <p className="text-lg font-black text-emerald-500">{metaConversao}%</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Benchmark setor</p>
+                <p className="text-lg font-black text-emerald-500">{benchmarkConversao}%</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Perda/dia</p>

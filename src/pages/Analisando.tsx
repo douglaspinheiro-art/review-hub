@@ -1,8 +1,33 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+
+/** meta_conversao no funil = benchmark de setor; taxa_conversao = CVR medida (payload novo). */
+type FunnelPayload = {
+  visitantes: number;
+  produto_visto: number;
+  carrinho: number;
+  checkout: number;
+  pedido: number;
+  ticket_medio: number;
+  meta_conversao?: number;
+  taxa_conversao?: number;
+  segmento?: string;
+  store_id?: string | null;
+};
+
+function benchmarkForDiagnostics(funnel: FunnelPayload): number {
+  const conversaoPct =
+    funnel.pedido > 0 && funnel.visitantes > 0
+      ? (funnel.pedido / funnel.visitantes) * 100
+      : 0;
+  const raw = Number(funnel.meta_conversao) || 2.5;
+  if (typeof funnel.taxa_conversao === "number") return raw;
+  if (conversaoPct > 0 && Math.abs(raw - conversaoPct) < 0.2) return 2.5;
+  return raw;
+}
 
 const STEPS = [
   { label: "Estabelecendo conexão segura...", ms: 1200 },
@@ -20,9 +45,17 @@ export default function Analisando() {
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
   const [diagnosticCalled, setDiagnosticCalled] = useState(false);
+  const navigatedToResultadoRef = useRef(false);
 
   useEffect(() => {
     let channelRef: ReturnType<typeof supabase.channel> | null = null;
+
+    function goToResultado(delayMs = 800) {
+      if (navigatedToResultadoRef.current) return;
+      navigatedToResultadoRef.current = true;
+      setProgress(100);
+      setTimeout(() => navigate("/resultado", { replace: true }), delayMs);
+    }
 
     async function setupRealtimeAndDiagnose() {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -41,31 +74,25 @@ export default function Analisando() {
             filter: `user_id=eq.${userId}`,
           },
           () => {
-            setProgress(100);
-            setTimeout(() => navigate("/resultado"), 1000);
+            goToResultado(1000);
           }
         )
         .subscribe();
 
       // 2. Resolve funnel payload — sessionStorage cache, fallback to DB.
-      let funnel: {
-        visitantes: number;
-        produto_visto: number;
-        carrinho: number;
-        checkout: number;
-        pedido: number;
-        ticket_medio: number;
-        meta_conversao: number;
-        store_id?: string | null;
-      } | null = null;
+      let funnel: FunnelPayload | null = null;
 
       const rawFunnel = sessionStorage.getItem("ltv_funnel_data");
       if (rawFunnel) {
-        try { funnel = JSON.parse(rawFunnel); } catch { funnel = null; }
+        try {
+          funnel = JSON.parse(rawFunnel) as FunnelPayload;
+        } catch {
+          funnel = null;
+        }
       }
 
       if (!funnel) {
-        // Fallback: latest funnel_metrics row in DB
+        // Fallback: latest funnel_metrics row + benchmark da loja em stores
         const { data: fm } = await supabase
           .from("funnel_metrics")
           .select("store_id,visitantes,visualizacoes_produto,adicionou_carrinho,iniciou_checkout,compras,receita")
@@ -77,7 +104,16 @@ export default function Analisando() {
           const visitantes = Number(fm.visitantes) || 0;
           const compras = Number(fm.compras) || 0;
           const ticket = compras > 0 ? Number(fm.receita) / compras : 250;
-          const cvr = visitantes > 0 ? (compras / visitantes) * 100 : 0;
+          let benchmarkMeta = 2.5;
+          if (fm.store_id) {
+            const { data: st } = await supabase
+              .from("stores")
+              .select("meta_conversao")
+              .eq("id", fm.store_id)
+              .maybeSingle();
+            const mc = Number((st as { meta_conversao?: number } | null)?.meta_conversao);
+            if (Number.isFinite(mc) && mc > 0) benchmarkMeta = mc;
+          }
           funnel = {
             visitantes,
             produto_visto: Number(fm.visualizacoes_produto) || Math.round(visitantes * 0.72),
@@ -85,7 +121,7 @@ export default function Analisando() {
             checkout: Number(fm.iniciou_checkout) || 0,
             pedido: compras,
             ticket_medio: Math.round(ticket) || 250,
-            meta_conversao: Number(cvr.toFixed(2)) || 2.5,
+            meta_conversao: benchmarkMeta,
             store_id: fm.store_id,
           };
         }
@@ -96,6 +132,7 @@ export default function Analisando() {
         setDiagnosticCalled(true);
         if (funnel) {
           try {
+            const benchRef = benchmarkForDiagnostics(funnel);
             const { data, error } = await supabase.functions.invoke("gerar-diagnostico", {
               body: {
                 visitantes: funnel.visitantes,
@@ -104,7 +141,8 @@ export default function Analisando() {
                 checkout: funnel.checkout,
                 pedido: funnel.pedido,
                 ticket_medio: funnel.ticket_medio,
-                meta_conversao: funnel.meta_conversao,
+                meta_conversao: benchRef,
+                ...(funnel.segmento ? { segmento: funnel.segmento } : {}),
               },
             });
 
@@ -113,34 +151,32 @@ export default function Analisando() {
               const conversao = funnel.pedido > 0 && funnel.visitantes > 0
                 ? ((funnel.pedido / funnel.visitantes) * 100)
                 : 0;
-              const chs = Math.min(100, Math.max(0, Math.round(conversao / (funnel.meta_conversao || 2.5) * 50)));
+              const chs = Math.min(100, Math.max(0, Math.round(conversao / (benchRef || 2.5) * 50)));
               const chsLabel = chs >= 70 ? "Bom" : chs >= 40 ? "Regular" : "Em risco";
 
-              await supabase.from("diagnostics_v3").insert({
+              const { error: insertErr } = await supabase.from("diagnostics_v3").insert({
                 user_id: userId,
                 store_id: storeId || null,
                 diagnostic_json: data.diagnostico,
                 chs,
                 chs_label: chsLabel,
               });
-              // Realtime listener will pick this up and navigate
+              if (insertErr) {
+                console.error("diagnostics_v3 insert failed:", insertErr.message);
+                goToResultado(500);
+                return;
+              }
+              goToResultado(800);
             } else {
               console.warn("Diagnostic generation failed:", error?.message || "unknown");
-              setTimeout(() => {
-                setProgress(100);
-                navigate("/resultado");
-              }, 3000);
+              setTimeout(() => goToResultado(0), 3000);
             }
           } catch (e) {
             console.error("Erro ao chamar gerar-diagnostico:", e);
-            setTimeout(() => {
-              setProgress(100);
-              navigate("/resultado");
-            }, 3000);
+            setTimeout(() => goToResultado(0), 3000);
           }
         } else {
-          // No funnel data anywhere — go to result with fallback values
-          navigate("/resultado");
+          navigate("/onboarding", { replace: true });
         }
       }
     }
@@ -162,8 +198,7 @@ export default function Analisando() {
 
     // Fallback: navigate after 25s even without realtime event
     const fallbackTimer = setTimeout(() => {
-      setProgress(100);
-      navigate("/resultado");
+      goToResultado(0);
     }, 25000);
 
     return () => {

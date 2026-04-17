@@ -17,8 +17,24 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
 import { getPostLoginRoute } from "@/lib/post-login-route";
+import { benchmarkCvrForVertical, segmentLabelForVertical } from "@/lib/funnel-benchmarks";
 
 const TOTAL_STEPS = 4;
+
+/** Normaliza e valida URL pública da loja (passo 1). */
+function parsePublicStoreUrl(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  try {
+    const withProtocol = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+    const u = new URL(withProtocol);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (!u.hostname || !u.hostname.includes(".")) return null;
+    return withProtocol.replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
 
 // Platform → integration type mapping
 const PLATFORM_INTEGRATION_MAP: Record<string, { type: string; fields: { key: string; label: string; placeholder: string; secret?: boolean }[]; helpUrl?: string }> = {
@@ -98,6 +114,16 @@ function isAssistedPlatform(p: string): p is AssistedPlatform {
   return (ASSISTED_PLATFORMS as readonly string[]).includes(p);
 }
 
+/** Normaliza plataforma vinda do /signup para chaves usadas neste wizard. */
+function onboardingPlatformFromSignupMetadata(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (Object.prototype.hasOwnProperty.call(PLATFORM_INTEGRATION_MAP, t)) return t;
+  if ((UNSUPPORTED_PLATFORMS as readonly string[]).includes(t)) return t;
+  if (t === "Shopee") return "Outra";
+  return "Outra";
+}
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -152,6 +178,18 @@ export default function Onboarding() {
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
   const estimatedCheckout = checkout ? Number(checkout) : Math.round(estimatedVisitors * 0.14);
   const estimatedPedidos = pedidos ? Number(pedidos) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250));
+
+  /** Taxa de conversão derivada de visitantes × pedidos (GA4/importação da loja ou estimativa a partir do faturamento). */
+  const conversoComputedPct =
+    estimatedVisitors > 0 && estimatedPedidos > 0
+      ? Number(((estimatedPedidos / estimatedVisitors) * 100).toFixed(2))
+      : null;
+
+  useEffect(() => {
+    if (conversoComputedPct !== null) {
+      setMetaConversao(String(conversoComputedPct));
+    }
+  }, [conversoComputedPct]);
 
   const platformInfo = PLATFORM_INTEGRATION_MAP[plataforma];
   const isUnsupportedPlatform = UNSUPPORTED_PLATFORMS.includes(plataforma);
@@ -280,6 +318,16 @@ export default function Onboarding() {
     } catch { /* ignore corrupt cache */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, progressStorageKey]);
+
+  // Pré-preenche plataforma a partir do cadastro (/signup grava em user_metadata.plataforma)
+  useEffect(() => {
+    if (!user?.id) return;
+    const meta = user.user_metadata?.plataforma;
+    if (typeof meta !== "string" || !meta.trim()) return;
+    const mapped = onboardingPlatformFromSignupMetadata(meta);
+    if (!mapped) return;
+    setPlataforma((prev) => prev || mapped);
+  }, [user?.id, user?.user_metadata?.plataforma]);
 
   // Persist progress on every change. SECURITY: never persist OAuth tokens,
   // API keys, or GA4 access tokens in localStorage (XSS exfiltration risk).
@@ -560,6 +608,12 @@ export default function Onboarding() {
 
   const handleStep1Next = () => {
     if (!storeName.trim()) { toast.error("Informe o nome da loja."); return; }
+    const normalizedUrl = parsePublicStoreUrl(storeUrl);
+    if (!normalizedUrl) {
+      toast.error("Informe a URL pública da loja (ex.: https://minhaloja.com.br ou minhaloja.com.br).");
+      return;
+    }
+    setStoreUrl(normalizedUrl);
     if (!vertical) { toast.error("Selecione o segmento da loja."); return; }
     if (!plataforma) { toast.error("Selecione sua plataforma de e-commerce."); return; }
 
@@ -806,12 +860,21 @@ export default function Onboarding() {
         return;
       }
 
-      // 1. Update store
+      const funnelVisitorsPreview = visitantes ? Number(visitantes) : estimatedVisitors;
+      const funnelPedidosPreview = pedidos ? Number(pedidos) : estimatedPedidos;
+      const benchmarkCvr = benchmarkCvrForVertical(vertical);
+      const resolvedTaxaConversao =
+        funnelVisitorsPreview > 0 && funnelPedidosPreview > 0
+          ? Number(((funnelPedidosPreview / funnelVisitorsPreview) * 100).toFixed(2))
+          : null;
+
+      // 1. Update store — meta_conversao = benchmark de setor (não a taxa medida)
       const { error: storeErr } = await supabase
         .from("stores")
         .update({
           name: storeName,
           segment: vertical,
+          meta_conversao: benchmarkCvr,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any)
         .eq("user_id", user.id);
@@ -835,10 +898,10 @@ export default function Onboarding() {
       }
 
       // 5. Save funnel metrics
-      const funnelVisitors = visitantes ? Number(visitantes) : estimatedVisitors;
+      const funnelVisitors = funnelVisitorsPreview;
       const funnelCarrinho = carrinho ? Number(carrinho) : estimatedCarrinho;
       const funnelCheckout = checkout ? Number(checkout) : estimatedCheckout;
-      const funnelPedidos = pedidos ? Number(pedidos) : estimatedPedidos;
+      const funnelPedidos = funnelPedidosPreview;
       const funnelProdutoVisto = Math.round(funnelVisitors * 0.72);
 
       if (storeId) {
@@ -876,7 +939,11 @@ export default function Onboarding() {
         checkout: funnelCheckout,
         pedido: funnelPedidos,
         ticket_medio: Number(ticketMedio) || 250,
-        meta_conversao: (funnelVisitors > 0 && funnelPedidos > 0) ? Number(((funnelPedidos / funnelVisitors) * 100).toFixed(2)) : (Number(metaConversao) || 2.5),
+        /** Taxa de conversão medida (pedidos/visitantes), quando aplicável */
+        ...(resolvedTaxaConversao !== null ? { taxa_conversao: resolvedTaxaConversao } : {}),
+        /** Benchmark de setor para comparar perda / CHS — não confundir com taxa medida */
+        meta_conversao: benchmarkCvr,
+        segmento: segmentLabelForVertical(vertical),
         store_id: storeId,
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
@@ -953,13 +1020,20 @@ export default function Onboarding() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">URL da loja</Label>
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  URL da loja *
+                </Label>
                 <Input
                   placeholder="https://minhaloja.com.br"
                   value={storeUrl}
                   onChange={e => setStoreUrl(e.target.value)}
                   className="h-12 rounded-xl bg-background/50 border-[#2E2E3E]"
+                  inputMode="url"
+                  autoComplete="url"
                 />
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Obrigatório — site público da sua marca (com ou sem https).
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -1381,32 +1455,32 @@ export default function Onboarding() {
                     />
                   )}
                 </div>
-                {(() => {
-                  const v = Number(visitantes) || 0;
-                  const p = Number(pedidos) || 0;
-                  const autoTaxa = v > 0 && p > 0 ? ((p / v) * 100) : null;
-                  const displayValue = autoTaxa !== null ? autoTaxa.toFixed(2) : metaConversao;
-                  return (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                        Taxa de conversão (%)
-                        {autoTaxa !== null && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ calculada</span>}
-                      </Label>
-                      <Input
-                        type="number"
-                        placeholder="2.5"
-                        value={displayValue}
-                        onChange={e => setMetaConversao(e.target.value)}
-                        readOnly={autoTaxa !== null}
-                        className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                        step="0.1"
-                      />
-                      {autoTaxa !== null && (
-                        <p className="text-[10px] text-muted-foreground">Calculada: (pedidos / visitantes) × 100</p>
-                      )}
-                    </div>
-                  );
-                })()}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 flex-wrap">
+                    Taxa de conversão (%)
+                    {conversoComputedPct !== null && (
+                      <span className="text-[9px] text-emerald-400 normal-case tracking-normal">
+                        ✨ calculada automaticamente
+                      </span>
+                    )}
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="2.5"
+                    value={conversoComputedPct !== null ? String(conversoComputedPct) : metaConversao}
+                    onChange={(e) => setMetaConversao(e.target.value)}
+                    readOnly={conversoComputedPct !== null}
+                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                    step="0.01"
+                  />
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    {conversoComputedPct !== null
+                      ? Number(visitantes) > 0 && Number(pedidos) > 0
+                        ? "Calculada a partir dos visitantes e pedidos informados (ex.: dados do GA4 + loja)."
+                        : "Calculada a partir do faturamento e ticket médio quando visitantes/pedidos não estão separados — ajuste visitantes e pedidos abaixo para refinar."
+                      : "Informe visitantes e pedidos no funil abaixo ou o faturamento acima para estimarmos a taxa."}
+                  </p>
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                     Taxa de abandono carrinho (%)
