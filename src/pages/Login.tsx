@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
-import { getNextStep } from "@/lib/next-step";
+import { getPostLoginRoute } from "@/lib/post-login-route";
 
 const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
@@ -38,13 +38,7 @@ export default function Login() {
   // Resolve "next step" centrally so we don't drop a paying user back into onboarding
   // and don't dump a diagnostic-only user into /dashboard.
   async function resolveAndNavigate(userId: string) {
-    const { data } = await supabase
-      .from("diagnostics_v3")
-      .select("id")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
-    const next = from ?? getNextStep({ profile, hasDiagnostic: !!data });
+    const next = from ?? (await getPostLoginRoute(userId, profile));
     navigate(next, { replace: true });
   }
 

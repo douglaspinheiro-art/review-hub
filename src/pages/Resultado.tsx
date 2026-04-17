@@ -124,14 +124,34 @@ export default function Resultado() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, recommendation.tier]);
 
-  const handleActivate = () => {
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+
+  const handleSubscribe = async (planKey: "starter" | "growth" | "scale") => {
+    if (checkoutLoading) return;
+    setCheckoutLoading(planKey);
     void trackFunnelEvent({
       event: "checkout_started",
       recommendedPlan: recommendation.tier,
-      selectedPlan: recommendation.tier,
-      metadata: { source: "resultado", chs, perdaMensal },
+      selectedPlan: planKey,
+      metadata: { source: "resultado_inline", chs, perdaMensal, billing_cycle: billingCycle },
     });
-    navigate(`/planos?recommended=${recommendation.tier}&from=diagnostico`);
+    try {
+      const { data, error } = await supabase.functions.invoke("mercadopago-create-preference", {
+        body: { plan_key: planKey, billing_cycle: billingCycle },
+      });
+      if (error) throw error;
+      const url = (data as { init_point?: string; sandbox_init_point?: string } | null)?.init_point
+        ?? (data as { sandbox_init_point?: string } | null)?.sandbox_init_point;
+      if (!url) throw new Error("URL de pagamento não retornada.");
+      window.location.href = url;
+    } catch (e) {
+      console.error("[resultado] checkout error", e);
+      // Fallback: leva para /planos preservando o tier selecionado
+      navigate(`/planos?recommended=${planKey}&from=diagnostico&cycle=${billingCycle}`);
+    } finally {
+      setCheckoutLoading(null);
+    }
   };
 
   if (loading) {
@@ -164,14 +184,20 @@ export default function Resultado() {
               Ir para o painel <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           ) : (
-            <Button size="sm" onClick={handleActivate} className="font-bold rounded-xl h-9 gap-1">
+            <Button
+              size="sm"
+              onClick={() => {
+                document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="font-bold rounded-xl h-9 gap-1"
+            >
               Ativar plano {recommendedPlan.name} <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           )}
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 pt-12 space-y-16">
+      <div className="max-w-5xl mx-auto px-6 pt-12 space-y-16">
         {/* CHS Block */}
         <div className="text-center space-y-8">
           <div className="space-y-2">
@@ -320,47 +346,132 @@ export default function Resultado() {
         )}
 
 
-        {/* Plan recommendation block — hidden when user already has an active plan */}
+        {/* Inline checkout — 3 plans, monthly/annual toggle, recommended highlighted */}
         {!isActive && diagnostic && (
-          <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/30 rounded-3xl p-8 space-y-6">
-            <div className="space-y-2">
+          <div id="planos-inline" className="space-y-8 scroll-mt-20">
+            <div className="text-center space-y-3">
               <Badge className="bg-primary/20 text-primary border-none text-[10px] font-black tracking-widest uppercase">
-                Plano recomendado para sua loja
+                Recomendamos {recommendedPlan.name} para sua loja
               </Badge>
-              <h2 className="text-3xl font-black font-syne tracking-tighter">
-                {recommendedPlan.emoji} {recommendedPlan.name}
-                <span className="text-muted-foreground text-base font-bold ml-2">
-                  · R$ {recommendedPlan.base.toLocaleString("pt-BR")}/mês
-                </span>
+              <h2 className="text-3xl md:text-4xl font-black font-syne tracking-tighter">
+                Escolha seu plano e comece agora
               </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Com o seu CHS em <strong className="text-white">{chs}</strong>
-                {perdaMensal > 0 && (
-                  <> e perda estimada de <strong className="text-red-400">R$ {perdaMensal.toLocaleString("pt-BR")}/mês</strong></>
-                )}
-                , {recommendation.reason}
+              <p className="text-sm text-muted-foreground max-w-xl mx-auto">
+                {recommendation.reason}
               </p>
+
+              {/* Billing toggle */}
+              <div className="inline-flex items-center gap-1 bg-[#13131A] border border-[#1E1E2E] rounded-full p-1 mt-4">
+                <button
+                  onClick={() => setBillingCycle("monthly")}
+                  className={cn(
+                    "px-4 py-1.5 text-xs font-bold rounded-full transition-all",
+                    billingCycle === "monthly" ? "bg-white text-black" : "text-muted-foreground hover:text-white"
+                  )}
+                >
+                  Mensal
+                </button>
+                <button
+                  onClick={() => setBillingCycle("annual")}
+                  className={cn(
+                    "px-4 py-1.5 text-xs font-bold rounded-full transition-all flex items-center gap-1.5",
+                    billingCycle === "annual" ? "bg-white text-black" : "text-muted-foreground hover:text-white"
+                  )}
+                >
+                  Anual
+                  <span className={cn(
+                    "text-[9px] font-black px-1.5 py-0.5 rounded-full",
+                    billingCycle === "annual" ? "bg-emerald-500/20 text-emerald-700" : "bg-emerald-500/20 text-emerald-500"
+                  )}>
+                    -20%
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-              {recommendedPlan.landingFeatures.slice(0, 6).map((f: string) => (
-                <li key={f} className="flex items-start gap-2">
-                  <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span className="text-white/80">{f}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {(["starter", "growth", "scale"] as const).map((key) => {
+                const plan = PLANS[key];
+                const isRecommended = recommendation.tier === key;
+                const monthlyPrice = billingCycle === "annual"
+                  ? Math.round(plan.base * 0.8)
+                  : plan.base;
+                const isLoading = checkoutLoading === key;
 
-            <Button
-              onClick={handleActivate}
-              size="lg"
-              className="w-full h-14 text-lg font-black bg-gradient-to-r from-emerald-500 to-blue-600 rounded-xl shadow-lg shadow-emerald-500/20 hover:scale-[1.01] transition-all gap-2 group"
-            >
-              Ativar plano {recommendedPlan.name} agora
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </Button>
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      "relative border rounded-2xl p-6 flex flex-col gap-5 transition-all",
+                      isRecommended
+                        ? "border-emerald-500/50 bg-emerald-500/5 ring-2 ring-emerald-500/30 md:scale-[1.02]"
+                        : "border-[#1E1E2E] bg-[#13131A]"
+                    )}
+                  >
+                    {isRecommended && (
+                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-black border-none text-[10px] font-black tracking-widest uppercase shadow-lg shadow-emerald-500/30">
+                        ⭐ Recomendado para você
+                      </Badge>
+                    )}
+
+                    <div className="space-y-1">
+                      <div className="text-2xl">{plan.emoji}</div>
+                      <h3 className="text-xl font-black font-syne">{plan.name}</h3>
+                      <p className="text-xs text-muted-foreground">{plan.audience}</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-black font-jetbrains">
+                          R$ {monthlyPrice.toLocaleString("pt-BR")}
+                        </span>
+                        <span className="text-xs text-muted-foreground">/mês</span>
+                      </div>
+                      {billingCycle === "annual" && (
+                        <p className="text-[10px] text-emerald-500 font-bold">
+                          economize R$ {((plan.base - monthlyPrice) * 12).toLocaleString("pt-BR")}/ano
+                        </p>
+                      )}
+                    </div>
+
+                    <ul className="space-y-2 text-xs flex-1">
+                      {plan.landingFeatures.slice(0, 5).map((f: string) => (
+                        <li key={f} className="flex items-start gap-2">
+                          <Check className={cn("w-3.5 h-3.5 shrink-0 mt-0.5", isRecommended ? "text-emerald-500" : "text-white/60")} />
+                          <span className="text-white/80">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <Button
+                      onClick={() => handleSubscribe(key)}
+                      disabled={!!checkoutLoading}
+                      size="lg"
+                      className={cn(
+                        "w-full h-12 text-sm font-black rounded-xl gap-2 group",
+                        isRecommended
+                          ? "bg-gradient-to-r from-emerald-500 to-blue-600 shadow-lg shadow-emerald-500/20 hover:scale-[1.01] transition-all"
+                          : "bg-white text-black hover:bg-white/90"
+                      )}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Abrindo checkout...
+                        </>
+                      ) : (
+                        <>
+                          Assinar {plan.name}
+                          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+
             <p className="text-[10px] text-muted-foreground text-center">
-              🛡️ Garantia de 14 dias · Cancele quando quiser
+              🛡️ Garantia de 14 dias · Cancele quando quiser · Pagamento seguro via Mercado Pago
             </p>
           </div>
         )}
