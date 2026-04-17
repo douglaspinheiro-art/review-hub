@@ -31,7 +31,7 @@ const integrations = [
   { name: "Vtex", category: "E-commerce" },
   { name: "Nuvemshop", category: "E-commerce" },
   { name: "Magento", category: "E-commerce" },
-  { name: "Tray", category: "E-commerce" },
+  
   { name: "HubSpot", category: "CRM" },
   { name: "Salesforce", category: "CRM" },
   { name: "RD Station", category: "Marketing" },

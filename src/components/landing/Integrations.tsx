@@ -2,7 +2,7 @@ import { useInView } from "@/hooks/useInView";
 import { cn } from "@/lib/utils";
 
 const integrations = [
-  "Shopify", "Nuvemshop", "VTEX", "WooCommerce", "Dizy Commerce", "Tray",
+  "Shopify", "Nuvemshop", "VTEX", "WooCommerce", "Dizy Commerce",
   "Magento", "Mercado Pago", "PagSeguro", "Bling", "SAP",
   "RD Station", "HubSpot", "Salesforce", "Google Ads", "Meta Ads",
 ];
