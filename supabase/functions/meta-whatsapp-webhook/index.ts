@@ -4,6 +4,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { persistInboundWhatsAppMessage } from "../_shared/whatsapp-inbound-persist.ts";
+import { requireSecrets } from "../_shared/require-secrets.ts";
 
 import { corsHeaders as _baseCors } from "../_shared/edge-utils.ts";
 const cors = { ..._baseCors, "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256" };
