@@ -101,7 +101,7 @@ function isAssistedPlatform(p: string): p is AssistedPlatform {
 export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const storeScope = useStoreScopeOptional();
 
   const [step, setStep] = useState(1);
@@ -186,18 +186,17 @@ export default function Onboarding() {
 
   // Se o usuário já tem diagnóstico mas ainda não pagou, mandar pra /resultado
   // (evita refazer o onboarding ao voltar pro app sem ter completado o checkout).
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
     (async () => {
-      const next = await getPostLoginRoute(user.id, null);
+      const next = await getPostLoginRoute(user.id, profile);
       if (!cancelled && next === "/resultado") {
         navigate("/resultado", { replace: true });
       }
     })();
     return () => { cancelled = true; };
-  }, [user?.id, navigate]);
+  }, [user?.id, profile, navigate]);
 
   const progressStorageKey = user?.id
     ? `onboarding_progress_v2_${user.id}_${onboardingStoreId ?? "draft"}`
