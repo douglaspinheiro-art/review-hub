@@ -4,6 +4,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { persistInboundWhatsAppMessage } from "../_shared/whatsapp-inbound-persist.ts";
+import { requireSecrets } from "../_shared/require-secrets.ts";
 
 import { corsHeaders as _baseCors } from "../_shared/edge-utils.ts";
 const cors = { ..._baseCors, "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256" };
@@ -28,8 +29,11 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
-  const verifyToken = Deno.env.get("META_WHATSAPP_VERIFY_TOKEN") ?? "";
-  const appSecret = Deno.env.get("META_APP_SECRET") ?? "";
+  const secretsCheck = requireSecrets(["META_WHATSAPP_VERIFY_TOKEN", "META_APP_SECRET"], "meta-whatsapp-webhook");
+  if (secretsCheck) return secretsCheck;
+
+  const verifyToken = Deno.env.get("META_WHATSAPP_VERIFY_TOKEN")!;
+  const appSecret = Deno.env.get("META_APP_SECRET")!;
 
   if (req.method === "GET") {
     const u = new URL(req.url);
