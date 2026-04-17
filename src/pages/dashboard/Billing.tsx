@@ -142,6 +142,11 @@ export default function Billing() {
   const openMercadoPagoCheckout = async () => {
     setPortalLoading(true);
     try {
+      void trackFunnelEvent({
+        event: "checkout_started",
+        selectedPlan: "growth",
+        metadata: { source: "billing", billing_cycle: "monthly" },
+      });
       const { data, error } = await supabase.functions.invoke<{ init_point?: string }>("mercadopago-create-preference", {
         body: { plan_key: "growth", billing_cycle: "monthly" },
       });
