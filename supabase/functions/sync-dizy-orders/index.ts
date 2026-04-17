@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { timingSafeEqual } from "../_shared/edge-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +11,29 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("CRON_SECRET");
+
+function getBearerToken(req: Request): string {
+  const auth = req.headers.get("authorization") ?? "";
+  return auth.startsWith("Bearer ") ? auth.slice(7) : "";
+}
+
+function isCronInvocation(req: Request): boolean {
+  const bearer = getBearerToken(req);
+  const apikey = req.headers.get("apikey") ?? "";
+  const internalSecret = req.headers.get("x-internal-secret") ?? "";
+
+  if (CRON_SECRET) {
+    if (timingSafeEqual(bearer, CRON_SECRET) || timingSafeEqual(internalSecret, CRON_SECRET)) {
+      return true;
+    }
+  }
+  // Backward compatibility for already-configured scheduled jobs
+  // that might still send SERVICE_ROLE via bearer or apikey header.
+  return !!SERVICE_KEY && (
+    timingSafeEqual(bearer, SERVICE_KEY) ||
+    timingSafeEqual(apikey, SERVICE_KEY)
+  );
+}
 
 interface DizyOrder {
   entity_id: number | string;
@@ -204,7 +228,7 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const isCron = req.headers.get("authorization") === `Bearer ${CRON_SECRET}`;
+    const isCron = isCronInvocation(req);
     const backfillParam = url.searchParams.get("backfill");
     const backfillDays = backfillParam ? Math.min(90, Math.max(1, parseInt(backfillParam))) : undefined;
 

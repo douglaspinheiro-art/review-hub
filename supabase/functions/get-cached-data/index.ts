@@ -57,7 +57,13 @@ serve(async (req) => {
   const userId = userData.user.id;
 
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return new Response(
+        JSON.stringify({ error: "Invalid body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
       return new Response(
@@ -83,12 +89,15 @@ serve(async (req) => {
     if (error) {
       // Tenant guard or other RPC failure — surface 403 vs 500 distinctly.
       const isForbidden =
-        error.code === "42501" || /forbidden/i.test(error.message ?? "");
+        error.code === "42501" ||
+        /forbidden|permission denied|insufficient privilege/i.test(error.message ?? "");
+      const isBadRequest =
+        error.code === "22P02" || /invalid input|invalid uuid|malformed/i.test(error.message ?? "");
       console.error(`RPC ${rpc_name} error for user ${userId}:`, error);
       return new Response(
         JSON.stringify({ error: error.message }),
         {
-          status: isForbidden ? 403 : 500,
+          status: isForbidden ? 403 : (isBadRequest ? 400 : 500),
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
