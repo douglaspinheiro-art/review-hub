@@ -551,7 +551,13 @@ export function useCampaigns(opts?: UseCampaignsOptions) {
       });
     },
     staleTime: 60_000,
-    enabled: !!user && scope?.ready === true,
+    enabled:
+      !!user &&
+      scope?.ready === true &&
+      // If user has stores, require an active one OR a prescription filter.
+      ((scope?.storeOptions?.length ?? 0) === 0 ||
+        !!scope?.activeStoreId ||
+        (sourcePrescriptionIds?.length ?? 0) > 0),
   });
 }
 
