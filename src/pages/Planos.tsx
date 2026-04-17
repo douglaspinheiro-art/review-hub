@@ -355,9 +355,9 @@ export default function Planos({
 
               <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
                 {[
-                  { q: "Preciso de cartão de crédito para testar?", a: "Não. O trial de 14 dias é 100% gratuito, sem necessidade de cartão." },
+                  { q: "Preciso de cartão de crédito para o diagnóstico?", a: "Não. O diagnóstico é 100% gratuito, sem necessidade de cartão." },
                   { q: "Posso mudar de plano depois?", a: "Sim, upgrade ou downgrade a qualquer momento. O valor é ajustado proporcionalmente." },
-                  { q: "O que acontece quando o trial acaba?", a: "Você escolhe um plano. Se não assinar, o acesso é pausado e seus dados ficam salvos por 30 dias." },
+                  { q: "O que acontece após o diagnóstico?", a: "Você escolhe um plano para ativar a execução. Sem assinatura, o acesso à plataforma fica pausado e seus dados ficam salvos por 30 dias." },
                   { q: "As mensagens do WhatsApp têm custo extra?", a: "Além da assinatura há o custo da API Meta. Ajudamos na configuração." },
                 ].map(({ q, a }) => (
                   <div key={q} className="space-y-1">
@@ -370,10 +370,10 @@ export default function Planos({
               <div className="text-center space-y-4 bg-primary/5 border border-primary/20 rounded-2xl py-12 px-6">
                 <h2 className="text-2xl font-bold">Pronto para recuperar receita perdida?</h2>
                 <p className="text-muted-foreground max-w-md mx-auto">
-                  Comece a recuperar vendas hoje — sem contrato de fidelidade.
+                  Faça seu diagnóstico grátis e veja quanto você pode recuperar — sem contrato de fidelidade.
                 </p>
                 <div className="flex gap-3 justify-center flex-wrap">
-                  <Link to="/signup"><Button size="lg">Começar grátis agora</Button></Link>
+                  <Link to="/diagnostico"><Button size="lg">Fazer diagnóstico grátis</Button></Link>
                   <Link to="/contato"><Button variant="outline" size="lg">Falar com especialista</Button></Link>
                 </div>
               </div>
