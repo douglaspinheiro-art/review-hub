@@ -15,8 +15,11 @@ export interface PlanRecommendationInput {
   problemas?: DiagnosticProblemLite[] | null;
 }
 
+/** Apenas tiers vendíveis a partir do diagnóstico (sem enterprise / starter). */
+export type RecommendablePlanTier = Extract<PlanTier, "growth" | "scale">;
+
 export interface PlanRecommendation {
-  tier: PlanTier;
+  tier: RecommendablePlanTier;
   reason: string;
 }
 
