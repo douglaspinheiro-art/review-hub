@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-import { corsHeaders } from "../_shared/edge-utils.ts";
+import { corsHeaders, verifyJwt, errorResponse } from "../_shared/edge-utils.ts";
 
 const BodySchema = z.object({
   customer_id: z.string().uuid(),
@@ -68,12 +68,25 @@ async function resolveWeeklyCap(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    // P0: JWT auth
+    const auth = await verifyJwt(req);
+    if (!auth.ok) return auth.response;
+
     const body = await req.json();
     const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
       return new Response(JSON.stringify({ error: "Validation failed", details: parsed.error.flatten().fieldErrors }), { status: 400, headers: corsHeaders });
     }
     const { customer_id, store_id, channel } = parsed.data;
+
+    // P0: Ownership check
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+    );
+    const { error: aclErr } = await authClient.rpc("assert_store_access", { p_store_id: store_id });
+    if (aclErr) return errorResponse("Forbidden: store access denied", 403);
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
     const cap = await resolveWeeklyCap(supabase, store_id, channel);

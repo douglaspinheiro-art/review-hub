@@ -4,8 +4,10 @@
  * Two modes:
  *   GET  ?action=start&store_id=...   → returns { url } to start the OAuth dance
  *   GET  ?code=...&state=...          → Google redirects here; exchanges code → tokens, persists in stores, returns HTML that posts a message to the opener and closes
+ *
+ * P0 hardening: state is now a one-time, server-persisted token in `oauth_states`
+ * (CSRF/tenant-confusion proof). Replaces previous `userId:storeId:uuid` string.
  */
-// deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -82,7 +84,7 @@ serve(async (req: Request) => {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claims.claims.sub;
+    const userId = claims.claims.sub as string;
     const storeId = url.searchParams.get("store_id");
     if (!storeId) {
       return new Response(JSON.stringify({ error: "store_id required" }), {
@@ -90,7 +92,33 @@ serve(async (req: Request) => {
       });
     }
 
-    const state = `${userId}:${storeId}:${crypto.randomUUID()}`;
+    // Verify the caller actually owns/can-access the store before issuing state.
+    const { error: aclErr } = await supabase.rpc("assert_store_access", { p_store_id: storeId });
+    if (aclErr) {
+      return new Response(JSON.stringify({ error: "Forbidden: store access denied" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // P0: persist one-time state token in oauth_states (10-min expiry).
+    const stateToken = crypto.randomUUID();
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+    const { error: insErr } = await admin.from("oauth_states").insert({
+      state_token: stateToken,
+      user_id: userId,
+      store_id: storeId,
+      platform: "google",
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    });
+    if (insErr) {
+      console.error("[google-oauth-callback] oauth_states insert failed:", insErr.message);
+      return new Response(JSON.stringify({ error: "Failed to start OAuth flow" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -99,7 +127,7 @@ serve(async (req: Request) => {
       scope: SCOPES,
       access_type: "offline",
       prompt: "consent",
-      state,
+      state: stateToken,
     });
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     return new Response(JSON.stringify({ url: authUrl }), {
@@ -110,8 +138,19 @@ serve(async (req: Request) => {
   // ── Mode 2: Google redirect ──
   if (code && stateParam) {
     try {
-      const [userId, storeId] = stateParam.split(":");
-      if (!userId || !storeId) throw new Error("Invalid state");
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
+
+      // P0: consume state atomically (DELETE + RETURNING, one-time, expiry-checked).
+      const { data: states, error: stateErr } = await admin.rpc("consume_oauth_state", { p_token: stateParam });
+      if (stateErr) throw new Error(`State validation failed: ${stateErr.message}`);
+      const st = (states as Array<{ user_id: string; store_id: string; platform: string }> | null)?.[0];
+      if (!st || st.platform !== "google") throw new Error("Invalid or expired state");
+
+      const userId = st.user_id;
+      const storeId = st.store_id;
 
       // Exchange code → tokens
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -146,11 +185,6 @@ serve(async (req: Request) => {
 
       const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      );
-
       const updatePayload: Record<string, unknown> = {
         ga4_access_token: tokens.access_token,
         ga4_token_expires_at: expiresAt,
@@ -158,7 +192,7 @@ serve(async (req: Request) => {
       };
       if (tokens.refresh_token) updatePayload.ga4_refresh_token = tokens.refresh_token;
 
-      const { error: upErr } = await supabase
+      const { error: upErr } = await admin
         .from("stores")
         .update(updatePayload)
         .eq("id", storeId)
