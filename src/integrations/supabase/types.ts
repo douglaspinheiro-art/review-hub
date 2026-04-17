@@ -1547,6 +1547,54 @@ export type Database = {
           },
         ]
       }
+      dizy_sync_state: {
+        Row: {
+          backfill_completed_at: string | null
+          created_at: string
+          customers_imported_total: number | null
+          id: string
+          last_order_external_id: string | null
+          last_run_at: string | null
+          last_run_error: string | null
+          last_run_status: string | null
+          last_synced_at: string | null
+          orders_imported_total: number | null
+          store_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          backfill_completed_at?: string | null
+          created_at?: string
+          customers_imported_total?: number | null
+          id?: string
+          last_order_external_id?: string | null
+          last_run_at?: string | null
+          last_run_error?: string | null
+          last_run_status?: string | null
+          last_synced_at?: string | null
+          orders_imported_total?: number | null
+          store_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          backfill_completed_at?: string | null
+          created_at?: string
+          customers_imported_total?: number | null
+          id?: string
+          last_order_external_id?: string | null
+          last_run_at?: string | null
+          last_run_error?: string | null
+          last_run_status?: string | null
+          last_synced_at?: string | null
+          orders_imported_total?: number | null
+          store_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_engagement_events: {
         Row: {
           campaign_id: string
