@@ -3,6 +3,8 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { PROFILE_SESSION_SELECT } from "@/lib/supabase-select-fragments";
 
+export type SubscriptionStatus = "diagnostic_only" | "active" | "past_due" | "canceled";
+
 export interface Profile {
   id: string;
   full_name: string | null;
@@ -11,6 +13,8 @@ export interface Profile {
   role: "user" | "admin";
   trial_ends_at: string | null;
   onboarding_completed: boolean;
+  /** Paywall state: only "active" unlocks /setup and /dashboard/*. */
+  subscription_status: SubscriptionStatus;
   ia_negotiation_enabled: boolean | null;
   ia_max_discount_pct: number | null;
   social_proof_enabled: boolean | null;
