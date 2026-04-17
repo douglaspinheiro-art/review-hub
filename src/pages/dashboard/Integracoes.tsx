@@ -459,6 +459,23 @@ export default function Integracoes() {
                         <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800 gap-1">
                           <Check className="w-3 h-3" /> Conectado
                         </Badge>
+                        {item.type === "dizy" && integration?.store_id && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1.5 text-xs"
+                            onClick={() => dizyBackfillMutation.mutate(integration.store_id!)}
+                            disabled={dizyBackfillMutation.isPending}
+                          >
+                            {dizyBackfillMutation.isPending ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-3 h-3" />
+                            )}
+                            Sincronizar histórico
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
