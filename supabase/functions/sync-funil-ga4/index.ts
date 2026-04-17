@@ -5,6 +5,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logCronAlert, verifyCronSecret } from "../_shared/edge-utils.ts";
+import { ensureFreshGa4AccessToken } from "../_shared/refresh-ga4-token.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
@@ -131,12 +132,12 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: false, error: "Daily GA4 API quota exceeded" }), { status: 429, headers: cors });
   }
 
-  // 2. Fetch chunk of stores
+  // 2. Fetch chunk of stores (any store with property_id and either an access_token or refresh_token)
   let query = supabase
     .from("stores")
-    .select("id, user_id, ga4_property_id, ga4_access_token")
+    .select("id, user_id, ga4_property_id, ga4_access_token, ga4_refresh_token")
     .not("ga4_property_id", "is", null)
-    .not("ga4_access_token", "is", null)
+    .or("ga4_access_token.not.is.null,ga4_refresh_token.not.is.null")
     .order("id", { ascending: true })
     .limit(CHUNK_SIZE);
 
@@ -165,7 +166,14 @@ serve(async (req) => {
 
   for (const s of stores) {
     const pid = s.ga4_property_id as string;
-    const tok = s.ga4_access_token as string;
+    let tok: string;
+    try {
+      tok = await ensureFreshGa4AccessToken(supabase, s.id);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      for (const periodo of periodos) results.push({ store_id: s.id, periodo, ok: false, error: `token: ${msg}` });
+      continue;
+    }
     for (const periodo of periodos) {
       try {
         chunkRequests += 3; // sessions, events, revenue API calls
