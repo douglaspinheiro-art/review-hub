@@ -1013,6 +1013,24 @@ export default function Onboarding() {
                     step="0.1"
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                    Taxa de abandono carrinho (%)
+                    {importedFields.taxaAbandono && <span className="text-[9px] text-emerald-400 normal-case tracking-normal">✨ importado</span>}
+                  </Label>
+                  {metricsLoading ? (
+                    <div className="h-12 rounded-xl bg-background/50 border border-[#2E2E3E] animate-pulse" />
+                  ) : (
+                    <Input
+                      type="number"
+                      placeholder="Ex: 70"
+                      value={taxaAbandono}
+                      onChange={e => setTaxaAbandono(e.target.value)}
+                      className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
+                      step="0.1"
+                    />
+                  )}
+                </div>
               </div>
 
               <div className="border-t border-[#1E1E2E] pt-5 space-y-3">
