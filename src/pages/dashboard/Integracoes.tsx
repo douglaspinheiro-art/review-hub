@@ -268,6 +268,27 @@ export default function Integracoes() {
     },
   });
 
+  const dizyBackfillMutation = useMutation({
+    mutationFn: async (storeId: string) => {
+      const { data, error } = await supabase.functions.invoke<{ ok: boolean; error?: string; importedOrders?: number; fetched?: number }>(
+        "sync-dizy-orders?backfill=90",
+        { body: { store_id: storeId } },
+      );
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "Falha ao sincronizar histórico Dizy");
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success("Sincronização iniciada", {
+        description: `${data.importedOrders ?? 0} novos pedidos importados (de ${data.fetched ?? 0} encontrados).`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+    },
+    onError: (err: Error) => {
+      toast.error("Erro ao sincronizar Dizy", { description: err.message });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("integrations").delete().eq("id", id);
@@ -438,6 +459,23 @@ export default function Integracoes() {
                         <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800 gap-1">
                           <Check className="w-3 h-3" /> Conectado
                         </Badge>
+                        {item.type === "dizy" && integration?.store_id && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1.5 text-xs"
+                            onClick={() => dizyBackfillMutation.mutate(integration.store_id!)}
+                            disabled={dizyBackfillMutation.isPending}
+                          >
+                            {dizyBackfillMutation.isPending ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-3 h-3" />
+                            )}
+                            Sincronizar histórico
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
