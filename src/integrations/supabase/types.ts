@@ -3307,6 +3307,7 @@ export type Database = {
           streak_last_visit_date: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          subscription_status: string
           trial_ends_at: string | null
           updated_at: string
         }
@@ -3343,6 +3344,7 @@ export type Database = {
           streak_last_visit_date?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          subscription_status?: string
           trial_ends_at?: string | null
           updated_at?: string
         }
@@ -3379,6 +3381,7 @@ export type Database = {
           streak_last_visit_date?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          subscription_status?: string
           trial_ends_at?: string | null
           updated_at?: string
         }
