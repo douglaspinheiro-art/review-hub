@@ -299,11 +299,19 @@ export default function Planos({
                       </div>
 
                       <div className="pt-2">
-                        <Link to={d.ctaTo}>
-                          <Button variant={d.ctaVariant} className="w-full font-black py-6 text-base rounded-xl">
-                            {d.ctaLabel}
-                          </Button>
-                        </Link>
+                        {isCurrent ? (
+                          <Link to="/dashboard/billing">
+                            <Button variant="outline" className="w-full font-black py-6 text-base rounded-xl border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10">
+                              Gerenciar assinatura
+                            </Button>
+                          </Link>
+                        ) : (
+                          <Link to={d.ctaTo}>
+                            <Button variant={d.ctaVariant} className="w-full font-black py-6 text-base rounded-xl">
+                              {isActive ? "Mudar para este plano" : d.ctaLabel}
+                            </Button>
+                          </Link>
+                        )}
                       </div>
                     </div>
                   );
