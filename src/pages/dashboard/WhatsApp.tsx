@@ -370,7 +370,11 @@ export default function WhatsApp() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("whatsapp_connections").delete().eq("id", id);
+      const { error } = await supabase
+        .from("whatsapp_connections")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user!.id);
       if (error) throw error;
     },
     onSuccess: () => {
