@@ -382,9 +382,9 @@ serve(async (req) => {
       });
     } else {
       const jwt = authHeader;
-      const { data: { user }, error: authErr } = await sb.auth.getUser(jwt);
-      if (authErr || !user) throw new Error("Não autorizado");
-      userId = user.id;
+      const { data: claimsData, error: authErr } = await sb.auth.getClaims(jwt);
+      if (authErr || !claimsData?.claims?.sub) throw new Error("Não autorizado");
+      userId = claimsData.claims.sub;
     }
 
     const { allowed: rlAllowed } = await checkDistributedRateLimit(sb, `dispatch-newsletter:${userId}`, 20, 60_000);
