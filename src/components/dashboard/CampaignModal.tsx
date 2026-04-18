@@ -1420,6 +1420,7 @@ export default function CampaignModal({
                       </button>
                     ))}
                   </div>
+                  )}
                 </div>
               </div>
             )}
