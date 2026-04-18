@@ -1076,16 +1076,65 @@ export default function CampaignModal({
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <h2 className="text-3xl font-black font-syne uppercase tracking-tighter italic">Criação <span className="text-primary underline">Inteligente</span></h2>
-                    <p className="text-muted-foreground text-sm">Use o cérebro da plataforma para gerar sua cópia de alta conversão.</p>
+                    <p className="text-muted-foreground text-sm">
+                      {channel === "whatsapp" && waContentType === "template"
+                        ? "Escolha um template aprovado pela Meta — é a única forma de garantir entrega fora da janela de 24 h."
+                        : "Use o cérebro da plataforma para gerar sua cópia de alta conversão."}
+                    </p>
                   </div>
-                  <Button type="button" onClick={generateAiCopy} disabled={aiLoading} className="bg-orange-500 hover:bg-orange-600 text-white font-black text-[10px] uppercase tracking-widest h-11 px-6 rounded-xl gap-2 shadow-lg shadow-orange-500/20">
-                    {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                    Sugerir com Claude 3.5
-                  </Button>
+                  {!(channel === "whatsapp" && waContentType === "template") && (
+                    <Button type="button" onClick={generateAiCopy} disabled={aiLoading} className="bg-orange-500 hover:bg-orange-600 text-white font-black text-[10px] uppercase tracking-widest h-11 px-6 rounded-xl gap-2 shadow-lg shadow-orange-500/20">
+                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      Sugerir com Claude 3.5
+                    </Button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-4">
+                    {channel === "whatsapp" && (
+                      <div className="bg-muted/30 border rounded-2xl p-4 space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                          <Info className="w-3 h-3" /> Tipo de envio
+                        </Label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setWaContentType("template")}
+                            className={cn(
+                              "p-3 rounded-xl border-2 text-left transition-all",
+                              waContentType === "template"
+                                ? "border-primary bg-primary/5"
+                                : "border-border/50 hover:bg-muted/30",
+                            )}
+                          >
+                            <div className="text-[11px] font-black uppercase tracking-widest">Template aprovado</div>
+                            <div className="text-[10px] text-muted-foreground mt-1">Recomendado. Garante entrega via Meta HSM (fora da janela de 24 h).</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWaContentType("text")}
+                            className={cn(
+                              "p-3 rounded-xl border-2 text-left transition-all",
+                              waContentType === "text"
+                                ? "border-primary bg-primary/5"
+                                : "border-border/50 hover:bg-muted/30",
+                            )}
+                          >
+                            <div className="text-[11px] font-black uppercase tracking-widest">Texto livre (24 h)</div>
+                            <div className="text-[10px] text-muted-foreground mt-1">Só entrega para contatos que falaram com você nas últimas 24 h.</div>
+                          </button>
+                        </div>
+                        {waContentType === "template" && (
+                          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-[11px] text-foreground leading-relaxed mt-2">
+                            ✓ <strong>A mensagem enviada será o template aprovado abaixo.</strong> O texto livre da biblioteca não se aplica neste modo — só o template e suas variáveis serão usados.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!(channel === "whatsapp" && waContentType === "template") && (
+                    <>
                     <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Biblioteca de templates</p>
                       <div className="flex flex-wrap gap-2">
@@ -1175,43 +1224,10 @@ export default function CampaignModal({
                         <ShoppingCart className="w-3.5 h-3.5" /> Inserir Link Mágico
                       </Button>
                     </div>
-
+                    </>
+                    )}
                     {channel === "whatsapp" && (
                       <div className="bg-muted/30 border rounded-2xl p-4 space-y-4">
-                        {/* Tipo de envio: Template aprovado vs Texto livre */}
-                        <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-                            <Info className="w-3 h-3" /> Tipo de envio
-                          </Label>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setWaContentType("template")}
-                              className={cn(
-                                "p-3 rounded-xl border-2 text-left transition-all",
-                                waContentType === "template"
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border/50 hover:bg-muted/30",
-                              )}
-                            >
-                              <div className="text-[11px] font-black uppercase tracking-widest">Template aprovado</div>
-                              <div className="text-[10px] text-muted-foreground mt-1">Recomendado. Garante entrega via Meta HSM (fora da janela de 24 h).</div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setWaContentType("text")}
-                              className={cn(
-                                "p-3 rounded-xl border-2 text-left transition-all",
-                                waContentType === "text"
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border/50 hover:bg-muted/30",
-                              )}
-                            >
-                              <div className="text-[11px] font-black uppercase tracking-widest">Texto livre (24 h)</div>
-                              <div className="text-[10px] text-muted-foreground mt-1">Só entrega para contatos que falaram com você nas últimas 24 h.</div>
-                            </button>
-                          </div>
-                        </div>
 
                         {waContentType === "text" && (
                           <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-[11px] text-yellow-700 dark:text-yellow-400 leading-relaxed">
@@ -1387,6 +1403,7 @@ export default function CampaignModal({
                     )}
                   </div>
 
+                  {!(channel === "whatsapp" && waContentType === "template") && (
                   <div className="space-y-4">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sugestões do Claude</h3>
                     {aiVariations.length === 0 && !aiLoading && (
@@ -1403,6 +1420,7 @@ export default function CampaignModal({
                       </button>
                     ))}
                   </div>
+                  )}
                 </div>
               </div>
             )}
