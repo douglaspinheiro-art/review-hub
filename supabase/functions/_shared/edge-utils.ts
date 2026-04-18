@@ -22,7 +22,7 @@ if (!_allowedOrigin) {
 }
 
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": _allowedOrigin ?? "*",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -231,7 +231,25 @@ export function validateBrowserOrigin(req: Request): Response | null {
     console.warn("[validateBrowserOrigin] ALLOWED_ORIGIN não configurado — pulando validação de origem. Defina em produção.");
     return null;
   }
-  if (origin !== allowedOrigin) {
+
+  const trustedPreviewHosts = [".lovableproject.com", ".lovable.app"];
+  const originHost = (() => {
+    try {
+      return new URL(origin).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+
+  const allowedOrigins = allowedOrigin
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const isAllowedOrigin = allowedOrigins.includes(origin);
+  const isTrustedPreview = trustedPreviewHosts.some((suffix) => originHost.endsWith(suffix));
+
+  if (!isAllowedOrigin && !isTrustedPreview) {
     return errorResponse("Forbidden origin", 403);
   }
   return null;
