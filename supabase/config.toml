@@ -74,8 +74,9 @@ verify_jwt = true
 [functions.unsubscribe-contact]
 verify_jwt = true
 
+# Dispatch newsletter — JWT validado no handler (suporta ES256) ou PROCESS_SCHEDULED_MESSAGES_SECRET interno.
 [functions.dispatch-newsletter]
-verify_jwt = true
+verify_jwt = false
 
 [functions.meta-whatsapp-send]
 verify_jwt = false
