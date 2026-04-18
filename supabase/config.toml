@@ -78,7 +78,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.meta-whatsapp-send]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-api-key]
 verify_jwt = true
