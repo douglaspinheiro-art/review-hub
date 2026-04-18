@@ -217,10 +217,13 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const internalSecret = Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const providedSecret =
     req.headers.get("x-internal-secret") ||
     req.headers.get("authorization")?.replace("Bearer ", "");
-  if (!internalSecret || !timingSafeEqual(providedSecret ?? "", internalSecret)) {
+  const okInternal = internalSecret && timingSafeEqual(providedSecret ?? "", internalSecret);
+  const okServiceRole = serviceRoleKey && timingSafeEqual(providedSecret ?? "", serviceRoleKey);
+  if (!okInternal && !okServiceRole) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
