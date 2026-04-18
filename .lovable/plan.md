@@ -1,43 +1,35 @@
 
+O usuário colou um **token temporário de teste** da Meta (de "Gerar token de acesso" no painel WhatsApp) + o **Phone Number ID** `1003067482898885`.
 
 ## Diagnóstico
 
-A função edge `meta-wa-oauth` foi chamada e devolveu **HTTP 400** (confirmado em `function_edge_logs`). Mas:
+Não, essas informações **não são adequadas** para uso em produção do jeito que estão:
 
-1. O **cliente** (`meta-embedded-signup.ts` → `supabase.functions.invoke`) só recebe `"Edge Function returned a non-2xx status code"` — o body com o motivo real é descartado pelo SDK.
-2. A **edge function** retorna 400 sem nenhum `console.error`, então os logs estão vazios — não dá pra saber qual dos motivos abaixo aconteceu.
+### 1. O token é temporário (válido por 24h)
+O botão "Gerar token de acesso" no painel da Meta gera um token que expira em **24 horas**. Para a aplicação funcionar continuamente você precisa de um destes:
 
-Os 400 possíveis em `meta-wa-oauth/index.ts`:
-- linha 45: `code` ou `store_id` ausentes no body
-- linha 84: troca do `code` por access_token na Graph API falhou (motivo mais provável — `code` inválido/expirado, `redirect_uri` divergente, `META_APP_ID`/`META_APP_SECRET` errados, ou o app Meta sem `whatsapp` adicionado como produto)
+- **Token de Sistema (System User Token)** — permanente, recomendado para produção
+- **Token via Embedded Signup (OAuth)** — long-lived (60 dias) com refresh automático, que é o fluxo que a função `meta-wa-oauth` já implementa
 
-## Correção (defesa em profundidade — 2 arquivos)
+### 2. Faltam dados obrigatórios
+Para a conexão Meta Cloud funcionar você precisa de **3 IDs**, não apenas 2:
+- ✅ Phone Number ID: `1003067482898885`
+- ❌ WABA ID (WhatsApp Business Account ID): `2161510034688293` (vi na sua imagem anterior)
+- ❌ Access Token (precisa ser permanente)
 
-### 1. `supabase/functions/meta-wa-oauth/index.ts` — instrumentar e devolver 200 com `ok:false`
+## Caminho recomendado
 
-Seguindo o padrão do Lovable Stack Overflow (que esta knowledge base sinaliza explicitamente): trocar todos os `return jsonResponse({ error }, 400/403/404/500)` por **status 200** com `{ ok: false, error, code, diagnostics }`. Adicionar `console.error` em cada caminho de falha com tag `META_OAUTH_ERR` + payload da Graph API (sanitizado — sem token).
+**Opção A (produção, recomendada):** Usar o botão **"Conectar com Meta"** na tela `/dashboard/whatsapp` que dispara o Embedded Signup. Isso preenche tudo automaticamente e mantém o token vivo via refresh.
 
-Especificamente no Step 1 (mais provável): logar `tokenRes.status` + `tokenData.error` (que vem da Meta com `type`, `code`, `error_subcode`, `message`) — assim a próxima tentativa diz exatamente o que a Meta reclamou.
+**Opção B (teste rápido por 24h):** Inserir manualmente os 3 valores (token + phone_number_id + waba_id) no formulário de configuração avançada. Funciona para testar envios hoje, mas para de funcionar amanhã.
 
-### 2. `src/lib/whatsapp/meta-embedded-signup.ts` — ler `ok:false` no novo formato
+**Opção C (produção alternativa):** Gerar um **System User Token permanente** no Meta Business Manager → Configurações do Negócio → Usuários do Sistema → criar usuário "Admin" → gerar token com permissões `whatsapp_business_messaging` + `whatsapp_business_management`. Esse token nunca expira.
 
-Adaptar o `.then` do `supabase.functions.invoke` pra:
-- se `data.ok === false`, propagar `data.error`/`data.code` em vez de devolver "exchange_failed" genérico
-- toast no `WhatsApp.tsx` já mostra `result.error`, então o usuário passa a ver a mensagem real da Meta (ex.: "Invalid OAuth access token", "App not configured for WhatsApp", etc.)
+## Pergunta
 
-## O que NÃO vou tocar
+Qual caminho você quer seguir? Posso:
+1. Te guiar pelo Embedded Signup (Opção A)
+2. Adicionar um campo no UI para colar o token temporário e testar agora (Opção B)
+3. Te dar o passo-a-passo para gerar o System User Token (Opção C)
 
-- Lógica de OAuth, scopes, upsert em `whatsapp_connections` — tudo continua igual
-- Não preciso adicionar/rotacionar secrets (eles já existem; o problema é diagnóstico)
-- Não muda `supabase/config.toml`
-
-## Próximo passo após o fix
-
-Depois que você clicar de novo em "Conectar com Facebook", o toast vai mostrar a mensagem exata da Meta. As 3 causas mais prováveis e como resolver cada uma:
-
-| Mensagem da Meta | Causa | Fix |
-|---|---|---|
-| `Invalid verification code format` | `code` expirou (>10min) ou já foi trocado | tentar de novo |
-| `Invalid OAuth access token` ou `App not configured` | `META_APP_ID`/`META_APP_SECRET` no Supabase ≠ app real | recolocar secrets corretos |
-| `(#100) The parameter app_id is required` | produto WhatsApp não adicionado ao app Meta | adicionar produto "WhatsApp" no Meta dev console |
-
+Não vou fazer alterações de código até você escolher.
