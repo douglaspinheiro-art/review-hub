@@ -525,6 +525,8 @@ export default function CampaignModal({
             content_type: waContentType,
             media_url: waMediaUrl || null,
             meta_template_name: waMetaTemplateName.trim() || null,
+            meta_template_language: waContentType === "template" ? (waMetaTemplateLanguage.trim() || "pt_BR") : null,
+            meta_template_parameters: waContentType === "template" ? waMetaTemplateParameters : [],
             buttons: waContentType === "template" && waButtonLabel && waButtonUrl
               ? [{ type: "url", label: waButtonLabel, value: waButtonUrl }]
               : [],
