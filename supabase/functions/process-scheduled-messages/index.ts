@@ -137,8 +137,19 @@ type WaMessage = {
   campaign_id: string | null;
   status: string;
   scheduled_for: string;
-  customers_v3: { phone: string };
+  customers_v3: { phone: string; name: string | null; email: string | null };
 };
+
+/** Substitute {{nome}}, {{name}}, {{email}}, {{phone}} placeholders in a string. */
+function substituteContactVars(
+  s: string,
+  customer: { name: string | null; email: string | null; phone: string },
+): string {
+  return s
+    .replace(/\{\{\s*(nome|name)\s*\}\}/gi, customer.name?.trim() || "")
+    .replace(/\{\{\s*email\s*\}\}/gi, customer.email?.trim() || "")
+    .replace(/\{\{\s*(telefone|phone)\s*\}\}/gi, customer.phone || "");
+}
 
 type WaConnection = {
   id: string;
