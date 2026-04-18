@@ -1,39 +1,45 @@
+Ah, entendi — não é desconto de plano anual, é o **Success Fee** (taxa de sucesso sobre receita recuperada) que precisa ficar visível nos cards de plano em `/resultado`.
 
-## Ideia: Paywall blur nos Problemas Prioritários
+Olhando `src/lib/pricing-constants.ts`:
 
-Boa estratégia de conversão — mostra valor (lista existe, IA já analisou) mas trava o detalhe acionável atrás do upgrade. Padrão usado por Semrush, Ahrefs, etc.
+- Starter: `successFeeRate: 0.03` → **3%**
+- Growth: `successFeeRate: 0.02` → **2%**
+- Scale: `successFeeRate: 0.015` → **1.5%**
 
-## Proposta
+Hoje os cards na `/resultado` mostram só `R$ X /mês` sem mencionar essa fee — o usuário pode ser pego de surpresa na cobrança, e também perde o gancho de que **plano maior = fee menor** (ótimo argumento de upsell).
 
-Em `/resultado`, na seção "Problemas Prioritários":
-- **1º problema:** visível 100% (prova que a análise é real)
-- **2º e 3º problemas:** renderizados normalmente, mas com `blur-sm` + overlay escuro + cadeado central
-- **Overlay CTA:** "Desbloqueie os outros 2 gargalos críticos · R$ X em receita perdida identificada" + botão "Desbloquear diagnóstico completo"
+## Mudança (arquivo único)
 
-O botão usa o mesmo fluxo do CTA principal já existente (Mercado Pago checkout do plano recomendado).
+`**src/pages/Resultado.tsx**` — seção de planos inline (`#planos-inline`):
 
-## Implementação
+Logo abaixo do preço base de cada card, adicionar uma linha discreta:
 
-Arquivo único: `src/pages/Resultado.tsx`
+```
+R$ 497  /mês
++ 3% sobre receita recuperada · Success Fee
+```
 
-1. Identificar onde os problemas são mapeados (`.map`)
-2. Para `index >= 1`, envolver o `ProblemCard` em `<div class="relative">` com:
-   - filho com `filter blur-sm pointer-events-none select-none`
-   - `<div class="absolute inset-0">` com gradiente + ícone `Lock`
-3. Acima do bloco bloqueado, um único overlay-CTA centralizado (não um por card — fica mais limpo) com:
-   - Headline: "Veja os outros N gargalos identificados"
-   - Subtext com soma de `impacto_estimado` dos bloqueados
-   - Botão verde reusando o handler de checkout existente
+Detalhes:
 
-## Detalhes visuais (alinhado ao dark minimal)
+- Texto: `text-xs text-white/50` (sutil, não compete com o preço)
+- Ícone pequeno `TrendingUp` ou `Percent` em emerald antes do `+ X%`
+- Tooltip (hover) explicando: *"Você só paga essa taxa sobre o faturamento que o LTV Boost recupera. Sem recuperação, sem fee."*
+- No card **Growth** e **Scale**, badge adicional ao lado: `Economia vs Starter` mostrando a diferença (ex: Growth = "-1pp" / Scale = "-1.5pp")
 
-- Blur: `blur-[6px]` + `opacity-60`
-- Overlay: `bg-gradient-to-b from-transparent via-[#0A0A0F]/80 to-[#0A0A0F]`
-- Ícone: `Lock` Lucide, `text-emerald-500`
-- CTA: mesmo estilo do botão principal (emerald, font-black, tracking-widest)
+## Onde puxar o valor
+
+Já temos `PLANS[planKey].successFeeRate` em `pricing-constants.ts`. Renderizar como `${(rate * 100).toFixed(rate < 0.02 ? 1 : 0)}%` (1.5% precisa de decimal, 2%/3% não).
+
+## Bônus opcional (dizer sim/não)
+
+Adicionar uma micro-linha no topo do toggle Mensal/Anual:
+
+> "Mensalidade fixa + Success Fee variável só sobre o que recuperarmos"
+
+Deixa o modelo de cobrança 100% transparente antes do clique.
 
 ## Fora de escopo
 
-- Não muda a edge `gerar-diagnostico` (continua retornando todos os problemas)
-- Não muda persistência — bloqueio é puramente visual no client
-- Sem A/B test agora; se quiser medir, adicionamos `analytics-events` depois
+- Não muda `pricing-constants.ts` nem o cálculo
+- Não toca `/planos` (lá já existe coluna de fee)
+- Não muda fluxo Mercado Pago
