@@ -131,6 +131,10 @@ export default function WhatsApp() {
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
+  const [testSendTarget, setTestSendTarget] = useState<{ id: string; name: string } | null>(null);
+  const [testSendNumber, setTestSendNumber] = useState("");
+  const [testSendTemplate, setTestSendTemplate] = useState("hello_world");
+  const [testSendLanguage, setTestSendLanguage] = useState("en_US");
 
   const { user } = useAuth();
   const { toast } = useToast();
