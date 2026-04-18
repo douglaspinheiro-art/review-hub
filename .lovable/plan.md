@@ -1,45 +1,51 @@
-Ah, entendi — não é desconto de plano anual, é o **Success Fee** (taxa de sucesso sobre receita recuperada) que precisa ficar visível nos cards de plano em `/resultado`.
 
-Olhando `src/lib/pricing-constants.ts`:
 
-- Starter: `successFeeRate: 0.03` → **3%**
-- Growth: `successFeeRate: 0.02` → **2%**
-- Scale: `successFeeRate: 0.015` → **1.5%**
+O erro é claro: o scope `business_management` não está permitido para o seu app Meta como está configurado hoje. Esse scope precisa de **App Review** aprovado pela Meta — sem isso, ele é rejeitado.
 
-Hoje os cards na `/resultado` mostram só `R$ X /mês` sem mencionar essa fee — o usuário pode ser pego de surpresa na cobrança, e também perde o gancho de que **plano maior = fee menor** (ótimo argumento de upsell).
+## Por que acontece
 
-## Mudança (arquivo único)
-
-`**src/pages/Resultado.tsx**` — seção de planos inline (`#planos-inline`):
-
-Logo abaixo do preço base de cada card, adicionar uma linha discreta:
-
+No `src/lib/whatsapp/meta-embedded-signup.ts` (linha ~93) pedimos:
 ```
-R$ 497  /mês
-+ 3% sobre receita recuperada · Success Fee
+scope: "whatsapp_business_messaging,whatsapp_business_management,business_management"
 ```
 
-Detalhes:
+`business_management` exige:
+- App em modo **Live**
+- **Advanced Access** aprovado para esse permission (App Review submission)
+- Business Verification concluída
 
-- Texto: `text-xs text-white/50` (sutil, não compete com o preço)
-- Ícone pequeno `TrendingUp` ou `Percent` em emerald antes do `+ X%`
-- Tooltip (hover) explicando: *"Você só paga essa taxa sobre o faturamento que o LTV Boost recupera. Sem recuperação, sem fee."*
-- No card **Growth** e **Scale**, badge adicional ao lado: `Economia vs Starter` mostrando a diferença (ex: Growth = "-1pp" / Scale = "-1.5pp")
+Como o app ainda não tem isso aprovado, a Meta bloqueia o popup com "Invalid Scopes".
 
-## Onde puxar o valor
+A boa notícia: para Embedded Signup do WhatsApp **`business_management` é opcional**. Os scopes mínimos obrigatórios são apenas:
+- `whatsapp_business_messaging`
+- `whatsapp_business_management`
 
-Já temos `PLANS[planKey].successFeeRate` em `pricing-constants.ts`. Renderizar como `${(rate * 100).toFixed(rate < 0.02 ? 1 : 0)}%` (1.5% precisa de decimal, 2%/3% não).
+Esses dois já vêm com **Standard Access** automaticamente quando o produto WhatsApp Business é adicionado ao app — não precisam de App Review para o próprio dono testar.
 
-## Bônus opcional (dizer sim/não)
+## Correção (1 arquivo)
 
-Adicionar uma micro-linha no topo do toggle Mensal/Anual:
+**`src/lib/whatsapp/meta-embedded-signup.ts`** — remover `business_management` do scope:
 
-> "Mensalidade fixa + Success Fee variável só sobre o que recuperarmos"
+```ts
+scope: "whatsapp_business_messaging,whatsapp_business_management"
+```
 
-Deixa o modelo de cobrança 100% transparente antes do clique.
+Resultado: popup abre normalmente, fluxo Embedded Signup completo continua funcionando (descoberta de WABA, phone_number_id, webhook subscribe — tudo isso usa `whatsapp_business_management`, que é suficiente).
 
-## Fora de escopo
+## O que NÃO muda
 
-- Não muda `pricing-constants.ts` nem o cálculo
-- Não toca `/planos` (lá já existe coluna de fee)
-- Não muda fluxo Mercado Pago
+- `supabase/functions/meta-wa-oauth/index.ts` — não precisa tocar (já funciona com 2 scopes)
+- Configuration do Embedded Signup no Meta Dashboard — manter as 2 permissões obrigatórias; pode remover `business_management` de lá também se estiver listada
+- Nenhuma migração de banco
+
+## Quando voltar a precisar de `business_management`
+
+Só se quiser listar/gerenciar **múltiplos Business Managers** do lojista além do que vem no token. Para o caso de uso "conectar 1 WABA → enviar mensagens", os 2 scopes bastam. Se um dia precisar, faz App Review separadamente.
+
+## Checklist pós-fix
+
+1. Aplicar a mudança no arquivo
+2. Recarregar `/dashboard/whatsapp` e clicar "Conectar com Facebook"
+3. Popup deve abrir pedindo só "WhatsApp Business Messaging" e "WhatsApp Business Management"
+4. Concluir fluxo → linha em `whatsapp_connections` com `provider='meta_cloud'`
+
