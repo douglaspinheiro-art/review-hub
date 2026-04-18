@@ -714,7 +714,7 @@ export default function WhatsApp() {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {healthSummary.recent_errors.map((err: any) => (
+                {healthSummary?.recent_errors?.map((err: any) => (
                   <div key={err.id} className="p-2.5 bg-card border rounded-lg space-y-1">
                     <div className="flex justify-between items-center gap-2">
                       <span className="text-[8px] h-3.5 px-1 uppercase font-bold border border-red-500/20 text-red-600 bg-red-500/5 rounded">
