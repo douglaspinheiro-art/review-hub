@@ -96,7 +96,7 @@ export async function launchEmbeddedSignup(params: {
     const loginOpts: Record<string, unknown> = {
       response_type: "code",
       override_default_response_type: true,
-      scope: "whatsapp_business_messaging,whatsapp_business_management,business_management",
+      scope: "whatsapp_business_messaging,whatsapp_business_management",
     };
 
     if (params.configId) {
