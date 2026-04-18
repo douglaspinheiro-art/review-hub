@@ -45,6 +45,12 @@ const META_MAX_RETRIES = 3;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+function pickAbVariant(contactId: string): "a" | "b" {
+  let h = 0;
+  for (let i = 0; i < contactId.length; i++) h = (h * 31 + contactId.charCodeAt(i)) | 0;
+  return Math.abs(h) % 2 === 0 ? "a" : "b";
+}
+
 function readQueueCap(envName: string, fallback: number, hardMax: number): number {
   const raw = Deno.env.get(envName);
   const n = raw == null || raw === "" ? fallback : Number(raw);
@@ -520,7 +526,7 @@ serve(async (req) => {
   const { data: pendingEmail } = await supabase
     .from("newsletter_send_recipients")
     .select(
-      "id, campaign_id, subject_variant, customers_v3(email, name), campaigns(id, store_id, blocks, subject, subject_variant_b)",
+      "id, campaign_id, customer_id, customers_v3(email, name), campaigns(id, store_id, blocks, subject, subject_variant_b, ab_subject_enabled)",
     )
     .eq("status", "pending")
     .limit(capEmail);
@@ -549,11 +555,13 @@ serve(async (req) => {
         unsubscribeUrl,
         mergeVars: { nome: customer.name || "Cliente", loja: store.name },
       });
+      const subjectVariant = campaign.ab_subject_enabled && campaign.subject_variant_b
+        ? pickAbVariant(row.customer_id) : "a";
 
       await sendEmail({
         from: `${store.name} <${store.email_from_address || "contato@ltvboost.com.br"}>`,
         to: customer.email,
-        subject: row.subject_variant === "b" ? campaign.subject_variant_b : campaign.subject,
+        subject: subjectVariant === "b" ? campaign.subject_variant_b : campaign.subject,
         html,
         reply_to: store.email_reply_to,
         tags: [{ name: "campaign_id", value: campaign.id }],

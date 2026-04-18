@@ -23,6 +23,7 @@ import {
 import { CAMPAIGNS_DISPATCH_NEWSLETTER_SELECT } from "../_shared/db-select-fragments.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const DEFAULT_FROM_EMAIL = Deno.env.get("RESEND_DEFAULT_FROM") ?? "notificacoes@ltvboost.com.br";
@@ -352,7 +353,8 @@ serve(async (req) => {
     const internalSecret =
       Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET") ?? Deno.env.get("DISPATCH_NEWSLETTER_INTERNAL_SECRET") ?? "";
     const providedInternal = req.headers.get("x-internal-secret") ?? "";
-    const authHeader = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+    const rawAuthHeader = req.headers.get("Authorization") ?? "";
+    const authHeader = rawAuthHeader.replace("Bearer ", "");
     const internalOk =
       Boolean(internalSecret && timingSafeEqual(providedInternal, internalSecret)) &&
       authHeader === SUPABASE_SERVICE_KEY;
@@ -381,10 +383,13 @@ serve(async (req) => {
         if (logErr) console.warn("[dispatch-newsletter] audit_log insert failed:", logErr.message);
       });
     } else {
-      const jwt = authHeader;
-      const { data: { user }, error: authErr } = await sb.auth.getUser(jwt);
-      if (authErr || !user) throw new Error("Não autorizado");
-      userId = user.id;
+      if (!rawAuthHeader.startsWith("Bearer ")) throw new Error("Não autorizado");
+      const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: rawAuthHeader } },
+      });
+      const { data: claimsData, error: authErr } = await userClient.auth.getClaims(authHeader);
+      if (authErr || !claimsData?.claims?.sub) throw new Error("Não autorizado");
+      userId = claimsData.claims.sub;
     }
 
     const { allowed: rlAllowed } = await checkDistributedRateLimit(sb, `dispatch-newsletter:${userId}`, 20, 60_000);
@@ -458,7 +463,6 @@ serve(async (req) => {
 
     const storeId = (store as { id?: string } | null)?.id ?? null;
     const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeId, contacts.map((c) => c.id));
-    const sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
     if (!isTest) {
       const realContacts = contacts.filter((c) => c.id !== "test");
       if (realContacts.length > 0) {
@@ -473,7 +477,6 @@ serve(async (req) => {
               campaign_id,
               customer_id: c.id,
               user_id: userId,
-              subject_variant: abEnabled ? pickAbVariant(c.id) : "a",
               status: "pending",
             })),
             { onConflict: "campaign_id,customer_id", ignoreDuplicates: true },
