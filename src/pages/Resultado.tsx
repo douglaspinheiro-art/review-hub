@@ -575,15 +575,6 @@ export default function Resultado() {
           </div>
         )}
 
-        {/* Secondary CTA: see all plans */}
-        <div className="text-center">
-          <button
-            onClick={() => navigate("/planos?from=diagnostico")}
-            className="text-xs text-muted-foreground hover:text-white underline-offset-4 hover:underline"
-          >
-            Comparar todos os planos
-          </button>
-        </div>
       </div>
     </div>
   );
