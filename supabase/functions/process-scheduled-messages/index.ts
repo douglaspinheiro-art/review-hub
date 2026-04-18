@@ -294,6 +294,7 @@ serve(async (req) => {
   let webhookDeadLetter = 0;
   let waProcessed = 0;
   let emailProcessed = 0;
+  let parallelStores = 0;
 
   console.log(JSON.stringify({ tag: "process-scheduled-messages", component: "start", queues: [...enabledQueues], request_id: requestId }));
 
@@ -454,6 +455,7 @@ serve(async (req) => {
     list.push(msg);
     storeGroups.set(msg.store_id, list);
   }
+  parallelStores = storeGroups.size;
 
   // Process stores in parallel batches of MAX_PARALLEL_STORES
   const storeEntries = Array.from(storeGroups.entries());
@@ -562,7 +564,7 @@ serve(async (req) => {
     errors: totalErrors,
     elapsed_ms: elapsedMs,
     campaigns_finalized: campaignsFinalized,
-    parallel_stores: storeGroups.size,
+    parallel_stores: parallelStores,
     caps: { webhooks: capWebhooks, wa: capWa, email: capEmail },
     breakdown: {
       webhook_ok: webhookProcessed,
