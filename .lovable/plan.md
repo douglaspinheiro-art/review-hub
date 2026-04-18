@@ -1,20 +1,27 @@
 
 ## Problema
 
-Após `/analisando`, o usuário é redirecionado para `/dashboard/convertiq/diagnostico` e depois para `/planos`, em vez de ir para `/resultado` (que tem o checkout inline).
+Erro em produção:
+```
+[Supabase] Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ficheiro .env
+```
 
-## Investigação necessária
+O `.env` tem `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`, mas o cliente (`src/integrations/supabase/client.ts`) lê `VITE_SUPABASE_ANON_KEY`. Mismatch → throw no boot → tela branca.
 
-Preciso confirmar onde está o redirect errado. Suspeitos:
-1. `Analisando.tsx` — vejo que ele faz `navigate("/resultado")` em 3 lugares (realtime, success, fallback). Então o redirect inicial está certo.
-2. Provável culpado: `/resultado` (Resultado.tsx) ou guard em rota que está bouncing o user para `/dashboard/convertiq/diagnostico` → que por sua vez redireciona para `/planos`.
-3. Ou: alguma lógica em `ProtectedRoute` / `getPostLoginRoute` que considera "tem diagnóstico → vai para dashboard" antes da assinatura.
+## Fix
 
-Pelo `next-step.ts`:
-- com diagnóstico + sem assinatura → `/resultado` ✅ (correto)
+Atualizar `src/integrations/supabase/client.ts` para aceitar ambos os nomes (`VITE_SUPABASE_ANON_KEY` **ou** `VITE_SUPABASE_PUBLISHABLE_KEY`), preferindo o que existir. Mesmo tratamento para a URL (já bate, mas mantém consistente).
 
-Então o problema deve estar em:
-- **`Resultado.tsx`** fazendo algum redirect indevido (talvez para `/dashboard/convertiq/diagnostico` quando detecta diagnóstico salvo)
-- ou **`ConvertIQDiagnostico.tsx`** redirecionando para `/planos`
+```ts
+const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY 
+              ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY)?.trim();
+```
 
-Preciso ler ambos para confirmar antes de planejar o fix.
+Também atualizar `src/vite-env.d.ts` para declarar `VITE_SUPABASE_PUBLISHABLE_KEY` opcional.
+
+## Arquivos
+
+- `src/integrations/supabase/client.ts` — fallback nas duas envs
+- `src/vite-env.d.ts` — tipo opcional para `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+Sem mudança no `.env` (Lovable popula `PUBLISHABLE_KEY` automaticamente).
