@@ -396,7 +396,7 @@ export default function Resultado() {
                 const lockedCount = problemas.length - 1;
                 const lockedImpact = problemas.slice(1).reduce((sum, p) => sum + (p.impacto_reais ?? 0), 0);
                 return (
-                  <div className="relative -mt-24 z-10 border border-emerald-500/30 bg-[#0F1614]/95 backdrop-blur-xl rounded-2xl p-6 md:p-8 text-center space-y-4 shadow-[0_0_40px_rgba(16,185,129,0.15)]">
+                  <div className="relative -mt-48 z-10 border border-emerald-500/30 bg-[#0F1614]/95 backdrop-blur-xl rounded-2xl p-6 md:p-8 text-center space-y-4 shadow-[0_0_40px_rgba(16,185,129,0.15)]">
                     <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30">
                       <Lock className="w-5 h-5 text-emerald-500" />
                     </div>
