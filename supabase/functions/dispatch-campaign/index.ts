@@ -161,6 +161,31 @@ serve(async (req: Request) => {
     if (rpcErr) throw rpcErr;
     const stats = rpcRes[0] || { enqueued_count: 0, holdout_count: 0, cooldown_count: 0, opt_out_count: 0 };
 
+    // Augment metadata of just-enqueued rows with template language + body parameters
+    // (RPC signature predates these fields). Worker reads them at send time.
+    const waBlocks = (campaign.blocks as Record<string, {
+      meta_template_name?: string;
+      meta_template_language?: string;
+      meta_template_parameters?: string[];
+      content_type?: string;
+    }> | null)?.whatsapp;
+    if (waBlocks?.content_type === "template" && waBlocks.meta_template_name) {
+      const lang = waBlocks.meta_template_language || "pt_BR";
+      const params = Array.isArray(waBlocks.meta_template_parameters) ? waBlocks.meta_template_parameters : [];
+      // Fetch the freshly enqueued rows and merge metadata to preserve existing keys
+      const { data: pending } = await supabase
+        .from("scheduled_messages")
+        .select("id, metadata")
+        .eq("campaign_id", campaign_id)
+        .eq("status", "pending");
+      for (const row of (pending ?? [])) {
+        const meta = { ...((row.metadata as Record<string, unknown>) || {}) };
+        meta.meta_template_language = lang;
+        meta.meta_template_parameters = params;
+        await supabase.from("scheduled_messages").update({ metadata: meta }).eq("id", row.id);
+      }
+    }
+
     // 3. Sync Prescription if needed
     if (campaign.source_prescription_id) {
       await supabase.from("prescriptions").update({ status: "em_execucao" }).eq("id", campaign.source_prescription_id);
