@@ -1359,8 +1359,6 @@ export default function CampaignModal({
                         )}
                       </div>
                     )}
-                      </div>
-                    )}
 
                     {showMagicLink && (
                       <div className="bg-muted/40 border-2 border-primary/20 rounded-2xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
