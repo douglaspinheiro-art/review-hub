@@ -241,6 +241,8 @@ export default function CampaignModal({
   const [waButtonUrl, setWaButtonUrl] = useState("");
   /** Nome exato do template aprovado na Meta (Cloud API), para campanhas fora da janela de 24h */
   const [waMetaTemplateName, setWaMetaTemplateName] = useState("");
+  const [waMetaTemplateLanguage, setWaMetaTemplateLanguage] = useState("pt_BR");
+  const [waMetaTemplateParameters, setWaMetaTemplateParameters] = useState<string[]>([]);
   const [templateName, setTemplateName] = useState("");
 
   // Product campaign state
