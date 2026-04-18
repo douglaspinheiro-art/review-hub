@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Wifi, WifiOff, Plus, Trash2,
-  Loader2, CheckCircle, AlertCircle, Settings, Zap, Copy, ShieldCheck,
+  Loader2, CheckCircle, AlertCircle, Settings, Zap, Copy, ShieldCheck, Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -123,6 +131,10 @@ export default function WhatsApp() {
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
+  const [testSendTarget, setTestSendTarget] = useState<{ id: string; name: string } | null>(null);
+  const [testSendNumber, setTestSendNumber] = useState("");
+  const [testSendTemplate, setTestSendTemplate] = useState("hello_world");
+  const [testSendLanguage, setTestSendLanguage] = useState("en_US");
 
   const { user } = useAuth();
   const { toast } = useToast();
@@ -402,6 +414,51 @@ export default function WhatsApp() {
       toast({
         title: "Validação Meta falhou",
         description: e?.message ?? "Confira phone number ID e token.",
+        variant: "destructive",
+      }),
+  });
+
+  const testSendMutation = useMutation({
+    mutationFn: async (vars: { connectionId: string; number: string; templateName: string; templateLanguage: string }) => {
+      const normalized = vars.number.replace(/\D/g, "");
+      if (normalized.length < 10) throw new Error("Número inválido. Use o formato 55DDDNNNNNNNNN.");
+      const { data, error } = await supabase.functions.invoke<{ ok: boolean; error?: string; data?: { messageId?: string } }>(
+        "meta-whatsapp-send",
+        {
+          body: {
+            kind: "sendTemplate",
+            connectionId: vars.connectionId,
+            number: normalized,
+            templateName: vars.templateName.trim(),
+            templateLanguage: vars.templateLanguage.trim() || "en_US",
+          },
+        },
+      );
+      if (error) {
+        let bodyMsg: string | undefined;
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.text === "function") {
+          try {
+            const text = await ctx.text();
+            try { bodyMsg = stringifyMetaError(JSON.parse(text)); } catch { bodyMsg = text; }
+          } catch { /* ignore */ }
+        }
+        throw new Error(bodyMsg || error.message || "Falha ao enviar template");
+      }
+      if (!data?.ok) throw new Error(stringifyMetaError(data?.error ?? "Falha ao enviar template"));
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Template enviado ✓",
+        description: data?.data?.messageId ? `messageId: ${data.data.messageId}` : "Mensagem aceita pela Meta.",
+      });
+      setTestSendTarget(null);
+    },
+    onError: (e: Error) =>
+      toast({
+        title: "Falha ao enviar template",
+        description: e?.message ?? "Verifique o número e o template.",
         variant: "destructive",
       }),
   });
@@ -879,6 +936,22 @@ export default function WhatsApp() {
                 )}
 
                 <div className="flex items-center gap-2 justify-end border-t pt-3">
+                  {conn.status === "connected" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 h-8"
+                      onClick={() => {
+                        setTestSendNumber("");
+                        setTestSendTemplate("hello_world");
+                        setTestSendLanguage("en_US");
+                        setTestSendTarget({ id: conn.id, name: conn.instance_name });
+                      }}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Enviar template de teste
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -929,6 +1002,73 @@ export default function WhatsApp() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!testSendTarget} onOpenChange={(o) => !o && setTestSendTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enviar template de teste</DialogTitle>
+            <DialogDescription>
+              Envia uma mensagem template via Meta Cloud API para validar o envio outbound de <strong>{testSendTarget?.name}</strong>. O destinatário precisa estar cadastrado no painel Meta (modo dev).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="test-number">Número (formato 55DDDNNNNNNNNN)</Label>
+              <Input
+                id="test-number"
+                placeholder="5511999999999"
+                value={testSendNumber}
+                onChange={(e) => setTestSendNumber(e.target.value)}
+                inputMode="numeric"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="test-template">Template</Label>
+                <Input
+                  id="test-template"
+                  placeholder="hello_world"
+                  value={testSendTemplate}
+                  onChange={(e) => setTestSendTemplate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="test-lang">Idioma</Label>
+                <Input
+                  id="test-lang"
+                  placeholder="en_US"
+                  value={testSendLanguage}
+                  onChange={(e) => setTestSendLanguage(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Dica: <code className="text-[10px] bg-muted px-1 rounded">hello_world</code> + <code className="text-[10px] bg-muted px-1 rounded">en_US</code> já vem aprovado em contas Meta novas.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTestSendTarget(null)} disabled={testSendMutation.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (!testSendTarget) return;
+                testSendMutation.mutate({
+                  connectionId: testSendTarget.id,
+                  number: testSendNumber,
+                  templateName: testSendTemplate,
+                  templateLanguage: testSendLanguage,
+                });
+              }}
+              disabled={testSendMutation.isPending || !testSendNumber.trim() || !testSendTemplate.trim()}
+              className="gap-2"
+            >
+              {testSendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
