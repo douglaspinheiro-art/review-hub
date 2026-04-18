@@ -131,11 +131,29 @@ export async function launchEmbeddedSignup(params: {
           },
         })
         .then(({ data, error }) => {
+          // Edge function now always returns HTTP 200 with { ok, error?, code? }.
+          // `error` from the SDK only fires on transport/network failures.
           if (error) {
-            resolve({ ok: false, code: "exchange_failed", error: error.message });
-          } else {
-            resolve(data ?? { ok: false, code: "exchange_failed", error: "Resposta vazia do servidor." });
+            resolve({
+              ok: false,
+              code: "exchange_failed",
+              error: `Falha de rede ao chamar meta-wa-oauth: ${error.message}`,
+            });
+            return;
           }
+          if (!data) {
+            resolve({ ok: false, code: "exchange_failed", error: "Resposta vazia do servidor." });
+            return;
+          }
+          if (data.ok === false) {
+            resolve({
+              ok: false,
+              code: data.code ?? "exchange_failed",
+              error: data.error ?? "Falha desconhecida ao trocar o código com a Meta.",
+            });
+            return;
+          }
+          resolve(data);
         });
     }, loginOpts);
   });
