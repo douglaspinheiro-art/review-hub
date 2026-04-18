@@ -1,97 +1,85 @@
 
-## Diagnóstico
 
-A campanha foi enfileirada com sucesso (5 mensagens em `scheduled_messages` com `status='pending'`), mas **ninguém processa a fila**:
+## Objetivo
 
-- Existe a edge function `process-scheduled-messages` (worker que pega `pending` → chama Meta Cloud → marca `sent`).
-- **Não existe nenhum cron job** chamando essa função (verificado em `cron.job` — só há `archive-scheduled-messages` rodando).
-- Resultado: mensagens ficam em `pending` indefinidamente, campanha trava em `running`.
-
-## Correção
-
-**1. Criar cron job no Postgres** (a cada 1 min) que chama `process-scheduled-messages` via `pg_net`, autenticando com o secret `PROCESS_SCHEDULED_MESSAGES_SECRET` (header `Authorization: Bearer <secret>`).
-
-```sql
-select cron.schedule(
-  'process-scheduled-messages-every-minute',
-  '* * * * *',
-  $$ select net.http_post(
-       url := 'https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/process-scheduled-messages',
-       headers := jsonb_build_object(
-         'Content-Type','application/json',
-         'Authorization','Bearer <PROCESS_SCHEDULED_MESSAGES_SECRET>'
-       ),
-       body := '{}'::jsonb
-     ); $$
-);
-```
-
-Pré-requisitos: extensões `pg_cron` e `pg_net` habilitadas (verifico na execução; se faltar, habilito na mesma migração).
-
-**2. Verificar se o secret `PROCESS_SCHEDULED_MESSAGES_SECRET` existe.** Se não existir, peço para você adicionar antes de aplicar o cron (não consigo gerar/persistir secrets pelo SQL).
-
-**3. Disparo manual imediato (one-off)** para esvaziar as 5 mensagens já enfileiradas e validar Meta Cloud ponta-a-ponta — chamando `process-scheduled-messages` uma vez via `curl_edge_functions`.
-
-## O que NÃO muda
-
-- Função `dispatch-campaign` e RPC de segmentação (já corrigidas e funcionando).
-- `process-scheduled-messages` (já implementado, só falta agendamento).
-- Conexão Meta Cloud / templates.
-
-## Resultado esperado
-
-- Worker roda a cada minuto, consome `pending`, envia via Meta Graph, atualiza `sent_at` + `status='sent'`.
-- A campanha "Teste" sai de `running` para `completed` quando todas as 5 forem processadas.
-- Você recebe a mensagem no WhatsApp do número cadastrado em `customers_v3` (lembrando: precisa estar em janela de 24h **ou** ser template aprovado — caso contrário a Meta retorna erro e o campo `error_message` será preenchido).
-
-<lov-actions>
-<lov-suggestion message="Aplicar a correção: verificar/habilitar pg_cron + pg_net, validar o secret PROCESS_SCHEDULED_MESSAGES_SECRET, criar o cron de 1 em 1 minuto e disparar o worker manualmente para enviar as 5 mensagens já enfileiradas.">Aplicar correção e processar a fila agora</lov-suggestion>
-<lov-suggestion message="Depois que o worker rodar, conferir no WhatsApp se a mensagem chegou e me dizer se status no dashboard mudou para 'completed'.">Confirmar recebimento ponta-a-ponta</lov-suggestion>
-<lov-suggestion message="Adicionar uma coluna na lista de campanhas mostrando progresso (enviadas / total) com auto-refresh a cada 10s enquanto status='running'.">Mostrar progresso em tempo real</lov-suggestion>
-</lov-actions><lov-plan>
+Permitir disparo de campanhas WhatsApp via **Templates HSM aprovados pela Meta** (única forma de enviar fora da janela de 24h), em vez de texto livre que é silenciosamente descartado.
 
 ## Diagnóstico
 
-A campanha foi enfileirada com sucesso (5 mensagens em `scheduled_messages` com `status='pending'`), mas **ninguém processa a fila**:
+O backend **já suporta templates** (`metaGraphSendTemplate` em `meta-graph-send.ts`, e `dispatch-campaign` já lê `blocks.whatsapp.meta_template_name`). Faltam 3 peças:
 
-- A edge function `process-scheduled-messages` existe (worker que pega `pending` → chama Meta Cloud → marca `sent`).
-- **Não há cron job configurado** chamando essa função (verifiquei `cron.job` — só roda `archive-scheduled-messages`).
-- Resultado: mensagens ficam em `pending` indefinidamente, campanha trava em `running`.
+1. **UI no `CampaignModal`** — escolher template + idioma + variáveis
+2. **Worker `process-scheduled-messages`** — quando a campanha tem template, chamar `sendTemplate` em vez de `sendText`
+3. **Listagem de templates aprovados** — buscar da Meta Graph API (`/{waba_id}/message_templates`) para o usuário escolher na UI sem digitar à mão
 
-## Correção
+## Plano de implementação
 
-**1. Criar cron no Postgres** (a cada 1 min) chamando `process-scheduled-messages` via `pg_net`, com header `Authorization: Bearer <PROCESS_SCHEDULED_MESSAGES_SECRET>`.
+### 1. Nova edge function `meta-list-templates`
+- Recebe `connectionId`, valida JWT do usuário
+- Busca templates aprovados da Meta: `GET /{waba_id}/message_templates?status=APPROVED`
+- Retorna lista com: `name`, `language`, `category`, `components` (para detectar quantas variáveis `{{1}}`, `{{2}}`... o body espera)
+- Requer adicionar `meta_waba_id` em `whatsapp_connections` (provavelmente já existe; vou conferir e migrar se faltar)
 
-```sql
-select cron.schedule(
-  'process-scheduled-messages-every-minute',
-  '* * * * *',
-  $$ select net.http_post(
-       url := 'https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/process-scheduled-messages',
-       headers := jsonb_build_object(
-         'Content-Type','application/json',
-         'Authorization','Bearer <SECRET>'
-       ),
-       body := '{}'::jsonb
-     ); $$
-);
+### 2. Novo passo no `CampaignModal` (canal WhatsApp)
+Adicionar **toggle "Tipo de envio"** no passo de conteúdo:
+- **Template aprovado (recomendado)** — default; garante entrega
+- **Texto livre (24h)** — só para conversas ativas; com aviso amarelo explicando a regra
+
+Quando "Template" selecionado:
+- Dropdown de templates aprovados (vindos da nova edge function)
+- Auto-detecta nº de variáveis `{{1}}`...`{{N}}` do body
+- Inputs dinâmicos para cada variável (com sugestões: `{{nome}}`, `{{cupom}}`)
+- Idioma (default `pt_BR`, pré-preenchido do template)
+- Preview renderizado com as variáveis substituídas
+
+Quando "Texto livre" selecionado:
+- Banner amarelo: "Esta mensagem só será entregue a contatos que conversaram com você nas últimas 24h. Para garantir entrega, use Templates aprovados."
+- Mantém o textarea atual
+
+### 3. Persistência em `campaigns.blocks`
+Salvar no JSON `blocks`:
+```json
+{
+  "whatsapp": {
+    "content_type": "template" | "text",
+    "meta_template_name": "carrinho_abandonado",
+    "meta_template_language": "pt_BR",
+    "meta_template_parameters": ["{{nome}}", "{{cupom}}"]
+  }
+}
 ```
 
-Pré-requisitos: extensões `pg_cron` e `pg_net` habilitadas (habilito na mesma migração se faltar).
+### 4. Ajuste no worker `process-scheduled-messages`
+Hoje o worker manda tudo como texto. Mudar para:
+- Ler `campaign.blocks.whatsapp.content_type`
+- Se `template`: substituir `{{nome}}` etc. pelos dados do contato e chamar `meta-whatsapp-send` com `kind: "sendTemplate"`
+- Se `text`: comportamento atual (`sendText`)
 
-**2. Verificar o secret `PROCESS_SCHEDULED_MESSAGES_SECRET`.** Se não existir, peço para você adicionar antes de aplicar o cron.
+### 5. Banner educativo na lista de campanhas
+Card dispensável no topo de `/dashboard/campanhas`:
+> "💡 Mensagens WhatsApp fora da janela de 24h só são entregues via Templates aprovados pela Meta. [Saiba mais →](link Meta Business)"
 
-**3. Disparo manual imediato** para esvaziar as 5 mensagens já enfileiradas e validar Meta Cloud ponta-a-ponta — uma chamada one-off em `process-scheduled-messages`.
+## Arquivos afetados
 
-## O que NÃO muda
-
-- `dispatch-campaign` e RPC de segmentação (já corrigidas).
-- `process-scheduled-messages` (código pronto, só falta agendamento).
-- Conexão Meta Cloud / templates.
+- **Novo:** `supabase/functions/meta-list-templates/index.ts`
+- **Editar:** `src/components/dashboard/CampaignModal.tsx` (passo de conteúdo + toggle + dropdown)
+- **Editar:** `src/components/dashboard/campaign/CampaignObjectiveStep.tsx` (se necessário, para indicar template)
+- **Editar:** `supabase/functions/process-scheduled-messages/index.ts` (suporte a template)
+- **Editar:** `src/pages/dashboard/Campanhas.tsx` (banner educativo)
+- **Migração (se faltar):** garantir `meta_waba_id` em `whatsapp_connections`
 
 ## Resultado esperado
 
-- Worker roda a cada minuto, consome `pending`, envia via Meta Graph, marca `sent_at` + `status='sent'`.
-- A campanha "Teste" passa de `running` → `completed` após processar as 5.
-- Mensagem chega no WhatsApp do número em `customers_v3` (desde que esteja em janela de 24h **ou** seja template aprovado; caso contrário a Meta retorna erro e o campo `error_message` é preenchido).
+1. Ao criar campanha WhatsApp, usuário escolhe um template aprovado da sua conta Meta
+2. Worker dispara via `sendTemplate` → Meta entrega 100% (não descarta como faz com texto livre fora da janela)
+3. Mensagens chegam efetivamente no celular dos clientes, mesmo sem conversa prévia
+
+## Pré-requisito do usuário (fora do código)
+
+Você precisa criar e aprovar templates no **Meta Business Manager → WhatsApp Manager → Modelos de mensagem**. Exemplos típicos:
+- `carrinho_abandonado` (categoria Marketing)
+- `boas_vindas` (Utility)
+- `promocao_geral` (Marketing)
+
+Aprovação leva de minutos a 24h. Sem templates aprovados, o dropdown ficará vazio e a UI orientará a criar.
 
