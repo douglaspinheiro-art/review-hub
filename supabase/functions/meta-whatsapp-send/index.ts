@@ -155,19 +155,22 @@ serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       } catch (err) {
-        const isAuthErr = String(err).includes("401") || String(err).includes("token");
+        const errMsg = err instanceof Error
+          ? err.message
+          : (typeof err === "string" ? err : JSON.stringify(err));
+        const isAuthErr = errMsg.includes("401") || errMsg.toLowerCase().includes("token") || errMsg.includes("190");
         await admin
           .from("whatsapp_connections")
           .update({
             status: "error",
             health_status: isAuthErr ? "unauthorized" : "degraded",
-            health_details: { error: String(err) },
+            health_details: { error: errMsg },
             last_health_check_at: new Date().toISOString(),
           })
           .eq("id", connectionId)
           .eq("user_id", user.id);
-        
-        return new Response(JSON.stringify({ ok: false as const, error: String(err) }), {
+
+        return new Response(JSON.stringify({ ok: false as const, error: errMsg }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
