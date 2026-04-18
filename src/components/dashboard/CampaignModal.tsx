@@ -1076,12 +1076,18 @@ export default function CampaignModal({
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <h2 className="text-3xl font-black font-syne uppercase tracking-tighter italic">Criação <span className="text-primary underline">Inteligente</span></h2>
-                    <p className="text-muted-foreground text-sm">Use o cérebro da plataforma para gerar sua cópia de alta conversão.</p>
+                    <p className="text-muted-foreground text-sm">
+                      {channel === "whatsapp" && waContentType === "template"
+                        ? "Escolha um template aprovado pela Meta — é a única forma de garantir entrega fora da janela de 24 h."
+                        : "Use o cérebro da plataforma para gerar sua cópia de alta conversão."}
+                    </p>
                   </div>
-                  <Button type="button" onClick={generateAiCopy} disabled={aiLoading} className="bg-orange-500 hover:bg-orange-600 text-white font-black text-[10px] uppercase tracking-widest h-11 px-6 rounded-xl gap-2 shadow-lg shadow-orange-500/20">
-                    {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                    Sugerir com Claude 3.5
-                  </Button>
+                  {!(channel === "whatsapp" && waContentType === "template") && (
+                    <Button type="button" onClick={generateAiCopy} disabled={aiLoading} className="bg-orange-500 hover:bg-orange-600 text-white font-black text-[10px] uppercase tracking-widest h-11 px-6 rounded-xl gap-2 shadow-lg shadow-orange-500/20">
+                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      Sugerir com Claude 3.5
+                    </Button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
