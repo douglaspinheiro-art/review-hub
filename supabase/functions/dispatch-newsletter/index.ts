@@ -353,7 +353,8 @@ serve(async (req) => {
     const internalSecret =
       Deno.env.get("PROCESS_SCHEDULED_MESSAGES_SECRET") ?? Deno.env.get("DISPATCH_NEWSLETTER_INTERNAL_SECRET") ?? "";
     const providedInternal = req.headers.get("x-internal-secret") ?? "";
-    const authHeader = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+    const rawAuthHeader = req.headers.get("Authorization") ?? "";
+    const authHeader = rawAuthHeader.replace("Bearer ", "");
     const internalOk =
       Boolean(internalSecret && timingSafeEqual(providedInternal, internalSecret)) &&
       authHeader === SUPABASE_SERVICE_KEY;
@@ -382,8 +383,11 @@ serve(async (req) => {
         if (logErr) console.warn("[dispatch-newsletter] audit_log insert failed:", logErr.message);
       });
     } else {
-      const jwt = authHeader;
-      const { data: claimsData, error: authErr } = await sb.auth.getClaims(jwt);
+      if (!rawAuthHeader.startsWith("Bearer ")) throw new Error("Não autorizado");
+      const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: rawAuthHeader } },
+      });
+      const { data: claimsData, error: authErr } = await userClient.auth.getClaims(authHeader);
       if (authErr || !claimsData?.claims?.sub) throw new Error("Não autorizado");
       userId = claimsData.claims.sub;
     }
