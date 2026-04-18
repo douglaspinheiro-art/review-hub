@@ -169,6 +169,7 @@ export default function Integracoes() {
   const [validationState, setValidationState] = useState<{ status: "idle" | "validating" | "success" | "error"; detail: string }>({ status: "idle", detail: "" });
   const [disconnectTarget, setDisconnectTarget] = useState<Integration | null>(null);
   const [oauthBusy, setOauthBusy] = useState<string | null>(null);
+  const [contactModalOpen, setContactModalOpen] = useState(false);
 
   const activeStoreId = scope.activeStoreId;
 
