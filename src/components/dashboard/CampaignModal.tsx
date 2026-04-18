@@ -267,7 +267,7 @@ export default function CampaignModal({
 
   const [confirmClose, setConfirmClose] = useState(false);
 
-  const { register, handleSubmit, watch, setValue, trigger, reset, formState: { isDirty } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, trigger, reset, formState: { isDirty, errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       channel: whatsappOnly ? "whatsapp" : (prefill?.channel ?? "whatsapp"),
