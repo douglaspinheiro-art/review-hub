@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { toast } from "sonner";
+import { supabasePublicUrl, supabasePublishableKey } from "@/lib/supabase-public-env";
 import { cn } from "@/lib/utils";
 import { INTEGRATIONS_SAFE_SELECT } from "@/lib/supabase-select-fragments";
 type Integration = {
@@ -213,8 +214,8 @@ export default function Integracoes() {
       setOauthBusy(platformType);
       try {
         const session = (await supabase.auth.getSession()).data.session;
-        const base = import.meta.env.VITE_SUPABASE_URL ?? "";
-        const anon = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+        const base = supabasePublicUrl;
+        const anon = supabasePublishableKey;
         const headers: Record<string, string> = {
           Authorization: `Bearer ${session?.access_token ?? ""}`,
           apikey: anon,
