@@ -135,6 +135,7 @@ export default function Analisando() {
             const benchRef = benchmarkForDiagnostics(funnel);
             const { data, error } = await supabase.functions.invoke("gerar-diagnostico", {
               body: {
+                loja_id: funnel.store_id,
                 visitantes: funnel.visitantes,
                 produto_visto: funnel.produto_visto,
                 carrinho: funnel.carrinho,
@@ -147,6 +148,11 @@ export default function Analisando() {
             });
 
             if (!error && data?.success && data?.diagnostico) {
+              if ((data as { persisted?: boolean }).persisted) {
+                goToResultado(800);
+                return;
+              }
+
               const storeId = funnel.store_id;
               const conversao = funnel.pedido > 0 && funnel.visitantes > 0
                 ? ((funnel.pedido / funnel.visitantes) * 100)
@@ -160,6 +166,7 @@ export default function Analisando() {
                 diagnostic_json: data.diagnostico,
                 chs,
                 chs_label: chsLabel,
+                recommended_plan: (data as { recommended_plan?: "growth" | "scale" }).recommended_plan,
               });
               if (insertErr) {
                 console.error("diagnostics_v3 insert failed:", insertErr.message);

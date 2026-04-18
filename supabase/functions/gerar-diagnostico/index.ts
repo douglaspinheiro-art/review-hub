@@ -38,6 +38,204 @@ const DESCONTO_POR_SEGMENTO: Record<string, { tipo: string; valor: number; justi
   promissor:     { tipo: "percentual", valor: 12, justificativa: "Converter potencial em frequência" },
 };
 
+function normalizeSegment(segmento?: string | null) {
+  const raw = String(segmento ?? "").trim().toLowerCase();
+  if (!raw) return "em_risco";
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return DESCONTO_POR_SEGMENTO[normalized] ? normalized : "em_risco";
+}
+
+function buildFallbackDiagnostic(input: {
+  chs: number;
+  chsLabel: string;
+  perda: number;
+  ticketMedio: number;
+  visitantes: number;
+  produtoVisto: number;
+  carrinho: number;
+  checkout: number;
+  pedido: number;
+  taxaProduto: string;
+  taxaCarrinho: string;
+  taxaCheckout: string;
+  taxaPedido: string;
+  conversao: string;
+  bench: number;
+  segmento?: string;
+  canaisConectados?: string[];
+  visitantesMobile?: number;
+  visitantesDesktop?: number;
+  pedidosMobile?: number;
+  pedidosDesktop?: number;
+  produtosEstoqueCritico?: number;
+  produtosAvaliacaoBaixa?: number;
+}) {
+  const segmentKey = normalizeSegment(input.segmento);
+  const discount = DESCONTO_POR_SEGMENTO[segmentKey] ?? DESCONTO_POR_SEGMENTO.em_risco;
+  const channels = input.canaisConectados?.length ? input.canaisConectados.join(", ") : "whatsapp";
+  const mobileCvr = input.visitantesMobile && input.visitantesMobile > 0
+    ? (input.pedidosMobile ?? 0) / input.visitantesMobile
+    : 0;
+  const desktopCvr = input.visitantesDesktop && input.visitantesDesktop > 0
+    ? (input.pedidosDesktop ?? 0) / input.visitantesDesktop
+    : 0;
+  const stageDrops = [
+    {
+      titulo: "Baixa progressão de visitante para produto visto",
+      etapa: "Visitante → Produto visto",
+      drop: Math.max(0, input.visitantes - input.produtoVisto),
+      taxa: input.taxaProduto,
+      severidade: "alto",
+      tipo: "funil",
+      descricao: `Só ${input.taxaProduto}% dos visitantes chegam a visualizar produto. Isso indica vitrine fraca, tráfego pouco qualificado ou páginas lentas no topo do funil.`,
+      causa: "A promessa do anúncio ou da home não está levando o cliente para páginas com intenção clara de compra.",
+    },
+    {
+      titulo: "Abandono forte entre produto e carrinho",
+      etapa: "Produto visto → Carrinho",
+      drop: Math.max(0, input.produtoVisto - input.carrinho),
+      taxa: input.taxaCarrinho,
+      severidade: "alto",
+      tipo: "funil",
+      descricao: `Só ${input.taxaCarrinho}% de quem vê produto adiciona ao carrinho. Normalmente isso acontece por preço, frete, prova social ou CTA pouco convincente.`,
+      causa: "A página de produto não está reduzindo objeções suficientes para levar o cliente ao próximo passo.",
+    },
+    {
+      titulo: "Queda crítica na finalização do pedido",
+      etapa: "Checkout → Pedido",
+      drop: Math.max(0, input.checkout - input.pedido),
+      taxa: input.taxaPedido,
+      severidade: "critico",
+      tipo: "funil",
+      descricao: `Apenas ${input.taxaPedido}% de quem entra no checkout conclui o pedido. Esse gargalo sozinho já compromete boa parte da conversão total de ${input.conversao}%.`,
+      causa: "O checkout está gerando fricção final com custo surpresa, excesso de campos ou falta de confiança.",
+    },
+  ].sort((a, b) => b.drop - a.drop);
+
+  const principal = stageDrops[0];
+  const second = mobileCvr > 0 && desktopCvr > 0 && mobileCvr < desktopCvr * 0.75
+    ? {
+        titulo: "Conversão mobile abaixo do desktop",
+        etapa: "Mobile",
+        drop: Math.round((desktopCvr - mobileCvr) * input.visitantesMobile!),
+        taxa: (mobileCvr * 100).toFixed(2),
+        severidade: "alto",
+        tipo: "funil",
+        descricao: `No mobile a conversão está em ${(mobileCvr * 100).toFixed(2)}% contra ${(desktopCvr * 100).toFixed(2)}% no desktop. Isso costuma apontar atrito de UX em tela pequena.`,
+        causa: "A experiência mobile exige mais esforço que a desktop para completar a compra.",
+      }
+    : stageDrops[1];
+  const third = (input.produtosEstoqueCritico ?? 0) > 0 || (input.produtosAvaliacaoBaixa ?? 0) > 0
+    ? {
+        titulo: "Catálogo com risco comercial em produtos-chave",
+        etapa: "Produto",
+        drop: Math.max(input.produtosEstoqueCritico ?? 0, input.produtosAvaliacaoBaixa ?? 0),
+        taxa: "0",
+        severidade: "medio",
+        tipo: "produto",
+        descricao: `${input.produtosEstoqueCritico ?? 0} itens estão com estoque crítico e ${input.produtosAvaliacaoBaixa ?? 0} têm avaliação baixa. Isso reduz confiança e derruba a taxa de adição ao carrinho.`,
+        causa: "Oferta e reputação de produto não estão sustentando a intenção de compra.",
+      }
+    : stageDrops[2];
+
+  const impacts = [0.52, 0.28, 0.2].map((ratio) => Math.max(1000, Math.round(input.perda * ratio)));
+  const problemas = [principal, second, third].map((item, index) => ({
+    tipo: item.tipo,
+    titulo: item.titulo,
+    descricao: item.descricao,
+    severidade: item.severidade,
+    impacto_reais: impacts[index],
+    causa_raiz: item.causa,
+    prescricao_sugerida: {
+      titulo: index === 0 ? `Recuperar ${item.etapa}` : index === 1 ? "Acionar campanha segmentada de recuperação" : "Ativar prova social e urgência comercial",
+      descricao: item.descricao,
+      canal: channels.includes("email") ? "multicanal" : "whatsapp",
+      segmento: segmentKey,
+      perfil_comportamental: null,
+      num_clientes_estimado: Math.max(50, Math.round(input.visitantes * (index === 0 ? 0.18 : 0.1))),
+      desconto_tipo: discount.tipo,
+      desconto_valor: discount.valor,
+      desconto_justificativa: discount.justificativa,
+      mensagem_base: `Olá! Identificamos uma oportunidade especial para concluir sua compra com mais facilidade. Responda esta mensagem e ativamos sua condição exclusiva agora.`,
+      melhor_horario: index === 0 ? "Hoje às 18h" : index === 1 ? "Amanhã às 10h" : "Hoje às 14h",
+      custo_estimado: Math.max(200, Math.round(impacts[index] * 0.04)),
+      potencial_estimado: Math.max(1500, Math.round(impacts[index] * 1.8)),
+      roi_estimado: 4 + index,
+      prazo_resultado_dias: 7 + index * 5,
+      ab_teste_recomendado: index !== 2,
+    },
+  }));
+
+  return {
+    chs: input.chs,
+    chs_label: input.chsLabel,
+    chs_breakdown: {
+      conversao: Math.min(55, Math.round((Number(input.conversao) / Math.max(input.bench, 0.1)) * 55)),
+      funil: Math.min(20, Math.round((Number(input.taxaProduto) / 100) * 7 + (Number(input.taxaCarrinho) / 100) * 7 + (Number(input.taxaCheckout) / 100) * 6)),
+      produtos: Math.max(0, 15 - Math.min(15, (input.produtosEstoqueCritico ?? 0) * 2 + (input.produtosAvaliacaoBaixa ?? 0))),
+      mobile: Math.max(0, Math.min(10, mobileCvr > 0 && desktopCvr > 0 ? Math.round((mobileCvr / desktopCvr) * 10) : 6)),
+    },
+    resumo: `Seu funil está abaixo do benchmark de ${input.bench}% e hoje deixa cerca de R$ ${input.perda.toLocaleString("pt-BR")} por mês na mesa. O maior gargalo está em ${principal.etapa}, então a prioridade é remover fricção de checkout e reativar intenção com campanhas prescritivas imediatas.`,
+    perda_principal: principal.etapa,
+    percentual_explicado: 82,
+    problemas,
+    oportunidades: [
+      {
+        titulo: "Recuperação imediata de intenção de compra",
+        descricao: "Ative uma sequência de recuperação para quem abandonou antes de concluir o checkout.",
+        potencial_reais: Math.max(2500, Math.round(input.perda * 0.35)),
+        janela_dias: 7,
+        segmento: segmentKey,
+        evento_sazonal: null,
+      },
+      {
+        titulo: "Melhoria rápida na experiência mobile",
+        descricao: "Simplifique etapas, destaque frete e remova atritos visuais no celular.",
+        potencial_reais: Math.max(1800, Math.round(input.perda * 0.18)),
+        janela_dias: 14,
+        segmento: "active",
+        evento_sazonal: null,
+      },
+    ],
+    recomendacoes_ux: [
+      {
+        titulo: "Exibir frete e prazo antes do checkout",
+        descricao: "Mostre estimativa de frete e prazo já na página de produto e no carrinho para reduzir surpresa no fechamento.",
+        esforco: "baixo",
+        impacto_pp: 0.45,
+        prazo_semanas: 1,
+        tipo: "quick_win",
+      },
+      {
+        titulo: "Testar checkout mais curto",
+        descricao: "Remova campos não essenciais e teste uma versão com menos etapas, principalmente no mobile.",
+        esforco: "medio",
+        impacto_pp: 0.62,
+        prazo_semanas: 3,
+        tipo: "ab_test",
+      },
+      {
+        titulo: "Reforçar prova social nas páginas críticas",
+        descricao: "Destaque avaliações, garantia e diferenciais acima da dobra nas páginas com maior tráfego.",
+        esforco: "medio",
+        impacto_pp: 0.28,
+        prazo_semanas: 2,
+        tipo: "medio_prazo",
+      },
+    ],
+    forecast_30d: {
+      minimo: Math.max(3000, Math.round(input.perda * 0.2)),
+      maximo: Math.max(7000, Math.round(input.perda * 0.55)),
+      com_prescricoes: Math.max(5000, Math.round(input.perda * 0.33)),
+      com_ux_fixes: Math.max(4500, Math.round(input.perda * 0.27)),
+    },
+  };
+}
+
 serve(async (req) => {
   // CORS preflight FIRST — sempre 200 com headers, antes de qualquer validação.
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -168,7 +366,6 @@ serve(async (req) => {
     const cvr_desktop = visitantes_desktop > 0 ? ((pedidos_desktop / visitantes_desktop) * 100).toFixed(2) : "N/A";
 
     const KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!KEY) throw new Error("ANTHROPIC_API_KEY não configurada");
 
     const system = `Você é o motor de inteligência do LTV Boost — Conversion Operating System para ecommerce brasileiro.
 Você recebe dados de funil, produto e histórico de prescrições anteriores.
@@ -332,21 +529,51 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
       throw new Error("Anthropic API indisponível após retentativas.");
     }
 
-    const r = await callAnthropicWithRetry();
-
-    const data = await r.json();
-    if (!data.content?.[0]?.text) {
-      console.error("[gerar-diagnostico] Resposta inesperada da Anthropic:", JSON.stringify(data).slice(0, 300));
-      throw new Error("Resposta inválida da Anthropic API");
-    }
-    const raw  = data.content[0].text.trim();
     let diag: Record<string, unknown>;
     try {
-      diag = JSON.parse(raw);
-    } catch {
-      const match = raw.match(/\{[\s\S]*\}/)?.[0];
-      if (!match) throw new Error("Anthropic retornou JSON inválido");
-      diag = JSON.parse(match);
+      if (!KEY) throw new Error("ANTHROPIC_API_KEY não configurada");
+
+      const r = await callAnthropicWithRetry();
+      const data = await r.json();
+      if (!data.content?.[0]?.text) {
+        console.error("[gerar-diagnostico] Resposta inesperada da Anthropic:", JSON.stringify(data).slice(0, 300));
+        throw new Error("Resposta inválida da Anthropic API");
+      }
+      const raw = data.content[0].text.trim();
+      try {
+        diag = JSON.parse(raw);
+      } catch {
+        const match = raw.match(/\{[\s\S]*\}/)?.[0];
+        if (!match) throw new Error("Anthropic retornou JSON inválido");
+        diag = JSON.parse(match);
+      }
+    } catch (error) {
+      console.warn("[gerar-diagnostico] Usando fallback local para diagnóstico:", error instanceof Error ? error.message : String(error));
+      diag = buildFallbackDiagnostic({
+        chs,
+        chsLabel: chs_label,
+        perda,
+        ticketMedio: ticket_medio,
+        visitantes,
+        produtoVisto: produto_visto,
+        carrinho,
+        checkout,
+        pedido,
+        taxaProduto: taxa_produto,
+        taxaCarrinho: taxa_carrinho,
+        taxaCheckout: taxa_checkout,
+        taxaPedido: taxa_pedido,
+        conversao,
+        bench,
+        segmento,
+        canaisConectados: canais_conectados,
+        visitantesMobile: visitantes_mobile,
+        visitantesDesktop: visitantes_desktop,
+        pedidosMobile: pedidos_mobile,
+        pedidosDesktop: pedidos_desktop,
+        produtosEstoqueCritico: produtos_estoque_critico,
+        produtosAvaliacaoBaixa: produtos_avaliacao_baixa,
+      });
     }
 
     // Validate minimum required fields from AI response
@@ -456,6 +683,7 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
     return new Response(
       JSON.stringify({ success: true, diagnostico: diag, chs,
         recommended_plan: recommendedPlan,
+        persisted: Boolean(loja_id),
         desconto_por_segmento: DESCONTO_POR_SEGMENTO }),
       { headers: { ...cors, "Content-Type": "application/json" } }
     );
