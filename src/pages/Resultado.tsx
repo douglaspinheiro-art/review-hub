@@ -542,7 +542,7 @@ export default function Resultado() {
                       <p className="text-xs text-muted-foreground">{plan.audience}</p>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="flex items-baseline gap-1">
                         <span className="text-3xl font-black font-jetbrains">
                           R$ {monthlyPrice.toLocaleString("pt-BR")}
@@ -554,6 +554,36 @@ export default function Resultado() {
                           economize R$ {((plan.base - monthlyPrice) * 12).toLocaleString("pt-BR")}/ano
                         </p>
                       )}
+                      {(() => {
+                        const rate = plan.successFeeRate;
+                        const ratePct = (rate * 100).toFixed(rate < 0.02 ? 1 : 0);
+                        const starterRate = PLANS.starter.successFeeRate;
+                        const diffPp = ((starterRate - rate) * 100).toFixed(starterRate - rate < 0.02 ? 1 : 0);
+                        const showSavings = key !== "starter";
+                        return (
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-white/55 cursor-help">
+                                  <Percent className="w-3 h-3 text-emerald-500 shrink-0" />
+                                  <span>
+                                    + <span className="text-white/80 font-semibold">{ratePct}%</span> sobre receita recuperada
+                                    <span className="text-white/40"> · Success Fee</span>
+                                  </span>
+                                  {showSavings && (
+                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500">
+                                      -{diffPp}pp vs Starter
+                                    </span>
+                                  )}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-[240px] text-xs">
+                                Você só paga essa taxa sobre o faturamento que o LTV Boost recupera. Sem recuperação, sem fee.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      })()}
                     </div>
 
                     <ul className="space-y-2 text-xs flex-1">
