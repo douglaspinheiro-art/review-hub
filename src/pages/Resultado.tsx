@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check,
+  Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -354,29 +354,69 @@ export default function Resultado() {
               <Zap className="w-5 h-5 text-primary" /> Problemas prioritários
             </h2>
             <div className="space-y-4">
-              {problemas.map((p, i) => (
-                <div key={i} className={cn(
-                  "border rounded-2xl p-6 transition-all",
-                  p.severidade === "critico"
-                    ? "border-red-500/30 bg-red-500/5"
-                    : p.severidade === "alto"
-                    ? "border-orange-500/30 bg-orange-500/5"
-                    : "border-yellow-500/30 bg-yellow-500/5"
-                )}>
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge variant="outline" className={cn("text-[10px] font-bold tracking-widest px-2 py-0.5",
-                      p.severidade === "critico" ? "text-red-500 border-red-500/50" :
-                      p.severidade === "alto" ? "text-orange-500 border-orange-500/50" :
-                      "text-yellow-500 border-yellow-500/50"
-                    )}>
-                      {p.severidade === "critico" ? "CRÍTICO" : p.severidade === "alto" ? "ALTO" : "MÉDIO"}
-                    </Badge>
-                    <span className="text-sm font-bold text-red-500">R$ {p.impacto_reais?.toLocaleString("pt-BR")}/mês</span>
+              {problemas.map((p, i) => {
+                const locked = !isActive && i >= 1;
+                const card = (
+                  <div className={cn(
+                    "border rounded-2xl p-6 transition-all",
+                    p.severidade === "critico"
+                      ? "border-red-500/30 bg-red-500/5"
+                      : p.severidade === "alto"
+                      ? "border-orange-500/30 bg-orange-500/5"
+                      : "border-yellow-500/30 bg-yellow-500/5"
+                  )}>
+                    <div className="flex items-center justify-between mb-3">
+                      <Badge variant="outline" className={cn("text-[10px] font-bold tracking-widest px-2 py-0.5",
+                        p.severidade === "critico" ? "text-red-500 border-red-500/50" :
+                        p.severidade === "alto" ? "text-orange-500 border-orange-500/50" :
+                        "text-yellow-500 border-yellow-500/50"
+                      )}>
+                        {p.severidade === "critico" ? "CRÍTICO" : p.severidade === "alto" ? "ALTO" : "MÉDIO"}
+                      </Badge>
+                      <span className="text-sm font-bold text-red-500">R$ {p.impacto_reais?.toLocaleString("pt-BR")}/mês</span>
+                    </div>
+                    <h3 className="text-lg font-bold mb-2">{p.titulo}</h3>
+                    <p className="text-sm text-muted-foreground">{p.descricao}</p>
                   </div>
-                  <h3 className="text-lg font-bold mb-2">{p.titulo}</h3>
-                  <p className="text-sm text-muted-foreground">{p.descricao}</p>
-                </div>
-              ))}
+                );
+
+                if (!locked) return <div key={i}>{card}</div>;
+
+                return (
+                  <div key={i} className="relative" aria-hidden="true">
+                    <div className="filter blur-[6px] opacity-60 pointer-events-none select-none">
+                      {card}
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0A0A0F]/70 to-[#0A0A0F]/90 rounded-2xl pointer-events-none" />
+                  </div>
+                );
+              })}
+
+              {!isActive && problemas.length > 1 && (() => {
+                const lockedCount = problemas.length - 1;
+                const lockedImpact = problemas.slice(1).reduce((sum, p) => sum + (p.impacto_reais ?? 0), 0);
+                return (
+                  <div className="relative -mt-24 z-10 border border-emerald-500/30 bg-[#0F1614]/95 backdrop-blur-xl rounded-2xl p-6 md:p-8 text-center space-y-4 shadow-[0_0_40px_rgba(16,185,129,0.15)]">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30">
+                      <Lock className="w-5 h-5 text-emerald-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h3 className="text-lg md:text-xl font-black font-syne tracking-tighter">
+                        Veja os outros {lockedCount} gargalos identificados
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        +R$ {lockedImpact.toLocaleString("pt-BR")}/mês em receita perdida bloqueados nestes itens
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-black tracking-widest uppercase text-xs px-6 h-11 border-0 shadow-lg shadow-emerald-900/30"
+                    >
+                      <Lock className="w-3.5 h-3.5 mr-2" /> Desbloquear diagnóstico completo
+                    </Button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
