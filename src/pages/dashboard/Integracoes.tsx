@@ -29,6 +29,8 @@ import { toast } from "sonner";
 import { supabasePublicUrl, supabasePublishableKey } from "@/lib/supabase-public-env";
 import { cn } from "@/lib/utils";
 import { INTEGRATIONS_SAFE_SELECT } from "@/lib/supabase-select-fragments";
+import ContactModal from "@/components/dashboard/ContactModal";
+import { UserPlus, Upload } from "lucide-react";
 type Integration = {
   id: string;
   type: string;
