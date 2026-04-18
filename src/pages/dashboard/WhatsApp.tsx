@@ -418,7 +418,50 @@ export default function WhatsApp() {
       }),
   });
 
-  const deleteMutation = useMutation({
+  const testSendMutation = useMutation({
+    mutationFn: async (vars: { connectionId: string; number: string; templateName: string; templateLanguage: string }) => {
+      const normalized = vars.number.replace(/\D/g, "");
+      if (normalized.length < 10) throw new Error("Número inválido. Use o formato 55DDDNNNNNNNNN.");
+      const { data, error } = await supabase.functions.invoke<{ ok: boolean; error?: string; data?: { messageId?: string } }>(
+        "meta-whatsapp-send",
+        {
+          body: {
+            kind: "sendTemplate",
+            connectionId: vars.connectionId,
+            number: normalized,
+            templateName: vars.templateName.trim(),
+            templateLanguage: vars.templateLanguage.trim() || "en_US",
+          },
+        },
+      );
+      if (error) {
+        let bodyMsg: string | undefined;
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.text === "function") {
+          try {
+            const text = await ctx.text();
+            try { bodyMsg = stringifyMetaError(JSON.parse(text)); } catch { bodyMsg = text; }
+          } catch { /* ignore */ }
+        }
+        throw new Error(bodyMsg || error.message || "Falha ao enviar template");
+      }
+      if (!data?.ok) throw new Error(stringifyMetaError(data?.error ?? "Falha ao enviar template"));
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Template enviado ✓",
+        description: data?.data?.messageId ? `messageId: ${data.data.messageId}` : "Mensagem aceita pela Meta.",
+      });
+      setTestSendTarget(null);
+    },
+    onError: (e: Error) =>
+      toast({
+        title: "Falha ao enviar template",
+        description: e?.message ?? "Verifique o número e o template.",
+        variant: "destructive",
+      }),
+  });
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("whatsapp_connections")
