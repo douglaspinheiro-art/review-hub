@@ -1002,6 +1002,73 @@ export default function WhatsApp() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!testSendTarget} onOpenChange={(o) => !o && setTestSendTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enviar template de teste</DialogTitle>
+            <DialogDescription>
+              Envia uma mensagem template via Meta Cloud API para validar o envio outbound de <strong>{testSendTarget?.name}</strong>. O destinatário precisa estar cadastrado no painel Meta (modo dev).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="test-number">Número (formato 55DDDNNNNNNNNN)</Label>
+              <Input
+                id="test-number"
+                placeholder="5511999999999"
+                value={testSendNumber}
+                onChange={(e) => setTestSendNumber(e.target.value)}
+                inputMode="numeric"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="test-template">Template</Label>
+                <Input
+                  id="test-template"
+                  placeholder="hello_world"
+                  value={testSendTemplate}
+                  onChange={(e) => setTestSendTemplate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="test-lang">Idioma</Label>
+                <Input
+                  id="test-lang"
+                  placeholder="en_US"
+                  value={testSendLanguage}
+                  onChange={(e) => setTestSendLanguage(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Dica: <code className="text-[10px] bg-muted px-1 rounded">hello_world</code> + <code className="text-[10px] bg-muted px-1 rounded">en_US</code> já vem aprovado em contas Meta novas.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTestSendTarget(null)} disabled={testSendMutation.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (!testSendTarget) return;
+                testSendMutation.mutate({
+                  connectionId: testSendTarget.id,
+                  number: testSendNumber,
+                  templateName: testSendTemplate,
+                  templateLanguage: testSendLanguage,
+                });
+              }}
+              disabled={testSendMutation.isPending || !testSendNumber.trim() || !testSendTemplate.trim()}
+              className="gap-2"
+            >
+              {testSendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
