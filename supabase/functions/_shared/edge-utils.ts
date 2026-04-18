@@ -226,7 +226,8 @@ export function validateBrowserOrigin(req: Request): Response | null {
 
   const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN");
   if (!allowedOrigin) {
-    return errorResponse("Origin validation is not configured", 500);
+    console.warn("[validateBrowserOrigin] ALLOWED_ORIGIN não configurado — pulando validação de origem. Defina em produção.");
+    return null;
   }
   if (origin !== allowedOrigin) {
     return errorResponse("Forbidden origin", 403);

@@ -39,10 +39,11 @@ const DESCONTO_POR_SEGMENTO: Record<string, { tipo: string; valor: number; justi
 };
 
 serve(async (req) => {
-  // Validate origin before OPTIONS response — prevents CSRF from any origin.
+  // CORS preflight FIRST — sempre 200 com headers, antes de qualquer validação.
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  // Origin check (tolerante: se ALLOWED_ORIGIN não estiver setado, apenas avisa).
   const originCheck = validateBrowserOrigin(req);
   if (originCheck) return originCheck;
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const auth = await verifyJwt(req);
   if (!auth.ok) return auth.response;
