@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { supabasePublicUrl, supabasePublishableKey } from "@/lib/supabase-public-env";
 import { VERTICALS, type EcommerceVertical } from "@/lib/strategy-profile";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -526,8 +527,8 @@ export default function Onboarding() {
 
     try {
       const session = (await supabase.auth.getSession()).data.session;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-      const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+      const supabaseUrl = supabasePublicUrl;
+      const anon = supabasePublishableKey;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${session?.access_token ?? ""}`,
         apikey: anon,
@@ -709,13 +710,13 @@ export default function Onboarding() {
     setGa4OauthConnecting(true);
     try {
       const session = (await supabase.auth.getSession()).data.session;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ydkglitowqlpizpnnofy.supabase.co";
+      const supabaseUrl = supabasePublicUrl;
       const res = await fetch(
         `${supabaseUrl}/functions/v1/google-oauth-callback?action=start&store_id=${storeId}`,
         {
           headers: {
             Authorization: `Bearer ${session?.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+            apikey: supabasePublishableKey,
           },
         },
       );
