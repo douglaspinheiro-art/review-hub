@@ -449,6 +449,47 @@ export default function CampaignModal({
   const objective = watch("objective");
   void watch("name"); // keep form tracking
 
+  // Active Meta WhatsApp connection (for template fetching)
+  const { data: activeWaConnection } = useQuery({
+    queryKey: ["wa_connection_active", lojaData?.id],
+    enabled: !!lojaData?.id && channel === "whatsapp",
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_connections")
+        .select("id, provider, status, meta_waba_id")
+        .eq("store_id", lojaData!.id)
+        .eq("status", "connected")
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; provider: string; status: string; meta_waba_id: string | null } | null;
+    },
+  });
+
+  // Approved Meta templates for the active connection
+  type MetaTemplateInfo = {
+    name: string;
+    language: string;
+    category: string;
+    status: string;
+    body_text: string;
+    variable_count: number;
+  };
+  const { data: metaTemplates, isLoading: metaTemplatesLoading, error: metaTemplatesError, refetch: refetchMetaTemplates } = useQuery({
+    queryKey: ["meta_wa_templates", activeWaConnection?.id],
+    enabled: !!activeWaConnection?.id && waContentType === "template",
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("meta-list-templates", {
+        body: { connectionId: activeWaConnection!.id },
+      });
+      if (error) throw error;
+      const payload = data as { ok: boolean; data?: { templates: MetaTemplateInfo[] }; error?: string };
+      if (!payload.ok) throw new Error(payload.error ?? "Failed to fetch templates");
+      return payload.data?.templates ?? [];
+    },
+    staleTime: 60_000,
+  });
+
   const { data: savedTemplates = [] } = useQuery({
     queryKey: ["campaign_message_templates", user?.id, channel, objective],
     queryFn: async () => {
