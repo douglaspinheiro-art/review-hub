@@ -1177,39 +1177,176 @@ export default function CampaignModal({
                     </div>
 
                     {channel === "whatsapp" && (
-                      <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
+                      <div className="bg-muted/30 border rounded-2xl p-4 space-y-4">
+                        {/* Tipo de envio: Template aprovado vs Texto livre */}
                         <div className="space-y-2">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-                            <Info className="w-3 h-3" /> Template Meta (Cloud API)
+                            <Info className="w-3 h-3" /> Tipo de envio
                           </Label>
-                          <Input
-                            placeholder="nome_do_template_aprovado — opcional; obrigatório se a conexão for Meta e o contato estiver fora da janela de 24h"
-                            value={waMetaTemplateName}
-                            onChange={(e) => setWaMetaTemplateName(e.target.value)}
-                            className="h-10 rounded-xl text-xs"
-                          />
-                          <p className="text-[10px] text-muted-foreground leading-relaxed">
-                            Se a loja usa WhatsApp oficial (Meta), o disparo em massa usa este nome ou o template padrão salvo na conexão. A mensagem da campanha é enviada como parâmetro do corpo do template (primeira variável).
-                          </p>
-                        </div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Formato WhatsApp</p>
-                        <div className="flex bg-muted/40 p-1 rounded-xl flex-wrap gap-1">
-                          {(["text", "image", "video", "audio", "document", "template"] as const).map((t) => (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             <button
-                              key={t}
                               type="button"
-                              onClick={() => setWaContentType(t)}
+                              onClick={() => setWaContentType("template")}
                               className={cn(
-                                "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                                waContentType === t ? "bg-primary text-white" : "text-muted-foreground hover:bg-background/60"
+                                "p-3 rounded-xl border-2 text-left transition-all",
+                                waContentType === "template"
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border/50 hover:bg-muted/30",
                               )}
                             >
-                              {t}
+                              <div className="text-[11px] font-black uppercase tracking-widest">Template aprovado</div>
+                              <div className="text-[10px] text-muted-foreground mt-1">Recomendado. Garante entrega via Meta HSM (fora da janela de 24 h).</div>
                             </button>
-                          ))}
+                            <button
+                              type="button"
+                              onClick={() => setWaContentType("text")}
+                              className={cn(
+                                "p-3 rounded-xl border-2 text-left transition-all",
+                                waContentType === "text"
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border/50 hover:bg-muted/30",
+                              )}
+                            >
+                              <div className="text-[11px] font-black uppercase tracking-widest">Texto livre (24 h)</div>
+                              <div className="text-[10px] text-muted-foreground mt-1">Só entrega para contatos que falaram com você nas últimas 24 h.</div>
+                            </button>
+                          </div>
                         </div>
 
-                        {waContentType !== "text" && waContentType !== "template" && (
+                        {waContentType === "text" && (
+                          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-[11px] text-yellow-700 dark:text-yellow-400 leading-relaxed">
+                            ⚠️ A Meta só entrega <strong>texto livre</strong> para contatos que iniciaram conversa com seu WhatsApp Business nas últimas 24 h.
+                            Para campanhas em massa, use um <strong>Template aprovado</strong>.
+                          </div>
+                        )}
+
+                        {waContentType === "template" && (
+                          <div className="space-y-3">
+                            {!activeWaConnection?.id && (
+                              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-[11px] text-red-700 dark:text-red-400">
+                                Conecte o WhatsApp Meta Cloud em <em>WhatsApp</em> antes de escolher um template.
+                              </div>
+                            )}
+                            {activeWaConnection?.id && (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Template aprovado (Meta)</Label>
+                                  <button
+                                    type="button"
+                                    onClick={() => refetchMetaTemplates()}
+                                    className="text-[10px] text-primary underline hover:no-underline"
+                                  >
+                                    Atualizar lista
+                                  </button>
+                                </div>
+                                {metaTemplatesLoading && (
+                                  <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+                                    <Loader2 className="w-3 h-3 animate-spin" /> Carregando templates aprovados…
+                                  </div>
+                                )}
+                                {metaTemplatesError && (
+                                  <div className="text-[11px] text-red-600">
+                                    Erro ao buscar: {(metaTemplatesError as Error).message}
+                                  </div>
+                                )}
+                                {!metaTemplatesLoading && !metaTemplatesError && (metaTemplates?.length ?? 0) === 0 && (
+                                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                                    Nenhum template aprovado encontrado. Crie em <em>Meta Business Manager → WhatsApp Manager → Modelos de mensagem</em>. Após aprovação (alguns minutos a 24 h), volte aqui e clique <em>Atualizar lista</em>.
+                                  </div>
+                                )}
+                                {!metaTemplatesLoading && (metaTemplates?.length ?? 0) > 0 && (
+                                  <select
+                                    value={waMetaTemplateName}
+                                    onChange={(e) => {
+                                      const t = (metaTemplates ?? []).find((x) => x.name === e.target.value);
+                                      setWaMetaTemplateName(e.target.value);
+                                      if (t) {
+                                        setWaMetaTemplateLanguage(t.language);
+                                        setWaMetaTemplateParameters(Array.from({ length: t.variable_count }, () => ""));
+                                      }
+                                    }}
+                                    className="w-full h-10 rounded-xl border bg-background px-3 text-xs"
+                                  >
+                                    <option value="">Selecione um template…</option>
+                                    {(metaTemplates ?? []).map((t) => (
+                                      <option key={`${t.name}-${t.language}`} value={t.name}>
+                                        {t.name} · {t.language} · {t.category}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            )}
+
+                            {waMetaTemplateName && (metaTemplates ?? []).find((x) => x.name === waMetaTemplateName) && (
+                              <>
+                                <div>
+                                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Pré-visualização</Label>
+                                  <div className="mt-2 rounded-xl bg-background border p-3 text-xs whitespace-pre-wrap leading-relaxed">
+                                    {(metaTemplates ?? []).find((x) => x.name === waMetaTemplateName)?.body_text || "(corpo vazio)"}
+                                  </div>
+                                </div>
+
+                                {waMetaTemplateParameters.length > 0 && (
+                                  <div className="space-y-2">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                      Variáveis do template ({waMetaTemplateParameters.length})
+                                    </Label>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      Use <code className="bg-muted px-1 rounded">{`{{nome}}`}</code>, <code className="bg-muted px-1 rounded">{`{{email}}`}</code> ou texto fixo. Variáveis serão substituídas por contato no envio.
+                                    </p>
+                                    {waMetaTemplateParameters.map((val, idx) => (
+                                      <Input
+                                        key={idx}
+                                        placeholder={`{{${idx + 1}}} — ex: {{nome}} ou texto fixo`}
+                                        value={val}
+                                        onChange={(e) => {
+                                          const next = [...waMetaTemplateParameters];
+                                          next[idx] = e.target.value;
+                                          setWaMetaTemplateParameters(next);
+                                        }}
+                                        className="h-9 rounded-lg text-xs"
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div>
+                                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Idioma do template</Label>
+                                  <Input
+                                    value={waMetaTemplateLanguage}
+                                    onChange={(e) => setWaMetaTemplateLanguage(e.target.value)}
+                                    className="mt-2 h-10 rounded-xl text-xs"
+                                  />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Formato adicional (mídia) — só faz sentido em texto livre */}
+                        {waContentType === "text" && (
+                          <>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Formato (opcional)</p>
+                            <div className="flex bg-muted/40 p-1 rounded-xl flex-wrap gap-1">
+                              {(["text", "image", "video", "audio", "document"] as const).map((t) => (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => setWaContentType(t)}
+                                  className={cn(
+                                    "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                                    waContentType === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background/60",
+                                  )}
+                                >
+                                  {t}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
+                        {(waContentType === "image" || waContentType === "video" || waContentType === "audio" || waContentType === "document") && (
                           <div>
                             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">URL da mídia</Label>
                             <Input
@@ -1220,29 +1357,8 @@ export default function CampaignModal({
                             />
                           </div>
                         )}
-
-                        {waContentType === "template" && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Texto do botão</Label>
-                              <Input
-                                placeholder="Ver oferta"
-                                value={waButtonLabel}
-                                onChange={(e) => setWaButtonLabel(e.target.value)}
-                                className="mt-2 h-10 rounded-xl"
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">URL do botão</Label>
-                              <Input
-                                placeholder="https://..."
-                                value={waButtonUrl}
-                                onChange={(e) => setWaButtonUrl(e.target.value)}
-                                className="mt-2 h-10 rounded-xl"
-                              />
-                            </div>
-                          </div>
-                        )}
+                      </div>
+                    )}
                       </div>
                     )}
 
