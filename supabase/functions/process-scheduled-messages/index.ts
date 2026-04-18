@@ -94,7 +94,20 @@ async function sendWaWithRetry(
   for (let attempt = 0; attempt < META_MAX_RETRIES; attempt++) {
     try {
       if (metadata.content_type === "template" && metadata.meta_template_name) {
-        return await outboundSendMetaTemplate(waRow, e164, String(metadata.meta_template_name), "pt_BR", [content]);
+        const lang = String(metadata.meta_template_language ?? "pt_BR");
+        // Parameters were resolved (variable substitution) at scheduling time and
+        // serialized in metadata.meta_template_parameters as string[]. Fallback to
+        // the message content as the single body parameter for legacy rows.
+        const rawParams = Array.isArray(metadata.meta_template_parameters)
+          ? (metadata.meta_template_parameters as unknown[]).map((v) => String(v ?? ""))
+          : (content ? [content] : []);
+        return await outboundSendMetaTemplate(
+          waRow,
+          e164,
+          String(metadata.meta_template_name),
+          lang,
+          rawParams,
+        );
       }
       return await outboundSendText(waRow, e164, content);
     } catch (e) {
