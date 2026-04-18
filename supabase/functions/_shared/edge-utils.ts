@@ -296,8 +296,11 @@ export function timingSafeEqual(a: string, b: string): boolean {
   const ab = enc.encode(a);
   const bb = enc.encode(b);
   if (ab.length !== bb.length) return false;
-  // @ts-expect-error Deno runtime expõe timingSafeEqual em crypto.subtle.
-  return crypto.subtle.timingSafeEqual(ab, bb);
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) {
+    diff |= ab[i] ^ bb[i];
+  }
+  return diff === 0;
 }
 
 export { z };
