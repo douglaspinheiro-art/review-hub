@@ -707,14 +707,14 @@ export default function WhatsApp() {
         </div>
       ) : (
         <div className="space-y-6">
-          {healthSummary.recent_errors.length > 0 && (
+          {(healthSummary?.recent_errors?.length ?? 0) > 0 && (
             <Card className="p-4 bg-muted/30 border border-border/50 rounded-xl">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
                 <AlertCircle className="w-3 h-3 text-red-500" /> Logs de erro recentes
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {healthSummary.recent_errors.map((err: any) => (
+                {healthSummary?.recent_errors?.map((err: any) => (
                   <div key={err.id} className="p-2.5 bg-card border rounded-lg space-y-1">
                     <div className="flex justify-between items-center gap-2">
                       <span className="text-[8px] h-3.5 px-1 uppercase font-bold border border-red-500/20 text-red-600 bg-red-500/5 rounded">
