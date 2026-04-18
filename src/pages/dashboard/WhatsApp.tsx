@@ -71,12 +71,44 @@ const STATUS_CONFIG = {
 
 type MetaVerifyResponse = { ok: boolean; error?: string; data?: { display_phone_number?: string; verified_name?: string } };
 
+function stringifyMetaError(err: unknown): string {
+  if (!err) return "Erro desconhecido";
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object") {
+    const anyErr = err as { message?: unknown; error?: unknown };
+    if (typeof anyErr.message === "string") return anyErr.message;
+    if (typeof anyErr.error === "string") return anyErr.error;
+    try { return JSON.stringify(err); } catch { return String(err); }
+  }
+  return String(err);
+}
+
 async function invokeMetaVerify(connectionId: string): Promise<MetaVerifyResponse> {
   const { data, error } = await supabase.functions.invoke<MetaVerifyResponse>("meta-whatsapp-send", {
     body: { connectionId, kind: "verify" },
   });
-  if (error) return { ok: false, error: error.message };
-  return data ?? { ok: false, error: "Resposta vazia" };
+  if (error) {
+    // Try to read structured error body returned by the edge function
+    let bodyMsg: string | undefined;
+    const ctx = (error as { context?: Response }).context;
+    if (ctx && typeof ctx.text === "function") {
+      try {
+        const text = await ctx.text();
+        try {
+          const parsed = JSON.parse(text);
+          bodyMsg = stringifyMetaError(parsed);
+        } catch {
+          bodyMsg = text;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return { ok: false, error: bodyMsg || error.message || "Falha ao chamar edge function" };
+  }
+  if (!data) return { ok: false, error: "Resposta vazia" };
+  return { ...data, error: data.error ? stringifyMetaError(data.error) : data.error };
 }
 
 export default function WhatsApp() {
