@@ -127,13 +127,12 @@ serve(async (req) => {
         const { error: upErr } = await admin
           .from("whatsapp_connections")
           .update({
-            phone_number: info.display_phone_number ?? null,
             status: "connected",
-            connected_at: new Date().toISOString(),
             health_status: "healthy",
             health_details: {
               verified_name: info.verified_name,
               quality_rating: info.quality_rating,
+              display_phone_number: info.display_phone_number,
               api_version: apiVer,
             },
             last_health_check_at: new Date().toISOString(),
