@@ -317,6 +317,12 @@ export default function CampaignModal({
     setWaButtonLabel(b0?.label ?? "");
     setWaButtonUrl(b0?.value ?? "");
     setWaMetaTemplateName(String(blocks.meta_template_name ?? ""));
+    setWaMetaTemplateLanguage(String(blocks.meta_template_language ?? "pt_BR"));
+    setWaMetaTemplateParameters(
+      Array.isArray(blocks.meta_template_parameters)
+        ? (blocks.meta_template_parameters as unknown[]).map((p) => String(p ?? ""))
+        : [],
+    );
     reset({
       name: String(c.name ?? ""),
       message: String(c.message ?? ""),
