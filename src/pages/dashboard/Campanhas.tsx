@@ -229,20 +229,37 @@ export default function Campanhas() {
 
   const deleteMutation = useMutation({
     mutationFn: async (campaignId: string) => {
-      // Soft-delete to preserve attribution data
+      // Hard delete: rascunhos podem ser removidos; campanhas já enviadas
+      // devem usar 'paused' para preservar dados de atribuição.
+      const { data: current, error: fetchError } = await supabase
+        .from("campaigns")
+        .select("status")
+        .eq("id", campaignId)
+        .maybeSingle();
+      if (fetchError) throw fetchError;
+
+      if (current?.status === "draft" || current?.status === "failed") {
+        const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
+        if (error) throw error;
+        return "deleted" as const;
+      }
+
       const { error } = await supabase
         .from("campaigns")
-        .update({ status: "archived" })
+        .update({ status: "paused" })
         .eq("id", campaignId);
       if (error) throw error;
+      return "paused" as const;
     },
-    onSuccess: () => {
-      toast({ title: "Campanha arquivada." });
+    onSuccess: (result) => {
+      toast({
+        title: result === "deleted" ? "Rascunho excluído." : "Campanha pausada.",
+      });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (err: Error) => {
       console.error("[deleteMutation]", err);
-      toast({ title: "Erro ao arquivar campanha", description: err.message, variant: "destructive" });
+      toast({ title: "Erro ao excluir campanha", description: err.message, variant: "destructive" });
     },
     onSettled: () => setConfirmDeleteId(null),
   });
