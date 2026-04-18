@@ -514,6 +514,38 @@ export default function Integracoes() {
         </p>
       </div>
 
+      <div className="rounded-xl border bg-card p-4 sm:p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold">Contatos</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Adicione contatos manualmente ou importe em massa via CSV.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="gap-1.5 rounded-xl font-bold"
+              onClick={() => setContactModalOpen(true)}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Adicionar contato
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 rounded-xl font-bold"
+              onClick={() => navigate("/dashboard/contatos")}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Importar em massa
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {listError && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3">
           <p className="text-sm text-destructive">
