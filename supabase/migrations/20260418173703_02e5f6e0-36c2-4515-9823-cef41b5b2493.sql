@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.get_campaigns_bundle_v2(uuid, text, text, timestamp, integer) TO authenticated;
