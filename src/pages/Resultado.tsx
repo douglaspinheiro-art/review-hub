@@ -478,6 +478,10 @@ export default function Resultado() {
                 {recommendation.reason}
               </p>
 
+              <p className="text-[11px] text-white/50 mt-3 max-w-md mx-auto">
+                Mensalidade fixa + Success Fee variável <span className="text-emerald-500 font-semibold">só sobre o que recuperarmos</span>
+              </p>
+
               {/* Billing toggle */}
               <div className="inline-flex items-center gap-1 bg-[#13131A] border border-[#1E1E2E] rounded-full p-1 mt-4">
                 <button
