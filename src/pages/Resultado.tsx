@@ -547,9 +547,6 @@ export default function Resultado() {
               })}
             </div>
 
-            <p className="text-[10px] text-muted-foreground text-center">
-              🛡️ Garantia de 14 dias · Cancele quando quiser · Pagamento seguro via Mercado Pago
-            </p>
           </div>
         )}
 
