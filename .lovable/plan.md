@@ -1,48 +1,43 @@
 
-A conexão Meta Cloud está validada (status "Conectado"). Os próximos passos para testar a integração ponta-a-ponta:
 
-## Passo 1 — Configurar webhook no painel da Meta (recebimento)
-No Meta Developer Console → seu App → WhatsApp → Configuration → Webhook:
-- **Callback URL**: `https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/meta-whatsapp-webhook`
-- **Verify Token**: o valor do secret `META_WHATSAPP_VERIFY_TOKEN` no Supabase
-- Clicar em **Verify and Save** → deve dar ✓
-- Subscrever ao campo **messages**
-- Em **Phone Numbers**, clicar em **Subscribe** no número `1003067482898885`
+User wants ability to manually add contacts on `/dashboard/integracoes`. Let me check the page first.
+<lov-tool-use id="toolu_vrtx_01TwEZ4Lf4E3sbz7NcsEhJ3N" name="code--view" integration-id="code" data="{\"file_path\": \"src/pages/dashboard/Integracoes.tsx\", \"lines\": \"1-80\"}">
+</lov-tool-use>
 
-## Passo 2 — Adicionar número de teste como destinatário
-A Meta exige que, em modo de desenvolvimento, números destinatários sejam pré-cadastrados:
-- Painel Meta → WhatsApp → API Setup → **To** → Adicionar número (seu WhatsApp pessoal)
-- Confirmar código recebido por SMS/WhatsApp
+<lov-tool-use id="toolu_vrtx_01UT1eHKagFiZSk8sCeUrPrq" name="code--view" integration-id="code" data="{\"file_path\": \"src/pages/dashboard/Integracoes.tsx\", \"lines\": \"1-100\"}">
+</lov-tool-use>
+I have enough context. The `/dashboard/integracoes` page is the integrations catalog. The user wants to add contacts manually from there. There's already a `ContactModal` component (used in `/dashboard/contatos`). I'll add a "Contatos" section/card on the Integracoes page that opens the existing ContactModal — minimal and consistent.
 
-## Passo 3 — Enviar mensagem template de teste (saída)
-Como a Meta só permite mensagens de texto livre dentro da janela de 24h após o cliente iniciar contato, o **primeiro envio precisa ser um template aprovado** (ex: `hello_world`):
+<lov-plan>
+## Objetivo
+Adicionar a opção de cadastrar contatos manualmente diretamente em `/dashboard/integracoes`, sem precisar navegar até `/dashboard/contatos`.
 
-Adicionar um botão **"Enviar template de teste"** no card da conexão que chama `meta-whatsapp-send` com:
-```ts
-{ kind: "sendTemplate", connectionId, number: "55XXXXXXXXX", 
-  templateName: "hello_world", templateLanguage: "en_US" }
+## Abordagem
+Reaproveitar o componente já existente `src/components/dashboard/ContactModal.tsx` (mesmo modal usado em Contatos), adicionando uma nova seção no topo da página de Integrações com dois CTAs:
+
+1. **"Adicionar contato manual"** → abre o `ContactModal` (cadastro 1-a-1)
+2. **"Importar em massa (CSV/JSON)"** → link para `/dashboard/contatos` (já existe fluxo de import via `bulk-import-contacts`)
+
+## Mudanças no código
+**Arquivo único:** `src/pages/dashboard/Integracoes.tsx`
+- Importar `ContactModal` e `useState` para controle de abertura.
+- Inserir um card/seção logo abaixo do header da página, antes do grid de catálogo, com título "Contatos" e os dois botões.
+- Renderizar `<ContactModal onClose={...} />` condicionalmente.
+
+Nada de migrations, edge functions ou novas tabelas — o `ContactModal` já faz o `INSERT` em `contacts` com RLS por `user_id` corretamente.
+
+## Layout (resumo)
+```
+[ Header Integrações ]
+┌─────────────────────────────────────────┐
+│  Contatos                               │
+│  Adicione manualmente ou importe CSV    │
+│  [+ Adicionar contato]  [Importar CSV] │
+└─────────────────────────────────────────┘
+[ Grid de catálogo de integrações ... ]
 ```
 
-## Passo 4 — Testar recebimento (entrada)
-Responder no WhatsApp pessoal. A mensagem deve:
-1. Chegar no webhook `meta-whatsapp-webhook`
-2. Ser persistida via `persistInboundWhatsAppMessage`
-3. Aparecer em `/dashboard/inbox`
-
-## Passo 5 — Testar envio livre (após inbound)
-Com a janela de 24h aberta, testar `kind: "sendText"` com mensagem livre pela Inbox.
-
-## Passo 6 — Verificações de saúde
-- Logs da edge `meta-whatsapp-webhook` (deve mostrar payloads recebidos)
-- Tabela `messages` no Supabase (registros inbound/outbound)
-- Card da conexão deve continuar "Conectado" (sem cair para "degraded")
-
-## Detalhes técnicos
-- **O que vou alterar no código**: adicionar botão "Enviar template de teste" no card Meta Cloud em `src/pages/dashboard/WhatsApp.tsx`, com modal simples (número + template name + language) que chama `meta-whatsapp-send` via `supabase.functions.invoke`.
-- **O que NÃO precisa mudar**: webhook, autenticação, persistência — já estão prontos.
-- **Pré-requisito Meta**: template `hello_world` já vem aprovado por padrão em contas novas; se quiser template customizado, precisa criar e aguardar aprovação (~minutos).
-
-## O que você precisa fazer manualmente (fora do código)
-1. Configurar webhook no painel Meta (Passo 1)
-2. Cadastrar seu número pessoal como destinatário de teste (Passo 2)
-3. Me passar o número (formato 55DDDNNNNNNNNN) para preencher o teste — ou eu deixo o campo aberto
+## O que NÃO muda
+- Modal de contato (já testado, normaliza telefone para E.164 BR).
+- Página `/dashboard/contatos` continua sendo o lugar canônico para listagem/busca/import em massa.
+- RLS e schema da tabela `contacts`.
