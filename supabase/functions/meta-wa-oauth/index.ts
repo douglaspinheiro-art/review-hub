@@ -49,13 +49,17 @@ Deno.serve(async (req) => {
 
   try {
     // --- Auth ---
+    // Use service role as apikey to avoid HS256/ES256 mismatch on the gateway;
+    // the user JWT is still validated via getUser() against the Authorization header.
     const authHeader = req.headers.get("authorization") ?? "";
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabase = createClient(supabaseUrl, anonKey, {
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    const { data: claimsData, error: authErr } = await supabase.auth.getClaims(token);
+    const user = claimsData?.claims ? { id: claimsData.claims.sub as string } : null;
     if (authErr || !user) {
       return failure("unauthorized", "Sessão inválida. Faça login novamente.", {
         auth_error: authErr?.message,
@@ -79,7 +83,7 @@ Deno.serve(async (req) => {
     // --- Secrets ---
     const appId = Deno.env.get("META_APP_ID") ?? "";
     const appSecret = Deno.env.get("META_APP_SECRET") ?? "";
-    const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const serviceRole = serviceRoleKey;
     if (!appId || !appSecret) {
       return failure(
         "missing_secrets",
