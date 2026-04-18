@@ -458,7 +458,6 @@ serve(async (req) => {
 
     const storeId = (store as { id?: string } | null)?.id ?? null;
     const cartContextByCustomer = await getLatestCartContextByCustomer(sb, storeId, contacts.map((c) => c.id));
-    const sidAndVariantByCustomer = new Map<string, { sid: string; subject_variant: "a" | "b" }>();
     if (!isTest) {
       const realContacts = contacts.filter((c) => c.id !== "test");
       if (realContacts.length > 0) {
@@ -473,7 +472,6 @@ serve(async (req) => {
               campaign_id,
               customer_id: c.id,
               user_id: userId,
-              subject_variant: abEnabled ? pickAbVariant(c.id) : "a",
               status: "pending",
             })),
             { onConflict: "campaign_id,customer_id", ignoreDuplicates: true },

@@ -45,6 +45,12 @@ const META_MAX_RETRIES = 3;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+function pickAbVariant(contactId: string): "a" | "b" {
+  let h = 0;
+  for (let i = 0; i < contactId.length; i++) h = (h * 31 + contactId.charCodeAt(i)) | 0;
+  return Math.abs(h) % 2 === 0 ? "a" : "b";
+}
+
 function readQueueCap(envName: string, fallback: number, hardMax: number): number {
   const raw = Deno.env.get(envName);
   const n = raw == null || raw === "" ? fallback : Number(raw);
