@@ -94,7 +94,20 @@ async function sendWaWithRetry(
   for (let attempt = 0; attempt < META_MAX_RETRIES; attempt++) {
     try {
       if (metadata.content_type === "template" && metadata.meta_template_name) {
-        return await outboundSendMetaTemplate(waRow, e164, String(metadata.meta_template_name), "pt_BR", [content]);
+        const lang = String(metadata.meta_template_language ?? "pt_BR");
+        // Parameters were resolved (variable substitution) at scheduling time and
+        // serialized in metadata.meta_template_parameters as string[]. Fallback to
+        // the message content as the single body parameter for legacy rows.
+        const rawParams = Array.isArray(metadata.meta_template_parameters)
+          ? (metadata.meta_template_parameters as unknown[]).map((v) => String(v ?? ""))
+          : (content ? [content] : []);
+        return await outboundSendMetaTemplate(
+          waRow,
+          e164,
+          String(metadata.meta_template_name),
+          lang,
+          rawParams,
+        );
       }
       return await outboundSendText(waRow, e164, content);
     } catch (e) {
@@ -124,8 +137,19 @@ type WaMessage = {
   campaign_id: string | null;
   status: string;
   scheduled_for: string;
-  customers_v3: { phone: string };
+  customers_v3: { phone: string; name: string | null; email: string | null };
 };
+
+/** Substitute {{nome}}, {{name}}, {{email}}, {{phone}} placeholders in a string. */
+function substituteContactVars(
+  s: string,
+  customer: { name: string | null; email: string | null; phone: string },
+): string {
+  return s
+    .replace(/\{\{\s*(nome|name)\s*\}\}/gi, customer.name?.trim() || "")
+    .replace(/\{\{\s*email\s*\}\}/gi, customer.email?.trim() || "")
+    .replace(/\{\{\s*(telefone|phone)\s*\}\}/gi, customer.phone || "");
+}
 
 type WaConnection = {
   id: string;
@@ -181,8 +205,20 @@ async function processStoreWaMessages(
         meta_api_version: conn.meta_api_version,
       };
 
-      const metadata = (msg.metadata || {}) as Record<string, unknown>;
-      await sendWaWithRetry(waRow, e164, msg.message_content, metadata);
+      const metadata = { ...((msg.metadata || {}) as Record<string, unknown>) };
+      const customerCtx = {
+        name: msg.customers_v3.name ?? null,
+        email: msg.customers_v3.email ?? null,
+        phone: e164,
+      };
+      // Resolve {{nome}}, {{email}}... placeholders in message + template params at send time
+      const resolvedContent = substituteContactVars(msg.message_content || "", customerCtx);
+      if (Array.isArray(metadata.meta_template_parameters)) {
+        metadata.meta_template_parameters = (metadata.meta_template_parameters as unknown[]).map((p) =>
+          substituteContactVars(String(p ?? ""), customerCtx),
+        );
+      }
+      await sendWaWithRetry(waRow, e164, resolvedContent, metadata);
 
       await supabase
         .from("scheduled_messages")
@@ -440,7 +476,7 @@ serve(async (req) => {
   if (enabledQueues.has("wa")) {
   const { data: pendingWA } = await supabase
     .from("scheduled_messages")
-    .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone)")
+    .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone, name, email)")
     .eq("status", "pending")
     .is("sent_at", null)
     .lte("scheduled_for", now)
