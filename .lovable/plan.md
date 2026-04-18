@@ -1,51 +1,43 @@
 
 
-O erro é claro: o scope `business_management` não está permitido para o seu app Meta como está configurado hoje. Esse scope precisa de **App Review** aprovado pela Meta — sem isso, ele é rejeitado.
+## Diagnóstico
 
-## Por que acontece
+A função edge `meta-wa-oauth` foi chamada e devolveu **HTTP 400** (confirmado em `function_edge_logs`). Mas:
 
-No `src/lib/whatsapp/meta-embedded-signup.ts` (linha ~93) pedimos:
-```
-scope: "whatsapp_business_messaging,whatsapp_business_management,business_management"
-```
+1. O **cliente** (`meta-embedded-signup.ts` → `supabase.functions.invoke`) só recebe `"Edge Function returned a non-2xx status code"` — o body com o motivo real é descartado pelo SDK.
+2. A **edge function** retorna 400 sem nenhum `console.error`, então os logs estão vazios — não dá pra saber qual dos motivos abaixo aconteceu.
 
-`business_management` exige:
-- App em modo **Live**
-- **Advanced Access** aprovado para esse permission (App Review submission)
-- Business Verification concluída
+Os 400 possíveis em `meta-wa-oauth/index.ts`:
+- linha 45: `code` ou `store_id` ausentes no body
+- linha 84: troca do `code` por access_token na Graph API falhou (motivo mais provável — `code` inválido/expirado, `redirect_uri` divergente, `META_APP_ID`/`META_APP_SECRET` errados, ou o app Meta sem `whatsapp` adicionado como produto)
 
-Como o app ainda não tem isso aprovado, a Meta bloqueia o popup com "Invalid Scopes".
+## Correção (defesa em profundidade — 2 arquivos)
 
-A boa notícia: para Embedded Signup do WhatsApp **`business_management` é opcional**. Os scopes mínimos obrigatórios são apenas:
-- `whatsapp_business_messaging`
-- `whatsapp_business_management`
+### 1. `supabase/functions/meta-wa-oauth/index.ts` — instrumentar e devolver 200 com `ok:false`
 
-Esses dois já vêm com **Standard Access** automaticamente quando o produto WhatsApp Business é adicionado ao app — não precisam de App Review para o próprio dono testar.
+Seguindo o padrão do Lovable Stack Overflow (que esta knowledge base sinaliza explicitamente): trocar todos os `return jsonResponse({ error }, 400/403/404/500)` por **status 200** com `{ ok: false, error, code, diagnostics }`. Adicionar `console.error` em cada caminho de falha com tag `META_OAUTH_ERR` + payload da Graph API (sanitizado — sem token).
 
-## Correção (1 arquivo)
+Especificamente no Step 1 (mais provável): logar `tokenRes.status` + `tokenData.error` (que vem da Meta com `type`, `code`, `error_subcode`, `message`) — assim a próxima tentativa diz exatamente o que a Meta reclamou.
 
-**`src/lib/whatsapp/meta-embedded-signup.ts`** — remover `business_management` do scope:
+### 2. `src/lib/whatsapp/meta-embedded-signup.ts` — ler `ok:false` no novo formato
 
-```ts
-scope: "whatsapp_business_messaging,whatsapp_business_management"
-```
+Adaptar o `.then` do `supabase.functions.invoke` pra:
+- se `data.ok === false`, propagar `data.error`/`data.code` em vez de devolver "exchange_failed" genérico
+- toast no `WhatsApp.tsx` já mostra `result.error`, então o usuário passa a ver a mensagem real da Meta (ex.: "Invalid OAuth access token", "App not configured for WhatsApp", etc.)
 
-Resultado: popup abre normalmente, fluxo Embedded Signup completo continua funcionando (descoberta de WABA, phone_number_id, webhook subscribe — tudo isso usa `whatsapp_business_management`, que é suficiente).
+## O que NÃO vou tocar
 
-## O que NÃO muda
+- Lógica de OAuth, scopes, upsert em `whatsapp_connections` — tudo continua igual
+- Não preciso adicionar/rotacionar secrets (eles já existem; o problema é diagnóstico)
+- Não muda `supabase/config.toml`
 
-- `supabase/functions/meta-wa-oauth/index.ts` — não precisa tocar (já funciona com 2 scopes)
-- Configuration do Embedded Signup no Meta Dashboard — manter as 2 permissões obrigatórias; pode remover `business_management` de lá também se estiver listada
-- Nenhuma migração de banco
+## Próximo passo após o fix
 
-## Quando voltar a precisar de `business_management`
+Depois que você clicar de novo em "Conectar com Facebook", o toast vai mostrar a mensagem exata da Meta. As 3 causas mais prováveis e como resolver cada uma:
 
-Só se quiser listar/gerenciar **múltiplos Business Managers** do lojista além do que vem no token. Para o caso de uso "conectar 1 WABA → enviar mensagens", os 2 scopes bastam. Se um dia precisar, faz App Review separadamente.
-
-## Checklist pós-fix
-
-1. Aplicar a mudança no arquivo
-2. Recarregar `/dashboard/whatsapp` e clicar "Conectar com Facebook"
-3. Popup deve abrir pedindo só "WhatsApp Business Messaging" e "WhatsApp Business Management"
-4. Concluir fluxo → linha em `whatsapp_connections` com `provider='meta_cloud'`
+| Mensagem da Meta | Causa | Fix |
+|---|---|---|
+| `Invalid verification code format` | `code` expirou (>10min) ou já foi trocado | tentar de novo |
+| `Invalid OAuth access token` ou `App not configured` | `META_APP_ID`/`META_APP_SECRET` no Supabase ≠ app real | recolocar secrets corretos |
+| `(#100) The parameter app_id is required` | produto WhatsApp não adicionado ao app Meta | adicionar produto "WhatsApp" no Meta dev console |
 
