@@ -205,8 +205,20 @@ async function processStoreWaMessages(
         meta_api_version: conn.meta_api_version,
       };
 
-      const metadata = (msg.metadata || {}) as Record<string, unknown>;
-      await sendWaWithRetry(waRow, e164, msg.message_content, metadata);
+      const metadata = { ...((msg.metadata || {}) as Record<string, unknown>) };
+      const customerCtx = {
+        name: msg.customers_v3.name ?? null,
+        email: msg.customers_v3.email ?? null,
+        phone: e164,
+      };
+      // Resolve {{nome}}, {{email}}... placeholders in message + template params at send time
+      const resolvedContent = substituteContactVars(msg.message_content || "", customerCtx);
+      if (Array.isArray(metadata.meta_template_parameters)) {
+        metadata.meta_template_parameters = (metadata.meta_template_parameters as unknown[]).map((p) =>
+          substituteContactVars(String(p ?? ""), customerCtx),
+        );
+      }
+      await sendWaWithRetry(waRow, e164, resolvedContent, metadata);
 
       await supabase
         .from("scheduled_messages")
