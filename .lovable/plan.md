@@ -1,55 +1,39 @@
 
+## Ideia: Paywall blur nos Problemas Prioritários
 
-## Root cause
+Boa estratégia de conversão — mostra valor (lista existe, IA já analisou) mas trava o detalhe acionável atrás do upgrade. Padrão usado por Semrush, Ahrefs, etc.
 
-Edge `gerar-diagnostico` falha com `Failed to fetch` (visto no network log). Duas causas combinadas em `supabase/functions/gerar-diagnostico/index.ts`:
+## Proposta
 
-1. `validateBrowserOrigin(req)` é chamado **antes** do `if (req.method === "OPTIONS")`. Como o secret `ALLOWED_ORIGIN` não está configurado (ou não bate com o origin atual da preview Lovable), o **preflight CORS** retorna 500/403 sem `Access-Control-Allow-Origin` → o browser mostra `Failed to fetch`.
-2. Sem chamada bem-sucedida → nenhuma linha em `diagnostics_v3` → `/resultado` faz polling 45× e fica preso em "Carregando seu diagnóstico…" para sempre (não há timeout/fallback).
+Em `/resultado`, na seção "Problemas Prioritários":
+- **1º problema:** visível 100% (prova que a análise é real)
+- **2º e 3º problemas:** renderizados normalmente, mas com `blur-sm` + overlay escuro + cadeado central
+- **Overlay CTA:** "Desbloqueie os outros 2 gargalos críticos · R$ X em receita perdida identificada" + botão "Desbloquear diagnóstico completo"
 
-Outras edges no projeto têm o mesmo padrão problemático, mas o foco aqui é destravar `/resultado`.
+O botão usa o mesmo fluxo do CTA principal já existente (Mercado Pago checkout do plano recomendado).
 
-## Fix
+## Implementação
 
-### 1. `supabase/functions/gerar-diagnostico/index.ts`
-- Mover OPTIONS para **antes** de qualquer validação (preflight sempre retorna 200 com `corsHeaders`).
-- Tornar `validateBrowserOrigin` **opcional**: se `ALLOWED_ORIGIN` não estiver configurado, apenas log warning e segue (em vez de 500). Isso evita travar o produto quando o secret não foi populado na preview Lovable.
+Arquivo único: `src/pages/Resultado.tsx`
 
-```ts
-serve(async (req) => {
-  // CORS preflight FIRST — sempre 200
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  // Origin check (não bloqueia se ALLOWED_ORIGIN ausente)
-  const originCheck = validateBrowserOrigin(req);
-  if (originCheck) return originCheck;
-  ...
-});
-```
+1. Identificar onde os problemas são mapeados (`.map`)
+2. Para `index >= 1`, envolver o `ProblemCard` em `<div class="relative">` com:
+   - filho com `filter blur-sm pointer-events-none select-none`
+   - `<div class="absolute inset-0">` com gradiente + ícone `Lock`
+3. Acima do bloco bloqueado, um único overlay-CTA centralizado (não um por card — fica mais limpo) com:
+   - Headline: "Veja os outros N gargalos identificados"
+   - Subtext com soma de `impacto_estimado` dos bloqueados
+   - Botão verde reusando o handler de checkout existente
 
-E em `_shared/edge-utils.ts → validateBrowserOrigin`:
-```ts
-const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN");
-if (!allowedOrigin) {
-  console.warn("ALLOWED_ORIGIN not set — skipping origin validation");
-  return null;
-}
-```
+## Detalhes visuais (alinhado ao dark minimal)
 
-### 2. `src/pages/Resultado.tsx` — fallback de UX
-Se após 45 tentativas (~45s) ainda não houver diagnóstico:
-- `setLoading(false)` + `setMissingDiagnostic(true)` (estado já existe).
-- Mostrar card com mensagem "Não conseguimos gerar seu diagnóstico" + botão **"Tentar novamente"** (volta para `/analisando`) e **"Voltar para o diagnóstico"** (`/diagnostico`).
-
-Verificar se o branch `missingDiagnostic` já está renderizado no JSX; caso não, adicionar.
-
-## Arquivos
-
-- `supabase/functions/gerar-diagnostico/index.ts` — reordenar OPTIONS antes de origin check
-- `supabase/functions/_shared/edge-utils.ts` — `validateBrowserOrigin` tolerante a `ALLOWED_ORIGIN` ausente (afeta todas as edges que usam, mas muda só o comportamento quando o secret falta — produção continua segura se o secret estiver definido)
-- `src/pages/Resultado.tsx` — fallback de UI quando polling esgota
+- Blur: `blur-[6px]` + `opacity-60`
+- Overlay: `bg-gradient-to-b from-transparent via-[#0A0A0F]/80 to-[#0A0A0F]`
+- Ícone: `Lock` Lucide, `text-emerald-500`
+- CTA: mesmo estilo do botão principal (emerald, font-black, tracking-widest)
 
 ## Fora de escopo
 
-- Não vamos definir `ALLOWED_ORIGIN` agora (a preview Lovable usa origin dinâmico). Em produção (`ltvboost.com.br`), basta setar o secret no Dashboard Supabase.
-- Não vamos refatorar todas as outras edges com o mesmo bug — só `gerar-diagnostico` (a do bloqueio atual). As demais podem ser ajustadas em sequência se aparecerem sintomas.
-
+- Não muda a edge `gerar-diagnostico` (continua retornando todos os problemas)
+- Não muda persistência — bloqueio é puramente visual no client
+- Sem A/B test agora; se quiser medir, adicionamos `analytics-events` depois
