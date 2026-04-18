@@ -462,6 +462,8 @@ export default function WhatsApp() {
         variant: "destructive",
       }),
   });
+
+  const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("whatsapp_connections")
