@@ -115,9 +115,9 @@ serve(async (req) => {
     }
 
     const phoneId = (conn as { meta_phone_number_id?: string | null }).meta_phone_number_id;
-    const token = (conn as { meta_access_token?: string | null }).meta_access_token;
+    const metaToken = (conn as { meta_access_token?: string | null }).meta_access_token;
     const apiVer = (conn as { meta_api_version?: string | null }).meta_api_version ?? "v21.0";
-    if (!phoneId?.trim() || !token?.trim()) {
+    if (!phoneId?.trim() || !metaToken?.trim()) {
       return errorResponse("Meta não configurado para esta conexão", 400);
     }
 
