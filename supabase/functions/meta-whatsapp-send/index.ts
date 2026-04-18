@@ -66,7 +66,7 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("authorization");
-    if (!authHeader) return errorResponse("Unauthorized", 401);
+    if (!authHeader?.startsWith("Bearer ")) return errorResponse("Unauthorized", 401);
 
     const parsedReq = await validateRequest(req, { method: "POST", maxBytes: 64 * 1024, schema: BodySchema });
     if (!parsedReq.ok) return parsedReq.response;
@@ -74,10 +74,12 @@ serve(async (req) => {
     const body = parsedReq.data;
     const { connectionId, kind } = body;
 
+    const token = authHeader.replace(/^Bearer\s+/i, "");
     const userClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    const { data: claimsData, error: authError } = await userClient.auth.getClaims(token);
+    const user = claimsData?.claims?.sub ? { id: claimsData.claims.sub as string } : null;
     if (authError || !user) return errorResponse("Unauthorized", 401);
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
