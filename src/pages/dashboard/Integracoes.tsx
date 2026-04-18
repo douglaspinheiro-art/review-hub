@@ -882,6 +882,8 @@ export default function Integracoes() {
         Em produção, faça deploy das edges <code className="rounded bg-muted px-1">validate-integration</code> e{" "}
         <code className="rounded bg-muted px-1">post-integration-setup</code> (JWT ativo no dashboard).
       </p>
+
+      {contactModalOpen && <ContactModal onClose={() => setContactModalOpen(false)} />}
     </div>
   );
 }
