@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     // --- Secrets ---
     const appId = Deno.env.get("META_APP_ID") ?? "";
     const appSecret = Deno.env.get("META_APP_SECRET") ?? "";
-    const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const serviceRole = serviceRoleKey;
     if (!appId || !appSecret) {
       return failure(
         "missing_secrets",
