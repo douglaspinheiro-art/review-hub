@@ -707,7 +707,7 @@ export default function WhatsApp() {
         </div>
       ) : (
         <div className="space-y-6">
-          {healthSummary.recent_errors.length > 0 && (
+          {(healthSummary?.recent_errors?.length ?? 0) > 0 && (
             <Card className="p-4 bg-muted/30 border border-border/50 rounded-xl">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
                 <AlertCircle className="w-3 h-3 text-red-500" /> Logs de erro recentes
