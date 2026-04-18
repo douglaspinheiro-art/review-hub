@@ -936,6 +936,22 @@ export default function WhatsApp() {
                 )}
 
                 <div className="flex items-center gap-2 justify-end border-t pt-3">
+                  {conn.status === "connected" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 h-8"
+                      onClick={() => {
+                        setTestSendNumber("");
+                        setTestSendTemplate("hello_world");
+                        setTestSendLanguage("en_US");
+                        setTestSendTarget({ id: conn.id, name: conn.instance_name });
+                      }}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Enviar template de teste
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
