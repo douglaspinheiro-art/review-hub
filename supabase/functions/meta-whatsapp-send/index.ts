@@ -123,7 +123,7 @@ serve(async (req) => {
 
     if (kind === "verify") {
       try {
-        const info = await metaGraphFetchPhoneNumber(phoneId, token, apiVer);
+        const info = await metaGraphFetchPhoneNumber(phoneId, metaToken, apiVer);
         const { error: upErr } = await admin
           .from("whatsapp_connections")
           .update({
@@ -179,12 +179,12 @@ serve(async (req) => {
       const text = body.text ?? "";
       if (!text.trim()) return errorResponse("text obrigatório", 400);
       try {
-        data = await metaGraphSendText(phoneId, token, body.number, text, apiVer);
+        data = await metaGraphSendText(phoneId, metaToken, body.number, text, apiVer);
       } catch (first) {
         const { retryable } = metaErrorRetryHint(first);
         if (!retryable) throw first;
         await sleep(800);
-        data = await metaGraphSendText(phoneId, token, body.number, text, apiVer);
+        data = await metaGraphSendText(phoneId, metaToken, body.number, text, apiVer);
       }
     } else {
       const name = body.templateName?.trim();
@@ -192,7 +192,7 @@ serve(async (req) => {
       try {
         data = await metaGraphSendTemplate(
           phoneId,
-          token,
+          metaToken,
           body.number,
           name,
           body.templateLanguage ?? "pt_BR",
@@ -205,7 +205,7 @@ serve(async (req) => {
         await sleep(800);
         data = await metaGraphSendTemplate(
           phoneId,
-          token,
+          metaToken,
           body.number,
           name,
           body.templateLanguage ?? "pt_BR",
