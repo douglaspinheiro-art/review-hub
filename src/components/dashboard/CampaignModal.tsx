@@ -713,7 +713,15 @@ export default function CampaignModal({
   const nextStep = async () => {
     if (step === 0) {
       const valid = await trigger(["name", "channel", "objective"] as const);
-      if (!valid) return;
+      if (!valid) {
+        const msg =
+          errors.name?.message ||
+          errors.channel?.message ||
+          errors.objective?.message ||
+          "Preencha nome (mín. 3 caracteres), canal e objetivo para continuar.";
+        toast({ title: String(msg), variant: "destructive" });
+        return;
+      }
       setStep(s => s + 1);
       return;
     }
@@ -733,7 +741,11 @@ export default function CampaignModal({
     }
     if (step === STEP_MENSAGEM) {
       const valid = await trigger(["message"] as const);
-      if (!valid) return;
+      if (!valid) {
+        const msg = errors.message?.message || "Escreva uma mensagem com pelo menos 10 caracteres.";
+        toast({ title: String(msg), variant: "destructive" });
+        return;
+      }
     }
     setStep(s => s + 1);
   };
