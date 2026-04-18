@@ -464,7 +464,7 @@ serve(async (req) => {
   if (enabledQueues.has("wa")) {
   const { data: pendingWA } = await supabase
     .from("scheduled_messages")
-    .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone)")
+    .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone, name, email)")
     .eq("status", "pending")
     .is("sent_at", null)
     .lte("scheduled_for", now)
