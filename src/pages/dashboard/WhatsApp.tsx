@@ -650,6 +650,18 @@ export default function WhatsApp() {
                 />
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="create-meta-waba">WABA ID</Label>
+                <Input
+                  id="create-meta-waba"
+                  placeholder="ID da WhatsApp Business Account"
+                  value={metaWabaId}
+                  onChange={(e) => setMetaWabaId(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Encontre em Meta Business Manager → WhatsApp Accounts.
+                </p>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="create-meta-token">Access token</Label>
                 <Input
                   id="create-meta-token"
