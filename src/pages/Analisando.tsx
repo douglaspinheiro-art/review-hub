@@ -62,6 +62,18 @@ export default function Analisando() {
       const userId = sessionData.session?.user?.id;
       if (!userId) return;
 
+      // Guard: paid users should never sit on /analisando — send them straight to dashboard.
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("subscription_status")
+        .eq("id", userId)
+        .maybeSingle();
+      if ((profileRow as { subscription_status?: string } | null)?.subscription_status === "active") {
+        navigatedToResultadoRef.current = true;
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
       // 1. Listen for real diagnostic result
       channelRef = supabase
         .channel(`diagnosticos-${userId}`)

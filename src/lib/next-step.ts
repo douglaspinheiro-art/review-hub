@@ -21,8 +21,9 @@ export interface NextStepInput {
  */
 export function getNextStep({ profile, hasDiagnostic }: NextStepInput): NextStepRoute {
   if (!profile) return "/onboarding";
+  // Paid users skip the funnel entirely — go straight to dashboard.
+  if (profile.subscription_status === "active") return "/dashboard";
   if (!profile.onboarding_completed) return "/onboarding";
   if (!hasDiagnostic) return "/analisando";
-  if (profile.subscription_status !== "active") return "/resultado";
-  return "/dashboard";
+  return "/resultado";
 }
