@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import {
   CreditCard, Zap, Check, ArrowRight, TrendingUp, Sparkles, X, Loader2, AlertCircle,
+  MessageCircle, Mail, Smartphone,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
