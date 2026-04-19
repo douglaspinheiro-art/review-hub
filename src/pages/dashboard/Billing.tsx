@@ -379,6 +379,71 @@ export default function Billing() {
         </div>
       </div>
 
+      {/* Pacotes adicionais de mensagens */}
+      <div className="bg-card border rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <h2 className="font-semibold">Pacotes adicionais de mensagens</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Compre pacotes avulsos para complementar o que está incluso no seu plano. Ideal para campanhas pontuais ou picos sazonais.
+        </p>
+
+        {([
+          { key: "wa", label: "WhatsApp", icon: MessageCircle, color: "text-emerald-500", bundles: BUNDLES.wa, unit: "msg" },
+          { key: "email", label: "E-mail", icon: Mail, color: "text-blue-500", bundles: BUNDLES.email, unit: "e-mail" },
+          { key: "sms", label: "SMS", icon: Smartphone, color: "text-amber-500", bundles: BUNDLES.sms, unit: "SMS" },
+        ] as const).map(({ key, label, icon: Icon, color, bundles, unit }) => (
+          <div key={key} className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Icon className={cn("w-4 h-4", color)} />
+              <h3 className="font-semibold text-sm">{label}</h3>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3">
+              {bundles.map((b) => {
+                const unitPrice = b.price / b.qty;
+                return (
+                  <div key={b.id} className="border rounded-lg p-3 space-y-2 bg-background/40">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-sm">{b.name}</p>
+                      <Badge variant="outline" className="text-[10px]">{b.qty.toLocaleString("pt-BR")}</Badge>
+                    </div>
+                    <p className="text-lg font-black">
+                      R$ {b.price.toLocaleString("pt-BR")}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      ≈ R$ {unitPrice.toFixed(unitPrice < 0.1 ? 4 : 2).replace(".", ",")} / {unit}
+                    </p>
+                    {supportWaE164 ? (
+                      <a
+                        href={`https://wa.me/${supportWaE164}?text=${encodeURIComponent(`Quero comprar o pacote ${b.name} (${label}) no LTV Boost`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button size="sm" variant="outline" className="w-full text-xs gap-1 font-bold">
+                          Comprar <ArrowRight className="w-3 h-3" />
+                        </Button>
+                      </a>
+                    ) : (
+                      <Button size="sm" variant="outline" className="w-full text-xs gap-1 font-bold" onClick={() => navigate("/dashboard/planos")}>
+                        Comprar <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        <div className="text-[11px] text-muted-foreground border-t border-border/50 pt-3 space-y-1">
+          <p className="font-semibold text-foreground">Excedentes (sem pacote contratado):</p>
+          <p>
+            WhatsApp R$ {WA_EXCESS_PRICE.toFixed(2).replace(".", ",")}/msg · E-mail R$ {EMAIL_EXCESS_PRICE.toFixed(3).replace(".", ",")}/envio · SMS R$ {SMS_EXCESS_PRICE.toFixed(2).replace(".", ",")}/msg
+          </p>
+        </div>
+      </div>
+
       {/* Revenue Share Model Info */}
       <div className="bg-gradient-to-br from-primary/10 to-transparent border border-primary/20 rounded-xl p-5 space-y-4">
         <div className="flex items-center gap-2">
