@@ -1,45 +1,51 @@
 
 
-## Resposta direta
+## Diagnóstico
 
-Olhando seu screenshot: você está com **"TEMPLATE APROVADO"** selecionado (card destacado em verde) e o template `hello_world - en_US` escolhido.
+Olhando `src/lib/next-step.ts`, a regra está correta:
+```
+active → /dashboard
+```
 
-**Será enviado o TEMPLATE APROVADO** (`hello_world`), com o texto:
-> "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us."
+Mas o problema provável: usuários com plano ativo estão sendo enviados para `/analisando` (que vem antes da checagem de assinatura na cadeia). Isso só aconteceria se `hasDiagnostic = false` — ou seja, a query de `diagnostics_v3` falha/retorna vazio mesmo para quem já tem.
 
-**O texto que você escreveu** ("Oi {{nome}}! Aqui é o Douglas...") **será IGNORADO** porque, quando "Template Aprovado" está ativo, o worker (`process-scheduled-messages`) chama `sendTemplate` com o nome do template e seus parâmetros — o conteúdo do textarea só é usado quando o tipo é "Texto Livre (24h)".
+Preciso verificar dois pontos:
 
-## Por que isso acontece
+1. **`Analisando.tsx`** — ele tem fallback de 25s que sempre vai pra `/resultado`, sem checar se o user já é pago.
+2. **`Login.tsx` / `Signup.tsx`** — para onde redirecionam após autenticar.
+3. **`getPostLoginRoute`** — só consulta `diagnostics_v3`, não considera que paid users devem pular tudo.
 
-O texto do template é **fixo na Meta** — foi o que eles aprovaram. Você só pode:
-1. Escolher qual template usar
-2. Preencher as variáveis `{{1}}`, `{{2}}`... que o template define no corpo
+A correção mais limpa: em `getNextStep`, **se `subscription_status === "active"`, vai direto para `/dashboard`** — independente de onboarding/diagnóstico. Quem pagou não deveria ser barrado por etapas anteriores.
 
-O `hello_world` é um template padrão da Meta **sem variáveis** e em **inglês** — por isso não tem onde encaixar seu "Oi {{nome}}".
+## Plano
 
-## Problema de UX detectado
+### 1. `src/lib/next-step.ts`
+Adicionar short-circuit no topo: se `profile.subscription_status === "active"` → retorna `/dashboard` imediatamente, antes de checar onboarding/diagnóstico.
 
-A UI está confusa: mostra dois conteúdos diferentes ao mesmo tempo (textarea livre em cima + template embaixo) sem deixar claro qual vence. Vou propor melhorias:
+```ts
+export function getNextStep({ profile, hasDiagnostic }: NextStepInput): NextStepRoute {
+  if (!profile) return "/onboarding";
+  // Paid users skip funnel — go straight to dashboard.
+  if (profile.subscription_status === "active") return "/dashboard";
+  if (!profile.onboarding_completed) return "/onboarding";
+  if (!hasDiagnostic) return "/analisando";
+  return "/resultado";
+}
+```
 
-### Plano de ajuste de clareza na UI
+### 2. `src/pages/Analisando.tsx`
+Guard no topo do `useEffect`: se o usuário já é `subscription_status === "active"`, redireciona imediatamente para `/dashboard` (cobre o caso de alguém colar a URL ou ficar preso aqui).
 
-1. **Esconder/desabilitar o textarea livre** quando "Template Aprovado" estiver selecionado
-   - Substituir por um aviso: "✓ Será enviado o template aprovado abaixo. O texto livre não se aplica."
-2. **Esconder a biblioteca de templates salvos e o botão "Gerar variação A/B"** no modo Template (eles só fazem sentido para texto livre)
-3. **Destacar a pré-visualização** como "✉️ Mensagem que o cliente vai receber" em verde, deixando óbvio que é o conteúdo final
-4. **Avisar sobre o template `hello_world`**: ele é em inglês e serve só para teste. Adicionar dica: "💡 Crie templates em português no Meta Business Manager para campanhas reais"
-5. **Para usar variáveis com nome do cliente**: você precisa criar um template no Meta Business Manager tipo:
-   > "Olá {{1}}! Aqui é a {{2}}, temos uma oferta especial..."
-   
-   Aí no LTV Boost você preencheria `{{1}}` = `{{nome}}` (do contato) e `{{2}}` = "LTV Boost"
+### 3. `src/pages/Login.tsx`
+Verificar e garantir que após `signIn` chama `getPostLoginRoute()` (em vez de hardcoded `/dashboard` ou `/onboarding`). Se já estiver fazendo isso, a mudança em #1 resolve sozinha.
 
 ## Arquivos afetados
 
-- `src/components/dashboard/CampaignModal.tsx` — esconder textarea/biblioteca/A-B quando modo = template; reorganizar ordem visual (toggle no topo, conteúdo abaixo)
+- `src/lib/next-step.ts` — adicionar short-circuit para `active`
+- `src/pages/Analisando.tsx` — guard de redirecionamento para paid users
+- `src/pages/Login.tsx` — verificar/ajustar redirect pós-login (se necessário)
 
 ## Resultado esperado
 
-Ao escolher "Template Aprovado", a tela mostra **apenas** o seletor de template + variáveis + preview — sem textarea solto causando confusão sobre qual mensagem é enviada.
-
-Quer que eu aplique esses ajustes de UX?
+Login com plano ativo → `/dashboard` direto, sem passar por `/analisando` nem `/resultado`. Funciona mesmo se o profile não tiver `onboarding_completed = true` ou diagnóstico salvo.
 
