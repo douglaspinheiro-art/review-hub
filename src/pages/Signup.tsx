@@ -1,26 +1,18 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2, MessageSquare, Sparkles, CheckCircle2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { ECOMMERCE_PLATFORMAS } from "@/lib/ecommerce-platforms";
 
 const schema = z.object({
-  full_name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("E-mail inválido"),
   password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
-  whatsapp: z
-    .string()
-    .min(10, "WhatsApp inválido")
-    .regex(/^[\d\s()+-]+$/, "Use apenas números, espaços, parênteses, + ou -"),
-  plataforma: z.string().min(1, "Selecione sua plataforma"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -44,16 +36,18 @@ export default function Signup() {
     }
   }, [user, authLoading, navigate]);
 
-  const { register, handleSubmit, control, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
   async function onSubmit(data: FormData) {
     setLoading(true);
+    // Minimal signup: only email + password. Name, WhatsApp and platform are
+    // captured later in /onboarding (lower friction = higher conversion).
+    // We pass an empty full_name so downstream triggers (handle_new_user) don't break;
+    // user fills it in onboarding step 1.
     const { error } = await signUp(data.email, data.password, {
-      full_name: data.full_name,
-      plataforma: data.plataforma,
-      whatsapp: data.whatsapp,
+      full_name: "",
       ...(isPilot ? { pilot: true } : {}),
     });
     setLoading(false);
@@ -78,7 +72,7 @@ export default function Signup() {
             <MessageSquare className="w-8 h-8 fill-primary" />
             LTV Boost
           </div>
-          
+
           {perda ? (
             <div className="space-y-6">
               <div className="space-y-2">
@@ -87,7 +81,7 @@ export default function Signup() {
                   <span className="text-red-500 italic">R$ {Number(perda).toLocaleString('pt-BR')}</span>/mês.
                 </h2>
                 <p className="text-muted-foreground font-medium">
-                  Seu diagnóstico personalizado está pronto. Só precisamos de alguns dados para criar seu painel.
+                  Seu diagnóstico personalizado está pronto. Crie sua conta em 10 segundos para acessar.
                 </p>
               </div>
               <div className="bg-white dark:bg-card border rounded-2xl p-6 shadow-sm space-y-4">
@@ -109,7 +103,7 @@ export default function Signup() {
                 Aumente o lucro da sua loja com <span className="text-primary italic">IA.</span>
               </h2>
               <p className="text-muted-foreground font-medium">
-                Monitore, prescreva e execute ações de recuperação em todos os seus canais de venda.
+                Crie sua conta em 10 segundos. Configure sua loja depois.
               </p>
             </div>
           )}
@@ -157,7 +151,7 @@ export default function Signup() {
         </div>
       </div>
 
-      {/* Right Side: Form */}
+      {/* Right Side: Form (minimal — 2 fields only) */}
       <div className="flex-1 flex items-center justify-center p-6 bg-card md:bg-background">
         <div className="w-full max-w-sm space-y-8">
           <div className="space-y-1">
@@ -165,7 +159,7 @@ export default function Signup() {
               <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[9px] font-black">1</span>
               Passo 1 de 3 — Criar conta
             </div>
-            <h1 className="text-3xl font-black font-syne tracking-tighter">Faça seu diagnóstico grátis</h1>
+            <h1 className="text-3xl font-black font-syne tracking-tighter">Comece em 10 segundos</h1>
             <p className="text-muted-foreground text-sm font-medium">
               Já tem conta?{" "}
               <Link to="/login" className="text-primary hover:underline font-bold">
@@ -176,24 +170,13 @@ export default function Signup() {
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="full_name" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Seu nome</Label>
-              <Input
-                id="full_name"
-                placeholder="João Silva"
-                className="h-12 rounded-xl bg-muted/30 border-border/50"
-                {...register("full_name")}
-              />
-              {errors.full_name && (
-                <p className="text-xs text-destructive font-bold">{errors.full_name.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">E-mail de acesso</Label>
+              <Label htmlFor="email" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">E-mail</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="voce@empresa.com"
+                autoComplete="email"
+                autoFocus
                 className="h-12 rounded-xl bg-muted/30 border-border/50"
                 {...register("email")}
               />
@@ -203,48 +186,12 @@ export default function Signup() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="whatsapp" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">WhatsApp</Label>
-              <Input
-                id="whatsapp"
-                type="tel"
-                placeholder="(11) 98765-4321"
-                className="h-12 rounded-xl bg-muted/30 border-border/50"
-                {...register("whatsapp")}
-              />
-              {errors.whatsapp && (
-                <p className="text-xs text-destructive font-bold">{errors.whatsapp.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Sua plataforma</Label>
-              <Controller
-                name="plataforma"
-                control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-12 rounded-xl bg-muted/30 border-border/50 font-medium">
-                      <SelectValue placeholder="Shopify, Nuvemshop, VTEX..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ECOMMERCE_PLATFORMAS.map((p) => (
-                        <SelectItem key={p} value={p}>{p}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errors.plataforma && (
-                <p className="text-xs text-destructive font-bold">{errors.plataforma.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
               <Label htmlFor="password" title="Mínimo 8 caracteres" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Senha</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder="Mínimo 8 caracteres"
+                autoComplete="new-password"
                 className="h-12 rounded-xl bg-muted/30 border-border/50"
                 {...register("password")}
               />
@@ -254,8 +201,12 @@ export default function Signup() {
             </div>
 
             <Button type="submit" className="w-full h-14 text-lg font-black bg-primary text-primary-foreground rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all" disabled={loading}>
-              {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : "Fazer diagnóstico grátis →"}
+              {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : "Criar conta e ver diagnóstico →"}
             </Button>
+
+            <p className="text-center text-[11px] text-muted-foreground font-medium">
+              Você configura sua loja na próxima tela.
+            </p>
           </form>
 
           <p className="text-center text-[10px] text-muted-foreground font-medium px-6">
