@@ -467,6 +467,24 @@ export default function Resultado() {
         {/* Inline checkout — 3 plans, monthly/annual toggle, recommended highlighted */}
         {!isActive && diagnostic && (
           <div id="planos-inline" className="space-y-8 scroll-mt-20">
+            {/* Price anchor — ROI vs perda mensal */}
+            {perdaMensal > 0 && (() => {
+              const planPrice = recommendedPlan.base;
+              const ratio = Math.max(1, Math.round(perdaMensal / planPrice));
+              const paybackDays = Math.max(1, Math.round((planPrice / perdaMensal) * 30));
+              return (
+                <div className="bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/30 rounded-3xl p-6 md:p-8 text-center space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500/80">Faça as contas</p>
+                  <p className="text-lg md:text-2xl font-bold leading-snug max-w-3xl mx-auto">
+                    Você está perdendo <span className="text-red-500 font-black">R$ {perdaMensal.toLocaleString("pt-BR")}/mês</span>. O {recommendedPlan.name} custa <span className="text-emerald-500 font-black">R$ {planPrice.toLocaleString("pt-BR")}/mês</span> — <span className="font-black">{ratio}x menos</span>.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Payback estimado em <span className="text-white font-bold">{paybackDays} dia{paybackDays > 1 ? "s" : ""}</span> · cada dia sem agir custa <span className="text-red-500 font-bold">R$ {Math.round(perdaMensal / 30).toLocaleString("pt-BR")}</span>
+                  </p>
+                </div>
+              );
+            })()}
+
             <div className="text-center space-y-3">
               <Badge className="bg-primary/20 text-primary border-none text-[10px] font-black tracking-widest uppercase">
                 Recomendamos {recommendedPlan.name} para sua loja
