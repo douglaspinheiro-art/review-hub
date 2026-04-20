@@ -27,8 +27,15 @@ export default function Hero() {
     const receita = REVENUE_RANGES[faixa] || 0;
     const ticketNum = Number(ticket) || 0;
     if (receita === 0 || ticketNum === 0) return 0;
-    // Estimativa: ~12% da receita está "vazando" em CRO + retenção (média de mercado)
-    return Math.round(receita * 0.12);
+    // Eficiência por ticket: tickets fora do "sweet spot" (R$150–400) vazam mais
+    const ticketEfficiency =
+      ticketNum < 80 ? 1.35 :
+      ticketNum < 150 ? 1.15 :
+      ticketNum < 400 ? 1.0 :
+      ticketNum < 800 ? 0.9 : 0.8;
+    // Base: 12% da receita vaza em CRO + retenção, ajustado pelo ticket
+    const perdaBase = receita * 0.12 * ticketEfficiency;
+    return Math.max(0, Math.round(perdaBase / 100) * 100);
   }, [faixa, ticket]);
 
   const showResult = perda > 0;
