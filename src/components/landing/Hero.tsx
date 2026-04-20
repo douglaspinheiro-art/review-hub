@@ -28,13 +28,13 @@ export default function Hero() {
     const ticketNum = Number(ticket) || 0;
     if (receita === 0 || ticketNum === 0) return 0;
 
-    // Fórmula ancorada em benchmark: CVR média BR (1.4%) vs top-quartil (2.5%)
+    // CVR média BR vs uplift atingível em 6 meses (não top-quartil teórico)
     const CVR_ATUAL = 0.014;
-    const CVR_BENCHMARK = 0.025;
+    const CVR_ALCANCAVEL = 0.020;
 
     const pedidosAtuais = receita / ticketNum;
     const visitantes = pedidosAtuais / CVR_ATUAL;
-    const pedidosPotenciais = visitantes * CVR_BENCHMARK;
+    const pedidosPotenciais = visitantes * CVR_ALCANCAVEL;
 
     // Ajuste por faixa de ticket (fricção/ciclo de venda)
     const ticketAdjust =
@@ -43,8 +43,11 @@ export default function Hero() {
       ticketNum < 400 ? 1.0 :
       ticketNum < 800 ? 1.05 : 1.10;
 
-    const perdaBase = (pedidosPotenciais - pedidosAtuais) * ticketNum * ticketAdjust;
-    return Math.max(0, Math.round(perdaBase / 100) * 100);
+    const perdaBruta = (pedidosPotenciais - pedidosAtuais) * ticketNum * ticketAdjust;
+
+    // CAP: perda nunca passa de 30% da receita (limite de mercado — Baymard/Forrester)
+    const perdaCapped = Math.min(perdaBruta, receita * 0.30);
+    return Math.max(0, Math.round(perdaCapped / 100) * 100);
   }, [faixa, ticket]);
 
   const showResult = perda > 0;
