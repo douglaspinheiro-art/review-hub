@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Star, Bell, TrendingUp, ShoppingCart, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Star, ShoppingCart, CheckCircle2, Sparkles, AlertTriangle } from "lucide-react";
 
 export default function Hero() {
   return (
@@ -53,46 +53,56 @@ export default function Hero() {
             </div>
           </div>
 
-          {/* Dashboard mockup */}
+          {/* Diagnóstico card (substitui mockup genérico) */}
           <div className="relative">
             <div className="absolute -inset-8 bg-primary/10 blur-[80px] rounded-full opacity-40" />
-            
-            {/* Main dashboard card */}
+
             <div className="relative bg-card border border-border/50 rounded-2xl p-6 shadow-2xl">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-5">
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                Diagnóstico da loja
+              </div>
+
+              <div className="flex items-start justify-between gap-4 mb-6">
                 <div>
-                  <p className="text-xs text-muted-foreground font-medium">Receita influenciada</p>
-                  <p className="text-2xl font-display font-bold text-primary">R$ 847.320</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Score</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-display font-extrabold text-foreground leading-none">68</span>
+                    <span className="text-sm text-muted-foreground">/100</span>
+                  </div>
+                  <span className="inline-block mt-2 text-[10px] font-bold px-2 py-0.5 rounded-md bg-yellow-500/15 text-yellow-500 uppercase tracking-wider">Regular</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-primary text-sm font-semibold bg-primary/10 px-3 py-1 rounded-full">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  +34.2%
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Você está perdendo</p>
+                  <p className="text-2xl font-display font-extrabold text-destructive leading-tight">R$ 7.856</p>
+                  <p className="text-[11px] text-muted-foreground">/mês</p>
                 </div>
               </div>
-              
-              {/* Mini chart bars */}
-              <div className="flex items-end gap-1.5 h-24 mb-4">
-                {[35, 48, 42, 65, 58, 78, 72, 88, 82, 95, 90, 100].map((h, i) => (
-                  <div key={i} className="flex-1 bg-gradient-to-t from-primary/60 to-primary rounded-t-sm" style={{ height: `${h}%` }} />
-                ))}
-              </div>
-              
-              <div className="grid grid-cols-3 gap-3">
+
+              <div className="grid grid-cols-3 gap-2 mb-5">
                 {[
-                  { label: "Conversão", value: "4.8%", change: "+1.2%" },
-                  { label: "Ticket Médio", value: "R$312", change: "+8%" },
-                  { label: "Recompra", value: "67%", change: "+23%" },
+                  { label: "Sua CVR", value: "1,40%" },
+                  { label: "Benchmark", value: "2,50%" },
+                  { label: "Perda/dia", value: "R$ 262" },
                 ].map(m => (
                   <div key={m.label} className="bg-secondary/50 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.label}</p>
+                    <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{m.label}</p>
                     <p className="text-sm font-bold mt-0.5">{m.value}</p>
-                    <p className="text-[10px] text-primary font-semibold">{m.change}</p>
                   </div>
                 ))}
               </div>
+
+              <div className="bg-primary/10 border border-primary/20 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Sparkles className="w-3 h-3 text-primary" />
+                  <span className="text-[10px] font-bold tracking-[0.15em] uppercase text-primary">Análise da IA</span>
+                </div>
+                <p className="text-[12px] text-foreground/80 leading-relaxed">
+                  Seu checkout converte 44% abaixo do benchmark. Recupere até <span className="text-primary font-semibold">R$ 5.800/mês</span> com 3 ações prioritárias.
+                </p>
+              </div>
             </div>
 
-            {/* Floating notification cards */}
             <div className="absolute -top-4 -right-4 bg-card border border-border/50 rounded-xl px-4 py-3 shadow-xl animate-float">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
@@ -107,7 +117,7 @@ export default function Hero() {
 
             <div className="absolute -bottom-3 -left-4 bg-card border border-border/50 rounded-xl px-4 py-3 shadow-xl animate-float-delayed">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
                   <CheckCircle2 className="w-4 h-4 text-primary" />
                 </div>
                 <div>
@@ -119,12 +129,12 @@ export default function Hero() {
 
             <div className="absolute top-1/2 -right-6 bg-card border border-border/50 rounded-xl px-4 py-3 shadow-xl animate-float-slow">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
-                  <Bell className="w-4 h-4 text-violet-400" />
+                <div className="w-8 h-8 rounded-lg bg-destructive/15 flex items-center justify-center">
+                  <AlertTriangle className="w-4 h-4 text-destructive" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold">+ R$12.4K hoje</p>
-                  <p className="text-[11px] text-muted-foreground">Meta: 89%</p>
+                  <p className="text-xs font-semibold">Gargalo: Checkout</p>
+                  <p className="text-[11px] text-muted-foreground">− R$ 5.8K/mês</p>
                 </div>
               </div>
             </div>

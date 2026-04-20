@@ -72,6 +72,28 @@ const tabs = [
       ],
     },
   },
+  {
+    id: "operacao",
+    label: "Operação",
+    title: "Receita do dia, priorizada",
+    desc: "Toda manhã sua equipe abre o Radar de Lucro e vê exatamente o que mexer hoje — por impacto esperado, urgência e potencial de retenção.",
+    features: [
+      "Ações priorizadas por R$ esperado",
+      "Risco de churn por conta",
+      "Playbooks prontos por contexto",
+      "Recomendação de próxima melhor ação",
+      "Relatório semanal automático",
+      "Sinais proprietários de SDR",
+    ],
+    mockup: {
+      title: "Ações de receita hoje",
+      stats: [
+        { label: "ALTA", value: "R$ 70.7K" },
+        { label: "MÉDIA", value: "R$ 1.800" },
+        { label: "Churn", value: "42 / médio" },
+      ],
+    },
+  },
 ];
 
 export default function Solutions() {
