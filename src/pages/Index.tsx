@@ -6,6 +6,7 @@ import Hero from "@/components/landing/Hero";
 import CategoryPositioning from "@/components/landing/CategoryPositioning";
 import ClientLogos from "@/components/landing/ClientLogos";
 import HowItWorks from "@/components/landing/HowItWorks";
+import DiagnosticPreview from "@/components/landing/DiagnosticPreview";
 import Solutions from "@/components/landing/Solutions";
 import Metrics from "@/components/landing/Metrics";
 import Benefits from "@/components/landing/Benefits";
