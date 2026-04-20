@@ -1,67 +1,20 @@
-import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowRight, Star, Sparkles, TrendingDown } from "lucide-react";
-
-const REVENUE_RANGES: Record<string, number> = {
-  "ate_50k": 25000,
-  "50_200k": 100000,
-  "200_500k": 300000,
-  "500k_plus": 700000,
-};
-
-const REVENUE_LABELS: Record<string, string> = {
-  "ate_50k": "Até R$ 50k/mês",
-  "50_200k": "R$ 50k – 200k/mês",
-  "200_500k": "R$ 200k – 500k/mês",
-  "500k_plus": "Acima de R$ 500k/mês",
-};
+import { ArrowRight, Star, Sparkles, ShoppingCart, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 export default function Hero() {
-  const [faixa, setFaixa] = useState<string>("");
-  const [ticket, setTicket] = useState<string>("");
-
-  const perda = useMemo(() => {
-    if (!faixa || !ticket) return 0;
-    const receita = REVENUE_RANGES[faixa] || 0;
-    const ticketNum = Number(ticket) || 0;
-    if (receita === 0 || ticketNum === 0) return 0;
-
-    // CVR média BR vs uplift atingível em 6 meses (não top-quartil teórico)
-    const CVR_ATUAL = 0.014;
-    const CVR_ALCANCAVEL = 0.020;
-
-    const pedidosAtuais = receita / ticketNum;
-    const visitantes = pedidosAtuais / CVR_ATUAL;
-    const pedidosPotenciais = visitantes * CVR_ALCANCAVEL;
-
-    // Ajuste por faixa de ticket (fricção/ciclo de venda)
-    const ticketAdjust =
-      ticketNum < 80 ? 0.85 :
-      ticketNum < 150 ? 0.95 :
-      ticketNum < 400 ? 1.0 :
-      ticketNum < 800 ? 1.05 : 1.10;
-
-    const perdaBruta = (pedidosPotenciais - pedidosAtuais) * ticketNum * ticketAdjust;
-
-    // CAP: perda nunca passa de 30% da receita (limite de mercado — Baymard/Forrester)
-    const perdaCapped = Math.min(perdaBruta, receita * 0.30);
-    return Math.max(0, Math.round(perdaCapped / 100) * 100);
-  }, [faixa, ticket]);
-
-  const showResult = perda > 0;
-
   return (
     <section className="pt-32 pb-20 md:pt-40 md:pb-32 overflow-hidden relative">
       <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/8 blur-[120px] rounded-full pointer-events-none" />
 
       <div className="container mx-auto px-4 relative">
         <div className="grid lg:grid-cols-2 gap-16 items-center">
+          {/* Coluna esquerda — copy */}
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-semibold px-4 py-2 rounded-full border border-primary/20">
               <div className="flex items-center gap-1">
-                {[1,2,3,4,5].map(s => <Star key={s} className="w-3 h-3 fill-primary" />)}
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star key={s} className="w-3 h-3 fill-primary" />
+                ))}
               </div>
               Avaliado 4.9/5 por 200+ lojistas
             </div>
@@ -72,7 +25,7 @@ export default function Hero() {
             </h1>
 
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              Responda 2 perguntas e veja em segundos uma estimativa do quanto você está deixando na mesa — sem cadastro.
+              A LTV Boost identifica o dinheiro parado na sua base e recupera automaticamente. Comece com um diagnóstico gratuito.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -81,92 +34,126 @@ export default function Hero() {
                 "Beleza: payback médio em 9 dias",
                 "Suplementos: +31% em reativação",
               ].map((proof) => (
-                <span key={proof} className="px-3 py-1 rounded-full text-xs font-semibold bg-secondary border border-border/50">
+                <span
+                  key={proof}
+                  className="px-3 py-1 rounded-full text-xs font-semibold bg-secondary border border-border/50"
+                >
                   {proof}
                 </span>
               ))}
             </div>
+
+            <div className="space-y-2">
+              <Button
+                asChild
+                size="lg"
+                className="h-14 px-8 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/25 hover:shadow-primary/40 transition-all"
+              >
+                <a href="/signup">
+                  Ver quanto estou perdendo (grátis) <ArrowRight className="ml-2 w-5 h-5" />
+                </a>
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                • Leva menos de 1 minuto • Sem cartão • Resultado imediato
+              </p>
+            </div>
           </div>
 
-          {/* Mini-calculadora interativa */}
+          {/* Coluna direita — mock do diagnóstico */}
           <div className="relative">
             <div className="absolute -inset-8 bg-primary/10 blur-[80px] rounded-full opacity-40" />
 
+            {/* Badge flutuante: nova venda */}
+            <div className="absolute -top-4 -right-2 z-20 bg-card border border-primary/30 rounded-xl px-4 py-3 shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-700">
+              <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
+                <ShoppingCart className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-foreground leading-tight">Nova venda</p>
+                <p className="text-xs font-bold text-primary leading-tight">+ R$ 489</p>
+              </div>
+            </div>
+
             <div className="relative bg-card border border-border/50 rounded-2xl p-6 md:p-8 shadow-2xl">
-              <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-5">
+              <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-6">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
-                Estimativa rápida — sem cadastro
+                Diagnóstico da loja
               </div>
 
-              <div className="space-y-5 mb-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-foreground/80">
-                    Qual o faturamento mensal da sua loja?
-                  </label>
-                  <Select value={faixa} onValueChange={setFaixa}>
-                    <SelectTrigger className="h-12 bg-background/50 border-border/60">
-                      <SelectValue placeholder="Selecione uma faixa" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(REVENUE_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {/* Score + perda */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-2">
+                    Score
+                  </p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-5xl font-display font-extrabold text-primary leading-none">68</span>
+                    <span className="text-lg font-bold text-muted-foreground">/100</span>
+                  </div>
+                  <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-500 text-[10px] font-bold uppercase tracking-wider">
+                    Regular
+                  </span>
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-foreground/80">
-                    Qual o ticket médio? (R$)
-                  </label>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="Ex: 250"
-                    value={ticket}
-                    onChange={(e) => setTicket(e.target.value)}
-                    className="h-12 bg-background/50 border-border/60 font-mono font-bold"
-                  />
+                <div className="text-right">
+                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-2">
+                    Você está perdendo
+                  </p>
+                  <p className="text-3xl md:text-4xl font-display font-extrabold text-destructive leading-none">
+                    R$ 7.856
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">/mês</p>
                 </div>
               </div>
 
-              {showResult ? (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                  <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <TrendingDown className="w-4 h-4 text-destructive" />
-                      <span className="text-[10px] font-black tracking-[0.2em] uppercase text-destructive">
-                        Estimativa de perda mensal
-                      </span>
-                    </div>
-                    <p className="text-4xl md:text-5xl font-display font-extrabold text-destructive leading-tight">
-                      ~ R$ {perda.toLocaleString("pt-BR")}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Estimativa baseada em uplift de CVR de 1,4% → 2,0% (média BR → atingível em 6 meses). Limite máximo: 30% da receita. Fonte: Conversion Benchmark Report + Baymard Institute.
+              {/* Métricas */}
+              <div className="grid grid-cols-3 gap-2 mb-5">
+                <div className="bg-secondary/40 border border-border/40 rounded-lg p-3 text-center">
+                  <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-muted-foreground mb-1">
+                    Sua CVR
+                  </p>
+                  <p className="text-lg font-display font-extrabold">1,40%</p>
+                </div>
+                <div className="bg-secondary/40 border border-border/40 rounded-lg p-3 text-center">
+                  <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-muted-foreground mb-1">
+                    Benchmark
+                  </p>
+                  <p className="text-lg font-display font-extrabold text-primary">2,50%</p>
+                </div>
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <AlertTriangle className="w-3 h-3 text-destructive" />
+                    <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-destructive">
+                      Gargalo: Checkout
                     </p>
                   </div>
+                  <p className="text-xs font-bold text-destructive">– R$ 5.8K/mês</p>
+                </div>
+              </div>
 
-                  <Button
-                    asChild
-                    size="lg"
-                    className="w-full h-14 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/25 hover:shadow-primary/40 transition-all"
-                  >
-                    <a href={`/signup?perda=${perda}&faixa=${faixa}&ticket=${ticket}`}>
-                      Quero o diagnóstico completo (grátis) <ArrowRight className="ml-2 w-5 h-5" />
-                    </a>
-                  </Button>
-                  <p className="text-[11px] text-muted-foreground text-center">
-                    • Leva menos de 1 minuto • Sem cartão • Resultado imediato
-                  </p>
+              {/* Análise da IA */}
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-primary">
+                    Análise da IA
+                  </span>
                 </div>
-              ) : (
-                <div className="bg-secondary/40 border border-border/40 rounded-xl p-5 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Preencha os 2 campos acima para ver sua estimativa.
-                  </p>
+                <p className="text-sm text-foreground/90 leading-relaxed">
+                  Seu checkout converte 44% abaixo do benchmark. Recupere até{" "}
+                  <span className="font-bold text-primary">R$ 5.800/mês</span> com 3 ações
+                </p>
+              </div>
+
+              {/* Badge flutuante: carrinho recuperado */}
+              <div className="absolute -bottom-4 -left-2 bg-card border border-primary/30 rounded-xl px-4 py-3 shadow-xl flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
+                  <CheckCircle2 className="w-4 h-4 text-primary" />
                 </div>
-              )}
+                <div>
+                  <p className="text-[11px] font-bold text-foreground leading-tight">Carrinho recuperado</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Automação WhatsApp</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
