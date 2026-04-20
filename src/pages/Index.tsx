@@ -53,6 +53,7 @@ const Index = () => {
         <CategoryPositioning />
         <ClientLogos />
         <HowItWorks />
+        <DiagnosticPreview />
         <Solutions />
         <Metrics />
         <Benefits />
