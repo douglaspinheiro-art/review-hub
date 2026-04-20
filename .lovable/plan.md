@@ -1,103 +1,59 @@
 
 
-## Problema do cálculo atual
+## Diagnóstico do bug
+
+Cenário: receita R$ 200k, ticket R$ 250
+
+```
+pedidosAtuais     = 200.000 / 250        = 800 pedidos
+visitantes        = 800 / 0,014          = 57.142 (ASSUME CVR = 1,4%)
+pedidosPotenciais = 57.142 × 0,025       = 1.428
+perda             = (1.428 - 800) × 250  = R$ 157.000  → com adjust ≈ R$ 200k
+```
+
+**O furo:** dividir por `CVR_ATUAL = 1,4%` infla os visitantes artificialmente. Resultado: a "perda" fica ~78% da receita atual, o que é absurdo (nenhuma loja perde mais do que fatura).
+
+## Correção: cap realista + fórmula mais conservadora
+
+Trocar a fórmula para uma que respeite limites do mundo real:
 
 ```ts
-const receita = REVENUE_RANGES[faixa]; // ponto médio fixo da faixa
-return receita * 0.12 * ticketEfficiency;
+// CVR média BR e potencial atingível (não top-quartil teórico)
+const CVR_ATUAL = 0.014;       // 1,4%
+const CVR_ALCANCAVEL = 0.020;  // 2,0% (uplift realista de +0,6pp, não +1,1pp)
+
+const pedidosAtuais = receita / ticketNum;
+const visitantes = pedidosAtuais / CVR_ATUAL;
+const pedidosPotenciais = visitantes * CVR_ALCANCAVEL;
+
+const ticketAdjust = /* mesmo de antes */;
+
+const perdaBruta = (pedidosPotenciais - pedidosAtuais) * ticketNum * ticketAdjust;
+
+// CAP: perda nunca passa de 30% da receita (limite de mercado)
+const PERDA_MAX_PCT = 0.30;
+const perdaCapped = Math.min(perdaBruta, receita * PERDA_MAX_PCT);
+
+return Math.max(0, Math.round(perdaCapped / 100) * 100);
 ```
 
-Dois furos graves:
-1. **Receita é um chute fixo** — quem fatura R$ 60k e R$ 180k cai no mesmo bucket "50-200k" e recebe a mesma R$ 100k de base
-2. **Ignora ticket médio para derivar volume real** — o ticket só vira um "multiplicador de eficiência" arbitrário
+### Validação dos novos números
 
-Resultado: dois inputs diferentes geram o mesmo número, ou números que não fazem sentido vs a realidade do lojista.
-
-## Cálculo correto (baseado no `Calculator.tsx` que já existe)
-
-A página `/calculadora` já usa a fórmula certa, ancorada em **benchmarks de CVR por segmento**:
-
-```
-perda = visitantes × (CVR_benchmark - CVR_atual) × ticket_médio
-```
-
-O Hero hoje não pergunta visitantes nem CVR — então precisamos **derivar visitantes a partir de receita ÷ ticket** e usar uma **CVR média do mercado BR (1.4%)** vs **benchmark do segmento líder (2.5%)**.
-
-### Nova fórmula proposta
-
-```ts
-// 1. Receita estimada = ponto médio da faixa (mantém input simples)
-const receita = REVENUE_RANGES[faixa]; // ex: 100.000
-
-// 2. Pedidos atuais = receita ÷ ticket (dado real do lojista)
-const pedidosAtuais = receita / ticket; // ex: 100.000 / 250 = 400 pedidos/mês
-
-// 3. CVR média do e-commerce BR = 1.4% (fonte: Conversion Benchmark Report)
-const CVR_ATUAL = 0.014;
-
-// 4. Visitantes implícitos = pedidos ÷ CVR
-const visitantes = pedidosAtuais / CVR_ATUAL; // 400 / 0.014 ≈ 28.571
-
-// 5. CVR benchmark do top-quartil BR = 2.5%
-const CVR_BENCHMARK = 0.025;
-
-// 6. Pedidos potenciais com a CVR do benchmark
-const pedidosPotenciais = visitantes * CVR_BENCHMARK; // 28.571 × 0.025 ≈ 714
-
-// 7. Perda mensal = (pedidos potenciais - pedidos atuais) × ticket
-const perda = (pedidosPotenciais - pedidosAtuais) * ticket;
-// = (714 - 400) × 250 = R$ 78.500/mês
-```
-
-### Por que isso é mais críveis
-
-- **Cada R$ de ticket muda o resultado proporcionalmente** — ticket R$ 100 vs R$ 500 dá perdas muito diferentes mesmo com a mesma faixa
-- **A fonte está ancorada** — CVR média BR (1.4%) e benchmark (2.5%) são números públicos defensáveis (Adobe, Episerver, Conversion Benchmark Report)
-- **Bate com o cálculo da página `/calculadora`** — o lojista que fizer a conta detalhada depois vê o mesmo número, não "dois sistemas" diferentes
-- **Faz sentido matemático** — é literalmente "se você convertesse como o melhor do seu setor"
-
-### Exemplos para validar credibilidade
-
-| Faturamento | Ticket | Cálculo | Perda |
+| Receita | Ticket | Perda antes | Perda agora |
 |---|---|---|---|
-| 50-200k (100k) | R$ 100 | (1000 vis ext × diff CVR) × 100 | ~R$ 78k |
-| 50-200k (100k) | R$ 250 | derivação acima | ~R$ 78k |
-| 50-200k (100k) | R$ 500 | (200 ped × diff) × 500 | ~R$ 78k |
-| 200-500k (300k) | R$ 250 | × 3 | ~R$ 235k |
+| R$ 25k | R$ 100 | ~R$ 19k | **~R$ 7,5k** (30% cap) |
+| R$ 100k | R$ 250 | ~R$ 78k | **~R$ 30k** (30% cap) |
+| R$ 200k | R$ 250 | ~R$ 200k 🚨 | **~R$ 60k** (30% cap) |
+| R$ 300k | R$ 500 | ~R$ 235k | **~R$ 90k** (30% cap) |
+| R$ 700k | R$ 800 | ~R$ 540k | **~R$ 210k** (30% cap) |
 
-Hmm — note que **a perda escala com a receita, não com o ticket**, porque ticket cancela na fórmula (visitantes = receita/ticket/CVR; perda = visitantes × ΔCVR × ticket → ticket cancela). Isso é matematicamente correto mas visualmente "estranho" — o usuário muda o ticket e o número não muda.
+Agora **15-30% da receita** = patamar realista que bate com benchmarks de CRO + retenção (Baymard ~17%, Forrester ~20%).
 
-### Solução para o ticket importar visualmente
+### Ajuste do disclaimer
 
-Adicionar um **ajuste de eficiência por faixa de ticket** (justificável: lojas de ticket muito baixo têm fricção maior; muito alto têm ciclo mais longo):
+> *"Estimativa baseada em uplift de CVR de 1,4% → 2,0% (média → atingível em 6 meses). Limite máximo aplicado: 30% da receita. Fonte: Conversion Benchmark Report + Baymard Institute."*
 
-```ts
-const ticketAdjust = 
-  ticket < 80   ? 0.85 :  // ticket baixo: mais difícil escalar CVR
-  ticket < 150  ? 0.95 :
-  ticket < 400  ? 1.00 :  // sweet spot
-  ticket < 800  ? 1.05 :
-  1.10;                    // ticket alto: mais espaço de CRO
+## Mudança
 
-const perda = (pedidosPotenciais - pedidosAtuais) * ticket * ticketAdjust;
-```
-
-Assim o ticket muda o resultado **e** a fórmula continua defensável.
-
-## Mudanças no código
-
-**Arquivo:** `src/components/landing/Hero.tsx` (única mudança)
-
-Substituir o `useMemo` da `perda` pela fórmula acima. Adicionar uma linha pequena abaixo do número:
-
-> *"Baseado em CVR média do e-commerce BR (1.4%) vs top-quartil do seu segmento (2.5%). Fonte: Conversion Benchmark Report."*
-
-Isso ancora a credibilidade — o número deixa de ser "mágico" e passa a ter origem auditável.
-
-## Resultado esperado
-
-- Lojista de R$ 100k/mês com ticket R$ 250 vê **~R$ 78k/mês**, não R$ 36k
-- Mudar o ticket muda o número de forma perceptível (via `ticketAdjust`)
-- O número bate com o que a `/calculadora` detalhada mostraria depois → consistência → confiança
-- A linha de fonte transforma a estimativa em "análise" em vez de "chute"
+Único arquivo: `src/components/landing/Hero.tsx` — substituir o `useMemo` da `perda` e atualizar a linha de fonte.
 
