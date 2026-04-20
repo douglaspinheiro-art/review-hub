@@ -18,6 +18,29 @@ export default function CTASection() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[120px] opacity-50" />
       
       <div className="container mx-auto px-4 relative z-10">
+        {/* Revenue-at-risk banner */}
+        <div className={cn(
+          "max-w-4xl mx-auto mb-16 transition-all duration-700",
+          inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+        )}>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-destructive/10 border border-destructive/30 rounded-2xl px-6 py-5">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-destructive/20 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-5 h-5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black tracking-[0.25em] uppercase text-destructive mb-0.5">Receita em risco agora</p>
+                <p className="text-base sm:text-lg font-bold">
+                  <span className="font-display text-destructive">R$ 70.715</span> identificados e ainda não capturados
+                </p>
+              </div>
+            </div>
+            <Button asChild size="lg" className="h-12 px-6 rounded-xl font-bold shrink-0">
+              <a href="/signup">Recuperar agora <ArrowRight className="ml-2 w-4 h-4" /></a>
+            </Button>
+          </div>
+        </div>
+
         <div className={cn(
           "text-center max-w-3xl mx-auto mb-20 transition-all duration-1000",
           inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
