@@ -140,7 +140,7 @@ export default function Hero() {
                       ~ R$ {perda.toLocaleString("pt-BR")}
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Baseado em CRO + retenção média do seu segmento. O diagnóstico completo aponta exatamente onde.
+                      Baseado em CVR média do e-commerce BR (1,4%) vs top-quartil do seu segmento (2,5%). Fonte: Conversion Benchmark Report.
                     </p>
                   </div>
 
