@@ -27,14 +27,23 @@ export default function Hero() {
     const receita = REVENUE_RANGES[faixa] || 0;
     const ticketNum = Number(ticket) || 0;
     if (receita === 0 || ticketNum === 0) return 0;
-    // Eficiência por ticket: tickets fora do "sweet spot" (R$150–400) vazam mais
-    const ticketEfficiency =
-      ticketNum < 80 ? 1.35 :
-      ticketNum < 150 ? 1.15 :
+
+    // Fórmula ancorada em benchmark: CVR média BR (1.4%) vs top-quartil (2.5%)
+    const CVR_ATUAL = 0.014;
+    const CVR_BENCHMARK = 0.025;
+
+    const pedidosAtuais = receita / ticketNum;
+    const visitantes = pedidosAtuais / CVR_ATUAL;
+    const pedidosPotenciais = visitantes * CVR_BENCHMARK;
+
+    // Ajuste por faixa de ticket (fricção/ciclo de venda)
+    const ticketAdjust =
+      ticketNum < 80 ? 0.85 :
+      ticketNum < 150 ? 0.95 :
       ticketNum < 400 ? 1.0 :
-      ticketNum < 800 ? 0.9 : 0.8;
-    // Base: 12% da receita vaza em CRO + retenção, ajustado pelo ticket
-    const perdaBase = receita * 0.12 * ticketEfficiency;
+      ticketNum < 800 ? 1.05 : 1.10;
+
+    const perdaBase = (pedidosPotenciais - pedidosAtuais) * ticketNum * ticketAdjust;
     return Math.max(0, Math.round(perdaBase / 100) * 100);
   }, [faixa, ticket]);
 
@@ -131,7 +140,7 @@ export default function Hero() {
                       ~ R$ {perda.toLocaleString("pt-BR")}
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Baseado em CRO + retenção média do seu segmento. O diagnóstico completo aponta exatamente onde.
+                      Baseado em CVR média do e-commerce BR (1,4%) vs top-quartil do seu segmento (2,5%). Fonte: Conversion Benchmark Report.
                     </p>
                   </div>
 
