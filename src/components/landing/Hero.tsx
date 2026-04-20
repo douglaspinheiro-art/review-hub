@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Star, Bell, TrendingUp, ShoppingCart, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Star, ShoppingCart, CheckCircle2, Sparkles, AlertTriangle } from "lucide-react";
 
 export default function Hero() {
   return (
