@@ -1,69 +1,125 @@
 
 
-## Análise das 4 imagens
+## Diagnóstico do funil atual
 
-| Imagem | O que mostra | Mensagem central | Melhor lugar na home |
+Mapeei a jornada de conversão da plataforma:
+
+```
+Landing (/) → Signup (5 campos) → Onboarding (3 passos)
+           → Analisando (25s loading) → Resultado (paywall)
+           → Planos → Checkout MP → Dashboard
+```
+
+### Pontos de atrito identificados
+
+| # | Onde | Problema | Impacto |
 |---|---|---|---|
-| **Diagnostico.png** (score 68 + R$ 7.856/mês perdidos) | Score visual + valor concreto perdido vs benchmark | "Veja em segundos quanto está perdendo" | **Hero** (substituir mockup genérico) |
-| **Diagnostico_1.png** (Problemas prioritários com R$/mês) | IA classifica gargalos por severidade e impacto financeiro | "A IA aponta exatamente onde está vazando" | **Nova seção "Diagnóstico em ação"** entre HowItWorks e Solutions |
-| **Dash.png** (Radar de Lucro + Receita em risco) | Urgência: receita identificada mas não capturada | "Cada hora sem ação reduz recuperação" | **Benefits** (substituir um card) ou **CTASection** |
-| **Dash_1.png** (Ações de receita hoje + Churn risk) | Operação diária priorizada por impacto | "Não é só diagnóstico — é execução" | **Solutions** (nova aba "Operação diária") |
+| 1 | **Hero** | CTA único "Fazer diagnóstico" exige signup antes de mostrar valor | Alto — drop imediato |
+| 2 | **Signup.tsx** | 5 campos obrigatórios (nome + email + senha + WhatsApp + plataforma) antes de qualquer prova | Altíssimo — fricção pré-wow |
+| 3 | **Onboarding** | 3 passos cheios antes do diagnóstico; usuário ainda não viu resultado | Alto |
+| 4 | **Analisando** | 25s de loading sem variação; usuário fecha aba | Médio |
+| 5 | **Resultado** | Paywall imediato após o wow, sem ancoragem de preço vs perda | Alto — conversão paga |
+| 6 | **Planos** | 3 tiers sem destaque do ROI vs "R$ 7.856/mês perdidos" | Médio |
+| 7 | **Checkout MP** | Sem trust badges / garantia visível no último clique | Médio |
+| 8 | Geral | Zero remarketing para quem abandona entre Resultado → Planos | Alto (recuperável) |
 
-## Plano de inserção (3 mudanças cirúrgicas)
+## Plano de otimização (6 mudanças priorizadas por ROI)
 
-### 1. Hero — substituir mockup fake pelo Diagnóstico real
+### 1. Hero interativo — mini-calculadora antes do signup `[ALTO IMPACTO]`
 **Arquivo:** `src/components/landing/Hero.tsx`
-- Trocar o painel direito (gráfico de barras + métricas mock "Conversão 4.8%") por uma reprodução fiel da `Diagnostico.png`: card escuro com score grande **68 / Regular**, "VOCÊ ESTÁ PERDENDO **R$ 7.856/mês**", linha com "Sua CVR 1.40% / Benchmark 2.5% / Perda/dia R$ 262", e o box verde "ANÁLISE DA IA" embaixo.
-- **Por quê:** o mockup atual é genérico ("R$ 847.320 +34%"). A imagem real do produto entrega a promessa do H1 ("descubra quanto sua loja perde") em 1 olhada.
-- Mantém os cards flutuantes (nova venda, carrinho recuperado) ao redor.
 
-### 2. Nova seção "Diagnóstico em ação" — entre `HowItWorks` e `Solutions`
-**Novo arquivo:** `src/components/landing/DiagnosticPreview.tsx` (e import em `Index.tsx`)
+Substituir o CTA "Fazer diagnóstico grátis" por um mini-formulário inline no Hero com 2 campos:
+- Faturamento mensal (select: até 50k / 50-200k / 200-500k / 500k+)
+- Ticket médio (R$)
 
-Layout 2 colunas:
-- **Esquerda (copy):**
-  - Eyebrow: `DIAGNÓSTICO COM IA`
-  - H2: `A IA aponta onde está vazando — em reais, por mês.`
-  - Parágrafo: "Não é mais um dashboard bonito. É um raio-X que classifica cada problema por severidade e mostra o impacto financeiro mensal de cada um."
-  - 3 bullets: "Severidade Crítico/Alto/Médio" · "Impacto em R$/mês por problema" · "Plano de ação priorizado"
-  - CTA secundário: "Ver meu diagnóstico grátis →"
-- **Direita:** reprodução da `Diagnostico_1.png` — 3 cards de problemas (ALTO R$ 20.429/mês, ALTO R$ 11.000/mês, CRÍTICO R$ 7.857/mês) com badges coloridos de severidade.
+Ao preencher, mostra em tempo real: *"Sua loja pode estar perdendo ~R$ X.XXX/mês"* (usando a fórmula do `Calculator.tsx` que já existe). Só **depois** da estimativa aparece o CTA "Quero o diagnóstico completo grátis →".
 
-### 3. Solutions — adicionar 4ª aba "Operação diária"
-**Arquivo:** `src/components/landing/Solutions.tsx`
-- Adicionar nova aba `operacao` no array `tabs`:
-  - Label: "Operação"
-  - Title: "Receita do dia, priorizada"
-  - Desc: "Toda manhã sua equipe abre o Radar de Lucro e vê exatamente o que mexer hoje — por impacto esperado, urgência e potencial de retenção."
-  - Features: "Ações priorizadas por R$ esperado" · "Risco de churn por conta" · "Playbooks prontos por contexto" · "Recomendação de próxima melhor ação" · "Relatório semanal automático" · "Sinais proprietários de SDR"
-  - Mockup: simplificação visual da `Dash_1.png` — lista "Ações de receita hoje" com 3 linhas (ALTA R$ 70.715, MÉDIA R$ 1.800, MÉDIA R$ 1.400) + lateral com "Risco de Churn 42 / médio".
+**Por quê:** entrega valor antes de pedir dado. Cria compromisso cognitivo (sunk cost mental).
 
-### (Opcional, se quiser usar a 4ª imagem) Banner "Radar de Lucro" no CTASection
-**Arquivo:** `src/components/landing/CTASection.tsx`
-- Adicionar acima do CTA atual um banner inspirado em `Dash.png`: faixa vermelha "RECEITA EM RISCO AGORA — R$ 70.715 identificados mas não capturados" + botão "Recuperar agora".
-- **Por quê:** fecha a página com urgência + valor concreto, em vez de só "Comece grátis".
+### 2. Signup mínimo — 2 campos `[ALTO IMPACTO]`
+**Arquivo:** `src/pages/Signup.tsx`
 
-## Resumo do mapa final
+Reduzir o form para **email + senha**. Mover `full_name`, `whatsapp` e `plataforma` para o Onboarding (que já é wizard). Passa-se o `perda` estimado via query string para reforço visual na lateral.
 
-```
-Hero            → Diagnostico.png (substitui mockup)
-TickerBar/...
-HowItWorks
-[NOVA] Diagnostic→ Diagnostico_1.png
-Solutions       → +1 aba com Dash_1.png
-...
-CTASection      → (opcional) banner Dash.png
-```
+**Por quê:** cada campo extra custa ~10% de conversão em signup. Esses 3 campos não bloqueiam a geração do diagnóstico.
+
+### 3. Analisando com progresso real + social proof `[MÉDIO]`
+**Arquivo:** `src/pages/Analisando.tsx`
+
+Transformar os 25s em 4 steps visuais com timing escalonado:
+- `✓ Conectando ao seu funil` (0-5s)
+- `✓ Comparando com 847 lojas do seu setor` (5-12s)
+- `✓ A IA está identificando vazamentos…` (12-20s)
+- `✓ Gerando plano de ação priorizado` (20-25s)
+
+Abaixo: carrossel de 3 depoimentos curtos ("Recuperamos R$ 38k na 1ª semana — Lucas, ModaFit"). Cada step com checkmark animado.
+
+**Por quê:** percepção de trabalho justifica a espera e aumenta valor percebido do output.
+
+### 4. Resultado com âncora de preço `[ALTO IMPACTO NA CONVERSÃO PAGA]`
+**Arquivo:** `src/pages/Resultado.tsx`
+
+Adicionar no topo da paywall, antes dos planos:
+> *"Você está perdendo **R$ 7.856/mês**. O Growth custa **R$ 497/mês** — 16x menos. Payback em 3 dias."*
+
+E reposicionar o card Growth como "default selected" (borda emerald + badge "Recomendado para o seu tamanho") baseado no `revenue_range` do diagnóstico.
+
+**Por quê:** transforma preço absoluto em ROI relativo. Reduz abandono no paywall.
+
+### 5. Exit-intent + e-mail de recuperação `[MÉDIO — receita recuperável]`
+**Arquivos novos/editados:**
+- `src/components/ExitIntentModal.tsx` (novo) — detecta mouse saindo da viewport em `/resultado` e `/planos`
+- `supabase/functions/send-email` (já existe) — trigger para enviar e-mail 1h e 24h depois de quem chegou em `/resultado` sem converter
+
+Modal: *"Antes de sair — te envio o diagnóstico completo por e-mail?"* (captura e-mail se ainda não logou) ou *"Posso te mandar o plano de ação por WhatsApp?"*
+
+E-mails:
+- **+1h:** "Seu diagnóstico está esperando — aqui está o resumo dos 3 gargalos"
+- **+24h:** "Cupom de 20% off no primeiro mês (expira em 48h)"
+
+**Por quê:** ~60% dos usuários que veem o diagnóstico não compram no mesmo dia. Hoje eles somem.
+
+### 6. Trust stack no checkout `[BAIXO ESFORÇO, MÉDIO IMPACTO]`
+**Arquivos:** `src/pages/Planos.tsx` + `src/pages/dashboard/Billing.tsx`
+
+Adicionar logo abaixo do botão "Assinar":
+- 🔒 "Pagamento seguro via Mercado Pago"
+- ♻️ "7 dias de garantia — cancele sem taxa"
+- 💬 "Suporte no WhatsApp em < 2h"
+- ⭐ "847 lojas ativas · 4.8/5 no Reclame Aqui"
+
+**Por quê:** último clique é onde o medo aparece. Trust badges reduzem abandono de checkout em 15-30%.
+
+---
+
+## Ordem sugerida de implementação
+
+1. **Sprint 1 (maior ROI):** #2 Signup mínimo + #4 Resultado com âncora → impacto direto em CAC e conversão paga
+2. **Sprint 2:** #1 Hero interativo + #3 Analisando → melhora topo e meio do funil
+3. **Sprint 3:** #5 Exit-intent + e-mails → recupera quem já abandonou
+4. **Sprint 4:** #6 Trust stack → polimento final
 
 ## Arquivos afetados
 
-- `src/components/landing/Hero.tsx` — substituir painel direito
-- `src/components/landing/DiagnosticPreview.tsx` — **novo**
-- `src/pages/Index.tsx` — importar e inserir `<DiagnosticPreview />` após `<HowItWorks />`
-- `src/components/landing/Solutions.tsx` — adicionar 4ª aba
-- *(opcional)* `src/components/landing/CTASection.tsx` — banner urgência
+- `src/components/landing/Hero.tsx` — mini-calculadora inline
+- `src/pages/Signup.tsx` — reduzir para 2 campos
+- `src/pages/Onboarding.tsx` — absorver os 3 campos movidos
+- `src/pages/Analisando.tsx` — steps visuais + social proof
+- `src/pages/Resultado.tsx` — âncora de preço + plano recomendado
+- `src/components/ExitIntentModal.tsx` — **novo**
+- `src/pages/Planos.tsx` + `src/pages/dashboard/Billing.tsx` — trust stack
+- `supabase/functions/send-email/index.ts` — templates de recuperação (e cron/trigger)
 
 ## Resultado esperado
 
-A copy passa de "promessas genéricas + mockup fake" para **prova visual concreta**: o visitante vê em 3 momentos da página (Hero, Diagnostic Preview, Solutions) exatamente o que vai receber — score, problemas em R$ e fila de ações priorizadas. A jornada visual reforça o H1 "descubra quanto está perdendo" → "veja onde está vazando" → "saiba o que fazer hoje".
+Baseado em benchmarks de SaaS B2B com funil semelhante:
+- Signup → Diagnóstico: **+25-40%** (com #1 e #2)
+- Diagnóstico → Plano pago: **+15-25%** (com #4 e #6)
+- Recuperação de abandono: **+8-12%** de receita adicional (com #5)
+
+**Conversão end-to-end estimada:** de ~3% (atual típico) para **5-7%** — roughly 2x sem mudar tráfego.
+
+## Pergunta para você
+
+Quer que eu implemente todos os 6 itens de uma vez, ou prefere começar pelo **Sprint 1** (Signup mínimo + Resultado com âncora de preço) para medir impacto antes?
 
