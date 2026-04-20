@@ -282,6 +282,34 @@ export default function Analisando() {
             "A IA está cruzando dados de 94 lojas similares para encontrar seus maiores gargalos."
           </p>
         </div>
+
+        <SocialProofCarousel />
+      </div>
+    </div>
+  );
+}
+
+const TESTIMONIALS = [
+  { name: "Lucas — ModaFit", text: "Recuperamos R$ 38k na 1ª semana só com a fila de carrinhos." },
+  { name: "Marina — Bella Beauty", text: "Payback em 9 dias. A IA achou 3 vazamentos que não víamos." },
+  { name: "Rafael — SuppleMax", text: "+31% em reativação no 1º mês. Mudou nossa operação." },
+];
+
+function SocialProofCarousel() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % TESTIMONIALS.length), 4000);
+    return () => clearInterval(t);
+  }, []);
+  const t = TESTIMONIALS[idx];
+  return (
+    <div className="pt-4 border-t border-[#1E1E2E]">
+      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 mb-2">
+        Lojas que já passaram por aqui
+      </p>
+      <div key={idx} className="animate-in fade-in duration-500">
+        <p className="text-sm text-foreground/90 italic leading-relaxed">"{t.text}"</p>
+        <p className="text-[11px] font-bold text-primary mt-2">— {t.name}</p>
       </div>
     </div>
   );
