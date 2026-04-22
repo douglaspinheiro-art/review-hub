@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { recommendPlan } from "@/lib/plan-recommendation";
 import { PLANS } from "@/lib/pricing-constants";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
+import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 
 type DiagnosticData = {
   resumo?: string;
