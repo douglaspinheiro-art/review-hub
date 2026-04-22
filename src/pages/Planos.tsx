@@ -11,6 +11,7 @@ import Header from "@/components/landing/Header";
 import Footer from "@/components/landing/Footer";
 import { PLANS } from "@/lib/pricing-constants";
 import { useAuth } from "@/hooks/useAuth";
+import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 
 const CalculadoraSimulador = lazy(() => import("./Calculadora"));
 
@@ -114,6 +115,7 @@ export default function Planos({
   );
   const [searchParams] = useSearchParams();
   const { profile } = useAuth();
+  const { open: openCheckout } = useMercadoPagoCheckout();
   const isActive = profile?.subscription_status === "active";
   const currentPlanKey: PlanKey | null =
     isActive && (profile?.plan === "starter" || profile?.plan === "growth" || profile?.plan === "scale")
