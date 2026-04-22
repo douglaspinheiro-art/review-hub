@@ -11,7 +11,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
 const schema = z.object({
+  full_name: z.string().trim().min(2, "Informe seu nome").max(100),
   email: z.string().email("E-mail inválido"),
+  phone: z
+    .string()
+    .trim()
+    .min(10, "Telefone inválido")
+    .max(20, "Telefone inválido")
+    .regex(/^[0-9()+\-\s]+$/, "Use apenas números e () + -"),
   password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
 });
 
