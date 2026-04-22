@@ -45,6 +45,18 @@ verify_jwt = false
 [functions.mercadopago-webhook]
 verify_jwt = false
 
+# Public key endpoint — no JWT (chave pública por design, igual à anon key).
+[functions.mercadopago-public-key]
+verify_jwt = false
+
+# Checkout transparente — JWT validado no handler.
+[functions.mercadopago-process-payment]
+verify_jwt = false
+
+# Polling de status de pagamento (PIX/boleto) — JWT validado no handler.
+[functions.mercadopago-payment-status]
+verify_jwt = false
+
 # ── User-facing functions (called with Supabase JWT from the browser) ──────────
 
 [functions.send-email]
