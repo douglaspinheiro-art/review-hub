@@ -61,7 +61,7 @@ async function loadMpSdk(): Promise<boolean> {
 }
 
 export default function MercadoPagoCheckoutModal({ open, onOpenChange, request }: Props) {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>({ kind: "loading-sdk" });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -253,7 +253,7 @@ export default function MercadoPagoCheckoutModal({ open, onOpenChange, request }
             <PaymentBrick
               initialization={{
                 amount,
-                payer: { email: user?.email ?? profile?.email ?? "" },
+                payer: { email: user?.email ?? "" },
               }}
               customization={{
                 paymentMethods: {
