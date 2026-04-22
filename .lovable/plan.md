@@ -1,59 +1,92 @@
 
 
-## Diagnóstico do bug
+## Checkout transparente Mercado Pago — Brick embutido
 
-Cenário: receita R$ 200k, ticket R$ 250
+Substituir o redirect atual (`window.location.href = init_point`) por um **modal com Payment Brick** do Mercado Pago em todos os 3 pontos de venda. O cliente paga cartão/PIX/boleto sem sair do site.
 
-```
-pedidosAtuais     = 200.000 / 250        = 800 pedidos
-visitantes        = 800 / 0,014          = 57.142 (ASSUME CVR = 1,4%)
-pedidosPotenciais = 57.142 × 0,025       = 1.428
-perda             = (1.428 - 800) × 250  = R$ 157.000  → com adjust ≈ R$ 200k
-```
+## Arquitetura
 
-**O furo:** dividir por `CVR_ATUAL = 1,4%` infla os visitantes artificialmente. Resultado: a "perda" fica ~78% da receita atual, o que é absurdo (nenhuma loja perde mais do que fatura).
-
-## Correção: cap realista + fórmula mais conservadora
-
-Trocar a fórmula para uma que respeite limites do mundo real:
-
-```ts
-// CVR média BR e potencial atingível (não top-quartil teórico)
-const CVR_ATUAL = 0.014;       // 1,4%
-const CVR_ALCANCAVEL = 0.020;  // 2,0% (uplift realista de +0,6pp, não +1,1pp)
-
-const pedidosAtuais = receita / ticketNum;
-const visitantes = pedidosAtuais / CVR_ATUAL;
-const pedidosPotenciais = visitantes * CVR_ALCANCAVEL;
-
-const ticketAdjust = /* mesmo de antes */;
-
-const perdaBruta = (pedidosPotenciais - pedidosAtuais) * ticketNum * ticketAdjust;
-
-// CAP: perda nunca passa de 30% da receita (limite de mercado)
-const PERDA_MAX_PCT = 0.30;
-const perdaCapped = Math.min(perdaBruta, receita * PERDA_MAX_PCT);
-
-return Math.max(0, Math.round(perdaCapped / 100) * 100);
+```text
+┌─────────────────────────────────────────────────────────┐
+│  Frontend (React)                                        │
+│  ┌───────────────┐    ┌──────────────────────────────┐  │
+│  │ Botão "Assinar│───▶│ <CheckoutModal>              │  │
+│  │   plano X"    │    │   Payment Brick (MP SDK)     │  │
+│  └───────────────┘    │   ├ Cartão (tokeniza local)  │  │
+│                       │   ├ PIX (gera QR + copia)    │  │
+│                       │   └ Boleto (gera linha)      │  │
+│                       └──────────────┬───────────────┘  │
+│                                      │ token + dados    │
+└──────────────────────────────────────┼───────────────────┘
+                                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  Edge Function: mercadopago-process-payment (NOVA)       │
+│  1. Valida JWT do usuário                                │
+│  2. POST /v1/payments na API do MP com token             │
+│  3. Retorna status (approved/pending/rejected)           │
+│  4. Webhook existente confirma e ativa subscription      │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Validação dos novos números
+## Mudanças
 
-| Receita | Ticket | Perda antes | Perda agora |
-|---|---|---|---|
-| R$ 25k | R$ 100 | ~R$ 19k | **~R$ 7,5k** (30% cap) |
-| R$ 100k | R$ 250 | ~R$ 78k | **~R$ 30k** (30% cap) |
-| R$ 200k | R$ 250 | ~R$ 200k 🚨 | **~R$ 60k** (30% cap) |
-| R$ 300k | R$ 500 | ~R$ 235k | **~R$ 90k** (30% cap) |
-| R$ 700k | R$ 800 | ~R$ 540k | **~R$ 210k** (30% cap) |
+### Backend
+**Nova edge function** `supabase/functions/mercadopago-process-payment/index.ts`
+- Recebe `{ plan_key, billing_cycle, payment_data }` do Brick (token de cartão OU dados PIX/boleto).
+- Cria pagamento via `POST https://api.mercadopago.com/v1/payments` com `MERCADOPAGO_ACCESS_TOKEN`.
+- `external_reference` igual ao da preference atual (`{user_id, plan_key, billing_cycle}`) para o webhook existente já reconhecer e ativar a assinatura.
+- Retorna `{ status, status_detail, payment_id, qr_code?, qr_code_base64?, ticket_url? }`.
 
-Agora **15-30% da receita** = patamar realista que bate com benchmarks de CRO + retenção (Baymard ~17%, Forrester ~20%).
+**Webhook existente** (`mercadopago-webhook`) — sem mudanças. Já ativa `subscription_status = active` via `external_reference`.
 
-### Ajuste do disclaimer
+**Secrets** — usa `MERCADOPAGO_ACCESS_TOKEN` já configurado. Adicionar **public key** do MP como `VITE_MERCADOPAGO_PUBLIC_KEY` no `.env` (chave pública, segura no client).
 
-> *"Estimativa baseada em uplift de CVR de 1,4% → 2,0% (média → atingível em 6 meses). Limite máximo aplicado: 30% da receita. Fonte: Conversion Benchmark Report + Baymard Institute."*
+### Frontend
+**Novo componente** `src/components/checkout/MercadoPagoCheckoutModal.tsx`
+- Carrega SDK MP via `@mercadopago/sdk-react` (Payment Brick).
+- Renderiza modal com Brick configurado para cartão + PIX + boleto.
+- `onSubmit` do Brick → chama edge function `mercadopago-process-payment`.
+- Estados: idle → processando → approved (toast + redirect `/dashboard?welcome=1`) / pending (mostra QR PIX ou boleto inline) / rejected (mensagem clara, permite retry).
 
-## Mudança
+**Hook** `src/hooks/useMercadoPagoCheckout.ts`
+- Centraliza abertura do modal + tracking (`trackFunnelEvent("checkout_started")`).
+- API: `const { open } = useCheckout(); open({ planKey, billingCycle, source });`
 
-Único arquivo: `src/components/landing/Hero.tsx` — substituir o `useMemo` da `perda` e atualizar a linha de fonte.
+**3 pontos de integração** — substituir o redirect por `open(...)`:
+1. `src/pages/Planos.tsx` — botões dos 3 cards de plano
+2. `src/pages/Resultado.tsx` (linha 196) — substituir `handleSubscribe`
+3. `src/pages/dashboard/Billing.tsx` (linha 144) — substituir `openMercadoPagoCheckout`
+
+### Dependência
+- `npm i @mercadopago/sdk-react` (~50kB, oficial MP)
+
+## UX dos 3 métodos
+
+- **Cartão** → tokeniza no browser, processa, mostra "Aprovado!" em ~3s. Redirect imediato.
+- **PIX** → mostra QR code + botão "Copiar código" inline no modal. Banner "Aguardando pagamento..." que faz polling no `payment_id` a cada 3s por até 5min. Webhook confirma em paralelo.
+- **Boleto** → mostra linha digitável + botão "Baixar PDF" (link `ticket_url` do MP). Modal informa "Boleto compensa em 1-3 dias úteis. Você receberá email quando aprovado."
+
+## Compliance / segurança
+
+- Token de cartão **nunca** chega ao seu backend — Brick tokeniza no browser via SDK do MP, você só recebe o token (válido por 7 dias, single-use). PCI SAQ-A coberto.
+- `VITE_MERCADOPAGO_PUBLIC_KEY` é pública por design (igual `VITE_SUPABASE_ANON_KEY`).
+- Edge function valida JWT antes de processar (mesmo padrão da `create-preference` atual).
+
+## Migração
+
+A edge function `mercadopago-create-preference` **fica como fallback** — se o SDK falhar ao carregar (ad blocker, rede), o modal mostra botão "Pagar via página segura do Mercado Pago" que aciona o fluxo antigo de redirect. Zero risco de quebrar conversão.
+
+## Detalhes técnicos
+
+- **SDK init**: `initMercadoPago(publicKey, { locale: 'pt-BR' })` no `main.tsx`.
+- **Brick config**: `{ amount, payer: { email }, paymentMethods: { creditCard: 'all', bankTransfer: ['pix'], ticket: ['bolbradesco'], maxInstallments: 12 } }`.
+- **Polling PIX**: edge function auxiliar `mercadopago-payment-status?id=X` que retorna status atual (cache 2s).
+- **Telemetria**: eventos `checkout_brick_loaded`, `checkout_payment_submitted`, `checkout_approved`, `checkout_rejected` (extensão do `funnel-telemetry` existente).
+
+## Resultado esperado
+
+- 3 pontos de venda com checkout que **não sai do site**
+- Conversão tende a subir (menos friction de redirect, especialmente em mobile)
+- PIX com QR inline = método mais rápido para fechar venda no Brasil
+- Webhook + ativação de assinatura permanecem inalterados (sem risco de quebrar billing)
 
