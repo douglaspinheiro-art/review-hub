@@ -16,7 +16,7 @@ import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { CancellationModal } from "@/components/dashboard/CancellationModal";
 import { toast } from "sonner";
 import { PLAN_LIMITS, PLANS as PRICING_PLANS, BUNDLES, WA_EXCESS_PRICE, EMAIL_EXCESS_PRICE, SMS_EXCESS_PRICE } from "@/lib/pricing-constants";
-import { trackFunnelEvent } from "@/lib/funnel-telemetry";
+import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 
 const BILLING_PLANS = [
   { key: "starter", name: PRICING_PLANS.starter.name, price: PRICING_PLANS.starter.base, contacts: PRICING_PLANS.starter.maxContacts, messages: PRICING_PLANS.starter.includedWA },
@@ -35,12 +35,13 @@ export default function Billing() {
   const scope = useStoreScope();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { open: openCheckout } = useMercadoPagoCheckout();
   const currentPlan = profile?.plan ?? "starter";
   const [showLimitModal, setShowLimitModal] = useState(false);
   const limitModalScheduledRef = useRef(false);
   const limits = PLAN_LIMITS[currentPlan] ?? PLAN_LIMITS.starter;
 
-  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalLoading] = useState(false);
 
   const { data: usage } = useQuery({
     queryKey: ["billing_usage", user?.id],
@@ -142,25 +143,7 @@ export default function Billing() {
   const totalRecovered = stats?.revenueLast30 ?? 0;
 
   const openMercadoPagoCheckout = async () => {
-    setPortalLoading(true);
-    try {
-      void trackFunnelEvent({
-        event: "checkout_started",
-        selectedPlan: "growth",
-        metadata: { source: "billing", billing_cycle: "monthly" },
-      });
-      const { data, error } = await supabase.functions.invoke<{ init_point?: string }>("mercadopago-create-preference", {
-        body: { plan_key: "growth", billing_cycle: "monthly" },
-      });
-      if (error) throw new Error(error.message);
-      const url = data?.init_point;
-      if (!url) throw new Error("URL de checkout não retornada. Verifique MERCADOPAGO_ACCESS_TOKEN.");
-      window.location.href = url;
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível abrir o checkout.");
-    } finally {
-      setPortalLoading(false);
-    }
+    openCheckout({ planKey: "growth", billingCycle: "monthly", source: "billing" });
   };
 
   const handleConfirmCancel = async () => {

@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { recommendPlan } from "@/lib/plan-recommendation";
 import { PLANS } from "@/lib/pricing-constants";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
+import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 
 type DiagnosticData = {
   resumo?: string;
@@ -168,6 +169,7 @@ export default function Resultado() {
     ? { tier: persistedPlan, reason: computed.reason }
     : computed;
   const recommendedPlan = PLANS[recommendation.tier];
+  const { open: openCheckout } = useMercadoPagoCheckout();
 
   useEffect(() => {
     if (!loading && diagnostic) {
@@ -183,30 +185,13 @@ export default function Resultado() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  const handleSubscribe = async (planKey: "starter" | "growth" | "scale") => {
+  const handleSubscribe = (planKey: "starter" | "growth" | "scale") => {
     if (checkoutLoading) return;
     setCheckoutLoading(planKey);
-    void trackFunnelEvent({
-      event: "checkout_started",
-      recommendedPlan: recommendation.tier,
-      selectedPlan: planKey,
-      metadata: { source: "resultado_inline", chs, perdaMensal, billing_cycle: billingCycle },
-    });
     try {
-      const { data, error } = await supabase.functions.invoke("mercadopago-create-preference", {
-        body: { plan_key: planKey, billing_cycle: billingCycle },
-      });
-      if (error) throw error;
-      const url = (data as { init_point?: string; sandbox_init_point?: string } | null)?.init_point
-        ?? (data as { sandbox_init_point?: string } | null)?.sandbox_init_point;
-      if (!url) throw new Error("URL de pagamento não retornada.");
-      window.location.href = url;
-    } catch (e) {
-      console.error("[resultado] checkout error", e);
-      // Fallback: leva para /planos preservando o tier selecionado
-      navigate(`/planos?recommended=${planKey}&from=diagnostico&cycle=${billingCycle}`);
+      openCheckout({ planKey, billingCycle, source: "resultado_inline" });
     } finally {
-      setCheckoutLoading(null);
+      setTimeout(() => setCheckoutLoading(null), 600);
     }
   };
 

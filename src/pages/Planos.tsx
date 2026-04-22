@@ -11,6 +11,7 @@ import Header from "@/components/landing/Header";
 import Footer from "@/components/landing/Footer";
 import { PLANS } from "@/lib/pricing-constants";
 import { useAuth } from "@/hooks/useAuth";
+import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 
 const CalculadoraSimulador = lazy(() => import("./Calculadora"));
 
@@ -114,6 +115,7 @@ export default function Planos({
   );
   const [searchParams] = useSearchParams();
   const { profile } = useAuth();
+  const { open: openCheckout } = useMercadoPagoCheckout();
   const isActive = profile?.subscription_status === "active";
   const currentPlanKey: PlanKey | null =
     isActive && (profile?.plan === "starter" || profile?.plan === "growth" || profile?.plan === "scale")
@@ -305,12 +307,26 @@ export default function Planos({
                               Gerenciar assinatura
                             </Button>
                           </Link>
-                        ) : (
+                        ) : d.key === "scale" ? (
                           <Link to={d.ctaTo}>
                             <Button variant={d.ctaVariant} className="w-full font-black py-6 text-base rounded-xl">
-                              {isActive ? "Mudar para este plano" : d.ctaLabel}
+                              {d.ctaLabel}
                             </Button>
                           </Link>
+                        ) : (
+                          <Button
+                            variant={d.ctaVariant}
+                            className="w-full font-black py-6 text-base rounded-xl"
+                            onClick={() => {
+                              if (!profile) {
+                                window.location.href = `/signup?plan=${d.key}`;
+                                return;
+                              }
+                              openCheckout({ planKey: d.key, billingCycle: "monthly", source: "planos" });
+                            }}
+                          >
+                            {isActive ? "Mudar para este plano" : d.ctaLabel}
+                          </Button>
                         )}
                       </div>
                     </div>

@@ -15,6 +15,7 @@ import { useTeamAccess } from "@/hooks/useTeamAccess";
 import TelaManutencao from "./components/TelaManutencao";
 
 import { AuthProvider } from "./contexts/AuthContext.tsx";
+import { MercadoPagoCheckoutProvider } from "./hooks/useMercadoPagoCheckout";
 
 // ── QueryClient with stability config ─────────────────────────────────────────
 const queryClient = new QueryClient({
@@ -153,6 +154,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <MercadoPagoCheckoutProvider>
         <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
         <MaintenanceWrapper>
@@ -241,6 +243,7 @@ const App = () => (
         </MaintenanceWrapper>
         </Suspense>
         </ErrorBoundary>
+        </MercadoPagoCheckoutProvider>
       </BrowserRouter>
     </TooltipProvider>
     </AuthProvider>
