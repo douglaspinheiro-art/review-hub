@@ -169,6 +169,7 @@ export default function Resultado() {
     ? { tier: persistedPlan, reason: computed.reason }
     : computed;
   const recommendedPlan = PLANS[recommendation.tier];
+  const { open: openCheckout } = useMercadoPagoCheckout();
 
   useEffect(() => {
     if (!loading && diagnostic) {
