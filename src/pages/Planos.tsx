@@ -307,12 +307,26 @@ export default function Planos({
                               Gerenciar assinatura
                             </Button>
                           </Link>
-                        ) : (
+                        ) : d.key === "scale" ? (
                           <Link to={d.ctaTo}>
                             <Button variant={d.ctaVariant} className="w-full font-black py-6 text-base rounded-xl">
-                              {isActive ? "Mudar para este plano" : d.ctaLabel}
+                              {d.ctaLabel}
                             </Button>
                           </Link>
+                        ) : (
+                          <Button
+                            variant={d.ctaVariant}
+                            className="w-full font-black py-6 text-base rounded-xl"
+                            onClick={() => {
+                              if (!profile) {
+                                window.location.href = `/signup?plan=${d.key}`;
+                                return;
+                              }
+                              openCheckout({ planKey: d.key, billingCycle: "monthly", source: "planos" });
+                            }}
+                          >
+                            {isActive ? "Mudar para este plano" : d.ctaLabel}
+                          </Button>
                         )}
                       </div>
                     </div>
