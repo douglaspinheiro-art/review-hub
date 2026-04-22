@@ -16,7 +16,6 @@ import { useStoreScope } from "@/contexts/StoreScopeContext";
 import { CancellationModal } from "@/components/dashboard/CancellationModal";
 import { toast } from "sonner";
 import { PLAN_LIMITS, PLANS as PRICING_PLANS, BUNDLES, WA_EXCESS_PRICE, EMAIL_EXCESS_PRICE, SMS_EXCESS_PRICE } from "@/lib/pricing-constants";
-import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 
 const BILLING_PLANS = [
