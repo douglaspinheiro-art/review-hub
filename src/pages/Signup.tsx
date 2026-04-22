@@ -178,18 +178,48 @@ export default function Signup() {
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-1.5">
+              <Label htmlFor="full_name" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Nome</Label>
+              <Input
+                id="full_name"
+                type="text"
+                placeholder="Seu nome completo"
+                autoComplete="name"
+                autoFocus
+                className="h-12 rounded-xl bg-muted/30 border-border/50"
+                {...register("full_name")}
+              />
+              {errors.full_name && (
+                <p className="text-xs text-destructive font-bold">{errors.full_name.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
               <Label htmlFor="email" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">E-mail</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="voce@empresa.com"
                 autoComplete="email"
-                autoFocus
                 className="h-12 rounded-xl bg-muted/30 border-border/50"
                 {...register("email")}
               />
               {errors.email && (
                 <p className="text-xs text-destructive font-bold">{errors.email.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="phone" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Telefone</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="(11) 99999-9999"
+                autoComplete="tel"
+                className="h-12 rounded-xl bg-muted/30 border-border/50"
+                {...register("phone")}
+              />
+              {errors.phone && (
+                <p className="text-xs text-destructive font-bold">{errors.phone.message}</p>
               )}
             </div>
 
