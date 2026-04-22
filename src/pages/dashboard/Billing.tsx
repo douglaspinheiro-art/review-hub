@@ -41,7 +41,7 @@ export default function Billing() {
   const limitModalScheduledRef = useRef(false);
   const limits = PLAN_LIMITS[currentPlan] ?? PLAN_LIMITS.starter;
 
-  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalLoading] = useState(false);
 
   const { data: usage } = useQuery({
     queryKey: ["billing_usage", user?.id],
