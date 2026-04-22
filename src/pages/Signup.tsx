@@ -54,7 +54,8 @@ export default function Signup() {
     // We pass an empty full_name so downstream triggers (handle_new_user) don't break;
     // user fills it in onboarding step 1.
     const { error } = await signUp(data.email, data.password, {
-      full_name: "",
+      full_name: data.full_name,
+      whatsapp: data.phone,
       ...(isPilot ? { pilot: true } : {}),
     });
     setLoading(false);
