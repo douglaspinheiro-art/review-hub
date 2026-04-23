@@ -346,15 +346,37 @@ export default function Analisando() {
       if (stepIndex < STEPS.length) setCurrentStep(stepIndex);
     }, 100);
 
-    // Fallback: navigate after 25s even without realtime event
-    const fallbackTimer = setTimeout(() => {
-      goToResultado(0);
-    }, 25000);
+    // B2. Polling com backoff (substitui timer fixo de 25s)
+    let pollCancelled = false;
+    const pollDelays = [3000, 6000, 12000];
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (!userId) return;
+      for (const delay of pollDelays) {
+        if (pollCancelled || navigatedToResultadoRef.current) return;
+        await new Promise((r) => setTimeout(r, delay));
+        if (pollCancelled || navigatedToResultadoRef.current) return;
+        const { data: row } = await supabase
+          .from("diagnostics_v3")
+          .select("id")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (row) {
+          goToResultado(500);
+          return;
+        }
+      }
+      // Esgotou todas as tentativas — fallback final
+      if (!navigatedToResultadoRef.current) goToResultado(0);
+    })();
 
     return () => {
       if (channelRef) supabase.removeChannel(channelRef);
       clearInterval(visualInterval);
-      clearTimeout(fallbackTimer);
+      pollCancelled = true;
     };
   }, [navigate, diagnosticCalled]);
 
