@@ -109,6 +109,29 @@ export default function Analisando() {
         )
         .subscribe();
 
+      // 2.1 — Streaming de progresso real. A edge dispara `progress` em cada etapa
+      // (validation → ai_call_started → persisting). Usamos isso para avançar
+      // STEPS de forma honesta em vez de só timer.
+      const stageToStepIndex: Record<string, number> = {
+        validation: 1,
+        ai_call_started: 4, // "Detectando carrinhos abandonados…" (highlight)
+        persisting: 7,      // "Finalizando diagnóstico prescritivo…" (special)
+      };
+      progressChannelRef = supabase
+        .channel(`diagnostico-progress-${userId}`)
+        .on("broadcast", { event: "progress" }, (msg) => {
+          const stage = String((msg as { payload?: { stage?: string } }).payload?.stage ?? "");
+          const idx = stageToStepIndex[stage];
+          if (typeof idx === "number") {
+            realProgressRef.current = true;
+            setCurrentStep((prev) => Math.max(prev, idx));
+            // Avança visual também: ai_call_started ~50%, persisting ~85%
+            const target = stage === "validation" ? 25 : stage === "ai_call_started" ? 60 : 90;
+            setProgress((p) => Math.max(p, target));
+          }
+        })
+        .subscribe();
+
       // 2. Resolve funnel payload — sessionStorage cache, fallback to DB.
       let funnel: FunnelPayload | null = null;
 
