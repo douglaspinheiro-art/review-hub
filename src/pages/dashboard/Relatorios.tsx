@@ -729,8 +729,8 @@ export default function Relatorios() {
                     </tr>
                   </thead>
                   <tbody>
-                    {cohorts.map((row: any) => (
-                      <tr key={row.id} className="border-b border-border/30">
+                    {cohorts.map((row) => (
+                      <tr key={row.cohort_month} className="border-b border-border/30">
                         <td className="p-2 text-muted-foreground">{row.cohort_month}</td>
                         <td className="p-2 text-center bg-muted/10">{row.cohort_size}</td>
                         <td className="p-2 text-center font-mono">{formatRetentionD30(row.retention_d30)}</td>
