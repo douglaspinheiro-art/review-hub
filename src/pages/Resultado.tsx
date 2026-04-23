@@ -148,6 +148,7 @@ export default function Resultado() {
 
         if (diagData) {
           setDiagnostic(diagData.diagnostic_json as DiagnosticData);
+          setDiagnosticId((diagData as { id?: string }).id ?? null);
           setChs(diagData.chs ?? 47);
           setChsLabel(diagData.chs_label ?? "Regular");
           const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
