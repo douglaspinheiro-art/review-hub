@@ -213,7 +213,17 @@ export default function Atribuicao() {
       {isEmpty && <EmptyState onNavigate={() => navigate("/dashboard/integracoes")} />}
 
       {!isLoading && data && data.totalRevenue > 0 && (
-        <>
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="bg-muted/50 rounded-xl">
+            <TabsTrigger value="overview" className="rounded-lg text-xs font-bold">
+              Visão geral
+            </TabsTrigger>
+            <TabsTrigger value="advanced" className="rounded-lg text-xs font-bold">
+              Modelos avançados
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-8 mt-0">
           {(data as any).attributionQueryError && (
             <div
               className="flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
