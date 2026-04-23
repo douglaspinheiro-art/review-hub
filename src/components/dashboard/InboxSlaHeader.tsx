@@ -58,7 +58,7 @@ export function InboxSlaHeader() {
   return (
     <div className="border-b bg-muted/10">
       <div className="flex items-center gap-2 px-3 pt-2">
-        <DataSourceBadge type="real" source="conversations + messages (últimos 7d)" />
+        <DataSourceBadge source="real" origin="RPC get_inbox_sla_kpis_v1 (conversations + messages, 7d)" />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-3 py-2">
         {items.map((it) => {

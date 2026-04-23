@@ -50,8 +50,8 @@ export function LoyaltyKpisHeader() {
   return (
     <div className="mb-4">
       <div className="flex items-center gap-2 mb-2">
-        <DataSourceBadge type="real" source="loyalty_balances + loyalty_transactions" />
-        <span className="text-xs text-muted-foreground">RPC get_loyalty_kpis_v1</span>
+        <DataSourceBadge source="real" origin="RPC get_loyalty_kpis_v1 (loyalty_balances + loyalty_transactions)" />
+        
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {cards.map((c) => {
