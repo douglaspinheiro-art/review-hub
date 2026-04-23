@@ -146,6 +146,7 @@ const Newsletter = lazy(() => import("./pages/dashboard/Newsletter.tsx"));
 const Atribuicao = lazy(() => import("./pages/dashboard/Atribuicao.tsx"));
 const Operacoes = lazy(() => import("./pages/dashboard/Operacoes.tsx"));
 const Admin = lazy(() => import("./pages/admin/Admin.tsx"));
+const DiagnosticoTelemetria = lazy(() => import("./pages/admin/DiagnosticoTelemetria.tsx"));
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -237,6 +238,7 @@ const App = () => (
           <Route path="/dashboard/atribuicao" element={<DashboardRoute routeLabel="Atribuição de Vendas"><Atribuicao /></DashboardRoute>} />
           <Route path="/dashboard/operacoes" element={<DashboardRoute routeLabel="Operações Logísticas"><Operacoes /></DashboardRoute>} />
           <Route path="/admin" element={<AdminStaffRoute routeLabel="Administração da plataforma"><Admin /></AdminStaffRoute>} />
+          <Route path="/admin/diagnostico-telemetria" element={<AdminStaffRoute routeLabel="Telemetria de diagnósticos"><DiagnosticoTelemetria /></AdminStaffRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
