@@ -271,6 +271,14 @@ export default function Resultado() {
 
   const problemas = diagnostic?.problemas || [];
   const recomendacoes = diagnostic?.recomendacoes || [];
+  const oportunidades = diagnostic?.oportunidades || [];
+  const forecast = diagnostic?.forecast_30d;
+  const meta = diagnostic?.meta;
+  const realPct = meta?.confidence?.real_signals_pct ?? 0;
+  const dataWindowDays = meta?.confidence?.data_window_days ?? 30;
+  const lastSyncAt = meta?.confidence?.last_sync_at ?? meta?.generated_at ?? null;
+  const fallbackMode = Boolean(meta?.fallback_mode);
+  const confidenceSource: DataSource = realPct >= 70 ? "real" : realPct >= 30 ? "derived" : "estimated";
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
@@ -314,6 +322,22 @@ export default function Resultado() {
             <p className="text-muted-foreground text-sm">
               Baseado em {visitantesNum.toLocaleString("pt-BR")} visitantes · {pedidosNum} pedidos · Taxa de conversão {taxaConversaoAtual.toFixed(2)}%
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <DataSourceBadge
+                source={confidenceSource}
+                origin={`${realPct}% sinais reais · janela ${dataWindowDays}d`}
+                updatedAt={lastSyncAt}
+                note={fallbackMode ? "Diagnóstico gerado em modo fallback (IA indisponível)." : undefined}
+              />
+              {lastSyncAt && (
+                <FreshnessIndicator updatedAt={lastSyncAt} slaMinutes={60 * 24} label="Sincronizado" />
+              )}
+              {fallbackMode && (
+                <Badge className="bg-amber-500/15 text-amber-500 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wide">
+                  Modo fallback
+                </Badge>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-center">
