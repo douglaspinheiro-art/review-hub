@@ -13,6 +13,8 @@ import { useROIAttribution } from "@/hooks/useDashboard";
 import { useNavigate } from "react-router-dom";
 import { ATTRIBUTION_WINDOW_DAYS, ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AdvancedAttributionTab } from "@/components/dashboard/AdvancedAttributionTab";
 import {
   AreaChart, Area,
   PieChart, Pie, Cell,
@@ -211,7 +213,17 @@ export default function Atribuicao() {
       {isEmpty && <EmptyState onNavigate={() => navigate("/dashboard/integracoes")} />}
 
       {!isLoading && data && data.totalRevenue > 0 && (
-        <>
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="bg-muted/50 rounded-xl">
+            <TabsTrigger value="overview" className="rounded-lg text-xs font-bold">
+              Visão geral
+            </TabsTrigger>
+            <TabsTrigger value="advanced" className="rounded-lg text-xs font-bold">
+              Modelos avançados
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-8 mt-0">
           {(data as any).attributionQueryError && (
             <div
               className="flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
@@ -638,7 +650,12 @@ export default function Atribuicao() {
               {!data.hasAttribution && " Dados por campanha aparecem quando os primeiros eventos forem gravados."}
             </p>
           </div>
-        </>
+          </TabsContent>
+
+          <TabsContent value="advanced" className="mt-0">
+            <AdvancedAttributionTab periodDays={period} />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
