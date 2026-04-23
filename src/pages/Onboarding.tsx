@@ -31,6 +31,19 @@ import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
 const TOTAL_STEPS = 4;
 
+/** Formata "há X minutos/horas/dias" em pt-BR para o banner de retomada. */
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "agora";
+  const diffMin = Math.max(0, Math.round((Date.now() - then) / 60_000));
+  if (diffMin < 1) return "agora";
+  if (diffMin < 60) return `há ${diffMin} min`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `há ${diffH}h`;
+  const diffD = Math.round(diffH / 24);
+  return `há ${diffD}d`;
+}
+
 /** Normaliza e valida URL pública da loja (passo 1). */
 function parsePublicStoreUrl(raw: string): string | null {
   const t = raw.trim();
