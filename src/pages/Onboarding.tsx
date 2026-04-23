@@ -18,7 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
 import { getPostLoginRoute } from "@/lib/post-login-route";
-import { benchmarkCvrForVertical, segmentLabelForVertical } from "@/lib/funnel-benchmarks";
+import { benchmarkCvrForVertical, segmentLabelForVertical, ticketMedioForVertical } from "@/lib/funnel-benchmarks";
 import {
   validateFunnelConsistency,
   computeRealSignalsPct,
@@ -364,6 +364,28 @@ export default function Onboarding() {
     if (!mapped) return;
     setPlataforma((prev) => prev || mapped);
   }, [user?.id, user?.user_metadata?.plataforma]);
+
+  // 1.3 Smart defaults por segmento — pré-popular ticket médio e meta de conversão
+  // com base na vertical escolhida, mas só quando o lojista ainda não tocou nesses
+  // campos (mantém valor manual ou importado da loja).
+  useEffect(() => {
+    if (!vertical) return;
+    const benchTicket = ticketMedioForVertical(vertical);
+    const benchCvr = benchmarkCvrForVertical(vertical);
+    setTicketMedio((prev) => {
+      if (importedFields.ticketMedio) return prev;
+      // Considera "intocado" se está no default genérico ("250") ou vazio.
+      if (!prev || prev === "250") return String(benchTicket);
+      return prev;
+    });
+    setMetaConversao((prev) => {
+      // Não sobrescreve se já foi derivado de visitantes×pedidos reais.
+      if (conversoComputedPct !== null) return prev;
+      if (!prev || prev === "2.5") return String(benchCvr);
+      return prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vertical]);
 
   // Persist progress on every change. SECURITY: never persist OAuth tokens,
   // API keys, or GA4 access tokens in localStorage (XSS exfiltration risk).
@@ -1057,6 +1079,12 @@ export default function Onboarding() {
           imported_fields: Object.keys(importedFields).filter((k) => (importedFields as Record<string, boolean>)[k]),
         },
       });
+
+      // 2.2 Warm-up da edge — fire-and-forget para reduzir cold-start em /analisando.
+      // Não bloqueia o navigate; falha silenciosa.
+      try {
+        void supabase.functions.invoke("gerar-diagnostico", { body: { _warmup: true } });
+      } catch { /* noop */ }
 
       navigate("/analisando");
     } catch (e) {
