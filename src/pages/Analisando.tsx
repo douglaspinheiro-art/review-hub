@@ -59,6 +59,11 @@ export default function Analisando() {
       if (navigatedToResultadoRef.current) return;
       navigatedToResultadoRef.current = true;
       setProgress(100);
+      // Telemetria 4.1: marca conclusão da etapa /analisando.
+      void trackFunnelEvent({
+        event: "analisando_completed",
+        metadata: { delay_ms: delayMs },
+      });
       setTimeout(() => navigate("/resultado", { replace: true }), delayMs);
     }
 
@@ -66,6 +71,12 @@ export default function Analisando() {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user?.id;
       if (!userId) return;
+
+      // Telemetria 4.1: entrou na tela de análise.
+      void trackFunnelEvent({
+        event: "analisando_entered",
+        metadata: {},
+      });
 
       // Guard: paid users should never sit on /analisando — send them straight to dashboard.
       const { data: profileRow } = await supabase

@@ -17,6 +17,7 @@ import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 import type { DataSource } from "@/lib/data-provenance";
+import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
 
 type DiagnosticData = {
   resumo?: string;
@@ -80,6 +81,7 @@ function safeParseFunnel(): {
   pedido?: number;
   meta_conversao?: number;
   taxa_conversao?: number;
+  segmento?: string;
 } | null {
   try {
     const raw = sessionStorage.getItem("ltv_funnel_data");
@@ -221,12 +223,42 @@ export default function Resultado() {
   const recommendedPlan = PLANS[recommendation.tier];
   const { open: openCheckout } = useMercadoPagoCheckout();
 
+  // 3.1 — Posicionamento percentil contra peers do segmento.
+  const verticalKey: EcommerceVerticalKey = (() => {
+    const seg = (funnel?.segmento ?? "").toLowerCase();
+    if (seg.includes("moda")) return "fashion";
+    if (seg.includes("belez")) return "beauty";
+    if (seg.includes("supl")) return "supplements";
+    if (seg.includes("pet")) return "pets";
+    return "generic";
+  })();
+  const peer = estimatePeerPercentile(taxaConversaoAtual, verticalKey);
+
+  // 3.3 — CTA personalizado por CHS.
+  const ctaCopy = chs >= 70
+    ? `Manter liderança com ${recommendedPlan.name}`
+    : chs >= 40
+    ? `Acelerar resultados com ${recommendedPlan.name}`
+    : `Resgatar receita perdida com ${recommendedPlan.name}`;
+  const ctaUrgencyLabel = chs < 40 ? "Em risco" : chs < 70 ? "Há espaço para crescer" : "Ótimo desempenho";
+
   useEffect(() => {
     if (!loading && diagnostic) {
       void trackFunnelEvent({
         event: "plan_recommended",
         recommendedPlan: recommendation.tier,
         metadata: { chs, perdaMensal },
+      });
+      void trackFunnelEvent({
+        event: "resultado_viewed",
+        recommendedPlan: recommendation.tier,
+        metadata: {
+          chs,
+          perdaMensal,
+          peer_percentile: peer.percentile,
+          vertical: verticalKey,
+          fallback_mode: Boolean(diagnostic?.meta?.fallback_mode),
+        },
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -238,6 +270,12 @@ export default function Resultado() {
   const handleSubscribe = (planKey: "starter" | "growth" | "scale") => {
     if (checkoutLoading) return;
     setCheckoutLoading(planKey);
+    void trackFunnelEvent({
+      event: "resultado_checkout_started",
+      recommendedPlan: recommendation.tier,
+      selectedPlan: planKey,
+      metadata: { chs, billingCycle, peer_percentile: peer.percentile },
+    });
     try {
       openCheckout({ planKey, billingCycle, source: "resultado_inline" });
     } finally {
@@ -310,11 +348,16 @@ export default function Resultado() {
             <Button
               size="sm"
               onClick={() => {
+                void trackFunnelEvent({
+                  event: "resultado_cta_clicked",
+                  recommendedPlan: recommendation.tier,
+                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel },
+                });
                 document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
               className="font-bold rounded-xl h-9 gap-1"
             >
-              Ativar plano {recommendedPlan.name} <ArrowRight className="w-3.5 h-3.5" />
+              {ctaCopy} <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           )}
         </div>
@@ -403,6 +446,61 @@ export default function Resultado() {
             </div>
           </div>
         )}
+
+        {/* 3.1 — Posicionamento contra peers do segmento */}
+        <div className="bg-[#13131A] border border-[#1E1E2E] rounded-3xl p-6 md:p-8 space-y-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                Você vs. {peer.distribution.label.toLowerCase()} no Brasil
+              </p>
+              <h3 className="text-2xl md:text-3xl font-black font-syne tracking-tighter">
+                Percentil <span className="text-primary">{peer.percentile}</span> do seu segmento
+              </h3>
+              <p className="text-xs text-muted-foreground max-w-md">
+                {peer.percentile >= 75
+                  ? "Você está acima da média — foco em manter a liderança e aumentar LTV."
+                  : peer.percentile >= 50
+                  ? "Você está acima da mediana, mas longe do top 25%. Há receita parada na mesa."
+                  : peer.percentile >= 25
+                  ? `${100 - peer.percentile}% das lojas do seu segmento convertem mais que você.`
+                  : "Você está no quartil inferior — recuperação rápida possível com ajustes pontuais."}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Sua CVR</p>
+              <p className="text-2xl font-black font-jetbrains">{taxaConversaoAtual.toFixed(2)}%</p>
+            </div>
+          </div>
+
+          {/* Régua de percentis */}
+          <div className="space-y-2">
+            <div className="relative h-2.5 bg-muted/30 rounded-full overflow-hidden">
+              <div
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500 rounded-full"
+                style={{ width: "100%" }}
+              />
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 border-[#0A0A0F] shadow-lg"
+                style={{ left: `calc(${peer.percentile}% - 7px)` }}
+              />
+            </div>
+            <div className="grid grid-cols-4 text-[10px] text-muted-foreground font-mono">
+              <span>p25 · {peer.distribution.p25}%</span>
+              <span className="text-center">mediana · {peer.distribution.median}%</span>
+              <span className="text-center">p75 · {peer.distribution.p75}%</span>
+              <span className="text-right text-emerald-500">top 10% · {peer.distribution.top10}%</span>
+            </div>
+          </div>
+
+          {peer.percentile < 75 && (
+            <div className="pt-4 border-t border-border/30 text-xs text-muted-foreground">
+              Para alcançar o <span className="text-emerald-500 font-bold">top 25%</span> ({peer.distribution.p75}% CVR),
+              você precisaria de <span className="text-white font-bold">+{Math.max(0, peer.distribution.p75 - taxaConversaoAtual).toFixed(2)}pp</span>{" "}
+              de conversão — equivale a <span className="text-emerald-500 font-bold">R$ {Math.max(0, Math.round(((peer.distribution.p75 - taxaConversaoAtual) / 100) * visitantesNum * ticketMedio)).toLocaleString("pt-BR")}/mês</span> a mais.
+            </div>
+          )}
+        </div>
 
         {/* AI Summary */}
         {diagnostic?.resumo && (

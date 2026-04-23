@@ -16,7 +16,16 @@ export type FunnelEventName =
   | "paywall_blocked"
   // Fase 0 — baseline para medir loop ConvertIQ → Campanha → Receita
   | "prescription_converted_to_campaign"
-  | "campaign_attributed_revenue_snapshot";
+  | "campaign_attributed_revenue_snapshot"
+  // Funil de ativação ponta a ponta (admin telemetry 4.1)
+  | "onboarding_started"
+  | "onboarding_completed"
+  | "onboarding_abandoned"
+  | "analisando_entered"
+  | "analisando_completed"
+  | "resultado_viewed"
+  | "resultado_cta_clicked"
+  | "resultado_checkout_started";
 
 export interface FunnelEventInput {
   event: FunnelEventName;
