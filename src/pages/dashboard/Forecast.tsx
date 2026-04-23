@@ -180,13 +180,15 @@ export default function Forecast() {
         </Button>
       </div>
 
-      {projectionRpcError && (
+      {!useServerOfficial && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-950 dark:text-sky-100">
           <Badge variant="outline" className="border-sky-500/50 text-[10px] font-bold uppercase">
-            Estimativa local
+            Cálculo local
           </Badge>
           <span>
-            A projeção estatística no servidor não respondeu; os valores &quot;Próximos 30 dias&quot; usam só o cálculo no app.
+            {projectionRpcError
+              ? "A projeção do servidor não respondeu — usando o cálculo local como número oficial."
+              : "Sem snapshot fresco do servidor (<24h) — usando o cálculo local como número oficial."}
           </span>
           <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void refetchProjection()}>
             Tentar RPC
@@ -272,9 +274,13 @@ export default function Forecast() {
               <Sparkles className="w-12 h-12" />
             </div>
             <h3 className="text-sm font-bold uppercase tracking-widest text-primary mb-4">Estimativa rápida · 30 dias</h3>
+            <div className="mb-3">
+              <DataSourceBadge source={officialSource} origin={officialOrigin} updatedAt={snapshotCalculatedAt} />
+            </div>
             <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
-              Calculada no app a partir do mesmo histórico do gráfico (média diária + tendência amortecida). Diferente
-              de cenários gerados por job ou modelo externo, quando existirem.
+              {useServerOfficial
+                ? "Número oficial: snapshot do servidor (recalculado pelo pipeline da plataforma). Cenários alternativos abaixo."
+                : "Cálculo local a partir do histórico do gráfico (média diária + tendência amortecida). Quando o pipeline gerar um snapshot fresco, ele se torna o número oficial automaticamente."}
             </p>
             <div className="space-y-4">
               <div>
