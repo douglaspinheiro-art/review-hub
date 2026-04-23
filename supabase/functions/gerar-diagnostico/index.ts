@@ -535,6 +535,7 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
     }
 
     let diag: Record<string, unknown>;
+    let fallbackMode = false;
     try {
       if (!KEY) throw new Error("ANTHROPIC_API_KEY não configurada");
 
@@ -554,6 +555,7 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
       }
     } catch (error) {
       console.warn("[gerar-diagnostico] Usando fallback local para diagnóstico:", error instanceof Error ? error.message : String(error));
+      fallbackMode = true;
       diag = buildFallbackDiagnostic({
         chs,
         chsLabel: chs_label,

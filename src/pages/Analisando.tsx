@@ -145,6 +145,69 @@ export default function Analisando() {
         if (funnel) {
           try {
             const benchRef = benchmarkForDiagnostics(funnel);
+
+            // === Enriquecimento opcional do payload ===
+            // Cada bloco roda em allSettled — qualquer falha individual não bloqueia o diagnóstico.
+            const storeId = funnel.store_id ?? null;
+            let enriched: Record<string, unknown> = {};
+            if (storeId) {
+              const nowIso = new Date().toISOString();
+              const in30dIso = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+              const todayIso = new Date().toISOString().slice(0, 10);
+              const results = await Promise.allSettled([
+                supabase.from("channels").select("tipo").eq("store_id", storeId).eq("ativo", true),
+                supabase.from("catalog_snapshot").select("id", { count: "exact", head: true }).eq("store_id", storeId).lt("stock_qty", 5),
+                supabase.from("reviews").select("id", { count: "exact", head: true }).eq("store_id", storeId).lt("rating", 3),
+                supabase.from("executions").select("prescricao_id,conversao_antes,conversao_depois,receita_gerada,canal,segmento").eq("store_id", storeId).order("created_at", { ascending: false }).limit(10),
+                supabase.from("commercial_calendar_br").select("event_name,event_date,category").gte("event_date", todayIso).lte("event_date", in30dIso).order("event_date", { ascending: true }).limit(3),
+                supabase.from("data_quality_snapshots").select("utm_fill_rate,phone_fill_rate,ga4_purchase_vs_orders_diff_pct,snapshot_date,created_at").eq("store_id", storeId).order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
+              ]);
+
+              const [chRes, stockRes, lowRevRes, execRes, calRes, dqRes] = results;
+              if (chRes.status === "fulfilled" && Array.isArray(chRes.value.data)) {
+                enriched.canais_conectados = (chRes.value.data as Array<{ tipo?: string }>).map((r) => r.tipo).filter(Boolean);
+              }
+              if (stockRes.status === "fulfilled" && typeof stockRes.value.count === "number") {
+                enriched.produtos_estoque_critico = stockRes.value.count;
+              }
+              if (lowRevRes.status === "fulfilled" && typeof lowRevRes.value.count === "number") {
+                enriched.produtos_avaliacao_baixa = lowRevRes.value.count;
+              }
+              if (execRes.status === "fulfilled" && Array.isArray(execRes.value.data)) {
+                enriched.historico_prescricoes = (execRes.value.data as Array<Record<string, unknown>>).map((e) => {
+                  const antes = Number(e.conversao_antes) || 0;
+                  const depois = Number(e.conversao_depois) || 0;
+                  const lift_pp = depois - antes;
+                  return {
+                    prescricao_id: e.prescricao_id,
+                    canal: e.canal,
+                    segmento: e.segmento,
+                    conversao_antes: antes,
+                    conversao_depois: depois,
+                    lift_pp,
+                    funcionou: lift_pp > 0,
+                    receita_gerada: Number(e.receita_gerada) || 0,
+                    roi_real: Number(e.receita_gerada) > 0 ? Number((Number(e.receita_gerada) / 100).toFixed(2)) : 0,
+                  };
+                });
+              }
+              if (calRes.status === "fulfilled" && Array.isArray(calRes.value.data)) {
+                enriched.proximos_eventos_sazonais = (calRes.value.data as Array<{ event_name?: string; event_date?: string }>).map((e) => {
+                  const dias = e.event_date ? Math.max(0, Math.round((new Date(e.event_date).getTime() - Date.now()) / 86_400_000)) : null;
+                  return { nome: e.event_name, dias_restantes: dias };
+                });
+              }
+              if (dqRes.status === "fulfilled" && dqRes.value.data) {
+                const dq = dqRes.value.data as Record<string, unknown>;
+                enriched.data_quality = {
+                  utm_fill_rate: dq.utm_fill_rate ?? null,
+                  phone_fill_rate: dq.phone_fill_rate ?? null,
+                  ga4_diff_pct: dq.ga4_purchase_vs_orders_diff_pct ?? null,
+                  last_sync_at: dq.created_at ?? nowIso,
+                };
+              }
+            }
+
             const { data, error } = await supabase.functions.invoke("gerar-diagnostico", {
               body: {
                 loja_id: funnel.store_id,
@@ -156,6 +219,7 @@ export default function Analisando() {
                 ticket_medio: funnel.ticket_medio,
                 meta_conversao: benchRef,
                 ...(funnel.segmento ? { segmento: funnel.segmento } : {}),
+                ...enriched,
               },
             });
 
