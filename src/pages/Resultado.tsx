@@ -14,6 +14,9 @@ import { recommendPlan } from "@/lib/plan-recommendation";
 import { PLANS } from "@/lib/pricing-constants";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
+import type { DataSource } from "@/lib/data-provenance";
 
 type DiagnosticData = {
   resumo?: string;
@@ -33,7 +36,55 @@ type DiagnosticData = {
     prazo_semanas: number;
     tipo: string;
   }>;
+  oportunidades?: Array<{
+    titulo: string;
+    descricao: string;
+    potencial_reais?: number;
+    janela_dias?: number;
+    segmento?: string;
+    evento_sazonal?: string | null;
+  }>;
+  chs_breakdown?: {
+    conversao?: number;
+    funil?: number;
+    produtos?: number;
+    mobile?: number;
+  };
+  forecast_30d?: {
+    minimo?: number;
+    maximo?: number;
+    com_prescricoes?: number;
+    com_ux_fixes?: number;
+  };
+  meta?: {
+    fallback_mode?: boolean;
+    confidence?: {
+      real_signals_pct?: number;
+      data_window_days?: number;
+      last_sync_at?: string;
+    };
+    generated_at?: string;
+  };
 };
+
+/** Parse seguro do sessionStorage; retorna null em qualquer falha. */
+function safeParseFunnel(): {
+  ticket_medio?: number;
+  visitantes?: number;
+  pedido?: number;
+  meta_conversao?: number;
+  taxa_conversao?: number;
+} | null {
+  try {
+    const raw = sessionStorage.getItem("ltv_funnel_data");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 export default function Resultado() {
   const navigate = useNavigate();
@@ -119,15 +170,8 @@ export default function Resultado() {
     };
   }, [user?.id]);
 
-  // Compute loss from funnel data — meta_conversao = benchmark de setor; taxa_conversao = CVR medida (payload novo)
-  const rawFunnel = sessionStorage.getItem("ltv_funnel_data");
-  const funnel = rawFunnel ? JSON.parse(rawFunnel) : null as {
-    ticket_medio?: number;
-    visitantes?: number;
-    pedido?: number;
-    meta_conversao?: number;
-    taxa_conversao?: number;
-  } | null;
+  // Compute loss from funnel data — parse seguro evita quebra por payload corrompido.
+  const funnel = safeParseFunnel();
   const ticketMedio = funnel?.ticket_medio || 250;
   const visitantesNum = funnel?.visitantes || 12400;
   const pedidosNum = funnel?.pedido ?? 174;
@@ -227,6 +271,14 @@ export default function Resultado() {
 
   const problemas = diagnostic?.problemas || [];
   const recomendacoes = diagnostic?.recomendacoes || [];
+  const oportunidades = diagnostic?.oportunidades || [];
+  const forecast = diagnostic?.forecast_30d;
+  const meta = diagnostic?.meta;
+  const realPct = meta?.confidence?.real_signals_pct ?? 0;
+  const dataWindowDays = meta?.confidence?.data_window_days ?? 30;
+  const lastSyncAt = meta?.confidence?.last_sync_at ?? meta?.generated_at ?? null;
+  const fallbackMode = Boolean(meta?.fallback_mode);
+  const confidenceSource: DataSource = realPct >= 70 ? "real" : realPct >= 30 ? "derived" : "estimated";
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
@@ -270,6 +322,22 @@ export default function Resultado() {
             <p className="text-muted-foreground text-sm">
               Baseado em {visitantesNum.toLocaleString("pt-BR")} visitantes · {pedidosNum} pedidos · Taxa de conversão {taxaConversaoAtual.toFixed(2)}%
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <DataSourceBadge
+                source={confidenceSource}
+                origin={`${realPct}% sinais reais · janela ${dataWindowDays}d`}
+                updatedAt={lastSyncAt}
+                note={fallbackMode ? "Diagnóstico gerado em modo fallback (IA indisponível)." : undefined}
+              />
+              {lastSyncAt && (
+                <FreshnessIndicator updatedAt={lastSyncAt} slaMinutes={60 * 24} label="Sincronizado" />
+              )}
+              {fallbackMode && (
+                <Badge className="bg-amber-500/15 text-amber-500 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wide">
+                  Modo fallback
+                </Badge>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-center">
@@ -450,6 +518,71 @@ export default function Resultado() {
 
 
         {/* Inline checkout — 3 plans, monthly/annual toggle, recommended highlighted */}
+        {oportunidades.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold font-syne uppercase tracking-tighter flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" /> Oportunidades adicionais
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {oportunidades.map((o, i) => (
+                <div key={i} className="border border-primary/20 bg-primary/5 rounded-2xl p-5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold">{o.titulo}</h3>
+                    {o.potencial_reais ? (
+                      <span className="text-xs font-black text-emerald-500">
+                        +R$ {o.potencial_reais.toLocaleString("pt-BR")}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{o.descricao}</p>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-1">
+                    {o.janela_dias ? <span>Janela {o.janela_dias}d</span> : null}
+                    {o.segmento ? <Badge variant="outline" className="text-[9px]">{o.segmento}</Badge> : null}
+                    {o.evento_sazonal ? <Badge className="text-[9px] bg-amber-500/15 text-amber-500 border-none">{o.evento_sazonal}</Badge> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {forecast && (forecast.minimo || forecast.maximo || forecast.com_prescricoes) && (
+          <div className="border border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-transparent rounded-3xl p-6 md:p-8 space-y-5">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
+              <h2 className="text-xl font-bold font-syne uppercase tracking-tighter">Projeção 30 dias</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-2xl border border-[#1E1E2E] bg-[#13131A] p-4 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Cenário base</p>
+                <p className="text-2xl font-black font-jetbrains text-white">
+                  R$ {(forecast.minimo ?? 0).toLocaleString("pt-BR")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">sem ações novas</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-center ring-1 ring-emerald-500/30">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 mb-2">Com prescrições</p>
+                <p className="text-2xl font-black font-jetbrains text-emerald-500">
+                  +R$ {(forecast.com_prescricoes ?? 0).toLocaleString("pt-BR")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">campanhas ativadas</p>
+              </div>
+              <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">Com fixes UX</p>
+                <p className="text-2xl font-black font-jetbrains text-blue-400">
+                  +R$ {(forecast.com_ux_fixes ?? 0).toLocaleString("pt-BR")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">após melhorias</p>
+              </div>
+            </div>
+            {forecast.maximo ? (
+              <p className="text-[11px] text-muted-foreground text-center">
+                Cenário máximo combinando todas as ações: <span className="text-emerald-500 font-bold">R$ {forecast.maximo.toLocaleString("pt-BR")}</span>
+              </p>
+            ) : null}
+          </div>
+        )}
+
         {!isActive && diagnostic && (
           <div id="planos-inline" className="space-y-8 scroll-mt-20">
             {/* Price anchor — ROI vs perda mensal */}

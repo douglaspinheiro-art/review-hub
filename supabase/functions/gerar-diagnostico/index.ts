@@ -276,6 +276,7 @@ serve(async (req) => {
       historico_prescricoes = [],
       proximos_eventos_sazonais = [],
       agregado_historico = null,
+      data_quality = null,
     } = bodyJson;
 
     const storeUuid =
@@ -478,7 +479,8 @@ ${proximos_eventos_sazonais.length > 0
 
 Gere 3 problemas priorizados por impacto, 2 oportunidades e 3 recomendações de UX.
 Para cada prescrição, use o desconto mínimo necessário para o segmento alvo.
-NÃO repita abordagens de prescrições que não funcionaram.`;
+NÃO repita abordagens de prescrições já executadas com lift_pp <= 0 (campo "funcionou": false). Priorize variações de canal, segmento ou oferta.
+${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string, unknown>).utm_fill_rate ?? "?"}, phone_fill=${(data_quality as Record<string, unknown>).phone_fill_rate ?? "?"}, ga4_diff=${(data_quality as Record<string, unknown>).ga4_diff_pct ?? "?"}%` : ""}`;
 
     // Anthropic call with per-attempt 25s timeout + exponential backoff on 429/5xx.
     // Without an explicit signal, a hanging Anthropic response would hold the Edge
@@ -535,6 +537,7 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
     }
 
     let diag: Record<string, unknown>;
+    let fallbackMode = false;
     try {
       if (!KEY) throw new Error("ANTHROPIC_API_KEY não configurada");
 
@@ -554,6 +557,7 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
       }
     } catch (error) {
       console.warn("[gerar-diagnostico] Usando fallback local para diagnóstico:", error instanceof Error ? error.message : String(error));
+      fallbackMode = true;
       diag = buildFallbackDiagnostic({
         chs,
         chsLabel: chs_label,
@@ -603,6 +607,32 @@ NÃO repita abordagens de prescrições que não funcionaram.`;
     } else if (chs < 40 || perda > 50_000 || problemasCriticos >= 2) {
       recommendedPlan = "growth";
     }
+
+    // === Meta de transparência (proveniência + confiança) ===
+    // real_signals_pct: % de blocos opcionais enriquecidos que vieram populados.
+    const optionalSignals = [
+      Array.isArray(canais_conectados) && canais_conectados.length > 0,
+      visitantes_mobile > 0 || visitantes_desktop > 0,
+      Array.isArray(historico_prescricoes) && historico_prescricoes.length > 0,
+      Array.isArray(proximos_eventos_sazonais) && proximos_eventos_sazonais.length > 0,
+      produtos_estoque_critico > 0 || produtos_avaliacao_baixa > 0,
+      data_quality !== null,
+    ];
+    const filledCount = optionalSignals.filter(Boolean).length;
+    const realSignalsPct = Math.round((filledCount / optionalSignals.length) * 100);
+    const lastSyncAt = (data_quality && (data_quality as Record<string, unknown>).last_sync_at)
+      ? String((data_quality as Record<string, unknown>).last_sync_at)
+      : new Date().toISOString();
+
+    diag.meta = {
+      fallback_mode: fallbackMode,
+      confidence: {
+        real_signals_pct: realSignalsPct,
+        data_window_days: 30,
+        last_sync_at: lastSyncAt,
+      },
+      generated_at: new Date().toISOString(),
+    };
 
     // Salvar diagnóstico no banco
     if (loja_id) {
