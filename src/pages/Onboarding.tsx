@@ -975,6 +975,29 @@ export default function Onboarding() {
         return;
       }
 
+      // 1.4 — Validação cruzada GA4 ↔ plataforma. Só aplica se temos ambas as fontes.
+      const fatNum = Number(faturamento) || 0;
+      const tmNum2 = Number(ticketMedio) || 250;
+      const platformOrders = fatNum > 0 && tmNum2 > 0 ? Math.round(fatNum / tmNum2) : 0;
+      const ga4Orders = pedidos ? Number(pedidos) : 0;
+      if (
+        !crossValidationOverride &&
+        ga4Result?.ok &&
+        platformOrders > 0 &&
+        ga4Orders > 0
+      ) {
+        const diff = Math.abs(ga4Orders - platformOrders) / Math.max(platformOrders, ga4Orders);
+        if (diff > 0.3) {
+          setCrossValidationModalOpen(true);
+          setIsSubmitting(false);
+          void trackFunnelEvent({
+            event: "ga4_platform_divergence_blocked",
+            metadata: { ga4_orders: ga4Orders, platform_orders: platformOrders, diff_pct: Math.round(diff * 100) },
+          });
+          return;
+        }
+      }
+
       const funnelVisitorsPreview = visitantes ? Number(visitantes) : estimatedVisitors;
       const funnelPedidosPreview = pedidos ? Number(pedidos) : estimatedPedidos;
       const benchmarkCvr = benchmarkCvrForVertical(vertical);
