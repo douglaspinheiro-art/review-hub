@@ -518,6 +518,71 @@ export default function Resultado() {
 
 
         {/* Inline checkout — 3 plans, monthly/annual toggle, recommended highlighted */}
+        {oportunidades.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold font-syne uppercase tracking-tighter flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" /> Oportunidades adicionais
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {oportunidades.map((o, i) => (
+                <div key={i} className="border border-primary/20 bg-primary/5 rounded-2xl p-5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold">{o.titulo}</h3>
+                    {o.potencial_reais ? (
+                      <span className="text-xs font-black text-emerald-500">
+                        +R$ {o.potencial_reais.toLocaleString("pt-BR")}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{o.descricao}</p>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-1">
+                    {o.janela_dias ? <span>Janela {o.janela_dias}d</span> : null}
+                    {o.segmento ? <Badge variant="outline" className="text-[9px]">{o.segmento}</Badge> : null}
+                    {o.evento_sazonal ? <Badge className="text-[9px] bg-amber-500/15 text-amber-500 border-none">{o.evento_sazonal}</Badge> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {forecast && (forecast.minimo || forecast.maximo || forecast.com_prescricoes) && (
+          <div className="border border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-transparent rounded-3xl p-6 md:p-8 space-y-5">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
+              <h2 className="text-xl font-bold font-syne uppercase tracking-tighter">Projeção 30 dias</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-2xl border border-[#1E1E2E] bg-[#13131A] p-4 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Cenário base</p>
+                <p className="text-2xl font-black font-jetbrains text-white">
+                  R$ {(forecast.minimo ?? 0).toLocaleString("pt-BR")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">sem ações novas</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-center ring-1 ring-emerald-500/30">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 mb-2">Com prescrições</p>
+                <p className="text-2xl font-black font-jetbrains text-emerald-500">
+                  +R$ {(forecast.com_prescricoes ?? 0).toLocaleString("pt-BR")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">campanhas ativadas</p>
+              </div>
+              <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">Com fixes UX</p>
+                <p className="text-2xl font-black font-jetbrains text-blue-400">
+                  +R$ {(forecast.com_ux_fixes ?? 0).toLocaleString("pt-BR")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">após melhorias</p>
+              </div>
+            </div>
+            {forecast.maximo ? (
+              <p className="text-[11px] text-muted-foreground text-center">
+                Cenário máximo combinando todas as ações: <span className="text-emerald-500 font-bold">R$ {forecast.maximo.toLocaleString("pt-BR")}</span>
+              </p>
+            ) : null}
+          </div>
+        )}
+
         {!isActive && diagnostic && (
           <div id="planos-inline" className="space-y-8 scroll-mt-20">
             {/* Price anchor — ROI vs perda mensal */}
