@@ -477,9 +477,10 @@ export default function Relatorios() {
               <>
                 <MetricCard
                   label="Recuperação de carrinhos"
-                  value="—"
+                  value={String(snapshot?.opportunities ?? 0)}
+                  subValue="oportunidades em aberto"
                   icon={ShoppingBag}
-                  tooltip="Carrinhos marcados como recuperados / total rastreado no período."
+                  tooltip="Oportunidades de recuperação ainda não convertidas (snapshot)."
                 />
                 <MetricCard
                   label="Pedidos atribuídos"
