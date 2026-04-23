@@ -13,6 +13,8 @@ import { useROIAttribution } from "@/hooks/useDashboard";
 import { useNavigate } from "react-router-dom";
 import { ATTRIBUTION_WINDOW_DAYS, ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AdvancedAttributionTab } from "@/components/dashboard/AdvancedAttributionTab";
 import {
   AreaChart, Area,
   PieChart, Pie, Cell,
