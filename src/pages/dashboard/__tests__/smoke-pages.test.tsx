@@ -9,6 +9,7 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: [], isLoading: false }),
+  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
   }),
