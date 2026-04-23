@@ -208,6 +208,12 @@ export default function ConvertIQ() {
   const ticket  = Number(storeRow?.ticket_medio ?? DEFAULT_CONFIG.ticket_medio);
   const { taxaConversao, perdaMensal, etapas, maiorGargalo } = calcFunil(raw, meta, ticket);
 
+  // Benchmark do segmento (Fase 1.5 — surfaçar comparação setorial)
+  const segmentoLoja = (loja.data as { segment?: string | null } | undefined)?.segment ?? null;
+  const benchmark = benchmarkForSegment(segmentoLoja);
+  const gapVsBench = Number((taxaConversao - benchmark.value).toFixed(2));
+  const benchAhead = gapVsBench >= 0;
+
   // Biggest drop index (0-based among steps 1-4)
   const maxDropIdx = etapas.reduce((mi, e, i) => i > 0 && e.dropPct > (etapas[mi]?.dropPct ?? 0) ? i : mi, 1);
 
@@ -313,6 +319,23 @@ export default function ConvertIQ() {
           )}>
             {taxaConversao >= meta ? "✓ Acima da meta" : `▼ ${(meta - taxaConversao).toFixed(2)}pp abaixo da meta`}
           </span>
+          <div className="mt-3 pt-3 border-t space-y-1">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+              Benchmark {benchmark.label}
+            </p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm font-mono font-bold">{benchmark.value}%</span>
+              <span className={cn(
+                "text-[10px] font-semibold",
+                benchAhead ? "text-emerald-500" : "text-amber-500"
+              )}>
+                {benchAhead ? `+${gapVsBench}pp acima` : `${gapVsBench}pp abaixo`}
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 leading-tight">
+              {CONVERSION_BENCHMARKS_SOURCE}
+            </p>
+          </div>
         </div>
 
         {/* Perda estimada */}
