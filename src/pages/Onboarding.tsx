@@ -365,6 +365,28 @@ export default function Onboarding() {
     setPlataforma((prev) => prev || mapped);
   }, [user?.id, user?.user_metadata?.plataforma]);
 
+  // 1.3 Smart defaults por segmento — pré-popular ticket médio e meta de conversão
+  // com base na vertical escolhida, mas só quando o lojista ainda não tocou nesses
+  // campos (mantém valor manual ou importado da loja).
+  useEffect(() => {
+    if (!vertical) return;
+    const benchTicket = ticketMedioForVertical(vertical);
+    const benchCvr = benchmarkCvrForVertical(vertical);
+    setTicketMedio((prev) => {
+      if (importedFields.ticketMedio) return prev;
+      // Considera "intocado" se está no default genérico ("250") ou vazio.
+      if (!prev || prev === "250") return String(benchTicket);
+      return prev;
+    });
+    setMetaConversao((prev) => {
+      // Não sobrescreve se já foi derivado de visitantes×pedidos reais.
+      if (conversoComputedPct !== null) return prev;
+      if (!prev || prev === "2.5") return String(benchCvr);
+      return prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vertical]);
+
   // Persist progress on every change. SECURITY: never persist OAuth tokens,
   // API keys, or GA4 access tokens in localStorage (XSS exfiltration risk).
   useEffect(() => {
