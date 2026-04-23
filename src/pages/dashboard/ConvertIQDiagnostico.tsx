@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useLoja, useLatestDiagnostico, useDiagnosticos, parseDiagnosticoJSON, type DiagnosticoJSON, type Problema } from "@/hooks/useConvertIQ";
 import CampaignModal from "@/components/dashboard/CampaignModal";
+import { benchmarkForSegment, CONVERSION_BENCHMARKS_SOURCE } from "@/lib/conversion-benchmarks";
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 const sevConfig = {
@@ -193,6 +194,13 @@ export default function ConvertIQDiagnostico() {
   const pct = diagJson?.percentual_explicado ?? 0;
   const resumo = diagJson?.resumo ?? lastDiag.data.resumo ?? "";
 
+  // Benchmark do segmento (Fase 1.5)
+  const segmento = (loja.data as { segment?: string | null } | undefined)?.segment ?? null;
+  const benchmark = benchmarkForSegment(segmento);
+  const taxaAtual = Number(lastDiag.data.taxa_conversao ?? 0);
+  const gapVsBench = Number((taxaAtual - benchmark.value).toFixed(2));
+  const benchAhead = gapVsBench >= 0;
+
   return (
     <div className="space-y-6">
       {showHistory && (
@@ -257,6 +265,34 @@ export default function ConvertIQDiagnostico() {
             Score {lastDiag.data.score}/100
           </span>
           <span className="text-xs text-muted-foreground">Taxa de conversão: <strong>{lastDiag.data.taxa_conversao}%</strong></span>
+        </div>
+
+        {/* Benchmark setorial — Fase 1.5 */}
+        <div className={cn(
+          "rounded-xl border p-4 flex flex-wrap items-center justify-between gap-3",
+          benchAhead
+            ? "bg-emerald-500/5 border-emerald-500/20"
+            : "bg-amber-500/5 border-amber-500/20"
+        )}>
+          <div className="space-y-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Sua loja vs. benchmark {benchmark.label}
+            </p>
+            <p className="text-sm">
+              Sua taxa está{" "}
+              <strong className={benchAhead ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
+                {benchAhead ? `${Math.abs(gapVsBench)}pp acima` : `${Math.abs(gapVsBench)}pp abaixo`}
+              </strong>{" "}
+              da média de lojas similares ({benchmark.value}%).
+            </p>
+            <p className="text-[10px] text-muted-foreground/80">{CONVERSION_BENCHMARKS_SOURCE}</p>
+          </div>
+          <span className={cn(
+            "text-xl font-mono font-extrabold tabular-nums",
+            benchAhead ? "text-emerald-500" : "text-amber-500"
+          )}>
+            {benchAhead ? "+" : ""}{gapVsBench}pp
+          </span>
         </div>
 
         {problemas.length > 0 && (
