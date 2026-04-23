@@ -6,6 +6,7 @@ import {
   BellRing, Smartphone, Mail, Clock, ShoppingBag,
   Zap, MessageSquare, TrendingUp, CreditCard, Wifi, LogOut, X,
 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
