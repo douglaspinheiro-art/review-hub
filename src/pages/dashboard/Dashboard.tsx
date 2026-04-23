@@ -34,6 +34,8 @@ import AIRecommendationWidget from "@/components/dashboard/AIRecommendationWidge
 import ISLCard from "@/components/dashboard/ISLCard";
 import ProactiveCalendarWidget from "@/components/dashboard/ProactiveCalendarWidget";
 import RevenueAutopilotCard from "@/components/dashboard/RevenueAutopilotCard";
+import LtvRetentionCard from "@/components/dashboard/LtvRetentionCard";
+import EmailHealthCard from "@/components/dashboard/EmailHealthCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
