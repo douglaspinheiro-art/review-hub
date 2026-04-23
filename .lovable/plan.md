@@ -1,145 +1,160 @@
 
 
-# Próximas melhorias no fluxo Onboarding → Analisando → Resultado
+# Plano: Aprovação manual da loja via WhatsApp do cliente (wa.me)
 
-Depois das ondas anteriores (proveniência, idempotência, telemetria, reconciliação GA4), o fluxo está **robusto e transparente**. As melhorias agora são de **conversão, ativação e profundidade do diagnóstico** — não mais de infraestrutura.
+## Mudança em relação ao plano anterior
 
----
+Em vez de a plataforma enviar a notificação para você via Meta Cloud API (que exige template aprovado e secrets `PLATFORM_META_*`), **o próprio cliente clica num botão que abre o WhatsApp dele já com a mensagem pronta** para o seu número (`5511987062257`). Mais simples, zero custo de API, zero dependência de template aprovado.
 
-## 1. Onboarding — reduzir abandono e aumentar qualidade do input
-
-### 1.1 Auto-preenchimento via plataforma conectada
-Hoje o lojista digita visitantes/carrinho/checkout mesmo após conectar Shopify/Nuvemshop. Se a integração já existe:
-- Pré-popular `pedido`, `ticket_medio`, `receita` direto de `orders_v3` (últimos 30d).
-- Marcar como `real` no `field_provenance`.
-- Mostrar campo desabilitado com label "Vindo da sua loja · editar".
-
-**Impacto:** menos digitação, `real_signals_pct` mais alto desde o início.
-
-### 1.2 Progresso salvo entre sessões com retomada explícita
-Draft já existe (com versionamento), mas não há UI para retomar. Adicionar:
-- Banner no topo do `/onboarding`: "Continuar de onde parou? (salvo há 2h)" + botão descartar.
-- Evita usuário recomeçar do zero ao fechar a aba.
-
-### 1.3 Smart defaults por segmento
-Quando o usuário escolhe segmento (moda, beleza, suplementos…), pré-popular `meta_conversao` e `ticket_medio` com benchmark do `industry-benchmarks.ts` (já existe).
-- Hoje: default fixo 2.5% / R$ 250 para todos.
-- Depois: moda 1.8% / R$ 180, beleza 2.4% / R$ 220, etc.
-
-### 1.4 Validação cruzada GA4 ↔ plataforma no momento do input
-Se ambos conectados e divergência > 30%, **bloquear avanço** com modal:
-- "GA4 reporta 14k sessões mas sua loja tem 142 pedidos = 1% conversão. GA4 pode estar configurado errado (sem filtro de bot, ou propriedade errada)."
-- Botões: "Reconfigurar GA4" / "Ignorar e continuar (uso só dados da loja)".
+O resto do fluxo (estado `pending_activation`, tela de bloqueio, aba Aprovações no admin, configuração da Meta + integrações pelo admin, ativação manual) **continua igual**.
 
 ---
 
-## 2. Analisando — aproveitar 100% da capacidade da edge
-
-### 2.1 Streaming de progresso real (não fake)
-Hoje o progresso é simulado (`elapsedMs / 20000`). A edge já tem etapas internas (parse, enrichment, IA, persist). Emitir eventos de progresso reais via:
-- `supabase.channel("diagnostico-progress-${userId}")` na edge a cada etapa.
-- Cliente escuta e atualiza `currentStep` real, não temporizado.
-
-**Impacto:** UX mais honesta + mostra "IA pensando..." quando realmente está chamando Anthropic.
-
-### 2.2 Pré-aquecimento da edge (warm-up)
-Cold start da função Deno custa 800ms-2s. No final do Onboarding (antes do navigate), disparar `supabase.functions.invoke("gerar-diagnostico", { body: { _warmup: true } })` em fire-and-forget.
-- Edge retorna 200 imediato em modo warmup.
-- Quando `/analisando` chama de verdade, função já está quente.
-
-### 2.3 Retry inteligente em vez de fallback genérico
-Hoje, se a IA falha → usa `buildFallbackDiagnostic` (regras locais). Melhor:
-- 1ª tentativa: Claude Sonnet.
-- Se falhar parse → 2ª tentativa com `temperature=0` e prompt mais estrito.
-- Se falhar de novo → fallback local (atual).
-- Telemetria distingue `retry_success` vs `fallback_local`.
-
----
-
-## 3. Resultado — converter melhor + acionar mais
-
-### 3.1 Comparação contra peers (não só benchmark genérico)
-Hoje mostra "sua conversão: 1.4% · benchmark setor: 2.5%". Adicionar:
-- "Top 25% do seu segmento: 3.2%" · "Mediana: 1.9%".
-- Posicionamento percentil: "Você está no percentil 22 entre lojas de moda no Brasil."
-- Vem de `industry-benchmarks.ts` agregado.
-
-**Impacto:** dor mais concreta → maior conversão para checkout.
-
-### 3.2 Simulador interativo "se eu corrigir X, ganho Y"
-Cada `recomendacao` já tem `impacto_pp` e `prazo_semanas`. Adicionar checkboxes:
-- ☑ Aplicar #1 (+0.82pp em 1 semana)
-- ☑ Aplicar #2 (+0.65pp em 3 semanas)
-- ☐ Aplicar #3 (+0.40pp em 6 semanas)
-
-Card lateral atualiza em real-time: "Receita extra projetada em 90 dias: R$ 142k".
-
-### 3.3 Personalizar CTA por `chs` e `recommended_plan`
-- `chs < 40` (em risco) → CTA: "Resgatar receita perdida agora" · plano Growth pré-selecionado.
-- `chs 40-70` (regular) → CTA: "Acelerar resultados" · plano sugerido pela IA.
-- `chs > 70` (bom) → CTA: "Manter liderança" · plano Scale (foco em retenção/LTV).
-
-### 3.4 Captura de e-mail antes do paywall (se ainda não logado)
-Cenário atual assume usuário logado. Para tráfego frio que cai direto via link compartilhado, mostrar diagnóstico parcial (resumo + 1 problema) e bloquear o resto com:
-- "Receba o diagnóstico completo no seu e-mail" → captura lead → desbloqueio.
-
-### 3.5 Compartilhamento social do diagnóstico
-Botão "Compartilhar com meu sócio" gera link público (rota `/diagnostico-compartilhado/:token`) com diagnóstico read-only e CTA pra criar conta. Viralidade orgânica B2B.
-
----
-
-## 4. Telemetria & otimização contínua
-
-### 4.1 Funnel completo no dashboard de admin
-Já existe `/admin/diagnostico-telemetria` para a etapa de geração. Estender com 3 eventos:
-- `onboarding_started` / `onboarding_completed` / `onboarding_abandoned_at_step_N`
-- `analisando_entered` / `analisando_completed`
-- `resultado_viewed` / `resultado_cta_clicked` / `resultado_checkout_started`
-
-Visualização tipo funnel chart: Onboarding → Analisando → Resultado → Checkout. Identifica onde mais perde.
-
-### 4.2 A/B test de copy do CTA na `/resultado`
-Variantes simples (50/50 via hash do `user_id`):
-- A: "Ativar plano Growth" (atual)
-- B: "Recuperar R$ 58k/mês" (uses `perda_estimada` do diagnóstico)
-
-Mede `resultado_cta_clicked` por variante.
-
-### 4.3 Heurística de "diagnóstico ruim"
-Após 7 dias, se usuário não converteu, marcar diagnóstico como `low_conversion` e re-analisar prompt. Loop de melhoria do prompt da Anthropic baseado em conversão real.
-
----
-
-## Priorização sugerida (impacto vs esforço)
+## Fluxo novo
 
 ```text
-ALTA prioridade (faz no curto prazo):
-  1.1 Auto-preenchimento via plataforma         [alto impacto, médio esforço]
-  3.1 Comparação peers (percentil)              [alto impacto, baixo esforço]
-  3.3 CTA personalizado por chs                 [alto impacto, baixo esforço]
-  4.1 Funnel completo na telemetria             [alto impacto, médio esforço]
+Cliente paga ──► MP webhook
+                    │
+                    └─► profiles.subscription_status = "pending_activation"
+                        profiles.activation_requested_at = now()
 
-MÉDIA prioridade (próxima onda):
-  1.3 Smart defaults por segmento               [médio impacto, baixo esforço]
-  2.2 Pré-aquecimento da edge                   [médio impacto, baixo esforço]
-  3.2 Simulador interativo                      [alto impacto, alto esforço]
+Cliente faz login ──► DashboardLayout detecta pending_activation
+                          │
+                          └─► Renderiza <PendingActivationScreen>
+                                ├─ "Pagamento confirmado ✅"
+                                ├─ "Próximo passo: solicite a ativação no WhatsApp"
+                                ├─ Resumo: nome / loja / e-mail / plano
+                                └─ Botão grande verde:
+                                   "📱 Solicitar ativação no WhatsApp"
+                                       │
+                                       └─► abre https://wa.me/5511987062257
+                                           ?text=<mensagem pronta urlencoded>
 
-BAIXA prioridade (validar antes):
-  1.4 Validação cruzada bloqueante              [risco de bloquear demais]
-  2.1 Streaming de progresso real               [requer mexer na edge]
-  3.4 Captura email pré-paywall                 [só se houver tráfego frio]
-  3.5 Compartilhamento social                   [validar demanda primeiro]
+Você (admin) recebe no WhatsApp ──► /admin → aba Aprovações
+                                          │
+                                          ├─ configura Meta WhatsApp + integrações
+                                          └─ clica "Ativar loja"
+                                                │
+                                                └─► subscription_status = "active"
+                                                    cliente recebe e-mail
+                                                    próximo refresh libera dashboard
 ```
+
+**Mensagem pré-preenchida** (exemplo):
+
+```
+Olá! Acabei de assinar o LTV Boost e gostaria de liberar minha loja.
+
+Nome: João Silva
+Loja: Loja do João
+E-mail: joao@x.com
+Plano: Growth (R$ 497/mês)
+Pago em: 23/04/2026 14:32
+
+Aguardo a configuração da API oficial do WhatsApp para começar a usar. Obrigado!
+```
+
+Botões secundários na tela:
+- **"Já enviei, aguardando ativação"** — só registra um clique em telemetria; visualmente passa para o estado "Aguardando nossa equipe (~24h)".
+- **"Copiar mensagem"** — fallback caso o `wa.me` falhe.
+- **"Falar por e-mail"** — `mailto:` para o seu e-mail de suporte.
 
 ---
 
-## Recomendação de próxima rodada concreta
+## O que vai ser construído
 
-Implementar **1.1 + 3.1 + 3.3 + 4.1** juntos — são todas melhorias de alto impacto, baixo a médio esforço, e se reforçam mutuamente:
-- Auto-preenchimento → diagnóstico mais preciso
-- Percentil peer → dor mais concreta
-- CTA personalizado → conversão maior
-- Telemetria do funil → mede o ganho real das três acima
+### 1. Banco (migration)
 
-Quer que eu detalhe qualquer um desses como plano de implementação?
+- Aceitar `"pending_activation"` em `subscription_status` (string, sem enum estrito hoje).
+- Em `profiles`, novas colunas:
+  - `activation_requested_at timestamptz`
+  - `activation_message_sent_at timestamptz` (marcado quando o cliente clica em "Já enviei")
+  - `activated_at timestamptz`
+  - `activated_by uuid`
+  - `activation_notes text`
+- Índice em `subscription_status` para a listagem do admin.
+- RPC `admin_activate_store(target_user_id uuid, notes text)` — `SECURITY DEFINER`, restrita a `has_role(auth.uid(), 'admin')`.
+- RPC `mark_activation_message_sent()` — usuário marca o próprio profile como "mensagem enviada".
+
+### 2. Webhook do Mercado Pago
+
+`supabase/functions/mercadopago-webhook/index.ts`:
+- No caminho `payment approved`, trocar `subscription_status = "active"` → `"pending_activation"` e setar `activation_requested_at = now()`.
+- Manter audit log existente (`subscription_status_changed`).
+- **Nada de chamada a Meta API** — a notificação fica do lado do cliente.
+
+### 3. Frontend — tela de bloqueio
+
+- `src/contexts/AuthContext.tsx`: adicionar `"pending_activation"` ao tipo `SubscriptionStatus`. `isPaid` = `false` para esse estado.
+- Novo componente `src/components/dashboard/PendingActivationScreen.tsx`:
+  - Card centralizado, dark mode, emerald accents.
+  - Resumo do pedido (nome, loja, e-mail, plano, data).
+  - Botão primário "📱 Solicitar ativação no WhatsApp" → abre `wa.me/5511987062257?text=<encoded>` em nova aba; também dispara RPC `mark_activation_message_sent`.
+  - Botões secundários: copiar mensagem, "Já enviei", e-mail de suporte.
+  - Estado pós-clique: badge "Mensagem enviada — aguardando ativação", com tempo médio estimado.
+- `src/components/dashboard/DashboardLayout.tsx`: quando `subscription_status === "pending_activation"`, renderizar a tela em vez do dashboard, **liberando apenas** `/dashboard/billing` e `/dashboard/configuracoes`.
+- `src/lib/next-step.ts` e `src/pages/Analisando.tsx`: tratar `pending_activation` como "não-active" sem reentrar no funil de paywall.
+
+### 4. Admin — nova aba "Aprovações"
+
+`src/pages/admin/Admin.tsx`:
+- Adicionar `<TabsTrigger value="aprovacoes">✅ Aprovações</TabsTrigger>`.
+- Novo componente `src/components/admin/PendingActivations.tsx`:
+  - Lista lojas com `subscription_status = "pending_activation"`, ordenadas por `activation_requested_at` asc.
+  - Card por loja: dono, e-mail, telefone, nome da loja, plataforma, plano, data do pagamento, "tempo aguardando", badge "Mensagem enviada" se `activation_message_sent_at` existir.
+  - Botão **"Configurar integrações"** → abre drawer com:
+    - Form Meta WhatsApp Cloud (App ID, Phone Number ID, WABA ID, Access Token, Verify Token) → grava em `whatsapp_connections` com `provider = "meta_cloud"`.
+    - Atalho para `/admin/loja/:storeId/integracoes`.
+  - Botão **"Ativar loja"** → RPC `admin_activate_store`, marca `activated_at` + `activated_by`, dispara edge `send-email` com template "loja ativada".
+  - Botão "Adiar" → registra nota, não muda status.
+
+### 5. Página `/admin/loja/:storeId/integracoes` (impersonação)
+
+- Rota nova dentro de `AdminStaffRoute`.
+- Reusa `<Integracoes />` em modo impersonado via RPC `admin_get_store_integrations(store_id)` (`SECURITY DEFINER`).
+
+### 6. E-mail "loja ativada"
+
+- Edge `send-email` invocada pela RPC/admin com template novo.
+- Assunto: "Sua loja já está ativa no LTV Boost ✅"
+- Corpo: link de login + checklist do que foi configurado.
+
+### 7. Telemetria / auditoria
+
+- `audit_logs` recebe:
+  - `subscription_status_changed` com `to_status = "pending_activation"`.
+  - `activation_message_clicked` (cliente abriu o `wa.me`).
+  - `activation_message_marked_sent` (cliente clicou "Já enviei").
+  - `store_activated_by_admin` com `metadata = { admin_id, target_user_id, notes }`.
+
+---
+
+## Detalhes importantes
+
+- **Nada de secrets novos** — a notificação é client-side via `wa.me`, então não precisa de `PLATFORM_META_*` nem template aprovado.
+- **Número fixo no código**: `5511987062257`. Deixo como constante exportada (`ADMIN_WHATSAPP_NUMBER`) para trocar fácil depois.
+- **Migração de usuários atuais**: clientes com `subscription_status = "active"` ficam como estão. A regra nova vale só para novos pagamentos a partir do deploy.
+- **Reembolso/cancelamento**: pagamento `pending_activation` cancelado/reembolsado segue o caminho normal do webhook (`canceled`).
+- **Acesso parcial enquanto pendente**: libera apenas `/dashboard/billing` e `/dashboard/configuracoes`. Demais rotas redirecionam para a tela de "aguardando ativação".
+
+---
+
+## Arquivos novos
+
+- `supabase/migrations/<ts>_pending_activation_flow.sql`
+- `src/components/dashboard/PendingActivationScreen.tsx`
+- `src/components/admin/PendingActivations.tsx`
+- `src/pages/admin/AdminStoreIntegracoes.tsx`
+- `src/lib/admin-contact.ts` (constante `ADMIN_WHATSAPP_NUMBER` + helper `buildActivationWhatsAppUrl`)
+
+## Arquivos editados
+
+- `supabase/functions/mercadopago-webhook/index.ts`
+- `src/contexts/AuthContext.tsx`
+- `src/components/dashboard/DashboardLayout.tsx`
+- `src/lib/next-step.ts`
+- `src/pages/Analisando.tsx`
+- `src/pages/admin/Admin.tsx`
+- `src/App.tsx` (rota `/admin/loja/:storeId/integracoes`)
+- `src/integrations/supabase/types.ts` (regenerado pela migração)
 
