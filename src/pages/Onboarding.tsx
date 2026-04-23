@@ -1900,6 +1900,62 @@ export default function Onboarding() {
 
           {step === 4 && (
             <div className="flex flex-col items-center gap-3">
+              {(() => {
+                // A3. Card "Score de confiabilidade" no último passo
+                const fieldProvenancePreview: FieldProvenance = {
+                  visitantes: importedFields.visitantes ? "real" : "estimated",
+                  produto_visto: importedFields.visitantes ? "real" : "estimated",
+                  carrinho: importedFields.carrinho || carrinho ? "real" : "estimated",
+                  checkout: importedFields.checkout || checkout ? "real" : "estimated",
+                  pedido: importedFields.pedidos || pedidos ? "real" : "estimated",
+                  ticket_medio: importedFields.ticketMedio || ticketMedio ? "real" : "estimated",
+                  faturamento: importedFields.faturamento ? "real" : "estimated",
+                };
+                const pct = computeRealSignalsPct(fieldProvenancePreview);
+                const source = provenanceSource(pct);
+                const realCount = Object.values(fieldProvenancePreview).filter((v) => v === "real").length;
+                const estCount = Object.values(fieldProvenancePreview).length - realCount;
+                const ga4Ok = Boolean(ga4Result?.ok);
+                const lojaOk = integrationValid;
+                return (
+                  <div className="w-full max-w-md rounded-2xl border border-[#1E1E2E] bg-[#13131A] p-4 mb-2 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Score de confiabilidade
+                      </p>
+                      <DataSourceBadge
+                        source={source}
+                        origin={`${pct}% sinais reais`}
+                        note="Quanto maior, mais preciso o diagnóstico."
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <strong className="text-white">{realCount} campos reais</strong> · {estCount} estimados
+                    </p>
+                    {ga4Ok && lojaOk && (() => {
+                      const ga4Pedidos = Number(pedidos) || 0;
+                      const lojaPedidos = Number(faturamento) > 0 && Number(ticketMedio) > 0
+                        ? Math.round(Number(faturamento) / Number(ticketMedio))
+                        : 0;
+                      if (lojaPedidos === 0 || ga4Pedidos === 0) return null;
+                      const diff = Math.abs(ga4Pedidos - lojaPedidos) / lojaPedidos;
+                      const diffPct = Math.round(diff * 100);
+                      const isHigh = diff > 0.2;
+                      return (
+                        <div className={cn(
+                          "rounded-xl p-2.5 text-[11px] border",
+                          isHigh
+                            ? "border-amber-500/30 bg-amber-500/5 text-amber-400"
+                            : "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                        )}>
+                          GA4: ~{ga4Pedidos.toLocaleString("pt-BR")} pedidos · Loja: ~{lojaPedidos.toLocaleString("pt-BR")} pedidos
+                          {isHigh && <> · divergência {diffPct}% — confira a integração</>}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
               <Button
                 size="lg"
                 onClick={() => void handleFinish()}
