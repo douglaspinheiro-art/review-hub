@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Shield, ExternalLink, AlertTriangle, Loader2, CheckCircle2,
-  Users, Activity, Zap, Store, BarChart3, AlertCircle,
+  Users, Activity, Zap, Store, BarChart3, AlertCircle, Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -522,6 +522,25 @@ export default function Admin() {
               >
                 Supabase Dashboard <ExternalLink className="w-4 h-4" />
               </a>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/60">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" /> Telemetria de diagnósticos
+              </CardTitle>
+              <CardDescription>
+                Saúde da geração de diagnósticos: volume, fallback, parse retry e completude do payload.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                to="/admin/diagnostico-telemetria"
+                className="inline-flex items-center gap-2 text-primary font-bold hover:underline"
+              >
+                Abrir dashboard <ExternalLink className="w-4 h-4" />
+              </Link>
             </CardContent>
           </Card>
         </TabsContent>
