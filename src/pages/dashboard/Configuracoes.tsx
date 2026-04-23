@@ -804,6 +804,7 @@ export default function Configuracoes() {
         </TabsContent>
       </Tabs>
 
+
       {isDirty && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-lg border-t border-border z-50 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-full duration-300">
           <div className="flex items-center gap-2">
