@@ -1,70 +1,94 @@
 
 
-## Próximos passos — Operacionalizar e validar o que foi construído
+# Plano: Reforço de Confiança e Precisão nos Dados do Dashboard
 
-Tudo que foi planejado (Fases 0 → 3) está no código. O que falta agora é **ligar, agendar e medir**. Sem esses passos, o trabalho não gera valor em produção.
+Auditoria identificou **15 páginas** com qualidade variável. O plano abaixo prioriza ganhos por impacto e esforço, tratando lacunas comuns (selos de proveniência, glossário, fontes explícitas) e fechando o ponto crítico: `/dashboard/relatorios`.
 
-## O que precisa acontecer (em ordem)
+## Princípio orientador
 
-### 1. Deploy das 3 novas Edge Functions
-Fazer deploy das funções criadas na Fase 2/3 — sem isto, ficam inertes no repositório:
-- `proactive-calendar` — gera oportunidades sazonais
-- `reconcile-ga4-attribution` — cruza GA4 com campanhas via UTM
-- `revenue-autopilot` — dispara prescrições quando meta atrasa
+Toda métrica exibida precisa responder 3 perguntas em ≤1 clique:
+1. **De onde vem?** (RPC, GA4, webhook, estimativa)
+2. **Quando foi atualizada?** (timestamp/freshness)
+3. **É real, derivada ou estimada?** (selo visual)
 
-### 2. Agendar os crons (pg_cron)
-Criar 3 schedules no Supabase usando `CRON_SECRET` para autenticação:
+## Fases
 
-| Função | Frequência | Cron |
-|--------|------------|------|
-| `proactive-calendar` | Mensal — dia 1 às 09h | `0 9 1 * *` |
-| `reconcile-ga4-attribution` | Diário — 05h | `0 5 * * *` |
-| `revenue-autopilot` | Semanal — segunda 08h | `0 8 * * 1` |
+### Fase 1 — Infraestrutura de Confiança (base reusável)
+Criar componentes compartilhados que serão usados em todas as páginas:
 
-Cada job faz `net.http_post` com header `Authorization: Bearer <CRON_SECRET>`.
+1. **`<DataSourceBadge>`** — selo compacto com 3 variantes: `real` (verde), `derivado` (azul), `estimado` (âmbar). Inclui tooltip com fonte (ex: "RPC `get_dashboard_snapshot` · atualizado há 2min").
+2. **`<MetricGlossary>`** — popover reutilizável com definições curtas (influenciada vs atribuída, last-touch vs assistida, amostra vs universo).
+3. **`<FreshnessIndicator>`** — exibe "atualizado há Xmin" + ícone de stale quando >SLA.
 
-### 3. Validação manual em produção (smoke tests)
+Local: `src/components/dashboard/trust/`
 
-**Fase 1.1 — UTM injection**
-- Criar campanha-teste com link da loja no corpo
-- Disparar para 1 contato real
-- Verificar em `scheduled_messages.metadata` que a URL recebeu `?utm_source=ltvboost&utm_medium=whatsapp&utm_campaign=...`
-- Confirmar no GA4 da loja: sessão com `utm_source=ltvboost`
+### Fase 2 — Quick Wins (selos e badges nas páginas Parciais)
+Aplicar componentes da Fase 1 sem refazer lógica:
 
-**Fase 1.2 — Loop IA**
-- Gerar diagnóstico via ConvertIQ
-- Inspecionar payload enviado a `gerar-diagnostico` — deve incluir `historico_prescricoes` (top 10) + agregado
+| Página | Ação |
+|--------|------|
+| `/dashboard` | `<DataSourceBadge>` por KPI card + timestamp por bloco (Revenue OS, retention, propensity) |
+| `/dashboard/analytics` | `<MetricGlossary>` no header com "influenciada vs atribuída" |
+| `/dashboard/atribuicao` | Badge fixo "Modelo: last-touch real · linear/first-touch simulados" |
+| `/dashboard/funil` | Separador visual "Medido (GA4)" vs "Heurístico" nos blocos |
+| `/dashboard/rfm` | Badge "Amostra (X% de cobertura)" nos gráficos |
+| `/dashboard/campanhas` | Indicador permanente "Base carregada: X de Y campanhas" |
+| `/dashboard/em-execucao` | Renomear KPI para "Receita atribuída estimada" + tooltip |
+| `/dashboard/operacoes` | Tooltip com fórmula e pesos do score de integridade |
+| `/dashboard/canais` | Rodapé do card: "Fonte: `orders_v3` · janela 90d" |
+| `/dashboard/carrinho-abandonado` | Card "Cobertura de captura" (capturados vs estimados via funnel) |
+| `/dashboard/reviews` | Status badge por plataforma (Google/Mercado Livre): online/offline/atrasado |
+| `/dashboard/benchmark-score` | Label "Histórico real" vs "Histórico ilustrativo" no gráfico |
+| `/dashboard/contatos` | Header com "Última sincronização: Xmin atrás" |
 
-**Fase 1.3 — ISL**
-- Rodar `select calculate_isl('<store_id>');` no SQL Editor
-- Confirmar `stores.isl_score` populado e card no Dashboard renderizando sparkline
-- Em loja nova: confirmar mensagem "Coletando dados — ISL em X dias"
+### Fase 3 — Forecast: número oficial único
+Hoje convivem cálculo local (`useForecastProjection`) e snapshot servidor (`useForecastSnapshot`). Decisão:
 
-**Fases 2 e 3 — Crons**
-- Após primeiro tick: confirmar inserts em `opportunities` (proactive-calendar) e updates em `campaigns.ga4_attributed_revenue` (reconcile)
+- **Número oficial:** snapshot do servidor (quando existe e <24h)
+- **Fallback:** cálculo local **com badge `derivado`**
+- Mover comparativo de metodologias para aba secundária "Metodologia"
 
-### 4. Cron diário para `calculate_isl`
-Hoje o ISL só atualiza quando a UI chama. Adicionar 4º cron:
-- `0 4 * * *` — itera por todas as `stores` ativas e roda `calculate_isl` para popular histórico/sparkline automaticamente
+### Fase 4 — Fechar `/dashboard/relatorios` (única Fraca)
+Página tem stubs de heatmap e cohort. Implementar:
 
-### 5. Telemetria — primeiro relatório de baseline
-Após 7 dias rodando, consultar `funnel_telemetry_events` para extrair:
-- `prescription_converted_to_campaign` rate
-- `campaign_attributed_revenue_snapshot` médio
+1. **Heatmap dia/hora** de conversão — RPC nova `get_conversion_heatmap_v1(p_store_id, p_days)` agregando `messages` + `attribution_events` por `extract(dow)` + `extract(hour)`.
+2. **Cohort de retenção mensal** — usar tabela existente `customer_cohorts` (já populada por `data-pipeline-cron`).
+3. **Remover placeholders `—`** de KPIs do topo: ligar aos mesmos hooks usados em `/dashboard`.
+4. Exportação PDF (já existe scaffold) — validar que respeita os novos selos.
 
-Esses 2 números são a baseline contra a qual mediremos o impacto da Fase 1 daqui a 30 dias.
+## Detalhes técnicos
 
-### 6. Compliance LGPD (bloqueante para Fase 3.1)
-A RPC `get_segment_benchmark` agrega dados anônimos cross-tenant. Antes de expor na UI:
-- Atualizar Termos de Uso explicitando agregação anônima
-- Adicionar opt-out no `Configuracoes.tsx` (flag `stores.benchmark_opt_out`)
+**Novos arquivos:**
+- `src/components/dashboard/trust/DataSourceBadge.tsx`
+- `src/components/dashboard/trust/MetricGlossary.tsx`
+- `src/components/dashboard/trust/FreshnessIndicator.tsx`
+- `src/lib/data-provenance.ts` — tipos `DataSource = 'real' | 'derived' | 'estimated'` + helpers
+- `supabase/migrations/<timestamp>_conversion_heatmap_rpc.sql` — RPC do heatmap
+- `supabase/migrations/<timestamp>_retention_cohort_rpc.sql` — RPC de coorte (lê `customer_cohorts`)
 
-### 7. Orçamento Anthropic
-Fase 1.2 aumenta payload do diagnóstico em ~2-3x. Monitorar consumo na primeira semana e definir alerta de gasto.
+**Arquivos editados (estimativa):** ~20 (1-2 linhas por página na Fase 2 + refactor maior em Forecast e Relatórios).
 
-## Sugestão de execução
+**Sem mudanças:** páginas marcadas como Corretas (analytics, contatos, operacoes, carrinho-abandonado) recebem apenas selos cosméticos (Fase 2).
 
-Posso fazer agora **passos 1, 2 e 4** (deploy + agendar 4 crons) numa única tacada — é tudo trabalho de infra que não depende de validação humana. Os passos 3, 5, 6 e 7 ficam para você executar/decidir, pois envolvem testes manuais, decisões de produto e jurídico.
+## Ordem de execução proposta
 
-Aprova fazer 1+2+4 agora?
+```text
+Fase 1  (infra)       →  ~20 min  →  destrava todo o resto
+Fase 2  (selos)       →  ~40 min  →  ganho percebido imediato em 13 páginas
+Fase 4  (relatorios)  →  ~30 min  →  fecha única página Fraca
+Fase 3  (forecast)    →  ~15 min  →  resolve ambiguidade metodológica
+```
+
+Total estimado: ~1h45 de trabalho de código.
+
+## Fora de escopo (decisões de produto futuras)
+
+- **ConvertIQ — ingestão automática de topo/médio funil por plataforma:** requer conectores novos (Shopify Analytics, VTEX events). Tratar em projeto separado.
+- **Reviews — sync Google "em breve":** depende de aprovação Google Business Profile API, fora do escopo técnico imediato.
+
+## Sugestão
+
+Posso executar **Fases 1 + 2 + 4** de uma vez (entrega o maior ganho de confiança e fecha a única página Fraca). Fase 3 fica como segunda rodada — envolve decisão de UX sobre qual metodologia exibir como "oficial".
+
+Aprova fazer 1 + 2 + 4?
 
