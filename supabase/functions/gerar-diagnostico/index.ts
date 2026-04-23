@@ -535,7 +535,7 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
     // feedback. The AbortController gives us a clean, user-readable error at 25s.
     const ANTHROPIC_TIMEOUT_MS = 25_000;
 
-    async function callAnthropicWithRetry(maxRetries = 1): Promise<Response> {
+    async function callAnthropicWithRetry(maxRetries = 1, temperature?: number, extraSystem?: string): Promise<Response> {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
@@ -552,7 +552,8 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
             body: JSON.stringify({
               model: "claude-3-5-sonnet-20241022",
               max_tokens: 3000,
-              system,
+              system: extraSystem ? `${system}\n\n${extraSystem}` : system,
+              ...(typeof temperature === "number" ? { temperature } : {}),
               messages: [{ role: "user", content: user }],
             }),
           });
@@ -586,6 +587,8 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
     let diag: Record<string, unknown>;
     let fallbackMode = false;
     let parseRetry = false;
+    let parseRetrySuccess = false;
+    let strictRetry = false;
     try {
       if (!KEY) throw new Error("ANTHROPIC_API_KEY não configurada");
 
@@ -601,8 +604,30 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
       } catch {
         parseRetry = true;
         const match = raw.match(/\{[\s\S]*\}/)?.[0];
-        if (!match) throw new Error("Anthropic retornou JSON inválido");
-        diag = JSON.parse(match);
+        if (match) {
+          try {
+            diag = JSON.parse(match);
+            parseRetrySuccess = true;
+          } catch {
+            // 2.3 — segunda tentativa com temperature=0 e prompt mais estrito
+            // antes de cair pro fallback local. Mais provável de produzir JSON válido.
+            console.warn("[gerar-diagnostico] Parse falhou após match — tentando 2ª chamada estrita");
+            strictRetry = true;
+            const r2 = await callAnthropicWithRetry(
+              1,
+              0,
+              "RESPONDA SOMENTE JSON VÁLIDO. Sem markdown, sem ```json, sem texto antes ou depois. Comece com { e termine com }. Não inclua comentários nem trailing commas.",
+            );
+            const data2 = await r2.json();
+            const raw2 = String(data2?.content?.[0]?.text ?? "").trim();
+            const match2 = raw2.match(/\{[\s\S]*\}/)?.[0];
+            if (!match2) throw new Error("Anthropic retornou JSON inválido após retry estrito");
+            diag = JSON.parse(match2);
+            parseRetrySuccess = true;
+          }
+        } else {
+          throw new Error("Anthropic retornou JSON inválido");
+        }
       }
     } catch (error) {
       console.warn("[gerar-diagnostico] Usando fallback local para diagnóstico:", error instanceof Error ? error.message : String(error));
@@ -681,6 +706,8 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
     diag.meta = {
       fallback_mode: fallbackMode,
       parse_retry: parseRetry,
+      parse_retry_success: parseRetrySuccess,
+      strict_retry: strictRetry,
       confidence: {
         real_signals_pct: realSignalsPct,
         data_window_days: 30,
