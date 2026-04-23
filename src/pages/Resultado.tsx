@@ -405,6 +405,48 @@ export default function Resultado() {
                   Cache 5min
                 </Badge>
               )}
+              {diagnosticId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={shareLoading}
+                  onClick={async () => {
+                    if (!diagnosticId) return;
+                    setShareLoading(true);
+                    try {
+                      const token = crypto.randomUUID().replace(/-/g, "");
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const { error } = await (supabase as any)
+                        .from("diagnostic_share_tokens")
+                        .insert({
+                          token,
+                          diagnostic_id: diagnosticId,
+                          user_id: user?.id,
+                          store_name: storeName,
+                        });
+                      if (error) throw error;
+                      const url = `${window.location.origin}/d/${token}`;
+                      await navigator.clipboard.writeText(url);
+                      void trackFunnelEvent({
+                        event: "diagnostic_share_link_created",
+                        metadata: { diagnostic_id: diagnosticId, token },
+                      });
+                      // Toast leve via alert nativo se sonner não estiver no escopo aqui
+                      const { toast } = await import("sonner");
+                      toast.success("Link copiado!", { description: "Compartilhe seu diagnóstico." });
+                    } catch (e) {
+                      const { toast } = await import("sonner");
+                      toast.error("Não foi possível gerar o link.");
+                    } finally {
+                      setShareLoading(false);
+                    }
+                  }}
+                  className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-wide rounded-full"
+                >
+                  <Share2 className="w-3 h-3" />
+                  {shareLoading ? "Gerando..." : "Compartilhar"}
+                </Button>
+              )}
             </div>
             {typeof ga4Diff === "number" && Math.abs(ga4Diff) > 5 && (
               <p className="text-[11px] text-amber-400 max-w-md mx-auto">
