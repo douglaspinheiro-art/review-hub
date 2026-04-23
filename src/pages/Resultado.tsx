@@ -14,6 +14,9 @@ import { recommendPlan } from "@/lib/plan-recommendation";
 import { PLANS } from "@/lib/pricing-constants";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
+import type { DataSource } from "@/lib/data-provenance";
 
 type DiagnosticData = {
   resumo?: string;
@@ -33,7 +36,55 @@ type DiagnosticData = {
     prazo_semanas: number;
     tipo: string;
   }>;
+  oportunidades?: Array<{
+    titulo: string;
+    descricao: string;
+    potencial_reais?: number;
+    janela_dias?: number;
+    segmento?: string;
+    evento_sazonal?: string | null;
+  }>;
+  chs_breakdown?: {
+    conversao?: number;
+    funil?: number;
+    produtos?: number;
+    mobile?: number;
+  };
+  forecast_30d?: {
+    minimo?: number;
+    maximo?: number;
+    com_prescricoes?: number;
+    com_ux_fixes?: number;
+  };
+  meta?: {
+    fallback_mode?: boolean;
+    confidence?: {
+      real_signals_pct?: number;
+      data_window_days?: number;
+      last_sync_at?: string;
+    };
+    generated_at?: string;
+  };
 };
+
+/** Parse seguro do sessionStorage; retorna null em qualquer falha. */
+function safeParseFunnel(): {
+  ticket_medio?: number;
+  visitantes?: number;
+  pedido?: number;
+  meta_conversao?: number;
+  taxa_conversao?: number;
+} | null {
+  try {
+    const raw = sessionStorage.getItem("ltv_funnel_data");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 export default function Resultado() {
   const navigate = useNavigate();
