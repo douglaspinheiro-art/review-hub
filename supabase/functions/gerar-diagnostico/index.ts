@@ -277,6 +277,9 @@ serve(async (req) => {
       proximos_eventos_sazonais = [],
       agregado_historico = null,
       data_quality = null,
+      // C1. Novos campos opcionais vindos do client (proveniência)
+      field_provenance = null,
+      real_signals_pct_client = null,
     } = bodyJson;
 
     const storeUuid =
@@ -298,6 +301,34 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ success: false, error: "Forbidden" }),
           { status: 403, headers: { ...cors, "Content-Type": "application/json" } }
+        );
+      }
+
+      // C2. Idempotência server-side: se já existe diagnóstico recente (<5min), retorna o mesmo
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: cached } = await supabase
+        .from("diagnostics_v3")
+        .select("diagnostic_json, chs, chs_label, recommended_plan")
+        .eq("user_id", auth.userId)
+        .eq("store_id", storeUuid)
+        .gte("created_at", fiveMinAgo)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cached?.diagnostic_json) {
+        const cachedDiag = cached.diagnostic_json as Record<string, unknown>;
+        const cachedMeta = (cachedDiag.meta as Record<string, unknown>) ?? {};
+        cachedDiag.meta = { ...cachedMeta, cached: true };
+        return new Response(
+          JSON.stringify({
+            success: true,
+            diagnostico: cachedDiag,
+            chs: cached.chs,
+            recommended_plan: cached.recommended_plan,
+            persisted: true,
+            cached: true,
+          }),
+          { headers: { ...cors, "Content-Type": "application/json" } },
         );
       }
     }
