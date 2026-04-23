@@ -101,6 +101,7 @@ const Pontos = lazy(() => import("./pages/portal/Pontos.tsx"));
 const AfiliadosPublico = lazy(() => import("./pages/AfiliadosPublico.tsx"));
 const RelatorioAnual = lazy(() => import("./pages/RelatorioAnual.tsx"));
 const Diagnostico = lazy(() => import("./pages/Diagnostico.tsx"));
+const DiagnosticoCompartilhado = lazy(() => import("./pages/DiagnosticoCompartilhado.tsx"));
 const Calculadora = lazy(() => import("./pages/Calculadora.tsx"));
 const Benchmark = lazy(() => import("./pages/Benchmark.tsx"));
 const PlanosPage = lazy(() => import("./pages/Planos.tsx"));
