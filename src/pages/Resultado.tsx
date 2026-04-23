@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check, Lock, Percent,
+  Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check, Lock, Percent, Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +104,8 @@ export default function Resultado() {
   const [loading, setLoading] = useState(true);
   const [missingDiagnostic, setMissingDiagnostic] = useState(false);
   const [diagnostic, setDiagnostic] = useState<DiagnosticData | null>(null);
+  const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
   const [chs, setChs] = useState(0);
   const [chsLabel, setChsLabel] = useState("Regular");
   const [storeName, setStoreName] = useState("Sua Loja");
