@@ -210,6 +210,10 @@ export default function Onboarding() {
   const [showManualOAuthFallback, setShowManualOAuthFallback] = useState(false);
   const [assistedStep, setAssistedStep] = useState(1);
 
+  // 1.2 Retomada de draft — banner explícito no topo quando há rascunho restaurado.
+  const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
+  const [draftBannerDismissed, setDraftBannerDismissed] = useState(false);
+
   // Resolver loja para chave de rascunho (multi-tenant por store_id).
   useEffect(() => {
     if (!user?.id) return;
