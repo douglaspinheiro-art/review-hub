@@ -648,12 +648,15 @@ export default function Relatorios() {
                 <MousePointer2 className="w-4 h-4 text-primary" /> Envios por dia e faixa horária
               </h3>
               {snapshotLoading && <p className="text-sm text-muted-foreground">Carregando envios…</p>}
-              {!snapshotLoading && heatmap && heatmap.max === 0 && (
+              {(snapshotLoading || heatmapLoading) && (
+                <p className="text-sm text-muted-foreground">Carregando envios…</p>
+              )}
+              {!heatmapLoading && heatmap && heatmap.max === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Sem envios agregados no período (snapshot sem dados de heatmap).
+                  Sem envios agregados no período. Quando uma campanha for disparada, o heatmap aparece aqui.
                 </p>
               )}
-              {!snapshotLoading && heatmap && heatmap.max > 0 && (
+              {!heatmapLoading && heatmap && heatmap.max > 0 && (
                 <>
                   <div className="space-y-2">
                     <div className="grid grid-cols-4 gap-1">
@@ -669,7 +672,8 @@ export default function Relatorios() {
                         <div className="text-[10px] font-bold text-muted-foreground flex items-center">{day}</div>
                         {HOUR_BUCKETS.map((hour) => {
                           const key = `${dayIndex}-${hour}`;
-                          const count = heatmap.cells[key] ?? 0;
+                          const cell = heatmap.cells[key] ?? { sends: 0, attributed: 0 };
+                          const count = cell.sends;
                           const intensity = heatmap.max > 0 ? count / heatmap.max : 0;
                           const opacity = Math.max(0.08, intensity);
                           return (
@@ -680,17 +684,22 @@ export default function Relatorios() {
                                 backgroundColor: `rgba(16, 185, 129, ${opacity})`,
                                 border: `1px solid rgba(16, 185, 129, ${opacity + 0.08})`,
                               }}
-                              title={`${count} envios`}
+                              title={`${count} envios · ${cell.attributed} pedidos atribuídos`}
                             />
                           );
                         })}
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-6 italic text-center">
-                    Agregação server-side em message_sends (mesmo período do snapshot), por dia da semana e faixa de
-                    horário.
-                  </p>
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[10px] text-muted-foreground">
+                    <DataSourceBadge
+                      source="real"
+                      origin="RPC get_conversion_heatmap_v1"
+                      note="message_sends + attribution_events agregados na timezone America/Sao_Paulo"
+                      compact
+                    />
+                    <span className="italic">Intensidade da cor = volume de envios na faixa</span>
+                  </div>
                 </>
               )}
             </div>
