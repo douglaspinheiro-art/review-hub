@@ -332,9 +332,12 @@ export default function Onboarding() {
           return;
         }
         s = (parsed as { data: typeof s }).data;
+        const savedAt = (parsed as { savedAt?: string }).savedAt;
+        if (typeof savedAt === "string") setDraftRestoredAt(savedAt);
       } else {
         // Legado sem envelope — aceita uma vez para retrocompat
         s = parsed as typeof s;
+        setDraftRestoredAt(new Date().toISOString());
       }
       if (s.storeName) setStoreName(s.storeName);
       if (s.storeUrl) setStoreUrl(s.storeUrl);
