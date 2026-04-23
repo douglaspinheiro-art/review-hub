@@ -28,6 +28,8 @@ import { ProblemCard, type ProblemProps } from "@/components/dashboard/ProblemCa
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { ROIAttribution } from "@/components/dashboard/ROIAttribution";
+import AIRecommendationWidget from "@/components/dashboard/AIRecommendationWidget";
+import ISLCard from "@/components/dashboard/ISLCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
