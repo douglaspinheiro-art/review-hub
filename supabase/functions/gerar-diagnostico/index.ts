@@ -608,6 +608,32 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
       recommendedPlan = "growth";
     }
 
+    // === Meta de transparência (proveniência + confiança) ===
+    // real_signals_pct: % de blocos opcionais enriquecidos que vieram populados.
+    const optionalSignals = [
+      Array.isArray(canais_conectados) && canais_conectados.length > 0,
+      visitantes_mobile > 0 || visitantes_desktop > 0,
+      Array.isArray(historico_prescricoes) && historico_prescricoes.length > 0,
+      Array.isArray(proximos_eventos_sazonais) && proximos_eventos_sazonais.length > 0,
+      produtos_estoque_critico > 0 || produtos_avaliacao_baixa > 0,
+      data_quality !== null,
+    ];
+    const filledCount = optionalSignals.filter(Boolean).length;
+    const realSignalsPct = Math.round((filledCount / optionalSignals.length) * 100);
+    const lastSyncAt = (data_quality && (data_quality as Record<string, unknown>).last_sync_at)
+      ? String((data_quality as Record<string, unknown>).last_sync_at)
+      : new Date().toISOString();
+
+    diag.meta = {
+      fallback_mode: fallbackMode,
+      confidence: {
+        real_signals_pct: realSignalsPct,
+        data_window_days: 30,
+        last_sync_at: lastSyncAt,
+      },
+      generated_at: new Date().toISOString(),
+    };
+
     // Salvar diagnóstico no banco
     if (loja_id) {
       // Verify the authenticated user owns this store
