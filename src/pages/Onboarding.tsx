@@ -19,6 +19,14 @@ import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
 import { getPostLoginRoute } from "@/lib/post-login-route";
 import { benchmarkCvrForVertical, segmentLabelForVertical } from "@/lib/funnel-benchmarks";
+import {
+  validateFunnelConsistency,
+  computeRealSignalsPct,
+  provenanceSource,
+  ONBOARDING_DRAFT_VERSION,
+  type FieldProvenance,
+} from "@/lib/funnel-validation";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 
 const TOTAL_STEPS = 4;
 
