@@ -6,6 +6,7 @@ import {
   BellRing, Smartphone, Mail, Clock, ShoppingBag,
   Zap, MessageSquare, TrendingUp, CreditCard, Wifi, LogOut, X,
 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -141,6 +142,44 @@ export default function Configuracoes() {
     },
     enabled: !!user,
     staleTime: 60_000,
+  });
+
+  // Privacidade — opt-out de benchmark anônimo cross-tenant (LGPD)
+  const activeStoreId = scope.activeStoreId;
+  const { data: privacyStore, refetch: refetchPrivacy } = useQuery({
+    queryKey: ["store_privacy", activeStoreId],
+    queryFn: async () => {
+      if (!activeStoreId) return null;
+      const { data, error } = await supabase
+        .from("stores")
+        .select("id, benchmark_opt_out")
+        .eq("id", activeStoreId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; benchmark_opt_out: boolean } | null;
+    },
+    enabled: !!activeStoreId,
+  });
+
+  const benchmarkOptOut = privacyStore?.benchmark_opt_out ?? false;
+  const togglePrivacyMutation = useMutation({
+    mutationFn: async (newValue: boolean) => {
+      if (!activeStoreId) throw new Error("Selecione uma loja");
+      const { error } = await supabase
+        .from("stores")
+        .update({ benchmark_opt_out: newValue })
+        .eq("id", activeStoreId);
+      if (error) throw error;
+    },
+    onSuccess: async (_data, newValue) => {
+      toast.success(
+        newValue
+          ? "Loja removida dos benchmarks anônimos."
+          : "Loja incluída nos benchmarks anônimos."
+      );
+      await refetchPrivacy();
+    },
+    onError: (e: Error) => toast.error(e.message || "Erro ao salvar"),
   });
 
   // Sincroniza só quando o objeto `profile` vindo do servidor muda — não incluir `isDirty`
@@ -322,6 +361,7 @@ export default function Configuracoes() {
           <TabsTrigger value="protecao" className="rounded-lg px-6 font-bold text-xs">Proteção da Base</TabsTrigger>
           <TabsTrigger value="pulse" className="rounded-lg px-6 font-bold text-xs">Pulse Semanal</TabsTrigger>
           <TabsTrigger value="integracoes" className="rounded-lg px-6 font-bold text-xs">Integrações</TabsTrigger>
+          <TabsTrigger value="privacidade" className="rounded-lg px-6 font-bold text-xs">Privacidade</TabsTrigger>
         </TabsList>
 
         <TabsContent value="perfil" className="space-y-6 max-w-2xl">
@@ -762,7 +802,57 @@ export default function Configuracoes() {
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="privacidade" className="space-y-6 max-w-2xl">
+          <div className="bg-card border border-border/50 rounded-2xl p-6 space-y-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <BarChart3 className="w-5 h-5 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold">Benchmarks anônimos do setor</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Usamos métricas agregadas e anônimas (taxas de conversão, ticket médio,
+                  retenção por segmento RFM) para mostrar como sua loja se compara a outras
+                  do mesmo setor. Nenhum dado de cliente, pedido individual ou identificação
+                  é exposto a terceiros.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-muted/20 rounded-2xl border border-border/40">
+              <div className="space-y-0.5">
+                <Label htmlFor="benchmark-opt-out" className="text-sm font-bold cursor-pointer">
+                  Excluir minha loja dos benchmarks
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Ao ativar, sua loja deixa de contribuir e de receber comparativos do setor.
+                </p>
+              </div>
+              <Switch
+                id="benchmark-opt-out"
+                checked={benchmarkOptOut}
+                disabled={!activeStoreId || togglePrivacyMutation.isPending}
+                onCheckedChange={(v) => togglePrivacyMutation.mutate(v)}
+              />
+            </div>
+
+            <Alert>
+              <ShieldCheck className="h-4 w-4" />
+              <AlertTitle className="text-xs font-bold">Conformidade LGPD</AlertTitle>
+              <AlertDescription className="text-xs leading-relaxed">
+                Conforme nossos{" "}
+                <Link to="/termos" className="text-primary underline">Termos</Link>{" "}
+                e{" "}
+                <Link to="/privacidade" className="text-primary underline">Política de Privacidade</Link>,
+                a agregação cross-tenant é anônima e irreversível. Você pode alterar sua
+                preferência a qualquer momento.
+              </AlertDescription>
+            </Alert>
+          </div>
+        </TabsContent>
       </Tabs>
+
 
       {isDirty && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-lg border-t border-border z-50 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-full duration-300">
