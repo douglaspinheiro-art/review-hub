@@ -227,6 +227,14 @@ export default function Onboarding() {
   const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const [draftBannerDismissed, setDraftBannerDismissed] = useState(false);
 
+  // 1.4 Validação cruzada GA4 ↔ plataforma (gate bloqueante).
+  // - storeOrders: pedidos derivados da plataforma (faturamento / ticketMedio).
+  // - ga4Orders: pedidos vindos do GA4 (purchase event).
+  // - Se ambos > 0 e divergência relativa > 30%, bloqueia avanço até o lojista
+  //   reconfigurar GA4 ou marcar explicitamente "ignorar e usar só dados da loja".
+  const [crossValidationOverride, setCrossValidationOverride] = useState(false);
+  const [crossValidationModalOpen, setCrossValidationModalOpen] = useState(false);
+
   // Resolver loja para chave de rascunho (multi-tenant por store_id).
   useEffect(() => {
     if (!user?.id) return;
