@@ -19,6 +19,14 @@ import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
 import { getPostLoginRoute } from "@/lib/post-login-route";
 import { benchmarkCvrForVertical, segmentLabelForVertical } from "@/lib/funnel-benchmarks";
+import {
+  validateFunnelConsistency,
+  computeRealSignalsPct,
+  provenanceSource,
+  ONBOARDING_DRAFT_VERSION,
+  type FieldProvenance,
+} from "@/lib/funnel-validation";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 
 const TOTAL_STEPS = 4;
 
@@ -289,7 +297,10 @@ export default function Onboarding() {
         }
       }
       if (!raw) return;
-      const s = JSON.parse(raw) as Partial<{
+      const parsed = JSON.parse(raw) as
+        | { version?: number; data?: Record<string, unknown> }
+        | Record<string, unknown>;
+      let s: Partial<{
         step: number; storeName: string; storeUrl: string; vertical: EcommerceVertical | null;
         plataforma: string; integrationConfig: Record<string, string>; integrationValid: boolean;
         faturamento: string; ticketMedio: string; numClientes: string; visitantes: string;
@@ -297,6 +308,17 @@ export default function Onboarding() {
         ga4PropertyId: string; ga4Token: string;
         assistedStep: number; showManualOAuthFallback: boolean;
       }>;
+      if (parsed && typeof parsed === "object" && "version" in parsed && "data" in parsed) {
+        if ((parsed as { version?: number }).version !== ONBOARDING_DRAFT_VERSION) {
+          console.info(`[onboarding] Draft version mismatch (got ${(parsed as { version?: number }).version}, expected ${ONBOARDING_DRAFT_VERSION}) — descartando`);
+          localStorage.removeItem(progressStorageKey);
+          return;
+        }
+        s = (parsed as { data: typeof s }).data;
+      } else {
+        // Legado sem envelope — aceita uma vez para retrocompat
+        s = parsed as typeof s;
+      }
       if (s.storeName) setStoreName(s.storeName);
       if (s.storeUrl) setStoreUrl(s.storeUrl);
       if (s.vertical) setVertical(s.vertical);
@@ -345,11 +367,15 @@ export default function Onboarding() {
         }
       }
       localStorage.setItem(progressStorageKey, JSON.stringify({
-        step, storeName, storeUrl, vertical, plataforma,
-        integrationConfig: safeIntegrationConfig, integrationValid,
-        faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-        metaConversao, ga4PropertyId,
-        assistedStep, showManualOAuthFallback,
+        version: ONBOARDING_DRAFT_VERSION,
+        savedAt: new Date().toISOString(),
+        data: {
+          step, storeName, storeUrl, vertical, plataforma,
+          integrationConfig: safeIntegrationConfig, integrationValid,
+          faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
+          metaConversao, ga4PropertyId,
+          assistedStep, showManualOAuthFallback,
+        },
       }));
     } catch { /* quota or private mode */ }
   }, [user, progressStorageKey, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
@@ -854,6 +880,31 @@ export default function Onboarding() {
       toast.error("Informe seu faturamento mensal aproximado.");
       return;
     }
+
+    const tmNum = Number(ticketMedio) || 250;
+    const visPreview = visitantes ? Number(visitantes) : estimatedVisitors;
+    const pedPreview = pedidos ? Number(pedidos) : estimatedPedidos;
+    const carPreview = carrinho ? Number(carrinho) : estimatedCarrinho;
+    const chkPreview = checkout ? Number(checkout) : estimatedCheckout;
+    const pvPreview = Math.round(visPreview * 0.72);
+
+    // A1. Validação de consistência (bloqueante leve)
+    const validation = validateFunnelConsistency({
+      visitantes: visPreview,
+      produto_visto: pvPreview,
+      carrinho: carPreview,
+      checkout: chkPreview,
+      pedido: pedPreview,
+      ticket_medio: tmNum,
+    });
+    if (!validation.ok) {
+      toast.error(validation.errors[0]?.message ?? "Dados do funil inconsistentes.");
+      return;
+    }
+    if (validation.warnings.length > 0) {
+      toast.warning(validation.warnings[0].message);
+    }
+
     setIsSubmitting(true);
     try {
       if (!user?.id) {
@@ -933,6 +984,18 @@ export default function Onboarding() {
       }
 
       // 7. Store funnel data in sessionStorage for Analisando page
+      // A2. Marcação de proveniência por campo
+      const fieldProvenance: FieldProvenance = {
+        visitantes: importedFields.visitantes ? "real" : "estimated",
+        produto_visto: importedFields.visitantes ? "real" : "estimated",
+        carrinho: importedFields.carrinho || carrinho ? "real" : "estimated",
+        checkout: importedFields.checkout || checkout ? "real" : "estimated",
+        pedido: importedFields.pedidos || pedidos ? "real" : "estimated",
+        ticket_medio: importedFields.ticketMedio || ticketMedio ? "real" : "estimated",
+        faturamento: importedFields.faturamento ? "real" : "estimated",
+      };
+      const realSignalsPct = computeRealSignalsPct(fieldProvenance);
+
       const funnelPayload = {
         visitantes: funnelVisitors,
         produto_visto: funnelProdutoVisto,
@@ -946,6 +1009,14 @@ export default function Onboarding() {
         meta_conversao: benchmarkCvr,
         segmento: segmentLabelForVertical(vertical),
         store_id: storeId,
+        // A5. Payload enriquecido (proveniência + summary)
+        field_provenance: fieldProvenance,
+        real_signals_pct: realSignalsPct,
+        data_source_summary: {
+          ga4: Boolean(ga4Result?.ok || ga4PropertyId),
+          loja: integrationValid,
+          manual: !integrationValid && !ga4Result?.ok,
+        },
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
 
@@ -1847,6 +1918,62 @@ export default function Onboarding() {
 
           {step === 4 && (
             <div className="flex flex-col items-center gap-3">
+              {(() => {
+                // A3. Card "Score de confiabilidade" no último passo
+                const fieldProvenancePreview: FieldProvenance = {
+                  visitantes: importedFields.visitantes ? "real" : "estimated",
+                  produto_visto: importedFields.visitantes ? "real" : "estimated",
+                  carrinho: importedFields.carrinho || carrinho ? "real" : "estimated",
+                  checkout: importedFields.checkout || checkout ? "real" : "estimated",
+                  pedido: importedFields.pedidos || pedidos ? "real" : "estimated",
+                  ticket_medio: importedFields.ticketMedio || ticketMedio ? "real" : "estimated",
+                  faturamento: importedFields.faturamento ? "real" : "estimated",
+                };
+                const pct = computeRealSignalsPct(fieldProvenancePreview);
+                const source = provenanceSource(pct);
+                const realCount = Object.values(fieldProvenancePreview).filter((v) => v === "real").length;
+                const estCount = Object.values(fieldProvenancePreview).length - realCount;
+                const ga4Ok = Boolean(ga4Result?.ok);
+                const lojaOk = integrationValid;
+                return (
+                  <div className="w-full max-w-md rounded-2xl border border-[#1E1E2E] bg-[#13131A] p-4 mb-2 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Score de confiabilidade
+                      </p>
+                      <DataSourceBadge
+                        source={source}
+                        origin={`${pct}% sinais reais`}
+                        note="Quanto maior, mais preciso o diagnóstico."
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <strong className="text-white">{realCount} campos reais</strong> · {estCount} estimados
+                    </p>
+                    {ga4Ok && lojaOk && (() => {
+                      const ga4Pedidos = Number(pedidos) || 0;
+                      const lojaPedidos = Number(faturamento) > 0 && Number(ticketMedio) > 0
+                        ? Math.round(Number(faturamento) / Number(ticketMedio))
+                        : 0;
+                      if (lojaPedidos === 0 || ga4Pedidos === 0) return null;
+                      const diff = Math.abs(ga4Pedidos - lojaPedidos) / lojaPedidos;
+                      const diffPct = Math.round(diff * 100);
+                      const isHigh = diff > 0.2;
+                      return (
+                        <div className={cn(
+                          "rounded-xl p-2.5 text-[11px] border",
+                          isHigh
+                            ? "border-amber-500/30 bg-amber-500/5 text-amber-400"
+                            : "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                        )}>
+                          GA4: ~{ga4Pedidos.toLocaleString("pt-BR")} pedidos · Loja: ~{lojaPedidos.toLocaleString("pt-BR")} pedidos
+                          {isHigh && <> · divergência {diffPct}% — confira a integração</>}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
               <Button
                 size="lg"
                 onClick={() => void handleFinish()}

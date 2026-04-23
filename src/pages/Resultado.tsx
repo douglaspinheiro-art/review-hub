@@ -58,12 +58,18 @@ type DiagnosticData = {
   };
   meta?: {
     fallback_mode?: boolean;
+    parse_retry?: boolean;
+    cached?: boolean;
     confidence?: {
       real_signals_pct?: number;
       data_window_days?: number;
       last_sync_at?: string;
+      field_provenance?: Record<string, "real" | "estimated">;
     };
     generated_at?: string;
+  };
+  data_quality?: {
+    ga4_diff_pct?: number | null;
   };
 };
 
@@ -278,6 +284,8 @@ export default function Resultado() {
   const dataWindowDays = meta?.confidence?.data_window_days ?? 30;
   const lastSyncAt = meta?.confidence?.last_sync_at ?? meta?.generated_at ?? null;
   const fallbackMode = Boolean(meta?.fallback_mode);
+  const cached = Boolean(meta?.cached);
+  const ga4Diff = diagnostic?.data_quality?.ga4_diff_pct ?? null;
   const confidenceSource: DataSource = realPct >= 70 ? "real" : realPct >= 30 ? "derived" : "estimated";
 
   return (
@@ -337,7 +345,23 @@ export default function Resultado() {
                   Modo fallback
                 </Badge>
               )}
+              {cached && (
+                <Badge className="bg-muted/40 text-muted-foreground border border-border text-[10px] font-bold uppercase tracking-wide">
+                  Cache 5min
+                </Badge>
+              )}
             </div>
+            {typeof ga4Diff === "number" && Math.abs(ga4Diff) > 5 && (
+              <p className="text-[11px] text-amber-400 max-w-md mx-auto">
+                GA4 reporta {ga4Diff > 0 ? "+" : ""}{Math.round(ga4Diff)}% {ga4Diff > 0 ? "a mais" : "a menos"} pedidos que sua loja.{" "}
+                <button
+                  onClick={() => navigate("/dashboard/integracoes")}
+                  className="underline hover:text-amber-300"
+                >
+                  Reconciliar em integrações
+                </button>
+              </p>
+            )}
           </div>
 
           <div className="flex justify-center">
