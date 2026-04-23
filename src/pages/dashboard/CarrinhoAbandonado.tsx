@@ -28,6 +28,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useStoreScope } from "@/contexts/StoreScopeContext";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppSender } from "@/hooks/useWhatsAppSender";
 import { cn } from "@/lib/utils";
@@ -259,6 +260,13 @@ export default function CarrinhoAbandonado() {
           <p className="text-muted-foreground text-sm mt-1">
             Recupere vendas perdidas com cadência inteligente.
           </p>
+          <div className="mt-2">
+            <DataSourceBadge
+              source="real"
+              origin="RPC get_abandoned_carts_v2 + webhooks"
+              note="Cobertura depende dos webhooks de carrinho da plataforma da loja. Lojas sem webhook ativo subestimam o total real."
+            />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {lojas.length > 1 && (

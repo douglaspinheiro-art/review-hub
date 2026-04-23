@@ -28,6 +28,7 @@ import {
 } from "@/lib/prescription-map";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { useAuth } from "@/hooks/useAuth";
 
 type CampaignRow = {
@@ -249,6 +250,13 @@ export default function EmExecucao() {
               Veja prescrições em curso e a campanha associada a cada uma. Use «Atualizar métricas» para refletir os
               últimos envios e estados.
             </p>
+            <div className="mt-2">
+              <DataSourceBadge
+                source="estimated"
+                origin="prescriptions + campaigns bundle"
+                note="A receita exibida é receita atribuída estimada (janela de atribuição padrão), não receita contábil consolidada."
+              />
+            </div>
           </div>
           <Button
             variant="outline"

@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import type { Database } from "@/integrations/supabase/types";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 // review-metrics imported for side effects
 
 type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
@@ -338,6 +339,16 @@ export default function Reviews() {
             <p className="text-muted-foreground text-sm mt-1">
               Monitore e responda avaliações com IA em segundos
             </p>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <DataSourceBadge
+                source="estimated"
+                origin="RPC get_reviews_bundle_v2"
+                note="Sync com Google Business Profile ainda não disponível — dados podem estar incompletos sem ingestão automática."
+              />
+              <Badge variant="outline" className="text-[9px] font-bold uppercase border-amber-500/40 text-amber-600">
+                Google · Offline
+              </Badge>
+            </div>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>

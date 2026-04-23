@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 
 import {
   useCanaisPageData,
@@ -226,6 +227,11 @@ export default function Canais() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-black font-syne tracking-tighter uppercase">Meus Canais</h1>
+            <DataSourceBadge
+              source="real"
+              origin="Tabela orders_v3 + webhook_logs · janela 90d"
+              note="Pedidos e receita agregam orders_v3 dos últimos 90 dias. Status de sync vem de webhook_logs."
+            />
           </div>
           <p className="text-muted-foreground text-sm mt-1">
             Gerencie as fontes de dados e integrações da sua loja.

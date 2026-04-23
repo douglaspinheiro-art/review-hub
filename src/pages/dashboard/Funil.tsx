@@ -28,6 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ECOMMERCE_PLATFORMAS_FUNIL } from "@/lib/ecommerce-platforms";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isDashboardPathBlockedInBetaScope } from "@/lib/beta-scope";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { RouteErrorBoundary } from "@/components/ErrorBoundary";
 import type { Database } from "@/lib/database.types";
 
@@ -548,6 +549,13 @@ export default function Funil() {
               {syncSubtitle ? ` ${syncSubtitle}` : ""}
             </p>
           )}
+          <div className="mt-2">
+            <DataSourceBadge
+              source="estimated"
+              origin="useFunilBff (GA4 + manual + heurística)"
+              note="Topo e meio do funil dependem de GA4 ou entrada manual conforme a integração ativa. Blocos como 'recuperação potencial' usam heurísticas e são marcados como tal nos cards."
+            />
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-muted rounded-xl p-1">
