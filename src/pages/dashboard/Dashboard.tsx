@@ -34,6 +34,8 @@ import AIRecommendationWidget from "@/components/dashboard/AIRecommendationWidge
 import ISLCard from "@/components/dashboard/ISLCard";
 import ProactiveCalendarWidget from "@/components/dashboard/ProactiveCalendarWidget";
 import RevenueAutopilotCard from "@/components/dashboard/RevenueAutopilotCard";
+import LtvRetentionCard from "@/components/dashboard/LtvRetentionCard";
+import EmailHealthCard from "@/components/dashboard/EmailHealthCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -462,6 +464,15 @@ export default function Dashboard() {
           </ErrorBoundary>
           <ErrorBoundary>
             <RevenueAutopilotCard />
+          </ErrorBoundary>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ErrorBoundary>
+            <LtvRetentionCard storeId={storeIdDash} />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <EmailHealthCard storeId={storeIdDash} />
           </ErrorBoundary>
         </div>
 

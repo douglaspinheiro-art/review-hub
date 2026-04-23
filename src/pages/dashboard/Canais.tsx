@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import EmailHealthCard from "@/components/dashboard/EmailHealthCard";
 
 import {
   useCanaisPageData,
@@ -271,6 +272,8 @@ export default function Canais() {
           </div>
         )}
       </div>
+
+      <EmailHealthCard storeId={canaisQuery.data?.storeId ?? undefined} />
 
       {user && (
         <div className="pt-12 space-y-6">

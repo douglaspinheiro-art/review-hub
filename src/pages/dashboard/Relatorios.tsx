@@ -49,6 +49,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 import { MetricGlossary, COMMON_GLOSSARY } from "@/components/dashboard/trust/MetricGlossary";
+import { useLtvSummary } from "@/hooks/useLtvSummary";
+import LtvRetentionCard from "@/components/dashboard/LtvRetentionCard";
 
 const PERIODS: Array<{ label: string; value: 7 | 30 | 90 }> = [
   { label: "7 dias", value: 7 },
@@ -166,6 +168,10 @@ export default function Relatorios() {
   const cohorts = cohortsQuery.data ?? [];
   const cohortsLoading = cohortsQuery.isLoading;
   const refetchCohorts = cohortsQuery.refetch;
+
+  // LTV summary (RPC get_ltv_summary_v1)
+  const ltvQuery = useLtvSummary(storeId ?? undefined);
+  const ltv = ltvQuery.data;
 
   // Heatmap dia/hora (RPC get_conversion_heatmap_v1 — message_sends + attribution_events)
   const heatmapQuery = useQuery({
@@ -706,9 +712,16 @@ export default function Relatorios() {
             </div>
           </div>
 
+          <LtvRetentionCard storeId={storeId ?? undefined} />
+
           <div className="bg-card border rounded-2xl p-6">
             <h3 className="font-bold text-base mb-6 flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" /> Cohorts de clientes (pipeline)
+              {ltv?.cohorts && ltv.cohorts.length > 0 && (
+                <span className="text-[10px] font-normal text-muted-foreground ml-2">
+                  · {ltv.cohorts.length} coortes com D30/D90/D180
+                </span>
+              )}
             </h3>
             {cohortsLoading && <p className="text-sm text-muted-foreground">Carregando cohorts…</p>}
             {!cohortsLoading && cohorts.length === 0 && (

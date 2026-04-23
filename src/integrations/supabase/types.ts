@@ -5738,6 +5738,7 @@ export type Database = {
         }
         Returns: Json
       }
+      get_ltv_summary_v1: { Args: { p_store_id: string }; Returns: Json }
       get_operational_health_bundle_v2: {
         Args: { p_store_id: string }
         Returns: Json
