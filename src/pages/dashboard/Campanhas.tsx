@@ -24,6 +24,7 @@ import { TrialGate } from "@/components/dashboard/TrialGate";
 import { isValidRfmQuerySegment } from "@/lib/rfm-segments";
 import { trackMoatEvent } from "@/lib/moat-telemetry";
 import { RouteErrorBoundary } from "@/components/ErrorBoundary";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 
 const CAMPAIGN_PREFILL_TTL_MS = 60 * 60 * 1000;
 
@@ -321,6 +322,17 @@ export default function Campanhas() {
         <div>
           <h1 className="text-2xl font-bold">Campanhas</h1>
           <p className="text-muted-foreground text-sm mt-1">Gerencie seus disparos e campanhas de mensagens</p>
+          <div className="mt-2">
+            <DataSourceBadge
+              source="real"
+              origin="Tabela campaigns + bundle de métricas"
+              note={
+                campaigns.length > 0
+                  ? `Base carregada: ${campaigns.length} campanhas. Filtros refletem este lote.`
+                  : "Sem campanhas carregadas."
+              }
+            />
+          </div>
         </div>
         <Button className="gap-2" onClick={() => { setEditingCampaignId(null); setShowModal(true); }}>
           <Plus className="w-4 h-4" />
