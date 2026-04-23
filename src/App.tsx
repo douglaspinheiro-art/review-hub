@@ -195,6 +195,7 @@ const App = () => (
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
           <Route path="/aceitar-convite" element={<AceitarConviteEquipe />} />
+          <Route path="/d/:token" element={<DiagnosticoCompartilhado />} />
 
           {/* Protected dashboard */}
           <Route path="/dashboard" element={<DashboardRoute routeLabel="Dashboard Home"><Dashboard /></DashboardRoute>} />
