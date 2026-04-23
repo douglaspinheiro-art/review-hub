@@ -5714,6 +5714,7 @@ export type Database = {
         Args: { p_conversation_id: string; p_messages_limit?: number }
         Returns: Json
       }
+      get_inbox_sla_kpis_v1: { Args: { p_user_id: string }; Returns: Json }
       get_journey_sent_counts: {
         Args: { p_journey_ids: string[]; p_store_id: string }
         Returns: {
@@ -5730,6 +5731,7 @@ export type Database = {
         Returns: Json
       }
       get_loyalty_dashboard_summary: { Args: never; Returns: Json }
+      get_loyalty_kpis_v1: { Args: { p_user_id: string }; Returns: Json }
       get_loyalty_transactions_v2: {
         Args: {
           p_cursor_created_at?: string

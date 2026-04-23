@@ -33,6 +33,7 @@ import { MessageList } from "@/components/dashboard/inbox/MessageList";
 import { MessageComposer } from "@/components/dashboard/inbox/MessageComposer";
 import {} from "@/components/dashboard/ConversationListItem";
 import { Button } from "@/components/ui/button";
+import { InboxSlaHeader } from "@/components/dashboard/InboxSlaHeader";
 
 type DbMessage = Database["public"]["Tables"]["messages"]["Row"];
 type DbMessageInsert = Database["public"]["Tables"]["messages"]["Insert"];
@@ -659,6 +660,7 @@ export default function Inbox() {
       )}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <div className="w-full md:w-80 lg:w-96 flex flex-col border-r bg-card relative shrink-0 overflow-hidden">
+          <InboxSlaHeader />
           {convListError ? (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
               <AlertCircle className="w-10 h-10 text-destructive opacity-50" />

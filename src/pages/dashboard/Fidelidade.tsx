@@ -39,6 +39,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { useAuth } from "@/hooks/useAuth";
+import { LoyaltyKpisHeader } from "@/components/dashboard/LoyaltyKpisHeader";
 import {
   useLoyaltyDashboard,
   useLoyaltyTransactions,
@@ -388,6 +389,8 @@ export default function Fidelidade() {
           </Button>
         </div>
       </div>
+
+      <LoyaltyKpisHeader />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard

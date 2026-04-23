@@ -805,6 +805,42 @@ export default function Campanhas() {
                   <EmailCampaignStatsSnippet campaignId={c.id} />
                 )}
 
+                {(() => {
+                  const cost = Number((c as { custo_total_envio?: number }).custo_total_envio ?? 0);
+                  const ga4Rev = Number((c as { ga4_attributed_revenue?: number }).ga4_attributed_revenue ?? 0);
+                  if (cost <= 0 && ga4Rev <= 0) return null;
+                  const roas = cost > 0 ? ga4Rev / cost : null;
+                  const cpd = c.delivered_count > 0 && cost > 0 ? cost / c.delivered_count : null;
+                  return (
+                    <div className="flex flex-wrap items-center gap-3 pt-2 border-t text-xs">
+                      <DataSourceBadge
+                        source={ga4Rev > 0 ? "real" : "estimated"}
+                        origin="GA4 attributed revenue + custo de envio"
+                        note="ROAS depende de janela de atribuição GA4 madura (≥ 30 dias)."
+                      />
+                      <span className="text-muted-foreground">
+                        Custo: <span className="font-semibold text-foreground">R$ {cost.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </span>
+                      {cpd !== null && (
+                        <span className="text-muted-foreground">
+                          CPM entregue: <span className="font-semibold text-foreground">R$ {cpd.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
+                        </span>
+                      )}
+                      <span className="text-muted-foreground">
+                        Receita GA4: <span className="font-semibold text-foreground">R$ {ga4Rev.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </span>
+                      {roas !== null && (
+                        <span className={cn(
+                          "font-bold tabular-nums px-2 py-0.5 rounded",
+                          roas >= 3 ? "text-emerald-600 bg-emerald-500/10" : roas >= 1 ? "text-amber-600 bg-amber-500/10" : "text-destructive bg-destructive/10"
+                        )}>
+                          ROAS {roas.toFixed(2)}x
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Barra de progresso */}
                 {c.total_contacts > 0 && (
                   <div className="space-y-1">
