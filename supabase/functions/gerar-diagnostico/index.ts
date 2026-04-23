@@ -268,6 +268,22 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // 2.1 — Streaming de progresso real via Realtime broadcast.
+    // Cliente em /analisando escuta canal `diagnostico-progress-${userId}`
+    // e atualiza `currentStep` baseado em etapas reais (não timer).
+    async function emitProgress(stage: string, detail?: Record<string, unknown>) {
+      try {
+        const ch = supabase.channel(`diagnostico-progress-${auth.userId}`);
+        await ch.send({
+          type: "broadcast",
+          event: "progress",
+          payload: { stage, ts: Date.now(), ...(detail ?? {}) },
+        });
+        // Não removemos o canal — o cliente é dono dele; deixamos GC do supabase-js.
+      } catch (_e) { /* telemetria nunca derruba o fluxo */ }
+    }
+    void emitProgress("validation");
+
     // Distributed per-user burst guard (replaces in-memory checkRateLimit which is per-instance only).
     const burst = await checkDistributedRateLimit(supabase, `gerar-diagnostico:burst:${auth.userId}`, 8, 60_000);
     if (!burst.allowed) {
