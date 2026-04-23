@@ -44,6 +44,11 @@ import { buildRetentionGraph } from "@/lib/retention-graph";
 import { getPropensityOutput } from "@/lib/propensity-score";
 import { useDashboardSnapshot } from "@/hooks/useDashboard";
 import { useLoja } from "@/hooks/useConvertIQ";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
+import { MetricGlossary, COMMON_GLOSSARY } from "@/components/dashboard/trust/MetricGlossary";
 
 const PERIODS: Array<{ label: string; value: 7 | 30 | 90 }> = [
   { label: "7 dias", value: 7 },
@@ -129,6 +134,7 @@ export default function Relatorios() {
   }, []);
 
   const loja = useLoja();
+  const storeId = loja.data?.id ?? null;
 
   // BFF hook consolidation (Priority 3)
   const { 
@@ -138,13 +144,65 @@ export default function Relatorios() {
     refetch: refetchSnapshot 
   } = useDashboardSnapshot(period);
 
-  // useAdvancedReports not yet implemented — stub
-  const reportsLoading = false;
-  const cohorts: any[] = [];
-  const cohortsLoading = reportsLoading;
-  const refetchCohorts = refetchSnapshot;
+  // Cohorts mensais (RPC get_retention_cohorts_v1 — lê customer_cohorts populada por data-pipeline-cron)
+  const cohortsQuery = useQuery({
+    queryKey: ["retention_cohorts", storeId],
+    enabled: !!storeId,
+    staleTime: 60_000 * 10,
+    queryFn: async () => {
+      const { data, error: cohortError } = await supabase.rpc("get_retention_cohorts_v1" as never, {
+        p_store_id: storeId,
+        p_limit: 12,
+      } as never);
+      if (cohortError) throw cohortError;
+      return (data as Array<{
+        cohort_month: string;
+        cohort_size: number;
+        retention_d30: number | null;
+        computed_at: string;
+      }>) ?? [];
+    },
+  });
+  const cohorts = cohortsQuery.data ?? [];
+  const cohortsLoading = cohortsQuery.isLoading;
+  const refetchCohorts = cohortsQuery.refetch;
 
-  const heatmap: { cells: Record<string, number>; max: number } | null = null as { cells: Record<string, number>; max: number } | null;
+  // Heatmap dia/hora (RPC get_conversion_heatmap_v1 — message_sends + attribution_events)
+  const heatmapQuery = useQuery({
+    queryKey: ["conversion_heatmap", storeId, period],
+    enabled: !!storeId,
+    staleTime: 60_000 * 10,
+    queryFn: async () => {
+      const { data, error: hmError } = await supabase.rpc("get_conversion_heatmap_v1" as never, {
+        p_store_id: storeId,
+        p_days: period,
+      } as never);
+      if (hmError) throw hmError;
+      const rows = (data as Array<{
+        dow: number;
+        hour: number;
+        sends_count: number;
+        attributed_count: number;
+        attributed_revenue: number;
+      }>) ?? [];
+      const cells: Record<string, { sends: number; attributed: number }> = {};
+      let max = 0;
+      for (const r of rows) {
+        // Postgres DOW: 0=Sun..6=Sat → mapeia para nosso array Seg..Dom (0=Mon..6=Sun)
+        const dayIdx = (r.dow + 6) % 7;
+        const bucket = r.hour < 11 ? "08h" : r.hour < 16 ? "12h" : "18h";
+        const key = `${dayIdx}-${bucket}`;
+        const cell = cells[key] ?? { sends: 0, attributed: 0 };
+        cell.sends += Number(r.sends_count) || 0;
+        cell.attributed += Number(r.attributed_count) || 0;
+        cells[key] = cell;
+        if (cell.sends > max) max = cell.sends;
+      }
+      return { cells, max };
+    },
+  });
+  const heatmap = heatmapQuery.data ?? null;
+  const heatmapLoading = heatmapQuery.isLoading;
 
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;
@@ -251,19 +309,17 @@ export default function Relatorios() {
           <p className="text-muted-foreground text-sm mt-1">
             Visão consolidada com dados da sua conta (analytics diários, clientes e envios).
           </p>
-          {/* H5: data freshness timestamp — shows when the snapshot was last computed */}
-          {snapshot?.timestamp && (
-            <p className="text-[11px] text-muted-foreground mt-1 font-mono">
-              Dados calculados às{" "}
-              {new Date(snapshot.timestamp).toLocaleString("pt-BR", {
-                timeZone: "America/Sao_Paulo",
-                hour: "2-digit",
-                minute: "2-digit",
-                day: "2-digit",
-                month: "2-digit",
-              })}
-            </p>
-          )}
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <DataSourceBadge
+              source="real"
+              origin="RPC get_dashboard_snapshot"
+              updatedAt={snapshot?.timestamp ?? null}
+            />
+            {snapshot?.timestamp && (
+              <FreshnessIndicator updatedAt={snapshot.timestamp} slaMinutes={120} />
+            )}
+            <MetricGlossary entries={COMMON_GLOSSARY} />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 mr-2">
@@ -421,9 +477,10 @@ export default function Relatorios() {
               <>
                 <MetricCard
                   label="Recuperação de carrinhos"
-                  value="—"
+                  value={String(snapshot?.opportunities ?? 0)}
+                  subValue="oportunidades em aberto"
                   icon={ShoppingBag}
-                  tooltip="Carrinhos marcados como recuperados / total rastreado no período."
+                  tooltip="Oportunidades de recuperação ainda não convertidas (snapshot)."
                 />
                 <MetricCard
                   label="Pedidos atribuídos"
@@ -592,12 +649,15 @@ export default function Relatorios() {
                 <MousePointer2 className="w-4 h-4 text-primary" /> Envios por dia e faixa horária
               </h3>
               {snapshotLoading && <p className="text-sm text-muted-foreground">Carregando envios…</p>}
-              {!snapshotLoading && heatmap && heatmap.max === 0 && (
+              {(snapshotLoading || heatmapLoading) && (
+                <p className="text-sm text-muted-foreground">Carregando envios…</p>
+              )}
+              {!heatmapLoading && heatmap && heatmap.max === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Sem envios agregados no período (snapshot sem dados de heatmap).
+                  Sem envios agregados no período. Quando uma campanha for disparada, o heatmap aparece aqui.
                 </p>
               )}
-              {!snapshotLoading && heatmap && heatmap.max > 0 && (
+              {!heatmapLoading && heatmap && heatmap.max > 0 && (
                 <>
                   <div className="space-y-2">
                     <div className="grid grid-cols-4 gap-1">
@@ -613,7 +673,8 @@ export default function Relatorios() {
                         <div className="text-[10px] font-bold text-muted-foreground flex items-center">{day}</div>
                         {HOUR_BUCKETS.map((hour) => {
                           const key = `${dayIndex}-${hour}`;
-                          const count = heatmap.cells[key] ?? 0;
+                          const cell = heatmap.cells[key] ?? { sends: 0, attributed: 0 };
+                          const count = cell.sends;
                           const intensity = heatmap.max > 0 ? count / heatmap.max : 0;
                           const opacity = Math.max(0.08, intensity);
                           return (
@@ -624,17 +685,22 @@ export default function Relatorios() {
                                 backgroundColor: `rgba(16, 185, 129, ${opacity})`,
                                 border: `1px solid rgba(16, 185, 129, ${opacity + 0.08})`,
                               }}
-                              title={`${count} envios`}
+                              title={`${count} envios · ${cell.attributed} pedidos atribuídos`}
                             />
                           );
                         })}
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-6 italic text-center">
-                    Agregação server-side em message_sends (mesmo período do snapshot), por dia da semana e faixa de
-                    horário.
-                  </p>
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[10px] text-muted-foreground">
+                    <DataSourceBadge
+                      source="real"
+                      origin="RPC get_conversion_heatmap_v1"
+                      note="message_sends + attribution_events agregados na timezone America/Sao_Paulo"
+                      compact
+                    />
+                    <span className="italic">Intensidade da cor = volume de envios na faixa</span>
+                  </div>
                 </>
               )}
             </div>
@@ -663,8 +729,8 @@ export default function Relatorios() {
                     </tr>
                   </thead>
                   <tbody>
-                    {cohorts.map((row: any) => (
-                      <tr key={row.id} className="border-b border-border/30">
+                    {cohorts.map((row) => (
+                      <tr key={row.cohort_month} className="border-b border-border/30">
                         <td className="p-2 text-muted-foreground">{row.cohort_month}</td>
                         <td className="p-2 text-center bg-muted/10">{row.cohort_size}</td>
                         <td className="p-2 text-center font-mono">{formatRetentionD30(row.retention_d30)}</td>
