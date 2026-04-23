@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Sparkles, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
 /** meta_conversao no funil = benchmark de setor; taxa_conversao = CVR medida (payload novo). */
 type FunnelPayload = {
@@ -16,6 +18,9 @@ type FunnelPayload = {
   taxa_conversao?: number;
   segmento?: string;
   store_id?: string | null;
+  field_provenance?: Record<string, "real" | "estimated">;
+  real_signals_pct?: number;
+  data_source_summary?: { ga4?: boolean; loja?: boolean; manual?: boolean };
 };
 
 function benchmarkForDiagnostics(funnel: FunnelPayload): number {
