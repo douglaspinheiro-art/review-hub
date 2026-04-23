@@ -18,6 +18,7 @@ import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 import type { DataSource } from "@/lib/data-provenance";
 import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
+import { RecommendationsSimulator } from "@/components/resultado/RecommendationsSimulator";
 
 type DiagnosticData = {
   resumo?: string;
@@ -599,43 +600,12 @@ export default function Resultado() {
 
         {/* Recommendations */}
         {recomendacoes.length > 0 && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold font-syne uppercase tracking-tighter flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-500" /> Plano de ação
-            </h2>
-            <div className="space-y-4">
-              {recomendacoes.map((r, i) => (
-                <div key={i} className="border border-[#1E1E2E] bg-[#13131A] rounded-2xl p-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className={cn(
-                      "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black",
-                      r.tipo === "quick_win" ? "bg-emerald-500/20 text-emerald-500" :
-                      r.tipo === "ab_test" ? "bg-blue-500/20 text-blue-500" :
-                      "bg-amber-500/20 text-amber-500"
-                    )}>
-                      #{i + 1}
-                    </div>
-                    <Badge className={cn("text-[9px] font-black uppercase border-none",
-                      r.tipo === "quick_win" ? "bg-emerald-500/20 text-emerald-500" :
-                      r.tipo === "ab_test" ? "bg-blue-500/20 text-blue-500" :
-                      "bg-amber-500/20 text-amber-500"
-                    )}>
-                      {r.tipo === "quick_win" ? "⚡ Quick Win" : r.tipo === "ab_test" ? "🧪 Teste A/B" : "📅 Médio Prazo"}
-                    </Badge>
-                    <Badge variant="outline" className="text-[9px] ml-auto">
-                      {r.esforco === "baixo" ? "Esforço baixo" : r.esforco === "medio" ? "Esforço médio" : "Esforço alto"}
-                    </Badge>
-                  </div>
-                  <h3 className="text-base font-bold mb-2">{r.titulo}</h3>
-                  <p className="text-sm text-muted-foreground mb-4">{r.descricao}</p>
-                  <div className="flex gap-6 text-xs">
-                    <span className="text-emerald-500 font-bold">+{r.impacto_pp}pp de conversão</span>
-                    <span className="text-muted-foreground">{r.prazo_semanas} semana{r.prazo_semanas > 1 ? "s" : ""}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <RecommendationsSimulator
+            recomendacoes={recomendacoes}
+            visitantes={visitantesNum}
+            ticketMedio={ticketMedio}
+            cvrAtualPct={taxaConversaoAtual}
+          />
         )}
 
 
