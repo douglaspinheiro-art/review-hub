@@ -12,6 +12,23 @@ export const BENCHMARK_CVR_BY_VERTICAL: Record<EcommerceVertical, number> = {
   generic: 2.5,
 };
 
+/**
+ * Ticket médio típico por vertical no e-commerce BR (R$).
+ * Smart-default usado no /onboarding quando o lojista ainda não importou dados da loja.
+ */
+export const BENCHMARK_TICKET_MEDIO_BY_VERTICAL: Record<EcommerceVertical, number> = {
+  fashion: 180,
+  beauty: 140,
+  supplements: 220,
+  pets: 160,
+  generic: 250,
+};
+
+export function ticketMedioForVertical(v: EcommerceVertical | null | undefined): number {
+  if (!v || !(v in BENCHMARK_TICKET_MEDIO_BY_VERTICAL)) return BENCHMARK_TICKET_MEDIO_BY_VERTICAL.generic;
+  return BENCHMARK_TICKET_MEDIO_BY_VERTICAL[v];
+}
+
 /** Label de segmento enviado à edge `gerar-diagnostico` (compatível com BENCHMARKS no Deno). */
 export const VERTICAL_TO_SEGMENT_LABEL: Record<EcommerceVertical, string> = {
   fashion: "Moda",
