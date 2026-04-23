@@ -1080,6 +1080,12 @@ export default function Onboarding() {
         },
       });
 
+      // 2.2 Warm-up da edge — fire-and-forget para reduzir cold-start em /analisando.
+      // Não bloqueia o navigate; falha silenciosa.
+      try {
+        void supabase.functions.invoke("gerar-diagnostico", { body: { _warmup: true } });
+      } catch { /* noop */ }
+
       navigate("/analisando");
     } catch (e) {
       console.error(e);
