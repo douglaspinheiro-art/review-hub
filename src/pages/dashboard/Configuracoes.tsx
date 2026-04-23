@@ -151,7 +151,6 @@ export default function Configuracoes() {
     queryFn: async () => {
       if (!activeStoreId) return null;
       const { data, error } = await supabase
-        // @ts-expect-error - benchmark_opt_out coluna recém-criada via migração
         .from("stores")
         .select("id, benchmark_opt_out")
         .eq("id", activeStoreId)
@@ -167,7 +166,6 @@ export default function Configuracoes() {
     mutationFn: async (newValue: boolean) => {
       if (!activeStoreId) throw new Error("Selecione uma loja");
       const { error } = await supabase
-        // @ts-expect-error - benchmark_opt_out coluna recém-criada
         .from("stores")
         .update({ benchmark_opt_out: newValue })
         .eq("id", activeStoreId);
