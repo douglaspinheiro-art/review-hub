@@ -1508,6 +1508,44 @@ export type Database = {
           },
         ]
       }
+      diagnostic_share_tokens: {
+        Row: {
+          created_at: string
+          diagnostic_id: string
+          expires_at: string
+          store_name: string | null
+          token: string
+          user_id: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          diagnostic_id: string
+          expires_at?: string
+          store_name?: string | null
+          token: string
+          user_id: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          diagnostic_id?: string
+          expires_at?: string
+          store_name?: string | null
+          token?: string
+          user_id?: string
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diagnostic_share_tokens_diagnostic_id_fkey"
+            columns: ["diagnostic_id"]
+            isOneToOne: false
+            referencedRelation: "diagnostics_v3"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diagnostics: {
         Row: {
           created_at: string | null
@@ -1560,6 +1598,8 @@ export type Database = {
           created_at: string | null
           diagnostic_json: Json | null
           id: string
+          quality_label: string | null
+          quality_marked_at: string | null
           recommended_plan: string | null
           store_id: string | null
           user_id: string | null
@@ -1570,6 +1610,8 @@ export type Database = {
           created_at?: string | null
           diagnostic_json?: Json | null
           id?: string
+          quality_label?: string | null
+          quality_marked_at?: string | null
           recommended_plan?: string | null
           store_id?: string | null
           user_id?: string | null
@@ -1580,6 +1622,8 @@ export type Database = {
           created_at?: string | null
           diagnostic_json?: Json | null
           id?: string
+          quality_label?: string | null
+          quality_marked_at?: string | null
           recommended_plan?: string | null
           store_id?: string | null
           user_id?: string | null
@@ -5794,6 +5838,7 @@ export type Database = {
         Args: { p_metric: string; p_segment: string }
         Returns: Json
       }
+      get_shared_diagnostic: { Args: { p_token: string }; Returns: Json }
       get_whatsapp_bundle_v2: { Args: { p_store_id: string }; Returns: Json }
       has_role: {
         Args: {
@@ -5866,6 +5911,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      mark_low_conversion_diagnostics: { Args: never; Returns: number }
       prune_api_request_logs: {
         Args: { p_retention_days?: number }
         Returns: number

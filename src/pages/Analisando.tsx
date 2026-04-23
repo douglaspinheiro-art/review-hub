@@ -51,9 +51,11 @@ export default function Analisando() {
   const [progress, setProgress] = useState(0);
   const [diagnosticCalled, setDiagnosticCalled] = useState(false);
   const navigatedToResultadoRef = useRef(false);
+  const realProgressRef = useRef(false);
 
   useEffect(() => {
     let channelRef: ReturnType<typeof supabase.channel> | null = null;
+    let progressChannelRef: ReturnType<typeof supabase.channel> | null = null;
 
     function goToResultado(delayMs = 800) {
       if (navigatedToResultadoRef.current) return;
@@ -105,6 +107,29 @@ export default function Analisando() {
             goToResultado(1000);
           }
         )
+        .subscribe();
+
+      // 2.1 — Streaming de progresso real. A edge dispara `progress` em cada etapa
+      // (validation → ai_call_started → persisting). Usamos isso para avançar
+      // STEPS de forma honesta em vez de só timer.
+      const stageToStepIndex: Record<string, number> = {
+        validation: 1,
+        ai_call_started: 4, // "Detectando carrinhos abandonados…" (highlight)
+        persisting: 7,      // "Finalizando diagnóstico prescritivo…" (special)
+      };
+      progressChannelRef = supabase
+        .channel(`diagnostico-progress-${userId}`)
+        .on("broadcast", { event: "progress" }, (msg) => {
+          const stage = String((msg as { payload?: { stage?: string } }).payload?.stage ?? "");
+          const idx = stageToStepIndex[stage];
+          if (typeof idx === "number") {
+            realProgressRef.current = true;
+            setCurrentStep((prev) => Math.max(prev, idx));
+            // Avança visual também: ai_call_started ~50%, persisting ~85%
+            const target = stage === "validation" ? 25 : stage === "ai_call_started" ? 60 : 90;
+            setProgress((p) => Math.max(p, target));
+          }
+        })
         .subscribe();
 
       // 2. Resolve funnel payload — sessionStorage cache, fallback to DB.
@@ -350,11 +375,14 @@ export default function Analisando() {
 
     const visualInterval = setInterval(() => {
       elapsedMs += 100;
+      // Quando há eventos reais, avançamos só a barra (suave) — o step
+      // vem do canal de progresso. Sem eventos, continua o timer simulado.
       const newProgress = Math.min(95, (elapsedMs / totalEstimatedMs) * 100);
-      setProgress(newProgress);
-
-      const stepIndex = Math.floor((elapsedMs / (totalEstimatedMs / STEPS.length)));
-      if (stepIndex < STEPS.length) setCurrentStep(stepIndex);
+      setProgress((prev) => Math.max(prev, newProgress));
+      if (!realProgressRef.current) {
+        const stepIndex = Math.floor(elapsedMs / (totalEstimatedMs / STEPS.length));
+        if (stepIndex < STEPS.length) setCurrentStep(stepIndex);
+      }
     }, 100);
 
     // B2. Polling com backoff (substitui timer fixo de 25s)
@@ -386,6 +414,7 @@ export default function Analisando() {
 
     return () => {
       if (channelRef) supabase.removeChannel(channelRef);
+      if (progressChannelRef) supabase.removeChannel(progressChannelRef);
       clearInterval(visualInterval);
       pollCancelled = true;
     };

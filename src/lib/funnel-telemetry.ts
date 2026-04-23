@@ -25,7 +25,13 @@ export type FunnelEventName =
   | "analisando_completed"
   | "resultado_viewed"
   | "resultado_cta_clicked"
-  | "resultado_checkout_started";
+  | "resultado_checkout_started"
+  // Onda 1.4 / 3.4 / 3.5 — gates e captura/compartilhamento
+  | "ga4_platform_divergence_blocked"
+  | "ga4_platform_divergence_ignored"
+  | "lead_captured_pre_paywall"
+  | "diagnostic_share_link_created"
+  | "diagnostic_share_link_viewed";
 
 export interface FunnelEventInput {
   event: FunnelEventName;
