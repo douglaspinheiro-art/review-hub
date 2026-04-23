@@ -596,6 +596,77 @@ export function useGerarDiagnostico() {
 
       if (diagErr || !diagRow) throw diagErr ?? new Error("Erro ao criar diagnóstico");
 
+      // ─── Fase 1.2: histórico de prescrições (últimas 10 resolvidas/em execução) ───
+      // Permite que a IA aprenda com campanhas anteriores antes de gerar novas.
+      // Truncamos a 10 itens + agregamos estatística para evitar estouro de tokens.
+      let historicoPrescricoes: Array<{
+        titulo: string;
+        funcionou: boolean;
+        canal: string;
+        segmento: string;
+        roi_real: number;
+      }> = [];
+      let agregadoHistorico: { total: number; roi_medio: number; sucesso_pct: number } | null = null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: rxs } = await (supabase as any)
+          .from("prescriptions")
+          .select("id,title,execution_channel,segment_target,status,estimated_roi")
+          .eq("store_id", payload.lojaId)
+          .in("status", ["em_execucao", "resolvida", "concluida", "convertida"])
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        const rxsList = (rxs ?? []) as Array<{
+          id: string;
+          title: string | null;
+          execution_channel: string | null;
+          segment_target: string | null;
+          status: string | null;
+          estimated_roi: number | null;
+        }>;
+
+        if (rxsList.length > 0) {
+          // Agregado de todas (não só top 10) — sumarização para o prompt
+          const rois = rxsList.map(r => Number(r.estimated_roi ?? 0)).filter(n => Number.isFinite(n) && n > 0);
+          const sucessos = rxsList.filter(r => Number(r.estimated_roi ?? 0) >= 1).length;
+          agregadoHistorico = {
+            total: rxsList.length,
+            roi_medio: rois.length > 0 ? Number((rois.reduce((s, n) => s + n, 0) / rois.length).toFixed(2)) : 0,
+            sucesso_pct: rxsList.length > 0 ? Math.round((sucessos / rxsList.length) * 100) : 0,
+          };
+
+          // Top 10 mais recentes para detalhe
+          historicoPrescricoes = rxsList.slice(0, 10).map(r => ({
+            titulo: r.title ?? "Prescrição sem título",
+            funcionou: Number(r.estimated_roi ?? 0) >= 1,
+            canal: r.execution_channel ?? "whatsapp",
+            segmento: r.segment_target ?? "all",
+            roi_real: Number(r.estimated_roi ?? 0),
+          }));
+        }
+      } catch (histErr) {
+        // Histórico é best-effort; nunca quebrar a geração do diagnóstico por isso.
+        console.warn("[useGerarDiagnostico] Falha ao buscar histórico de prescrições:", histErr);
+      }
+
+      // Body completo enviado à edge function (a edge espera os campos do funil + historico)
+      const edgeBody: Record<string, unknown> = {
+        diagnostico_id: diagRow.id,
+        loja_id: payload.lojaId,
+        visitantes:    payload.metricas.visitantes,
+        produto_visto: payload.metricas.visualizacoes_produto,
+        carrinho:      payload.metricas.adicionou_carrinho,
+        checkout:      payload.metricas.iniciou_checkout,
+        pedido:        payload.metricas.compras,
+        ticket_medio:  payload.metricas.compras > 0
+          ? Math.round(payload.metricas.receita / payload.metricas.compras)
+          : 250,
+        meta_conversao: payload.metaConversao,
+        historico_prescricoes: historicoPrescricoes,
+        agregado_historico: agregadoHistorico,
+      };
+
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
 
@@ -613,7 +684,7 @@ export function useGerarDiagnostico() {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ diagnostico_id: diagRow.id }),
+          body: JSON.stringify(edgeBody),
         });
         clearTimeout(timeoutId);
         if (!res.ok) {
