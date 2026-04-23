@@ -144,6 +144,46 @@ export default function Configuracoes() {
     staleTime: 60_000,
   });
 
+  // Privacidade — opt-out de benchmark anônimo cross-tenant (LGPD)
+  const activeStoreId = scope.activeStoreId;
+  const { data: privacyStore, refetch: refetchPrivacy } = useQuery({
+    queryKey: ["store_privacy", activeStoreId],
+    queryFn: async () => {
+      if (!activeStoreId) return null;
+      const { data, error } = await supabase
+        // @ts-expect-error - benchmark_opt_out coluna recém-criada via migração
+        .from("stores")
+        .select("id, benchmark_opt_out")
+        .eq("id", activeStoreId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; benchmark_opt_out: boolean } | null;
+    },
+    enabled: !!activeStoreId,
+  });
+
+  const benchmarkOptOut = privacyStore?.benchmark_opt_out ?? false;
+  const togglePrivacyMutation = useMutation({
+    mutationFn: async (newValue: boolean) => {
+      if (!activeStoreId) throw new Error("Selecione uma loja");
+      const { error } = await supabase
+        // @ts-expect-error - benchmark_opt_out coluna recém-criada
+        .from("stores")
+        .update({ benchmark_opt_out: newValue })
+        .eq("id", activeStoreId);
+      if (error) throw error;
+    },
+    onSuccess: async (_data, newValue) => {
+      toast.success(
+        newValue
+          ? "Loja removida dos benchmarks anônimos."
+          : "Loja incluída nos benchmarks anônimos."
+      );
+      await refetchPrivacy();
+    },
+    onError: (e: Error) => toast.error(e.message || "Erro ao salvar"),
+  });
+
   // Sincroniza só quando o objeto `profile` vindo do servidor muda — não incluir `isDirty`
   // para que "Descartar" não seja sobrescrito no mesmo ciclo.
   useEffect(() => {
