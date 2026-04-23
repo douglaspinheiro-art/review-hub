@@ -27,6 +27,7 @@ import {
   type FieldProvenance,
 } from "@/lib/funnel-validation";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
 const TOTAL_STEPS = 4;
 
