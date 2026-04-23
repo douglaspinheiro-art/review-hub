@@ -13,7 +13,10 @@ export type FunnelEventName =
   | "plan_recommended"
   | "checkout_started"
   | "checkout_completed"
-  | "paywall_blocked";
+  | "paywall_blocked"
+  // Fase 0 — baseline para medir loop ConvertIQ → Campanha → Receita
+  | "prescription_converted_to_campaign"
+  | "campaign_attributed_revenue_snapshot";
 
 export interface FunnelEventInput {
   event: FunnelEventName;
