@@ -862,6 +862,31 @@ export default function Onboarding() {
       toast.error("Informe seu faturamento mensal aproximado.");
       return;
     }
+
+    const tmNum = Number(ticketMedio) || 250;
+    const visPreview = visitantes ? Number(visitantes) : estimatedVisitors;
+    const pedPreview = pedidos ? Number(pedidos) : estimatedPedidos;
+    const carPreview = carrinho ? Number(carrinho) : estimatedCarrinho;
+    const chkPreview = checkout ? Number(checkout) : estimatedCheckout;
+    const pvPreview = Math.round(visPreview * 0.72);
+
+    // A1. Validação de consistência (bloqueante leve)
+    const validation = validateFunnelConsistency({
+      visitantes: visPreview,
+      produto_visto: pvPreview,
+      carrinho: carPreview,
+      checkout: chkPreview,
+      pedido: pedPreview,
+      ticket_medio: tmNum,
+    });
+    if (!validation.ok) {
+      toast.error(validation.errors[0]?.message ?? "Dados do funil inconsistentes.");
+      return;
+    }
+    if (validation.warnings.length > 0) {
+      toast.warning(validation.warnings[0].message);
+    }
+
     setIsSubmitting(true);
     try {
       if (!user?.id) {
@@ -941,6 +966,18 @@ export default function Onboarding() {
       }
 
       // 7. Store funnel data in sessionStorage for Analisando page
+      // A2. Marcação de proveniência por campo
+      const fieldProvenance: FieldProvenance = {
+        visitantes: importedFields.visitantes ? "real" : "estimated",
+        produto_visto: importedFields.visitantes ? "real" : "estimated",
+        carrinho: importedFields.carrinho || carrinho ? "real" : "estimated",
+        checkout: importedFields.checkout || checkout ? "real" : "estimated",
+        pedido: importedFields.pedidos || pedidos ? "real" : "estimated",
+        ticket_medio: importedFields.ticketMedio || ticketMedio ? "real" : "estimated",
+        faturamento: importedFields.faturamento ? "real" : "estimated",
+      };
+      const realSignalsPct = computeRealSignalsPct(fieldProvenance);
+
       const funnelPayload = {
         visitantes: funnelVisitors,
         produto_visto: funnelProdutoVisto,
@@ -954,6 +991,14 @@ export default function Onboarding() {
         meta_conversao: benchmarkCvr,
         segmento: segmentLabelForVertical(vertical),
         store_id: storeId,
+        // A5. Payload enriquecido (proveniência + summary)
+        field_provenance: fieldProvenance,
+        real_signals_pct: realSignalsPct,
+        data_source_summary: {
+          ga4: Boolean(ga4Result?.ok || ga4PropertyId),
+          loja: integrationValid,
+          manual: !integrationValid && !ga4Result?.ok,
+        },
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
 
