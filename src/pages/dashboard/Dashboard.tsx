@@ -435,6 +435,15 @@ export default function Dashboard() {
         <ActivationChecklist />
         <QuickStartPlaybooks />
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ErrorBoundary>
+            <ISLCard />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <AIRecommendationWidget />
+          </ErrorBoundary>
+        </div>
+
         <Collapsible
           open={funnelSectionOpen}
           onOpenChange={setFunnelSectionOpen}
