@@ -239,6 +239,22 @@ function buildFallbackDiagnostic(input: {
 serve(async (req) => {
   // CORS preflight FIRST — sempre 200 com headers, antes de qualquer validação.
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  // Warm-up short-circuit — chamado pelo /onboarding em fire-and-forget para
+  // reduzir cold-start em /analisando. Responde 200 imediato sem tocar em IA/DB.
+  if (req.method === "POST") {
+    try {
+      const cloned = req.clone();
+      const peek = await cloned.json().catch(() => null);
+      if (peek && typeof peek === "object" && (peek as Record<string, unknown>)._warmup === true) {
+        return new Response(
+          JSON.stringify({ success: true, warmup: true }),
+          { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
+    } catch { /* noop */ }
+  }
+
   // Origin check (tolerante: se ALLOWED_ORIGIN não estiver setado, apenas avisa).
   const originCheck = validateBrowserOrigin(req);
   if (originCheck) return originCheck;
