@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { Loader2, AlertCircle, Sparkles, ArrowRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { CHSGauge } from "@/components/dashboard/CHSGauge";
 import { supabase } from "@/lib/supabase";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
@@ -29,6 +30,15 @@ export default function DiagnosticoCompartilhado() {
   const { token } = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<SharedDiag | null>(null);
+  // 3.4 — captura de lead pré-paywall (visitantes anônimos)
+  const [leadEmail, setLeadEmail] = useState("");
+  const [leadName, setLeadName] = useState("");
+  const [leadSubmitting, setLeadSubmitting] = useState(false);
+  const [leadUnlocked, setLeadUnlocked] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return Boolean(localStorage.getItem(`shared_diag_unlocked_${token ?? ""}`));
+  });
+  const [leadError, setLeadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +86,38 @@ export default function DiagnosticoCompartilhado() {
   }
 
   const chs = data.chs ?? 0;
+
+  async function submitLead(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    const email = leadEmail.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setLeadError("E-mail inválido.");
+      return;
+    }
+    setLeadSubmitting(true);
+    setLeadError(null);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from("shared_diagnostic_leads").insert({
+        token,
+        email,
+        name: leadName.trim() || null,
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
+      });
+      if (error) throw error;
+      localStorage.setItem(`shared_diag_unlocked_${token}`, "1");
+      setLeadUnlocked(true);
+      void trackFunnelEvent({
+        event: "lead_captured_pre_paywall",
+        metadata: { token, source: "shared_diagnostic" },
+      });
+    } catch (err) {
+      setLeadError("Não foi possível registrar. Tente novamente.");
+    } finally {
+      setLeadSubmitting(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white">
