@@ -375,11 +375,14 @@ export default function Analisando() {
 
     const visualInterval = setInterval(() => {
       elapsedMs += 100;
+      // Quando há eventos reais, avançamos só a barra (suave) — o step
+      // vem do canal de progresso. Sem eventos, continua o timer simulado.
       const newProgress = Math.min(95, (elapsedMs / totalEstimatedMs) * 100);
-      setProgress(newProgress);
-
-      const stepIndex = Math.floor((elapsedMs / (totalEstimatedMs / STEPS.length)));
-      if (stepIndex < STEPS.length) setCurrentStep(stepIndex);
+      setProgress((prev) => Math.max(prev, newProgress));
+      if (!realProgressRef.current) {
+        const stepIndex = Math.floor(elapsedMs / (totalEstimatedMs / STEPS.length));
+        if (stepIndex < STEPS.length) setCurrentStep(stepIndex);
+      }
     }, 100);
 
     // B2. Polling com backoff (substitui timer fixo de 25s)
@@ -411,6 +414,7 @@ export default function Analisando() {
 
     return () => {
       if (channelRef) supabase.removeChannel(channelRef);
+      if (progressChannelRef) supabase.removeChannel(progressChannelRef);
       clearInterval(visualInterval);
       pollCancelled = true;
     };
