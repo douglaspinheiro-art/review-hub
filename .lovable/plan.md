@@ -1,73 +1,70 @@
 
 
-## Avaliação do plano: muito bom, com 3 ajustes críticos
+## Próximos passos — Operacionalizar e validar o que foi construído
 
-O plano está **estrategicamente correto** e a leitura do código existente é precisa — os loops realmente já existem parcialmente, e fechá-los é o caminho de menor esforço com maior diferenciação. Aprovo a Fase 1 quase integral. Tenho 3 ressalvas técnicas e 2 sugestões de priorização antes de executar.
+Tudo que foi planejado (Fases 0 → 3) está no código. O que falta agora é **ligar, agendar e medir**. Sem esses passos, o trabalho não gera valor em produção.
 
-## Pontos fortes
+## O que precisa acontecer (em ordem)
 
-- **Diagnóstico correto:** UTM ausente é mesmo o gargalo #1 — sem isso, atribuição é teatro
-- **Fase 1.2 (ciclo IA → resultado → IA)** é o diferencial mais difícil de copiar e o mais barato de implementar
-- **ISL combinado** resolve a queixa "qual número eu olho de manhã?"
-- **Não recriar o que existe** — o plano respeita `prescriptions`, `opportunities`, `source_prescription_id`, `chs_history`. Bom.
+### 1. Deploy das 3 novas Edge Functions
+Fazer deploy das funções criadas na Fase 2/3 — sem isto, ficam inertes no repositório:
+- `proactive-calendar` — gera oportunidades sazonais
+- `reconcile-ga4-attribution` — cruza GA4 com campanhas via UTM
+- `revenue-autopilot` — dispara prescrições quando meta atrasa
 
-## Ressalvas técnicas (resolver antes de começar)
+### 2. Agendar os crons (pg_cron)
+Criar 3 schedules no Supabase usando `CRON_SECRET` para autenticação:
 
-### R1 — UTM injection precisa de allowlist de domínios (Fase 1.1)
+| Função | Frequência | Cron |
+|--------|------------|------|
+| `proactive-calendar` | Mensal — dia 1 às 09h | `0 9 1 * *` |
+| `reconcile-ga4-attribution` | Diário — 05h | `0 5 * * *` |
+| `revenue-autopilot` | Semanal — segunda 08h | `0 8 * * 1` |
 
-Regex cego em todas as URLs vai injetar UTM em links de WhatsApp wa.me, links de unsubscribe, links de tracking de pixel e até em URLs de imagens da Meta — quebrando deliverability e contagem de cliques.
+Cada job faz `net.http_post` com header `Authorization: Bearer <CRON_SECRET>`.
 
-**Correção:** o helper `inject-utm.ts` precisa de allowlist baseada em `stores.url` (domínio da loja) + lista de domínios bloqueados (`wa.me`, `api.whatsapp.com`, `*.meta.com`, URLs de unsubscribe internas, URLs de tracking `track-email-*`).
+### 3. Validação manual em produção (smoke tests)
 
-### R2 — Fase 1.2 tem risco de loop infinito de contexto
+**Fase 1.1 — UTM injection**
+- Criar campanha-teste com link da loja no corpo
+- Disparar para 1 contato real
+- Verificar em `scheduled_messages.metadata` que a URL recebeu `?utm_source=ltvboost&utm_medium=whatsapp&utm_campaign=...`
+- Confirmar no GA4 da loja: sessão com `utm_source=ltvboost`
 
-Se você sempre envia todo o histórico de prescrições à IA, em 6 meses o payload estoura tokens e custa caro. 
+**Fase 1.2 — Loop IA**
+- Gerar diagnóstico via ConvertIQ
+- Inspecionar payload enviado a `gerar-diagnostico` — deve incluir `historico_prescricoes` (top 10) + agregado
 
-**Correção:** limitar a últimas 10 prescrições resolvidas + agregado estatístico ("23 campanhas anteriores: ROI médio 4.2x, taxa sucesso 67%"). Hook precisa truncar e sumarizar antes de enviar.
+**Fase 1.3 — ISL**
+- Rodar `select calculate_isl('<store_id>');` no SQL Editor
+- Confirmar `stores.isl_score` populado e card no Dashboard renderizando sparkline
+- Em loja nova: confirmar mensagem "Coletando dados — ISL em X dias"
 
-### R3 — ISL precisa de período de "warm-up"
+**Fases 2 e 3 — Crons**
+- Após primeiro tick: confirmar inserts em `opportunities` (proactive-calendar) e updates em `campaigns.ga4_attributed_revenue` (reconcile)
 
-Loja nova com 2 dias de dados vai ter ISL distorcido (sem RFM, sem variação mês-a-mês). Isso gera má primeira impressão.
+### 4. Cron diário para `calculate_isl`
+Hoje o ISL só atualiza quando a UI chama. Adicionar 4º cron:
+- `0 4 * * *` — itera por todas as `stores` ativas e roda `calculate_isl` para popular histórico/sparkline automaticamente
 
-**Correção:** RPC `calculate_isl` retorna `null` + flag `insufficient_data: true` quando `created_at < 30 dias` ou `customers_v3 count < 50`. UI mostra estado "Coletando dados — ISL disponível em X dias" no lugar do score.
+### 5. Telemetria — primeiro relatório de baseline
+Após 7 dias rodando, consultar `funnel_telemetry_events` para extrair:
+- `prescription_converted_to_campaign` rate
+- `campaign_attributed_revenue_snapshot` médio
 
-## Sugestões de priorização
+Esses 2 números são a baseline contra a qual mediremos o impacto da Fase 1 daqui a 30 dias.
 
-### S1 — Inverter ordem: 1.1 → 1.5 → 1.2 → 1.4 → 1.3
+### 6. Compliance LGPD (bloqueante para Fase 3.1)
+A RPC `get_segment_benchmark` agrega dados anônimos cross-tenant. Antes de expor na UI:
+- Atualizar Termos de Uso explicitando agregação anônima
+- Adicionar opt-out no `Configuracoes.tsx` (flag `stores.benchmark_opt_out`)
 
-- **1.5 (benchmark visível)** é trivial (extrair constantes pra `src/lib/`, exibir 2 linhas) e gera percepção de valor imediata. Faça depois de 1.1.
-- **1.3 (ISL)** é o mais complexo e precisa que 1.1 esteja rodando há ~2 semanas para ter dados de engajamento confiáveis. Deixar por último na Fase 1.
+### 7. Orçamento Anthropic
+Fase 1.2 aumenta payload do diagnóstico em ~2-3x. Monitorar consumo na primeira semana e definir alerta de gasto.
 
-### S2 — Adicionar "Fase 0" de telemetria
+## Sugestão de execução
 
-Antes de mexer em qualquer coisa, instrumentar 2 eventos analytics:
-- `convertiq_diagnostic_to_campaign_conversion_rate` (% de prescrições que viram campanha disparada)
-- `campaign_attributed_revenue_ratio` (receita atribuída ÷ receita total da loja)
+Posso fazer agora **passos 1, 2 e 4** (deploy + agendar 4 crons) numa única tacada — é tudo trabalho de infra que não depende de validação humana. Os passos 3, 5, 6 e 7 ficam para você executar/decidir, pois envolvem testes manuais, decisões de produto e jurídico.
 
-São os 2 KPIs que provam que o plano funcionou. Sem baseline antes/depois, vira opinião.
-
-## Plano final aprovado (ordem de execução)
-
-```text
-Fase 0  → Telemetria baseline (2 eventos)             [1 dia]
-Fase 1.1 → UTM injection com allowlist de domínio    [2 dias]
-Fase 1.5 → Benchmark visível na UI ConvertIQ          [1 dia]
-Fase 1.2 → Ciclo IA com histórico truncado (top 10)  [2 dias]
-Fase 1.4 → Widget IA proativa no Dashboard            [2 dias]
-Fase 1.3 → ISL com warm-up + sparkline                [3 dias]
-─────────────────────────────────────────────────────
-Total Fase 1: ~11 dias úteis
-```
-
-Fases 2 e 3 do seu plano ficam como estão — só revalidar depois que Fase 1 estiver em produção 30 dias e telemetria mostrar adoção.
-
-## Riscos não-cobertos no plano original
-
-- **Custo da IA** vai subir 2-3x com `historico_prescricoes` no payload — orçar Anthropic
-- **GDPR/LGPD do benchmark cross-tenant (Fase 3.1)** precisa de aviso explícito no Termos de Uso antes de agregar dados anônimos
-- **UTM injection** muda URLs que o cliente já viu em mensagens antigas — só aplicar a mensagens novas (`scheduled_messages.status = 'pending'`), nunca rewriting retroativo
-
-## Veredito
-
-Plano sólido. Com os 3 ajustes técnicos (R1-R3) e a reordenação (S1-S2), executo com confiança. Quer que eu abra um plano detalhado da **Fase 0 + Fase 1.1** para começar agora?
+Aprova fazer 1+2+4 agora?
 
