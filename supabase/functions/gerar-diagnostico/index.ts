@@ -569,6 +569,7 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
 
     let diag: Record<string, unknown>;
     let fallbackMode = false;
+    let parseRetry = false;
     try {
       if (!KEY) throw new Error("ANTHROPIC_API_KEY não configurada");
 
@@ -582,6 +583,7 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
       try {
         diag = JSON.parse(raw);
       } catch {
+        parseRetry = true;
         const match = raw.match(/\{[\s\S]*\}/)?.[0];
         if (!match) throw new Error("Anthropic retornou JSON inválido");
         diag = JSON.parse(match);
@@ -650,17 +652,24 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
       data_quality !== null,
     ];
     const filledCount = optionalSignals.filter(Boolean).length;
-    const realSignalsPct = Math.round((filledCount / optionalSignals.length) * 100);
+    const realSignalsPctServer = Math.round((filledCount / optionalSignals.length) * 100);
+    // C1. Prefere o pct calculado no client (mais granular por campo) quando disponível
+    const realSignalsPct =
+      typeof real_signals_pct_client === "number" && real_signals_pct_client >= 0 && real_signals_pct_client <= 100
+        ? Math.round(real_signals_pct_client)
+        : realSignalsPctServer;
     const lastSyncAt = (data_quality && (data_quality as Record<string, unknown>).last_sync_at)
       ? String((data_quality as Record<string, unknown>).last_sync_at)
       : new Date().toISOString();
 
     diag.meta = {
       fallback_mode: fallbackMode,
+      parse_retry: parseRetry,
       confidence: {
         real_signals_pct: realSignalsPct,
         data_window_days: 30,
         last_sync_at: lastSyncAt,
+        ...(field_provenance && typeof field_provenance === "object" ? { field_provenance } : {}),
       },
       generated_at: new Date().toISOString(),
     };
