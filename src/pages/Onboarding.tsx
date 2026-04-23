@@ -232,6 +232,18 @@ export default function Onboarding() {
     return () => { cancelled = true; };
   }, [user?.id, storeScope?.activeStoreId]);
 
+  // Telemetria 4.1: marca início do onboarding (uma vez por sessão).
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `onb_started_${user.id}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    void trackFunnelEvent({
+      event: "onboarding_started",
+      metadata: { entry_step: 1 },
+    });
+  }, [user?.id]);
+
   // Se o usuário já tem diagnóstico mas ainda não pagou, mandar pra /resultado
   // (evita refazer o onboarding ao voltar pro app sem ter completado o checkout).
   useEffect(() => {
@@ -1032,6 +1044,19 @@ export default function Onboarding() {
           localStorage.removeItem(`onboarding_progress_v2_${user.id}_draft`);
         }
       } catch { /* noop */ }
+
+      // Telemetria 4.1: onboarding_completed antes de navegar.
+      void trackFunnelEvent({
+        event: "onboarding_completed",
+        metadata: {
+          vertical: vertical ?? null,
+          plataforma: plataforma || null,
+          integration_connected: integrationValid,
+          ga4_connected: Boolean(ga4Result?.ok || ga4PropertyId),
+          real_signals_pct: realSignalsPct,
+          imported_fields: Object.keys(importedFields).filter((k) => (importedFields as Record<string, boolean>)[k]),
+        },
+      });
 
       navigate("/analisando");
     } catch (e) {
