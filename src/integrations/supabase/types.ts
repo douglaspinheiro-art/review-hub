@@ -4056,6 +4056,39 @@ export type Database = {
         }
         Relationships: []
       }
+      shared_diagnostic_leads: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          ip_hash: string | null
+          name: string | null
+          store_url: string | null
+          token: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          ip_hash?: string | null
+          name?: string | null
+          store_url?: string | null
+          token: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          ip_hash?: string | null
+          name?: string | null
+          store_url?: string | null
+          token?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       shipping_events: {
         Row: {
           captured_at: string
