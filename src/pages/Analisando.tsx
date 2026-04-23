@@ -51,9 +51,11 @@ export default function Analisando() {
   const [progress, setProgress] = useState(0);
   const [diagnosticCalled, setDiagnosticCalled] = useState(false);
   const navigatedToResultadoRef = useRef(false);
+  const realProgressRef = useRef(false);
 
   useEffect(() => {
     let channelRef: ReturnType<typeof supabase.channel> | null = null;
+    let progressChannelRef: ReturnType<typeof supabase.channel> | null = null;
 
     function goToResultado(delayMs = 800) {
       if (navigatedToResultadoRef.current) return;
