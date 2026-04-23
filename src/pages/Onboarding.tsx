@@ -297,7 +297,10 @@ export default function Onboarding() {
         }
       }
       if (!raw) return;
-      const s = JSON.parse(raw) as Partial<{
+      const parsed = JSON.parse(raw) as
+        | { version?: number; data?: Record<string, unknown> }
+        | Record<string, unknown>;
+      let s: Partial<{
         step: number; storeName: string; storeUrl: string; vertical: EcommerceVertical | null;
         plataforma: string; integrationConfig: Record<string, string>; integrationValid: boolean;
         faturamento: string; ticketMedio: string; numClientes: string; visitantes: string;
@@ -305,6 +308,17 @@ export default function Onboarding() {
         ga4PropertyId: string; ga4Token: string;
         assistedStep: number; showManualOAuthFallback: boolean;
       }>;
+      if (parsed && typeof parsed === "object" && "version" in parsed && "data" in parsed) {
+        if ((parsed as { version?: number }).version !== ONBOARDING_DRAFT_VERSION) {
+          console.info(`[onboarding] Draft version mismatch (got ${(parsed as { version?: number }).version}, expected ${ONBOARDING_DRAFT_VERSION}) — descartando`);
+          localStorage.removeItem(progressStorageKey);
+          return;
+        }
+        s = (parsed as { data: typeof s }).data;
+      } else {
+        // Legado sem envelope — aceita uma vez para retrocompat
+        s = parsed as typeof s;
+      }
       if (s.storeName) setStoreName(s.storeName);
       if (s.storeUrl) setStoreUrl(s.storeUrl);
       if (s.vertical) setVertical(s.vertical);
@@ -353,11 +367,15 @@ export default function Onboarding() {
         }
       }
       localStorage.setItem(progressStorageKey, JSON.stringify({
-        step, storeName, storeUrl, vertical, plataforma,
-        integrationConfig: safeIntegrationConfig, integrationValid,
-        faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-        metaConversao, ga4PropertyId,
-        assistedStep, showManualOAuthFallback,
+        version: ONBOARDING_DRAFT_VERSION,
+        savedAt: new Date().toISOString(),
+        data: {
+          step, storeName, storeUrl, vertical, plataforma,
+          integrationConfig: safeIntegrationConfig, integrationValid,
+          faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
+          metaConversao, ga4PropertyId,
+          assistedStep, showManualOAuthFallback,
+        },
       }));
     } catch { /* quota or private mode */ }
   }, [user, progressStorageKey, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
