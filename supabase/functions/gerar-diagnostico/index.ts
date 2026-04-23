@@ -276,6 +276,7 @@ serve(async (req) => {
       historico_prescricoes = [],
       proximos_eventos_sazonais = [],
       agregado_historico = null,
+      data_quality = null,
     } = bodyJson;
 
     const storeUuid =
@@ -478,7 +479,8 @@ ${proximos_eventos_sazonais.length > 0
 
 Gere 3 problemas priorizados por impacto, 2 oportunidades e 3 recomendações de UX.
 Para cada prescrição, use o desconto mínimo necessário para o segmento alvo.
-NÃO repita abordagens de prescrições que não funcionaram.`;
+NÃO repita abordagens de prescrições já executadas com lift_pp <= 0 (campo "funcionou": false). Priorize variações de canal, segmento ou oferta.
+${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string, unknown>).utm_fill_rate ?? "?"}, phone_fill=${(data_quality as Record<string, unknown>).phone_fill_rate ?? "?"}, ga4_diff=${(data_quality as Record<string, unknown>).ga4_diff_pct ?? "?"}%` : ""}`;
 
     // Anthropic call with per-attempt 25s timeout + exponential backoff on 429/5xx.
     // Without an explicit signal, a hanging Anthropic response would hold the Edge
