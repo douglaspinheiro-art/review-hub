@@ -20,6 +20,8 @@ import {
   buildForecastProjection,
   formatForecastYAxisBrl,
 } from "@/lib/forecast-projection";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { isStale } from "@/lib/data-provenance";
 
 function fmtBrl(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -58,10 +60,20 @@ export default function Forecast() {
   const projection = useMemo(() => buildForecastProjection(rows ?? []), [rows]);
   const { chartBuckets, realizedWindowTotal } = projection;
 
-  // Prefer server-side projection data, fallback to client calculation
-  const projected30 = projectionData?.projected_30 ?? projection.projected30;
-  const trendPct = projectionData?.trend_pct ?? projection.trendPct;
-  const avgDaily = projectionData?.avg_daily ?? projection.avgDaily;
+  // Número oficial: snapshot do servidor quando existe e está fresco (<24h).
+  // Caso contrário, fallback para cálculo local com badge "derivado".
+  const snap = snapshot as any;
+  const snapshotCalculatedAt = snap?.data_calculo ?? null;
+  const serverIsFresh = snap && !isStale(snapshotCalculatedAt, 60 * 24);
+  const useServerOfficial = Boolean(serverIsFresh && projectionData);
+
+  const projected30 = useServerOfficial ? projectionData!.projected_30 : projection.projected30;
+  const trendPct = useServerOfficial ? projectionData!.trend_pct : projection.trendPct;
+  const avgDaily = useServerOfficial ? projectionData!.avg_daily : projection.avgDaily;
+  const officialSource: "real" | "derived" = useServerOfficial ? "real" : "derived";
+  const officialOrigin = useServerOfficial
+    ? "RPC get_forecast_projection (servidor)"
+    : "Cálculo local: média diária × 30 com tendência amortecida";
 
   const analyticsReady = !loadingAnalytics && !analyticsError;
   const lojaReady = !loja.isLoading;
@@ -146,7 +158,6 @@ export default function Forecast() {
     );
   }
 
-  const snap = snapshot as any;
   const snapshotBase = snap?.cenario_base != null ? Number(snap.cenario_base) : null;
   const snapshotPresc = snap?.cenario_com_prescricoes != null ? Number(snap.cenario_com_prescricoes) : null;
   const snapshotUx = snap?.cenario_com_ux != null ? Number(snap.cenario_com_ux) : null;
