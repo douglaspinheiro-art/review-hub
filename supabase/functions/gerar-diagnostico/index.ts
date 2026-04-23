@@ -734,6 +734,8 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
       generated_at: new Date().toISOString(),
     };
 
+    void emitProgress("persisting", { fallback_mode: fallbackMode });
+
     // Salvar diagnóstico no banco
     if (loja_id) {
       // Verify the authenticated user owns this store
