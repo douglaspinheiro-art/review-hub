@@ -17,7 +17,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDiagnosticTelemetry } from "@/hooks/useDiagnosticTelemetry";
 import { useActivationFunnel } from "@/hooks/useActivationFunnel";
-import { Filter } from "lucide-react";
 
 function formatPct(n: number) {
   return `${n.toFixed(1)}%`;
@@ -122,6 +121,63 @@ export default function DiagnosticoTelemetria() {
               icon={<Clock className="w-4 h-4" />}
             />
           </div>
+
+          {/* 4.1 — Funil de ativação ponta a ponta */}
+          <Card className="border-border/60">
+            <CardHeader>
+              <CardTitle className="text-base">Funil de ativação</CardTitle>
+              <CardDescription>
+                Usuários distintos por etapa: onboarding → diagnóstico → resultado → checkout (últimos {range} dias).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {funnelLoading || !funnel ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-6 justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Carregando funil…
+                </div>
+              ) : funnel.steps[0]?.users === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  Sem eventos de ativação no período.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {funnel.steps.map((s, i) => {
+                    const widthPct = Math.max(4, s.fromStartPct);
+                    const drop = i > 0 ? funnel.steps[i - 1].users - s.users : 0;
+                    return (
+                      <div key={s.key} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-foreground">{s.label}</span>
+                          <span className="font-mono text-muted-foreground">
+                            {s.users} usuário{s.users === 1 ? "" : "s"}
+                            {i > 0 && (
+                              <span className={`ml-2 ${s.convPct < 50 ? "text-amber-500" : "text-emerald-500"}`}>
+                                · {s.convPct.toFixed(0)}% vs. anterior
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="relative h-7 bg-muted/30 rounded-md overflow-hidden">
+                          <div
+                            className="absolute inset-y-0 left-0 bg-primary/70 rounded-md transition-all"
+                            style={{ width: `${widthPct}%` }}
+                          />
+                          <div className="absolute inset-0 flex items-center px-3 text-[10px] font-mono text-foreground/80">
+                            {s.fromStartPct.toFixed(0)}% do topo
+                          </div>
+                        </div>
+                        {i > 0 && drop > 0 && (
+                          <p className="text-[10px] text-muted-foreground pl-1">
+                            ▼ {drop} abandonaram nesta etapa
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Volume diário */}
           <Card className="border-border/60">
