@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { Loader2, AlertCircle, Sparkles, ArrowRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { CHSGauge } from "@/components/dashboard/CHSGauge";
 import { supabase } from "@/lib/supabase";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
@@ -29,6 +30,15 @@ export default function DiagnosticoCompartilhado() {
   const { token } = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<SharedDiag | null>(null);
+  // 3.4 — captura de lead pré-paywall (visitantes anônimos)
+  const [leadEmail, setLeadEmail] = useState("");
+  const [leadName, setLeadName] = useState("");
+  const [leadSubmitting, setLeadSubmitting] = useState(false);
+  const [leadUnlocked, setLeadUnlocked] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return Boolean(localStorage.getItem(`shared_diag_unlocked_${token ?? ""}`));
+  });
+  const [leadError, setLeadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +87,38 @@ export default function DiagnosticoCompartilhado() {
 
   const chs = data.chs ?? 0;
 
+  async function submitLead(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    const email = leadEmail.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setLeadError("E-mail inválido.");
+      return;
+    }
+    setLeadSubmitting(true);
+    setLeadError(null);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from("shared_diagnostic_leads").insert({
+        token,
+        email,
+        name: leadName.trim() || null,
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
+      });
+      if (error) throw error;
+      localStorage.setItem(`shared_diag_unlocked_${token}`, "1");
+      setLeadUnlocked(true);
+      void trackFunnelEvent({
+        event: "lead_captured_pre_paywall",
+        metadata: { token, source: "shared_diagnostic" },
+      });
+    } catch (err) {
+      setLeadError("Não foi possível registrar. Tente novamente.");
+    } finally {
+      setLeadSubmitting(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white">
       <div className="border-b border-[#1E1E2E] bg-background/50 backdrop-blur-md sticky top-0 z-50">
@@ -108,18 +150,62 @@ export default function DiagnosticoCompartilhado() {
           <CHSGauge score={chs} label={data.chs_label ?? "Regular"} className="w-full max-w-sm border-0 bg-transparent" />
         </div>
 
-        {data.resumo && (
-          <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Resumo da IA</p>
-            <p className="text-sm leading-relaxed">{String(data.resumo)}</p>
-            {data.perda_principal && (
-              <p className="text-xs text-muted-foreground pt-2 border-t border-[#1E1E2E]">
-                Maior gargalo: <span className="font-bold text-foreground">{String(data.perda_principal)}</span>
-                {typeof data.percentual_explicado === "number" && (
-                  <> · {data.percentual_explicado}% das perdas explicadas</>
+        {leadUnlocked ? (
+          <>
+            {data.resumo && (
+              <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Resumo da IA</p>
+                <p className="text-sm leading-relaxed">{String(data.resumo)}</p>
+                {data.perda_principal && (
+                  <p className="text-xs text-muted-foreground pt-2 border-t border-[#1E1E2E]">
+                    Maior gargalo: <span className="font-bold text-foreground">{String(data.perda_principal)}</span>
+                    {typeof data.percentual_explicado === "number" && (
+                      <> · {data.percentual_explicado}% das perdas explicadas</>
+                    )}
+                  </p>
                 )}
-              </p>
+              </div>
             )}
+          </>
+        ) : (
+          <div className="bg-[#13131A] border border-primary/30 rounded-2xl p-6 space-y-4 relative overflow-hidden">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-primary" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Conteúdo bloqueado</p>
+            </div>
+            <h3 className="text-lg font-black font-syne tracking-tighter">
+              Receba o diagnóstico completo no seu e-mail
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Resumo da IA, gargalo principal e plano de ação. Sem spam — só esse diagnóstico.
+            </p>
+            <form onSubmit={submitLead} className="space-y-3 pt-2">
+              <Input
+                type="text"
+                placeholder="Seu nome (opcional)"
+                value={leadName}
+                onChange={(e) => setLeadName(e.target.value)}
+                disabled={leadSubmitting}
+                className="bg-background/40"
+              />
+              <Input
+                type="email"
+                required
+                placeholder="seu@email.com"
+                value={leadEmail}
+                onChange={(e) => setLeadEmail(e.target.value)}
+                disabled={leadSubmitting}
+                className="bg-background/40"
+              />
+              {leadError && <p className="text-xs text-red-400">{leadError}</p>}
+              <Button type="submit" size="lg" disabled={leadSubmitting} className="w-full font-bold rounded-xl gap-2">
+                {leadSubmitting ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Liberando...</>
+                ) : (
+                  <>Desbloquear diagnóstico <ArrowRight className="w-4 h-4" /></>
+                )}
+              </Button>
+            </form>
           </div>
         )}
 
