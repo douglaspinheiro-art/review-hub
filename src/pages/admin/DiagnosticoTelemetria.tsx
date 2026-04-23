@@ -16,6 +16,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDiagnosticTelemetry } from "@/hooks/useDiagnosticTelemetry";
+import { useActivationFunnel } from "@/hooks/useActivationFunnel";
+import { Filter } from "lucide-react";
 
 function formatPct(n: number) {
   return `${n.toFixed(1)}%`;
@@ -24,6 +26,7 @@ function formatPct(n: number) {
 export default function DiagnosticoTelemetria() {
   const [range, setRange] = useState<7 | 30>(30);
   const { data, isLoading, isError, refetch, isFetching } = useDiagnosticTelemetry(range);
+  const { data: funnel, isLoading: funnelLoading } = useActivationFunnel(range);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 p-6 md:p-10">
