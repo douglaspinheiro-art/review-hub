@@ -361,6 +361,7 @@ export default function Configuracoes() {
           <TabsTrigger value="protecao" className="rounded-lg px-6 font-bold text-xs">Proteção da Base</TabsTrigger>
           <TabsTrigger value="pulse" className="rounded-lg px-6 font-bold text-xs">Pulse Semanal</TabsTrigger>
           <TabsTrigger value="integracoes" className="rounded-lg px-6 font-bold text-xs">Integrações</TabsTrigger>
+          <TabsTrigger value="privacidade" className="rounded-lg px-6 font-bold text-xs">Privacidade</TabsTrigger>
         </TabsList>
 
         <TabsContent value="perfil" className="space-y-6 max-w-2xl">
