@@ -134,6 +134,7 @@ export default function Relatorios() {
   }, []);
 
   const loja = useLoja();
+  const storeId = loja.data?.id ?? null;
 
   // BFF hook consolidation (Priority 3)
   const { 
@@ -143,13 +144,65 @@ export default function Relatorios() {
     refetch: refetchSnapshot 
   } = useDashboardSnapshot(period);
 
-  // useAdvancedReports not yet implemented — stub
-  const reportsLoading = false;
-  const cohorts: any[] = [];
-  const cohortsLoading = reportsLoading;
-  const refetchCohorts = refetchSnapshot;
+  // Cohorts mensais (RPC get_retention_cohorts_v1 — lê customer_cohorts populada por data-pipeline-cron)
+  const cohortsQuery = useQuery({
+    queryKey: ["retention_cohorts", storeId],
+    enabled: !!storeId,
+    staleTime: 60_000 * 10,
+    queryFn: async () => {
+      const { data, error: cohortError } = await supabase.rpc("get_retention_cohorts_v1" as never, {
+        p_store_id: storeId,
+        p_limit: 12,
+      } as never);
+      if (cohortError) throw cohortError;
+      return (data as Array<{
+        cohort_month: string;
+        cohort_size: number;
+        retention_d30: number | null;
+        computed_at: string;
+      }>) ?? [];
+    },
+  });
+  const cohorts = cohortsQuery.data ?? [];
+  const cohortsLoading = cohortsQuery.isLoading;
+  const refetchCohorts = cohortsQuery.refetch;
 
-  const heatmap: { cells: Record<string, number>; max: number } | null = null as { cells: Record<string, number>; max: number } | null;
+  // Heatmap dia/hora (RPC get_conversion_heatmap_v1 — message_sends + attribution_events)
+  const heatmapQuery = useQuery({
+    queryKey: ["conversion_heatmap", storeId, period],
+    enabled: !!storeId,
+    staleTime: 60_000 * 10,
+    queryFn: async () => {
+      const { data, error: hmError } = await supabase.rpc("get_conversion_heatmap_v1" as never, {
+        p_store_id: storeId,
+        p_days: period,
+      } as never);
+      if (hmError) throw hmError;
+      const rows = (data as Array<{
+        dow: number;
+        hour: number;
+        sends_count: number;
+        attributed_count: number;
+        attributed_revenue: number;
+      }>) ?? [];
+      const cells: Record<string, { sends: number; attributed: number }> = {};
+      let max = 0;
+      for (const r of rows) {
+        // Postgres DOW: 0=Sun..6=Sat → mapeia para nosso array Seg..Dom (0=Mon..6=Sun)
+        const dayIdx = (r.dow + 6) % 7;
+        const bucket = r.hour < 11 ? "08h" : r.hour < 16 ? "12h" : "18h";
+        const key = `${dayIdx}-${bucket}`;
+        const cell = cells[key] ?? { sends: 0, attributed: 0 };
+        cell.sends += Number(r.sends_count) || 0;
+        cell.attributed += Number(r.attributed_count) || 0;
+        cells[key] = cell;
+        if (cell.sends > max) max = cell.sends;
+      }
+      return { cells, max };
+    },
+  });
+  const heatmap = heatmapQuery.data ?? null;
+  const heatmapLoading = heatmapQuery.isLoading;
 
   const isLoading = snapshotLoading || loja.isLoading;
   const error = snapshotError;
