@@ -1,102 +1,63 @@
 
 
-# Métricas em Falta — Análise de Cobertura vs Funcionalidades
+# Plano: Diagnóstico Premium na `/resultado`
 
-Cruzando o que a plataforma promete (LTV Boost + ConvertIQ + WhatsApp + Fidelidade + Atribuição) com o que realmente é exibido hoje, identifiquei **6 famílias de métricas críticas ausentes ou subexploradas**.
+Objetivo: elevar a `/resultado` de "tela bonita com fallback genérico" para um diagnóstico transparente, específico e acionável — usando 100% do que a edge já retorna e enriquecendo o payload com sinais reais da loja.
 
-## Critério usado
-- ✅ **Coberta** — métrica calculada e exibida com selo de proveniência
-- ⚠️ **Parcial** — dado existe no banco mas não é exibido / sem selo
-- ❌ **Falta** — funcionalidade existe mas a métrica que prova seu valor não está em lugar nenhum
+## O que muda (por arquivo)
 
-## Lacunas identificadas
+### 1. Payload enriquecido — `src/pages/Analisando.tsx`
+Antes de invocar `gerar-diagnostico`, agregar sinais adicionais por `store_id`:
+- `canais_conectados` — `select tipo from channels where ativo`
+- `visitantes_mobile/desktop` + `pedidos_mobile/desktop` — última linha de `funnel_metrics_v3`
+- `produtos_estoque_critico` — `count from catalog_snapshot where stock_qty < 5`
+- `produtos_avaliacao_baixa` — RPC ou contagem em `reviews` (rating < 3)
+- `historico_prescricoes` — últimas 10 `executions` com `prescricao_id`, `conversao_antes/depois`, `receita_gerada` para a edge evitar repetir ações que falharam
+- `proximos_eventos_sazonais` — próximos 3 eventos de `commercial_calendar_br` em janela de 30 dias
+- `data_quality` — última `data_quality_snapshots` (utm_fill_rate, ga4_diff) → marca confiança
 
-### 1. LTV e Retenção real (núcleo do produto) ❌
-A plataforma se chama **LTV Boost** mas **não exibe LTV** em nenhuma página de forma direta.
-- **LTV médio por cliente** (12m / 24m / lifetime) — temos `customers_v3.rfm_monetary` + `last_purchase_at`, falta agregação
-- **LTV por coorte de aquisição** — `customer_cohorts` já existe (D30 retention) mas só é usado em `/relatorios`. Faltam D60/D90/D180.
-- **CAC payback** — sem CAC declarado pelo lojista, não dá. Adicionar input em Configurações.
-- **Repeat Purchase Rate (RPR)** — % de clientes com 2+ pedidos. Cálculo trivial sobre `orders_v3`.
-- **Tempo médio entre compras** — base para o "Lembrete de Reposição" do PLAYBOOK.
+Tudo opcional: se a query falhar, cai no payload atual (compat).
 
-**Onde exibir:** novo bloco "LTV & Retenção" em `/dashboard` + aba dedicada em `/relatorios`.
+### 2. Edge `gerar-diagnostico` — `supabase/functions/gerar-diagnostico/index.ts`
+- Aceitar os campos novos no schema Zod (todos opcionais)
+- Injetar no `system`/`user` prompt da Anthropic apenas os que vieram populados
+- Retornar 2 campos novos na resposta:
+  - `meta.fallback_mode: boolean` (true quando IA falhou e usou fallback local)
+  - `meta.confidence: { real_signals_pct, data_window_days, last_sync_at }`
+- Persistir `meta` dentro de `diagnostic_json.meta` em `diagnostics_v3` (não muda schema)
 
-### 2. Mensageria — qualidade e custo ⚠️
-Hoje exibimos enviados/entregues/lidos. Falta a camada de **eficiência operacional**:
-- **Custo por mensagem entregue** — `campaigns.custo_total_envio` existe mas só aparece em forma agregada
-- **Custo por conversão atribuída** — `custo_total / ga4_attributed_revenue` → ROAS real
-- **Taxa de opt-out por campanha** — temos `unsubscribed_at` em `customers_v3`, falta correlacionar com campanhas
-- **Taxa de bounce/complaint email** — colunas `email_hard_bounce_at` e `email_complaint_at` já existem, **não são exibidas**
-- **Health score do número WhatsApp** — Meta retorna quality rating, não está sendo consumido
+### 3. `/resultado` — `src/pages/Resultado.tsx`
+- **Parse seguro do sessionStorage** com `try/catch` e validador (zod ou guard manual). Se inválido, refetch direto de `diagnostics_v3` por `user_id`/`store_id` mais recente.
+- **Selo de confiança no topo** (usa `DataSourceBadge` + `FreshnessIndicator` já existentes):
+  - `real` quando `meta.real_signals_pct >= 70`
+  - `derived` entre 30 e 70
+  - `estimated` abaixo de 30
+  - Se `meta.fallback_mode === true` → badge âmbar "Diagnóstico automático (modo fallback)"
+- **Janela de dados** + "Última sincronização há Xmin" abaixo do título
+- **Renderizar campos hoje sub-aproveitados** já presentes na resposta da IA:
+  - `chs_breakdown` — gauge ou barra empilhada por dimensão (UX, oferta, retenção, mídia)
+  - `oportunidades` — lista compacta abaixo dos `problemas`, com `impacto_reais` + CTA "Criar prescrição"
+  - `forecast_30d` — card com cenário base vs cenário com prescrições aplicadas
 
-**Onde exibir:** card "Saúde de envio" em `/canais` + coluna nova em `/campanhas`.
+### 4. Loop de aprendizado — `supabase/functions/gerar-diagnostico/index.ts`
+- Quando `historico_prescricoes` chega populado, instruir o prompt explicitamente: "Não recomende ações já executadas com `lift_pp <= 0`. Priorize variações."
+- Sem nova tabela; lift é calculado de `conversao_depois - conversao_antes` que já existe em `executions`.
 
-### 3. Atribuição assistida e multi-touch ⚠️
-`/atribuicao` mostra last-touch. Faltam:
-- **Conversões assistidas** — coluna `executions.conversoes_assistidas` existe e está zerada/sem leitura
-- **Time-to-conversion** — gap entre `attribution_events.created_at` e `order_date`
-- **Decay model** — atribuição com peso decrescente no tempo (já no roadmap, badge "estimado" basta)
+### 5. Validação cruzada
+- Adicionar teste em `src/pages/__tests__/Diagnostico.test.tsx` (ou criar `Resultado.test.tsx`) para parse seguro do sessionStorage com payload corrompido.
 
-**Onde exibir:** segunda aba em `/atribuicao` ("Modelos avançados").
+## O que NÃO muda
+- Schema do banco (sem migração)
+- Layout principal da `/resultado` — só ganha 3 blocos novos (selo, oportunidades, forecast) acima do CTA
+- Fluxo `Analisando → Resultado` — mesma navegação, mesmos timers
 
-### 4. Fidelidade e Pontos ❌
-Página `/dashboard/fidelidade` existe no roadmap mas **não tem KPIs operacionais**:
-- Clientes ativos no programa
-- Pontos em circulação vs pontos resgatados
-- Taxa de resgate
-- Receita incremental atribuída ao programa
-- Distribuição por tier (Bronze/Prata/Ouro/Diamante)
+## Notas técnicas
+- Selos reusam `DataSourceBadge`, `FreshnessIndicator`, `MetricGlossary` já criados nas Ondas anteriores → consistência visual com o resto do dashboard
+- Toda query nova em `Analisando.tsx` roda em `Promise.allSettled` para não bloquear o diagnóstico se uma falhar
+- Edge mantém compatibilidade: se nenhum campo novo chegar, comportamento idêntico ao atual
 
-**Onde exibir:** header de `/dashboard/fidelidade` + widget em `/dashboard`.
-
-### 5. Inbox e SLA de atendimento ⚠️
-`conversations.sla_due_at` e `priority` existem (mem `conversation-management`), mas a UI não mostra:
-- **Tempo médio de primeira resposta** (TMR)
-- **% dentro do SLA**
-- **Volume por agente** (round-robin já existe em `inbox_routing_settings`)
-- **Taxa de resolução em primeira interação**
-
-**Onde exibir:** header de `/dashboard/inbox` com 4 KPIs compactos.
-
-### 6. Saúde de dados e integrações ⚠️
-`data_quality_snapshots` é populada diariamente mas só exposta parcialmente em `/operacoes`:
-- **UTM fill rate** — coluna existe, não é mostrada (impacta toda atribuição)
-- **GA4 vs Orders diff %** — coluna existe, sinaliza divergência crítica
-- **Phone fill rate** — base para % de clientes alcançáveis via WhatsApp
-- **Duplicate order rate** — qualidade do webhook
-
-**Onde exibir:** expandir card "Score de integridade" em `/operacoes` com breakdown desses 4 indicadores.
-
-## Resumo prioritário
-
-| Prioridade | Métrica | Impacto | Esforço |
-|------------|---------|---------|---------|
-| 🔴 P0 | LTV médio + LTV por coorte | Identidade do produto | M |
-| 🔴 P0 | Repeat Purchase Rate | Tese central de retenção | S |
-| 🔴 P0 | Bounce/complaint email visível | Risco de blacklist | S |
-| 🟡 P1 | Custo por conversão atribuída (ROAS) | Decisão de investimento | S |
-| 🟡 P1 | KPIs de Fidelidade | Página existe vazia | M |
-| 🟡 P1 | TMR + SLA do Inbox | Operação diária | S |
-| 🟢 P2 | Time-to-conversion | Sofisticação atribuição | S |
-| 🟢 P2 | UTM fill / GA4 diff em destaque | Qualidade upstream | XS |
-
-## Proposta de execução (2 ondas)
-
-### Onda 1 — P0 (LTV, RPR, Email Health) — ~1h30
-1. **RPC `get_ltv_summary_v1`** — retorna LTV médio, LTV por coorte (D30/D90/D180), RPR, tempo médio entre compras
-2. Novo card "LTV & Retenção" em `/dashboard` (3 KPIs + sparkline de coorte)
-3. Aba "LTV" em `/relatorios` com tabela de coortes completa
-4. Card "Saúde de envio" em `/canais`: bounce rate, complaint rate, opt-out rate (lê `customers_v3` + `email_engagement_events`)
-
-### Onda 2 — P1 (Fidelidade, Inbox, ROAS) — ~1h
-5. RPC `get_loyalty_kpis_v1` + header de `/dashboard/fidelidade` com 4 KPIs
-6. RPC `get_inbox_sla_kpis_v1` + header de `/dashboard/inbox` com TMR/SLA/volume
-7. Coluna "ROAS" em `/dashboard/campanhas` (custo / receita atribuída) + selo "estimado" quando GA4 não maduro
-
-## Fora desta proposta
-- **CAC payback** — depende de input do lojista (CAC não rastreado). Tratar separadamente com formulário em `/configuracoes`.
-- **WhatsApp quality rating da Meta** — requer chamada nova à Meta Graph API; abrir tarefa específica.
-- **Decay/multi-touch atribuição completa** — projeto de modelagem dedicado, não cabe em ondas curtas.
-
-**Aprova executar Onda 1 (P0) primeiro?** É o que mais falta dado o nome do produto. Onda 2 vem em sequência.
+## Fora deste escopo
+- Modelo de atribuição decay/multi-touch (já marcado como projeto separado)
+- Quality rating do WhatsApp via Meta Graph (tarefa separada já listada)
+- Dashboard novo de "lift histórico de prescrições" — usar dado existente apenas no prompt; UI dedicada fica para próxima rodada se houver demanda
 
