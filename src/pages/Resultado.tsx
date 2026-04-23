@@ -170,15 +170,8 @@ export default function Resultado() {
     };
   }, [user?.id]);
 
-  // Compute loss from funnel data — meta_conversao = benchmark de setor; taxa_conversao = CVR medida (payload novo)
-  const rawFunnel = sessionStorage.getItem("ltv_funnel_data");
-  const funnel = rawFunnel ? JSON.parse(rawFunnel) : null as {
-    ticket_medio?: number;
-    visitantes?: number;
-    pedido?: number;
-    meta_conversao?: number;
-    taxa_conversao?: number;
-  } | null;
+  // Compute loss from funnel data — parse seguro evita quebra por payload corrompido.
+  const funnel = safeParseFunnel();
   const ticketMedio = funnel?.ticket_medio || 250;
   const visitantesNum = funnel?.visitantes || 12400;
   const pedidosNum = funnel?.pedido ?? 174;
