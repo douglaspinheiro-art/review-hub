@@ -19,6 +19,7 @@ import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndica
 import type { DataSource } from "@/lib/data-provenance";
 import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
 import { RecommendationsSimulator } from "@/components/resultado/RecommendationsSimulator";
+import { pickAbVariant } from "@/lib/ab-variant";
 
 type DiagnosticData = {
   resumo?: string;
@@ -235,12 +236,18 @@ export default function Resultado() {
   })();
   const peer = estimatePeerPercentile(taxaConversaoAtual, verticalKey);
 
-  // 3.3 — CTA personalizado por CHS.
-  const ctaCopy = chs >= 70
+  // 4.2 — A/B test do copy do CTA. Variante A = copy 3.3 atual (genérica por CHS).
+  // Variante B = copy concreta usando perda_estimada quando há perda relevante.
+  const ctaVariant = pickAbVariant("resultado_cta_copy_v1", user?.id ?? null);
+  const ctaCopyA = chs >= 70
     ? `Manter liderança com ${recommendedPlan.name}`
     : chs >= 40
     ? `Acelerar resultados com ${recommendedPlan.name}`
     : `Resgatar receita perdida com ${recommendedPlan.name}`;
+  const ctaCopyB = perdaMensal > 1000
+    ? `Recuperar R$ ${perdaMensal.toLocaleString("pt-BR")}/mês`
+    : ctaCopyA;
+  const ctaCopy = ctaVariant === "B" ? ctaCopyB : ctaCopyA;
   const ctaUrgencyLabel = chs < 40 ? "Em risco" : chs < 70 ? "Há espaço para crescer" : "Ótimo desempenho";
 
   useEffect(() => {
@@ -259,6 +266,7 @@ export default function Resultado() {
           peer_percentile: peer.percentile,
           vertical: verticalKey,
           fallback_mode: Boolean(diagnostic?.meta?.fallback_mode),
+          ab_cta_variant: ctaVariant,
         },
       });
     }
@@ -275,7 +283,7 @@ export default function Resultado() {
       event: "resultado_checkout_started",
       recommendedPlan: recommendation.tier,
       selectedPlan: planKey,
-      metadata: { chs, billingCycle, peer_percentile: peer.percentile },
+      metadata: { chs, billingCycle, peer_percentile: peer.percentile, ab_cta_variant: ctaVariant },
     });
     try {
       openCheckout({ planKey, billingCycle, source: "resultado_inline" });
@@ -352,7 +360,7 @@ export default function Resultado() {
                 void trackFunnelEvent({
                   event: "resultado_cta_clicked",
                   recommendedPlan: recommendation.tier,
-                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel },
+                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel, ab_cta_variant: ctaVariant },
                 });
                 document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
