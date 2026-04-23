@@ -272,6 +272,8 @@ export default function Canais() {
         )}
       </div>
 
+      <EmailHealthCard storeId={canaisQuery.data?.storeId ?? undefined} />
+
       {user && (
         <div className="pt-12 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-4">
