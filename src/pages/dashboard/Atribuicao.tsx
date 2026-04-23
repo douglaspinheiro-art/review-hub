@@ -650,7 +650,12 @@ export default function Atribuicao() {
               {!data.hasAttribution && " Dados por campanha aparecem quando os primeiros eventos forem gravados."}
             </p>
           </div>
-        </>
+          </TabsContent>
+
+          <TabsContent value="advanced" className="mt-0">
+            <AdvancedAttributionTab periodDays={period} />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
