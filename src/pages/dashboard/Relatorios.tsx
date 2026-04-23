@@ -712,9 +712,16 @@ export default function Relatorios() {
             </div>
           </div>
 
+          <LtvRetentionCard storeId={storeId ?? undefined} />
+
           <div className="bg-card border rounded-2xl p-6">
             <h3 className="font-bold text-base mb-6 flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" /> Cohorts de clientes (pipeline)
+              {ltv?.cohorts && ltv.cohorts.length > 0 && (
+                <span className="text-[10px] font-normal text-muted-foreground ml-2">
+                  · {ltv.cohorts.length} coortes com D30/D90/D180
+                </span>
+              )}
             </h3>
             {cohortsLoading && <p className="text-sm text-muted-foreground">Carregando cohorts…</p>}
             {!cohortsLoading && cohorts.length === 0 && (
