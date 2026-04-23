@@ -802,6 +802,55 @@ export default function Configuracoes() {
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="privacidade" className="space-y-6 max-w-2xl">
+          <div className="bg-card border border-border/50 rounded-2xl p-6 space-y-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <BarChart3 className="w-5 h-5 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold">Benchmarks anônimos do setor</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Usamos métricas agregadas e anônimas (taxas de conversão, ticket médio,
+                  retenção por segmento RFM) para mostrar como sua loja se compara a outras
+                  do mesmo setor. Nenhum dado de cliente, pedido individual ou identificação
+                  é exposto a terceiros.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-muted/20 rounded-2xl border border-border/40">
+              <div className="space-y-0.5">
+                <Label htmlFor="benchmark-opt-out" className="text-sm font-bold cursor-pointer">
+                  Excluir minha loja dos benchmarks
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Ao ativar, sua loja deixa de contribuir e de receber comparativos do setor.
+                </p>
+              </div>
+              <Switch
+                id="benchmark-opt-out"
+                checked={benchmarkOptOut}
+                disabled={!activeStoreId || togglePrivacyMutation.isPending}
+                onCheckedChange={(v) => togglePrivacyMutation.mutate(v)}
+              />
+            </div>
+
+            <Alert>
+              <ShieldCheck className="h-4 w-4" />
+              <AlertTitle className="text-xs font-bold">Conformidade LGPD</AlertTitle>
+              <AlertDescription className="text-xs leading-relaxed">
+                Conforme nossos{" "}
+                <Link to="/termos" className="text-primary underline">Termos</Link>{" "}
+                e{" "}
+                <Link to="/privacidade" className="text-primary underline">Política de Privacidade</Link>,
+                a agregação cross-tenant é anônima e irreversível. Você pode alterar sua
+                preferência a qualquer momento.
+              </AlertDescription>
+            </Alert>
+          </div>
+        </TabsContent>
       </Tabs>
 
 
