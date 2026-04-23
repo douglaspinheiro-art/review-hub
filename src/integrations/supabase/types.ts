@@ -4214,6 +4214,7 @@ export type Database = {
       }
       stores: {
         Row: {
+          benchmark_opt_out: boolean
           brand_primary_color: string | null
           chs_history: Json | null
           conversion_health_score: number | null
@@ -4239,6 +4240,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          benchmark_opt_out?: boolean
           brand_primary_color?: string | null
           chs_history?: Json | null
           conversion_health_score?: number | null
@@ -4264,6 +4266,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          benchmark_opt_out?: boolean
           brand_primary_color?: string | null
           chs_history?: Json | null
           conversion_health_score?: number | null
