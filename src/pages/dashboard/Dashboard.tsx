@@ -28,6 +28,8 @@ import { ProblemCard, type ProblemProps } from "@/components/dashboard/ProblemCa
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { ROIAttribution } from "@/components/dashboard/ROIAttribution";
+import AIRecommendationWidget from "@/components/dashboard/AIRecommendationWidget";
+import ISLCard from "@/components/dashboard/ISLCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -432,6 +434,15 @@ export default function Dashboard() {
 
         <ActivationChecklist />
         <QuickStartPlaybooks />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ErrorBoundary>
+            <ISLCard />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <AIRecommendationWidget />
+          </ErrorBoundary>
+        </div>
 
         <Collapsible
           open={funnelSectionOpen}

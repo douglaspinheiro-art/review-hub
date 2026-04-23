@@ -275,6 +275,7 @@ serve(async (req) => {
       produtos_avaliacao_baixa = 0,
       historico_prescricoes = [],
       proximos_eventos_sazonais = [],
+      agregado_historico = null,
     } = bodyJson;
 
     const storeUuid =
@@ -465,6 +466,10 @@ ${historico_prescricoes.length > 0
     `- "${p.titulo ?? ""}": ${p.funcionou ? '✓ funcionou' : '✗ não funcionou'} | ${p.canal ?? ""} | seg:${p.segmento ?? ""} | roi_real:${p.roi_real}x`
   ).join('\n')
   : '- Nenhuma prescrição anterior'}
+
+${agregado_historico
+  ? `Resumo agregado de prescrições anteriores: ${(agregado_historico as { total?: number }).total ?? 0} total | ROI médio ${(agregado_historico as { roi_medio?: number }).roi_medio ?? 0}x | taxa de sucesso ${(agregado_historico as { sucesso_pct?: number }).sucesso_pct ?? 0}%`
+  : ''}
 
 Eventos sazonais próximos:
 ${proximos_eventos_sazonais.length > 0
