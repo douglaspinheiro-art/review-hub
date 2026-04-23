@@ -157,8 +157,8 @@ export default function Analisando() {
               const results = await Promise.allSettled([
                 supabase.from("channels").select("tipo").eq("store_id", storeId).eq("ativo", true),
                 supabase.from("catalog_snapshot").select("id", { count: "exact", head: true }).eq("store_id", storeId).lt("stock_qty", 5),
-                supabase.from("reviews").select("id", { count: "exact", head: true }).eq("store_id", storeId).lt("rating", 3),
-                supabase.from("executions").select("prescricao_id,conversao_antes,conversao_depois,receita_gerada,canal,segmento").eq("store_id", storeId).order("created_at", { ascending: false }).limit(10),
+                supabase.from("reviews").select("id", { count: "exact", head: true }).eq("user_id", userId).lt("rating", 3),
+                supabase.from("executions").select("prescricao_id,conversao_antes,conversao_depois,receita_gerada,iniciada_em").eq("store_id", storeId).order("iniciada_em", { ascending: false }).limit(10),
                 supabase.from("commercial_calendar_br").select("event_name,event_date,category").gte("event_date", todayIso).lte("event_date", in30dIso).order("event_date", { ascending: true }).limit(3),
                 supabase.from("data_quality_snapshots").select("utm_fill_rate,phone_fill_rate,ga4_purchase_vs_orders_diff_pct,snapshot_date,created_at").eq("store_id", storeId).order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
               ]);
@@ -174,14 +174,12 @@ export default function Analisando() {
                 enriched.produtos_avaliacao_baixa = lowRevRes.value.count;
               }
               if (execRes.status === "fulfilled" && Array.isArray(execRes.value.data)) {
-                enriched.historico_prescricoes = (execRes.value.data as Array<Record<string, unknown>>).map((e) => {
+                enriched.historico_prescricoes = (execRes.value.data as unknown as Array<Record<string, unknown>>).map((e) => {
                   const antes = Number(e.conversao_antes) || 0;
                   const depois = Number(e.conversao_depois) || 0;
                   const lift_pp = depois - antes;
                   return {
                     prescricao_id: e.prescricao_id,
-                    canal: e.canal,
-                    segmento: e.segmento,
                     conversao_antes: antes,
                     conversao_depois: depois,
                     lift_pp,
