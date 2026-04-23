@@ -5688,6 +5688,16 @@ export type Database = {
         Args: { p_period_days: number; p_store_id: string }
         Returns: Json
       }
+      get_conversion_heatmap_v1: {
+        Args: { p_days?: number; p_store_id: string }
+        Returns: {
+          attributed_count: number
+          attributed_revenue: number
+          dow: number
+          hour: number
+          sends_count: number
+        }[]
+      }
       get_dashboard_snapshot: {
         Args: { p_period_days?: number; p_store_id: string }
         Returns: Json
@@ -5739,6 +5749,15 @@ export type Database = {
       get_prescriptions_bundle_v2: {
         Args: { p_store_id: string }
         Returns: Json
+      }
+      get_retention_cohorts_v1: {
+        Args: { p_limit?: number; p_store_id: string }
+        Returns: {
+          cohort_month: string
+          cohort_size: number
+          computed_at: string
+          retention_d30: number
+        }[]
       }
       get_review_stats: {
         Args: { p_user_id: string }
