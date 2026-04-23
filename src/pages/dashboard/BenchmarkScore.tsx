@@ -34,6 +34,7 @@ import {
   isFunilGa4SnapshotRecent,
   funilGa4StaleSnapshotBadgeLabel,
 } from "@/hooks/useConvertIQ";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import type { Database } from "@/lib/database.types";
 import {
   BENCHMARK_NICHE_KEYS,
@@ -275,6 +276,11 @@ export default function BenchmarkScore() {
             <Badge variant="secondary" className="text-[10px] font-bold uppercase">
               {funilSourceLabel(funilPage.data?.source ?? "none")}
             </Badge>
+            <DataSourceBadge
+              source={funilPage.data?.source === "ga4" ? "real" : "estimated"}
+              origin={funilPage.data?.source === "ga4" ? "GA4 sincronizado" : "Entrada manual / fallback"}
+              note="Score considera apenas CVR e ticket médio. Histórico só é real quando há diagnósticos salvos no período — caso contrário, série é ilustrativa."
+            />
             {funilPage.data?.source === "ga4" && funilPage.data.lastIngestedAt && (
               <span className="text-[10px] text-muted-foreground">
                 Atualizado GA4:{" "}

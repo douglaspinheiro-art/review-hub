@@ -12,6 +12,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { WHATSAPP_CAMPAIGN_BENCHMARKS_BR } from "@/lib/industry-benchmarks";
 import { cn } from "@/lib/utils";
 import { CHART_SERIES_MAX_POINTS, downsampleDailySeriesBySum } from "@/lib/chart-downsample";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { MetricGlossary, COMMON_GLOSSARY } from "@/components/dashboard/trust/MetricGlossary";
 import {
   AreaChart,
   Area,
@@ -282,6 +284,10 @@ export default function Analytics() {
         <div>
           <h1 className="text-2xl font-bold">Analytics</h1>
           <p className="text-muted-foreground text-sm mt-1">Métricas e desempenho das suas campanhas</p>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <DataSourceBadge source="real" origin="RPC get_analytics_super_bundle" />
+            <MetricGlossary entries={COMMON_GLOSSARY} triggerLabel="Influenciada vs atribuída" />
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button

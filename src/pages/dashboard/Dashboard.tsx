@@ -28,6 +28,8 @@ import { ProblemCard, type ProblemProps } from "@/components/dashboard/ProblemCa
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { ROIAttribution } from "@/components/dashboard/ROIAttribution";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { MetricGlossary, COMMON_GLOSSARY } from "@/components/dashboard/trust/MetricGlossary";
 import AIRecommendationWidget from "@/components/dashboard/AIRecommendationWidget";
 import ISLCard from "@/components/dashboard/ISLCard";
 import ProactiveCalendarWidget from "@/components/dashboard/ProactiveCalendarWidget";
@@ -330,6 +332,14 @@ export default function Dashboard() {
             <p className="text-sm text-muted-foreground max-w-xl">
               Resumo da sua operação de e-commerce nos <span className="font-semibold text-foreground">{periodPhrase}</span>.
             </p>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <DataSourceBadge
+                source="derived"
+                origin="useDashboardHomeStats + useConversionBaseline + useProblems"
+                note="KPIs principais (receita, conversão, mensagens) vêm de RPC autoritativa. Blocos Revenue OS, retention e propensity são calculados a partir destes dados."
+              />
+              <MetricGlossary entries={COMMON_GLOSSARY} triggerLabel="Glossário" />
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <div className="bg-muted/50 p-1.5 rounded-2xl flex border border-border/20">

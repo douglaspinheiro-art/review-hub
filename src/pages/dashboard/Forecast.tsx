@@ -20,6 +20,8 @@ import {
   buildForecastProjection,
   formatForecastYAxisBrl,
 } from "@/lib/forecast-projection";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { isStale } from "@/lib/data-provenance";
 
 function fmtBrl(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -58,10 +60,20 @@ export default function Forecast() {
   const projection = useMemo(() => buildForecastProjection(rows ?? []), [rows]);
   const { chartBuckets, realizedWindowTotal } = projection;
 
-  // Prefer server-side projection data, fallback to client calculation
-  const projected30 = projectionData?.projected_30 ?? projection.projected30;
-  const trendPct = projectionData?.trend_pct ?? projection.trendPct;
-  const avgDaily = projectionData?.avg_daily ?? projection.avgDaily;
+  // Número oficial: snapshot do servidor quando existe e está fresco (<24h).
+  // Caso contrário, fallback para cálculo local com badge "derivado".
+  const snap = snapshot as any;
+  const snapshotCalculatedAt = snap?.data_calculo ?? null;
+  const serverIsFresh = snap && !isStale(snapshotCalculatedAt, 60 * 24);
+  const useServerOfficial = Boolean(serverIsFresh && projectionData);
+
+  const projected30 = useServerOfficial ? projectionData!.projected_30 : projection.projected30;
+  const trendPct = useServerOfficial ? projectionData!.trend_pct : projection.trendPct;
+  const avgDaily = useServerOfficial ? projectionData!.avg_daily : projection.avgDaily;
+  const officialSource: "real" | "derived" = useServerOfficial ? "real" : "derived";
+  const officialOrigin = useServerOfficial
+    ? "RPC get_forecast_projection (servidor)"
+    : "Cálculo local: média diária × 30 com tendência amortecida";
 
   const analyticsReady = !loadingAnalytics && !analyticsError;
   const lojaReady = !loja.isLoading;
@@ -146,7 +158,6 @@ export default function Forecast() {
     );
   }
 
-  const snap = snapshot as any;
   const snapshotBase = snap?.cenario_base != null ? Number(snap.cenario_base) : null;
   const snapshotPresc = snap?.cenario_com_prescricoes != null ? Number(snap.cenario_com_prescricoes) : null;
   const snapshotUx = snap?.cenario_com_ux != null ? Number(snap.cenario_com_ux) : null;
@@ -169,13 +180,15 @@ export default function Forecast() {
         </Button>
       </div>
 
-      {projectionRpcError && (
+      {!useServerOfficial && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-950 dark:text-sky-100">
           <Badge variant="outline" className="border-sky-500/50 text-[10px] font-bold uppercase">
-            Estimativa local
+            Cálculo local
           </Badge>
           <span>
-            A projeção estatística no servidor não respondeu; os valores &quot;Próximos 30 dias&quot; usam só o cálculo no app.
+            {projectionRpcError
+              ? "A projeção do servidor não respondeu — usando o cálculo local como número oficial."
+              : "Sem snapshot fresco do servidor (<24h) — usando o cálculo local como número oficial."}
           </span>
           <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void refetchProjection()}>
             Tentar RPC
@@ -261,9 +274,13 @@ export default function Forecast() {
               <Sparkles className="w-12 h-12" />
             </div>
             <h3 className="text-sm font-bold uppercase tracking-widest text-primary mb-4">Estimativa rápida · 30 dias</h3>
+            <div className="mb-3">
+              <DataSourceBadge source={officialSource} origin={officialOrigin} updatedAt={snapshotCalculatedAt} />
+            </div>
             <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
-              Calculada no app a partir do mesmo histórico do gráfico (média diária + tendência amortecida). Diferente
-              de cenários gerados por job ou modelo externo, quando existirem.
+              {useServerOfficial
+                ? "Número oficial: snapshot do servidor (recalculado pelo pipeline da plataforma). Cenários alternativos abaixo."
+                : "Cálculo local a partir do histórico do gráfico (média diária + tendência amortecida). Quando o pipeline gerar um snapshot fresco, ele se torna o número oficial automaticamente."}
             </p>
             <div className="space-y-4">
               <div>

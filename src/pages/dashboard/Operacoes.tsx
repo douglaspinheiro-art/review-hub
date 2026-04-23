@@ -22,6 +22,7 @@ import {
 } from "@/hooks/useOperationalHealth";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 
 type FunilDiarioRow = Database["public"]["Tables"]["funil_diario"]["Row"];
 type DataQualityRow = Database["public"]["Tables"]["data_quality_snapshots"]["Row"];
@@ -242,6 +243,13 @@ export default function Operacoes() {
           <p className="text-sm text-muted-foreground mt-1">
             Saúde técnica da tua loja: funil GA4, qualidade de dados e webhooks.
           </p>
+          <div className="mt-2">
+            <DataSourceBadge
+              source="derived"
+              origin="useOperationalHealth + checklist derivado"
+              note="Score de integridade composto: freshness do funil (peso 40%), qualidade de dados (35%) e saúde de webhooks (25%). Métrica interna — não é padrão de mercado."
+            />
+          </div>
         </div>
         <Button
           variant="outline"

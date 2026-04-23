@@ -32,6 +32,8 @@ import { isValidRfmQuerySegment, type RfmEnglishSegment } from "@/lib/rfm-segmen
 // contact-export-helper not yet implemented
 void async function downloadContactsCsv(_storeId: string, _userId: string) { /* noop */ };
 import { PAGE_SIZE_CONTACTS as PAGE_SIZE } from "@/lib/pagination-constants";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 
 const RFM_REPORT_CARDS: { key: keyof RfmReportCounts; label: string }[] = [
   { key: "champions", label: "Campeões" },
@@ -190,6 +192,17 @@ export default function Contatos() {
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
             Os cartões de segmento mostram <strong className="text-foreground">contagens da base completa</strong> (calculadas periodicamente no banco). A tabela mostra a <strong className="text-foreground">classificação em tempo real</strong> baseada no comportamento atual.
           </p>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <DataSourceBadge
+              source="real"
+              origin="RPC get_contacts_bundle_v2 / customers_v3"
+            />
+            <FreshnessIndicator
+              updatedAt={contacts[0]?.updated_at ?? contacts[0]?.created_at ?? null}
+              slaMinutes={60 * 24}
+              label="Última sincronização"
+            />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-xs font-bold bg-muted/30">

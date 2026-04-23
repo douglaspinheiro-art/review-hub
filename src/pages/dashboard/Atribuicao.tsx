@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useROIAttribution } from "@/hooks/useDashboard";
 import { useNavigate } from "react-router-dom";
 import { ATTRIBUTION_WINDOW_DAYS, ATTRIBUTION_WINDOW_LABEL } from "@/lib/attribution-config";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import {
   AreaChart, Area,
   PieChart, Pie, Cell,
@@ -152,6 +153,11 @@ export default function Atribuicao() {
             <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase tracking-widest">
               Janela {windowLabel}
             </Badge>
+            <DataSourceBadge
+              source="estimated"
+              origin="RPC get_roi_attribution_bundle_v2"
+              note="Modelo last-touch é real. Linear e first-touch são simulações ilustrativas para comparação."
+            />
           </div>
           <p className="text-muted-foreground text-sm">
             Quanto o LTV Boost está recuperando — por campanha, automação e canal.

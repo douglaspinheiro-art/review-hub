@@ -9,6 +9,7 @@ import type { RfmEnglishSegment } from "@/lib/rfm-segments";
 import { computeRfmSampleContext, classifyContact } from "@/lib/rfm-classify";
 import { isBetaLimitedScope } from "@/lib/beta-scope";
 import { supabase } from "@/lib/supabase";
+import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import {
   TrendingUp,
   Users,
@@ -366,6 +367,17 @@ export default function RFM() {
           <p className="text-muted-foreground text-sm mt-1">
             Segmentação inteligente por Recência, Frequência e Valor para campanhas mais precisas
           </p>
+          <div className="mt-2">
+            <DataSourceBadge
+              source={isTruncated ? "estimated" : "real"}
+              origin={isTruncated ? "Amostra carregada (subset)" : "RPC get_rfm_report_counts"}
+              note={
+                isTruncated && totalCount > 0
+                  ? `Gráficos baseados em amostra de ${contacts.length} de ${totalCount} contatos (${Math.round((contacts.length / totalCount) * 100)}% de cobertura). Totais por segmento vêm da base completa.`
+                  : "Totais por segmento e classificação em tempo real."
+              }
+            />
+          </div>
           {isTruncated && (
             <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
               Mostrando os {contacts.length} contatos mais recentes de {totalCount} na base. Exporte a amostra em CSV ou abra Contatos com o mesmo filtro RFM.
