@@ -18,7 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStoreScopeOptional } from "@/contexts/StoreScopeContext";
 import { seedPilotStore } from "@/lib/pilot-seed-data";
 import { getPostLoginRoute } from "@/lib/post-login-route";
-import { benchmarkCvrForVertical, segmentLabelForVertical } from "@/lib/funnel-benchmarks";
+import { benchmarkCvrForVertical, segmentLabelForVertical, ticketMedioForVertical } from "@/lib/funnel-benchmarks";
 import {
   validateFunnelConsistency,
   computeRealSignalsPct,
