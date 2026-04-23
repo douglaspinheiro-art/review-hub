@@ -20,6 +20,7 @@ import { outboundSendText, outboundSendMetaTemplate } from "../_shared/whatsapp-
 import { sendEmail } from "../_shared/resend-email.ts";
 import { renderBlocksToHTML } from "../_shared/newsletter-html.ts";
 import { invokeFlowEngine } from "../_shared/flow-engine-invoke.ts";
+import { injectUtmInUrls } from "../_shared/inject-utm.ts";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -143,7 +144,7 @@ type WaMessage = {
   campaign_id: string | null;
   status: string;
   scheduled_for: string;
-  customers_v3: { phone: string; name: string | null; email: string | null };
+  customers_v3: { id?: string; phone: string; name: string | null; email: string | null };
 };
 
 /** Substitute {{nome}}, {{name}}, {{email}}, {{phone}} placeholders in a string. */
@@ -187,6 +188,14 @@ async function processStoreWaMessages(
     .limit(1)
     .maybeSingle() as { data: WaConnection | null };
 
+  // Fetch store URL once per store for UTM injection allowlist (R1).
+  const { data: storeRow } = await supabase
+    .from("stores")
+    .select("url")
+    .eq("id", storeId)
+    .maybeSingle() as { data: { url: string | null } | null };
+  const storeUrl = storeRow?.url ?? null;
+
   for (const msg of msgs) {
     try {
       // Atomic claim — skip if already claimed by another worker
@@ -218,10 +227,32 @@ async function processStoreWaMessages(
         phone: e164,
       };
       // Resolve {{nome}}, {{email}}... placeholders in message + template params at send time
-      const resolvedContent = substituteContactVars(msg.message_content || "", customerCtx);
+      let resolvedContent = substituteContactVars(msg.message_content || "", customerCtx);
+      // Inject UTM into store-domain URLs (R1: allowlist by store host, denylist for wa.me/meta/etc).
+      const contactIdForUtm = (msg.customers_v3 as { id?: string }).id ?? null;
+      resolvedContent = injectUtmInUrls(resolvedContent, {
+        storeUrl,
+        utm: {
+          source: "ltvboost",
+          medium: "whatsapp",
+          campaign: msg.campaign_id ?? "automation",
+          content: contactIdForUtm,
+        },
+      });
       if (Array.isArray(metadata.meta_template_parameters)) {
         metadata.meta_template_parameters = (metadata.meta_template_parameters as unknown[]).map((p) =>
-          substituteContactVars(String(p ?? ""), customerCtx),
+          injectUtmInUrls(
+            substituteContactVars(String(p ?? ""), customerCtx),
+            {
+              storeUrl,
+              utm: {
+                source: "ltvboost",
+                medium: "whatsapp",
+                campaign: msg.campaign_id ?? "automation",
+                content: contactIdForUtm,
+              },
+            },
+          ),
         );
       }
       await sendWaWithRetry(waRow, e164, resolvedContent, metadata);
@@ -482,7 +513,7 @@ serve(async (req) => {
   if (enabledQueues.has("wa")) {
   const { data: pendingWA } = await supabase
     .from("scheduled_messages")
-    .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(phone, name, email)")
+    .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(id, phone, name, email)")
     .eq("status", "pending")
     .is("sent_at", null)
     .lte("scheduled_for", now)
