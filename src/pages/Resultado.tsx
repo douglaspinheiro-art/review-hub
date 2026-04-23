@@ -348,11 +348,16 @@ export default function Resultado() {
             <Button
               size="sm"
               onClick={() => {
+                void trackFunnelEvent({
+                  event: "resultado_cta_clicked",
+                  recommendedPlan: recommendation.tier,
+                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel },
+                });
                 document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
               className="font-bold rounded-xl h-9 gap-1"
             >
-              Ativar plano {recommendedPlan.name} <ArrowRight className="w-3.5 h-3.5" />
+              {ctaCopy} <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           )}
         </div>
