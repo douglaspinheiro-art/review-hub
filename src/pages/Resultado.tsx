@@ -360,7 +360,7 @@ export default function Resultado() {
                 void trackFunnelEvent({
                   event: "resultado_cta_clicked",
                   recommendedPlan: recommendation.tier,
-                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel },
+                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel, ab_cta_variant: ctaVariant },
                 });
                 document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
