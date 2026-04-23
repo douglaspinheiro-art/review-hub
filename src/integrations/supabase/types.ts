@@ -781,6 +781,8 @@ export type Database = {
           email_recipient_mode: string | null
           email_recipient_rfm: string | null
           email_recipient_tag: string | null
+          ga4_attributed_at: string | null
+          ga4_attributed_revenue: number | null
           id: string
           message: string
           name: string
@@ -810,6 +812,8 @@ export type Database = {
           email_recipient_mode?: string | null
           email_recipient_rfm?: string | null
           email_recipient_tag?: string | null
+          ga4_attributed_at?: string | null
+          ga4_attributed_revenue?: number | null
           id?: string
           message: string
           name: string
@@ -839,6 +843,8 @@ export type Database = {
           email_recipient_mode?: string | null
           email_recipient_rfm?: string | null
           email_recipient_tag?: string | null
+          ga4_attributed_at?: string | null
+          ga4_attributed_revenue?: number | null
           id?: string
           message?: string
           name?: string
@@ -1010,6 +1016,33 @@ export type Database = {
           stack?: string | null
           user_agent?: string | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      commercial_calendar_br: {
+        Row: {
+          category: string
+          created_at: string
+          event_date: string
+          event_name: string
+          id: string
+          prep_window_days: number
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          event_date: string
+          event_name: string
+          id?: string
+          prep_window_days?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          event_date?: string
+          event_name?: string
+          id?: string
+          prep_window_days?: number
         }
         Relationships: []
       }
@@ -3462,6 +3495,39 @@ export type Database = {
         }
         Relationships: []
       }
+      revenue_goals: {
+        Row: {
+          autopilot_enabled: boolean
+          created_at: string
+          goal_brl: number
+          id: string
+          month_start: string
+          store_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          autopilot_enabled?: boolean
+          created_at?: string
+          goal_brl: number
+          id?: string
+          month_start: string
+          store_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          autopilot_enabled?: boolean
+          created_at?: string
+          goal_brl?: number
+          id?: string
+          month_start?: string
+          store_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       review_requests: {
         Row: {
           clicked_at: string | null
@@ -5676,6 +5742,10 @@ export type Database = {
       get_rfm_report_counts_v2: { Args: { p_store_id: string }; Returns: Json }
       get_roi_attribution_bundle_v2: {
         Args: { p_period_days: number; p_store_id: string }
+        Returns: Json
+      }
+      get_segment_benchmark: {
+        Args: { p_metric: string; p_segment: string }
         Returns: Json
       }
       get_whatsapp_bundle_v2: { Args: { p_store_id: string }; Returns: Json }
