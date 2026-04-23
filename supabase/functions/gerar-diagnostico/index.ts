@@ -608,6 +608,7 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
     try {
       if (!KEY) throw new Error("ANTHROPIC_API_KEY não configurada");
 
+      void emitProgress("ai_call_started");
       const r = await callAnthropicWithRetry();
       const data = await r.json();
       if (!data.content?.[0]?.text) {
