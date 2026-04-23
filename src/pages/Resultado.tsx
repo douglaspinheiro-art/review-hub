@@ -17,6 +17,7 @@ import { useMercadoPagoCheckout } from "@/hooks/useMercadoPagoCheckout";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 import type { DataSource } from "@/lib/data-provenance";
+import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
 
 type DiagnosticData = {
   resumo?: string;
@@ -80,6 +81,7 @@ function safeParseFunnel(): {
   pedido?: number;
   meta_conversao?: number;
   taxa_conversao?: number;
+  segmento?: string;
 } | null {
   try {
     const raw = sessionStorage.getItem("ltv_funnel_data");
@@ -221,12 +223,42 @@ export default function Resultado() {
   const recommendedPlan = PLANS[recommendation.tier];
   const { open: openCheckout } = useMercadoPagoCheckout();
 
+  // 3.1 — Posicionamento percentil contra peers do segmento.
+  const verticalKey: EcommerceVerticalKey = (() => {
+    const seg = (funnel?.segmento ?? "").toLowerCase();
+    if (seg.includes("moda")) return "fashion";
+    if (seg.includes("belez")) return "beauty";
+    if (seg.includes("supl")) return "supplements";
+    if (seg.includes("pet")) return "pets";
+    return "generic";
+  })();
+  const peer = estimatePeerPercentile(taxaConversaoAtual, verticalKey);
+
+  // 3.3 — CTA personalizado por CHS.
+  const ctaCopy = chs >= 70
+    ? `Manter liderança com ${recommendedPlan.name}`
+    : chs >= 40
+    ? `Acelerar resultados com ${recommendedPlan.name}`
+    : `Resgatar receita perdida com ${recommendedPlan.name}`;
+  const ctaUrgencyLabel = chs < 40 ? "Em risco" : chs < 70 ? "Há espaço para crescer" : "Ótimo desempenho";
+
   useEffect(() => {
     if (!loading && diagnostic) {
       void trackFunnelEvent({
         event: "plan_recommended",
         recommendedPlan: recommendation.tier,
         metadata: { chs, perdaMensal },
+      });
+      void trackFunnelEvent({
+        event: "resultado_viewed",
+        recommendedPlan: recommendation.tier,
+        metadata: {
+          chs,
+          perdaMensal,
+          peer_percentile: peer.percentile,
+          vertical: verticalKey,
+          fallback_mode: Boolean(diagnostic?.meta?.fallback_mode),
+        },
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -238,6 +270,12 @@ export default function Resultado() {
   const handleSubscribe = (planKey: "starter" | "growth" | "scale") => {
     if (checkoutLoading) return;
     setCheckoutLoading(planKey);
+    void trackFunnelEvent({
+      event: "resultado_checkout_started",
+      recommendedPlan: recommendation.tier,
+      selectedPlan: planKey,
+      metadata: { chs, billingCycle, peer_percentile: peer.percentile },
+    });
     try {
       openCheckout({ planKey, billingCycle, source: "resultado_inline" });
     } finally {
