@@ -4142,6 +4142,10 @@ export type Database = {
           ga4_token_expires_at: string | null
           high_ticket_threshold_brl: number | null
           id: string
+          isl_history: Json
+          isl_label: string | null
+          isl_score: number | null
+          isl_updated_at: string | null
           meta_conversao: number
           name: string
           pix_key: string | null
@@ -4163,6 +4167,10 @@ export type Database = {
           ga4_token_expires_at?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
+          isl_history?: Json
+          isl_label?: string | null
+          isl_score?: number | null
+          isl_updated_at?: string | null
           meta_conversao?: number
           name: string
           pix_key?: string | null
@@ -4184,6 +4192,10 @@ export type Database = {
           ga4_token_expires_at?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
+          isl_history?: Json
+          isl_label?: string | null
+          isl_score?: number | null
+          isl_updated_at?: string | null
           meta_conversao?: number
           name?: string
           pix_key?: string | null
@@ -5458,6 +5470,7 @@ export type Database = {
         Args: { p_period_days?: number; p_store_id: string }
         Returns: Json
       }
+      calculate_isl: { Args: { p_store_id: string }; Returns: Json }
       calculate_rfm_for_store: { Args: { p_store_id: string }; Returns: Json }
       calculate_store_percentil: {
         Args: {

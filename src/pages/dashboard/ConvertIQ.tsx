@@ -14,6 +14,7 @@ import {
 import type { Database } from "@/lib/database.types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { benchmarkForSegment, CONVERSION_BENCHMARKS_SOURCE } from "@/lib/conversion-benchmarks";
 
 // ─── Period toggle ────────────────────────────────────────────────────────────
 type Periodo = "7d" | "30d" | "90d";
