@@ -169,6 +169,9 @@ export default function Relatorios() {
   const cohortsLoading = cohortsQuery.isLoading;
   const refetchCohorts = cohortsQuery.refetch;
 
+  // LTV summary (RPC get_ltv_summary_v1)
+  const ltvQuery = useLtvSummary(storeId);
+
   // Heatmap dia/hora (RPC get_conversion_heatmap_v1 — message_sends + attribution_events)
   const heatmapQuery = useQuery({
     queryKey: ["conversion_heatmap", storeId, period],
