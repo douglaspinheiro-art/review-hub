@@ -38,13 +38,13 @@ export function validateFunnelConsistency(input: FunnelValidationInput): FunnelV
   if (produto_visto > visitantes) {
     errors.push({ field: "produto_visto", message: "Produto visto não pode ser maior que visitantes." });
   }
-  if (carrinho > Math.max(produto_visto, visitantes)) {
+  if (produto_visto > 0 && carrinho > produto_visto) {
     errors.push({ field: "carrinho", message: "Carrinho não pode ser maior que produto visto." });
   }
-  if (checkout > Math.max(carrinho, visitantes)) {
+  if (carrinho > 0 && checkout > carrinho) {
     errors.push({ field: "checkout", message: "Checkout não pode ser maior que carrinho." });
   }
-  if (pedido > Math.max(checkout, visitantes)) {
+  if (checkout > 0 && pedido > checkout) {
     errors.push({ field: "pedido", message: "Pedidos não pode ser maior que checkout." });
   }
 
