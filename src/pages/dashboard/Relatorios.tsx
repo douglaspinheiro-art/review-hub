@@ -309,19 +309,17 @@ export default function Relatorios() {
           <p className="text-muted-foreground text-sm mt-1">
             Visão consolidada com dados da sua conta (analytics diários, clientes e envios).
           </p>
-          {/* H5: data freshness timestamp — shows when the snapshot was last computed */}
-          {snapshot?.timestamp && (
-            <p className="text-[11px] text-muted-foreground mt-1 font-mono">
-              Dados calculados às{" "}
-              {new Date(snapshot.timestamp).toLocaleString("pt-BR", {
-                timeZone: "America/Sao_Paulo",
-                hour: "2-digit",
-                minute: "2-digit",
-                day: "2-digit",
-                month: "2-digit",
-              })}
-            </p>
-          )}
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <DataSourceBadge
+              source="real"
+              origin="RPC get_dashboard_snapshot"
+              updatedAt={snapshot?.timestamp ?? null}
+            />
+            {snapshot?.timestamp && (
+              <FreshnessIndicator updatedAt={snapshot.timestamp} slaMinutes={120} />
+            )}
+            <MetricGlossary entries={COMMON_GLOSSARY} />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 mr-2">
