@@ -49,6 +49,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 import { MetricGlossary, COMMON_GLOSSARY } from "@/components/dashboard/trust/MetricGlossary";
+import { useLtvSummary } from "@/hooks/useLtvSummary";
+import LtvRetentionCard from "@/components/dashboard/LtvRetentionCard";
 
 const PERIODS: Array<{ label: string; value: 7 | 30 | 90 }> = [
   { label: "7 dias", value: 7 },
