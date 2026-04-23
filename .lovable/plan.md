@@ -1,94 +1,102 @@
 
 
-# Plano: Reforço de Confiança e Precisão nos Dados do Dashboard
+# Métricas em Falta — Análise de Cobertura vs Funcionalidades
 
-Auditoria identificou **15 páginas** com qualidade variável. O plano abaixo prioriza ganhos por impacto e esforço, tratando lacunas comuns (selos de proveniência, glossário, fontes explícitas) e fechando o ponto crítico: `/dashboard/relatorios`.
+Cruzando o que a plataforma promete (LTV Boost + ConvertIQ + WhatsApp + Fidelidade + Atribuição) com o que realmente é exibido hoje, identifiquei **6 famílias de métricas críticas ausentes ou subexploradas**.
 
-## Princípio orientador
+## Critério usado
+- ✅ **Coberta** — métrica calculada e exibida com selo de proveniência
+- ⚠️ **Parcial** — dado existe no banco mas não é exibido / sem selo
+- ❌ **Falta** — funcionalidade existe mas a métrica que prova seu valor não está em lugar nenhum
 
-Toda métrica exibida precisa responder 3 perguntas em ≤1 clique:
-1. **De onde vem?** (RPC, GA4, webhook, estimativa)
-2. **Quando foi atualizada?** (timestamp/freshness)
-3. **É real, derivada ou estimada?** (selo visual)
+## Lacunas identificadas
 
-## Fases
+### 1. LTV e Retenção real (núcleo do produto) ❌
+A plataforma se chama **LTV Boost** mas **não exibe LTV** em nenhuma página de forma direta.
+- **LTV médio por cliente** (12m / 24m / lifetime) — temos `customers_v3.rfm_monetary` + `last_purchase_at`, falta agregação
+- **LTV por coorte de aquisição** — `customer_cohorts` já existe (D30 retention) mas só é usado em `/relatorios`. Faltam D60/D90/D180.
+- **CAC payback** — sem CAC declarado pelo lojista, não dá. Adicionar input em Configurações.
+- **Repeat Purchase Rate (RPR)** — % de clientes com 2+ pedidos. Cálculo trivial sobre `orders_v3`.
+- **Tempo médio entre compras** — base para o "Lembrete de Reposição" do PLAYBOOK.
 
-### Fase 1 — Infraestrutura de Confiança (base reusável)
-Criar componentes compartilhados que serão usados em todas as páginas:
+**Onde exibir:** novo bloco "LTV & Retenção" em `/dashboard` + aba dedicada em `/relatorios`.
 
-1. **`<DataSourceBadge>`** — selo compacto com 3 variantes: `real` (verde), `derivado` (azul), `estimado` (âmbar). Inclui tooltip com fonte (ex: "RPC `get_dashboard_snapshot` · atualizado há 2min").
-2. **`<MetricGlossary>`** — popover reutilizável com definições curtas (influenciada vs atribuída, last-touch vs assistida, amostra vs universo).
-3. **`<FreshnessIndicator>`** — exibe "atualizado há Xmin" + ícone de stale quando >SLA.
+### 2. Mensageria — qualidade e custo ⚠️
+Hoje exibimos enviados/entregues/lidos. Falta a camada de **eficiência operacional**:
+- **Custo por mensagem entregue** — `campaigns.custo_total_envio` existe mas só aparece em forma agregada
+- **Custo por conversão atribuída** — `custo_total / ga4_attributed_revenue` → ROAS real
+- **Taxa de opt-out por campanha** — temos `unsubscribed_at` em `customers_v3`, falta correlacionar com campanhas
+- **Taxa de bounce/complaint email** — colunas `email_hard_bounce_at` e `email_complaint_at` já existem, **não são exibidas**
+- **Health score do número WhatsApp** — Meta retorna quality rating, não está sendo consumido
 
-Local: `src/components/dashboard/trust/`
+**Onde exibir:** card "Saúde de envio" em `/canais` + coluna nova em `/campanhas`.
 
-### Fase 2 — Quick Wins (selos e badges nas páginas Parciais)
-Aplicar componentes da Fase 1 sem refazer lógica:
+### 3. Atribuição assistida e multi-touch ⚠️
+`/atribuicao` mostra last-touch. Faltam:
+- **Conversões assistidas** — coluna `executions.conversoes_assistidas` existe e está zerada/sem leitura
+- **Time-to-conversion** — gap entre `attribution_events.created_at` e `order_date`
+- **Decay model** — atribuição com peso decrescente no tempo (já no roadmap, badge "estimado" basta)
 
-| Página | Ação |
-|--------|------|
-| `/dashboard` | `<DataSourceBadge>` por KPI card + timestamp por bloco (Revenue OS, retention, propensity) |
-| `/dashboard/analytics` | `<MetricGlossary>` no header com "influenciada vs atribuída" |
-| `/dashboard/atribuicao` | Badge fixo "Modelo: last-touch real · linear/first-touch simulados" |
-| `/dashboard/funil` | Separador visual "Medido (GA4)" vs "Heurístico" nos blocos |
-| `/dashboard/rfm` | Badge "Amostra (X% de cobertura)" nos gráficos |
-| `/dashboard/campanhas` | Indicador permanente "Base carregada: X de Y campanhas" |
-| `/dashboard/em-execucao` | Renomear KPI para "Receita atribuída estimada" + tooltip |
-| `/dashboard/operacoes` | Tooltip com fórmula e pesos do score de integridade |
-| `/dashboard/canais` | Rodapé do card: "Fonte: `orders_v3` · janela 90d" |
-| `/dashboard/carrinho-abandonado` | Card "Cobertura de captura" (capturados vs estimados via funnel) |
-| `/dashboard/reviews` | Status badge por plataforma (Google/Mercado Livre): online/offline/atrasado |
-| `/dashboard/benchmark-score` | Label "Histórico real" vs "Histórico ilustrativo" no gráfico |
-| `/dashboard/contatos` | Header com "Última sincronização: Xmin atrás" |
+**Onde exibir:** segunda aba em `/atribuicao` ("Modelos avançados").
 
-### Fase 3 — Forecast: número oficial único
-Hoje convivem cálculo local (`useForecastProjection`) e snapshot servidor (`useForecastSnapshot`). Decisão:
+### 4. Fidelidade e Pontos ❌
+Página `/dashboard/fidelidade` existe no roadmap mas **não tem KPIs operacionais**:
+- Clientes ativos no programa
+- Pontos em circulação vs pontos resgatados
+- Taxa de resgate
+- Receita incremental atribuída ao programa
+- Distribuição por tier (Bronze/Prata/Ouro/Diamante)
 
-- **Número oficial:** snapshot do servidor (quando existe e <24h)
-- **Fallback:** cálculo local **com badge `derivado`**
-- Mover comparativo de metodologias para aba secundária "Metodologia"
+**Onde exibir:** header de `/dashboard/fidelidade` + widget em `/dashboard`.
 
-### Fase 4 — Fechar `/dashboard/relatorios` (única Fraca)
-Página tem stubs de heatmap e cohort. Implementar:
+### 5. Inbox e SLA de atendimento ⚠️
+`conversations.sla_due_at` e `priority` existem (mem `conversation-management`), mas a UI não mostra:
+- **Tempo médio de primeira resposta** (TMR)
+- **% dentro do SLA**
+- **Volume por agente** (round-robin já existe em `inbox_routing_settings`)
+- **Taxa de resolução em primeira interação**
 
-1. **Heatmap dia/hora** de conversão — RPC nova `get_conversion_heatmap_v1(p_store_id, p_days)` agregando `messages` + `attribution_events` por `extract(dow)` + `extract(hour)`.
-2. **Cohort de retenção mensal** — usar tabela existente `customer_cohorts` (já populada por `data-pipeline-cron`).
-3. **Remover placeholders `—`** de KPIs do topo: ligar aos mesmos hooks usados em `/dashboard`.
-4. Exportação PDF (já existe scaffold) — validar que respeita os novos selos.
+**Onde exibir:** header de `/dashboard/inbox` com 4 KPIs compactos.
 
-## Detalhes técnicos
+### 6. Saúde de dados e integrações ⚠️
+`data_quality_snapshots` é populada diariamente mas só exposta parcialmente em `/operacoes`:
+- **UTM fill rate** — coluna existe, não é mostrada (impacta toda atribuição)
+- **GA4 vs Orders diff %** — coluna existe, sinaliza divergência crítica
+- **Phone fill rate** — base para % de clientes alcançáveis via WhatsApp
+- **Duplicate order rate** — qualidade do webhook
 
-**Novos arquivos:**
-- `src/components/dashboard/trust/DataSourceBadge.tsx`
-- `src/components/dashboard/trust/MetricGlossary.tsx`
-- `src/components/dashboard/trust/FreshnessIndicator.tsx`
-- `src/lib/data-provenance.ts` — tipos `DataSource = 'real' | 'derived' | 'estimated'` + helpers
-- `supabase/migrations/<timestamp>_conversion_heatmap_rpc.sql` — RPC do heatmap
-- `supabase/migrations/<timestamp>_retention_cohort_rpc.sql` — RPC de coorte (lê `customer_cohorts`)
+**Onde exibir:** expandir card "Score de integridade" em `/operacoes` com breakdown desses 4 indicadores.
 
-**Arquivos editados (estimativa):** ~20 (1-2 linhas por página na Fase 2 + refactor maior em Forecast e Relatórios).
+## Resumo prioritário
 
-**Sem mudanças:** páginas marcadas como Corretas (analytics, contatos, operacoes, carrinho-abandonado) recebem apenas selos cosméticos (Fase 2).
+| Prioridade | Métrica | Impacto | Esforço |
+|------------|---------|---------|---------|
+| 🔴 P0 | LTV médio + LTV por coorte | Identidade do produto | M |
+| 🔴 P0 | Repeat Purchase Rate | Tese central de retenção | S |
+| 🔴 P0 | Bounce/complaint email visível | Risco de blacklist | S |
+| 🟡 P1 | Custo por conversão atribuída (ROAS) | Decisão de investimento | S |
+| 🟡 P1 | KPIs de Fidelidade | Página existe vazia | M |
+| 🟡 P1 | TMR + SLA do Inbox | Operação diária | S |
+| 🟢 P2 | Time-to-conversion | Sofisticação atribuição | S |
+| 🟢 P2 | UTM fill / GA4 diff em destaque | Qualidade upstream | XS |
 
-## Ordem de execução proposta
+## Proposta de execução (2 ondas)
 
-```text
-Fase 1  (infra)       →  ~20 min  →  destrava todo o resto
-Fase 2  (selos)       →  ~40 min  →  ganho percebido imediato em 13 páginas
-Fase 4  (relatorios)  →  ~30 min  →  fecha única página Fraca
-Fase 3  (forecast)    →  ~15 min  →  resolve ambiguidade metodológica
-```
+### Onda 1 — P0 (LTV, RPR, Email Health) — ~1h30
+1. **RPC `get_ltv_summary_v1`** — retorna LTV médio, LTV por coorte (D30/D90/D180), RPR, tempo médio entre compras
+2. Novo card "LTV & Retenção" em `/dashboard` (3 KPIs + sparkline de coorte)
+3. Aba "LTV" em `/relatorios` com tabela de coortes completa
+4. Card "Saúde de envio" em `/canais`: bounce rate, complaint rate, opt-out rate (lê `customers_v3` + `email_engagement_events`)
 
-Total estimado: ~1h45 de trabalho de código.
+### Onda 2 — P1 (Fidelidade, Inbox, ROAS) — ~1h
+5. RPC `get_loyalty_kpis_v1` + header de `/dashboard/fidelidade` com 4 KPIs
+6. RPC `get_inbox_sla_kpis_v1` + header de `/dashboard/inbox` com TMR/SLA/volume
+7. Coluna "ROAS" em `/dashboard/campanhas` (custo / receita atribuída) + selo "estimado" quando GA4 não maduro
 
-## Fora de escopo (decisões de produto futuras)
+## Fora desta proposta
+- **CAC payback** — depende de input do lojista (CAC não rastreado). Tratar separadamente com formulário em `/configuracoes`.
+- **WhatsApp quality rating da Meta** — requer chamada nova à Meta Graph API; abrir tarefa específica.
+- **Decay/multi-touch atribuição completa** — projeto de modelagem dedicado, não cabe em ondas curtas.
 
-- **ConvertIQ — ingestão automática de topo/médio funil por plataforma:** requer conectores novos (Shopify Analytics, VTEX events). Tratar em projeto separado.
-- **Reviews — sync Google "em breve":** depende de aprovação Google Business Profile API, fora do escopo técnico imediato.
-
-## Sugestão
-
-Posso executar **Fases 1 + 2 + 4** de uma vez (entrega o maior ganho de confiança e fecha a única página Fraca). Fase 3 fica como segunda rodada — envolve decisão de UX sobre qual metodologia exibir como "oficial".
-
-Aprova fazer 1 + 2 + 4?
+**Aprova executar Onda 1 (P0) primeiro?** É o que mais falta dado o nome do produto. Onda 2 vem em sequência.
 
