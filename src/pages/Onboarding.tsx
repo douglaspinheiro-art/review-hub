@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight, ArrowLeft, Loader2, Shield, Sparkles, Info,
-  Store, BarChart3, Globe, TrendingUp, Plug, CheckCircle2, ExternalLink, AlertCircle
+  Store, BarChart3, Globe, TrendingUp, Plug, CheckCircle2, ExternalLink, AlertCircle, Clock, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1125,6 +1125,52 @@ export default function Onboarding() {
           </div>
           <Progress value={Math.round((step / TOTAL_STEPS) * 100)} className="h-1 bg-muted/40" />
         </div>
+
+        {/* 1.2 Banner de retomada de draft */}
+        {draftRestoredAt && !draftBannerDismissed && step > 1 && (
+          <div className="flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold">Continuando de onde você parou</p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  Rascunho salvo {formatRelativeTime(draftRestoredAt)} · você está no passo {step} de {TOTAL_STEPS}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-[11px] font-bold text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  if (!confirm("Descartar rascunho e recomeçar do zero?")) return;
+                  if (progressStorageKey) localStorage.removeItem(progressStorageKey);
+                  setDraftBannerDismissed(true);
+                  setDraftRestoredAt(null);
+                  setStep(1);
+                  setStoreName(""); setStoreUrl(""); setVertical(null); setPlataforma("");
+                  setIntegrationConfig({}); setIntegrationValid(false);
+                  setFaturamento(""); setTicketMedio("250"); setNumClientes("");
+                  setVisitantes(""); setCarrinho(""); setCheckout(""); setPedidos("");
+                  setMetaConversao("2.5"); setGa4PropertyId(""); setGa4Token("");
+                  toast.success("Rascunho descartado.");
+                }}
+              >
+                Descartar
+              </Button>
+              <button
+                aria-label="Fechar aviso"
+                onClick={() => setDraftBannerDismissed(true)}
+                className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* STEP 1: Store Info */}
         {step === 1 && (
