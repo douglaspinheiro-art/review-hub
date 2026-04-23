@@ -30,6 +30,8 @@ import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { ROIAttribution } from "@/components/dashboard/ROIAttribution";
 import AIRecommendationWidget from "@/components/dashboard/AIRecommendationWidget";
 import ISLCard from "@/components/dashboard/ISLCard";
+import ProactiveCalendarWidget from "@/components/dashboard/ProactiveCalendarWidget";
+import RevenueAutopilotCard from "@/components/dashboard/RevenueAutopilotCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -441,6 +443,15 @@ export default function Dashboard() {
           </ErrorBoundary>
           <ErrorBoundary>
             <AIRecommendationWidget />
+          </ErrorBoundary>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ErrorBoundary>
+            <ProactiveCalendarWidget />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <RevenueAutopilotCard />
           </ErrorBoundary>
         </div>
 
