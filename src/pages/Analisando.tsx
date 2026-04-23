@@ -150,6 +150,26 @@ export default function Analisando() {
         if (funnel) {
           try {
             const benchRef = benchmarkForDiagnostics(funnel);
+            const invokeStartedAt = Date.now();
+
+            // B1. Idempotência client-side: se já existe diagnóstico recente (< 5min) para esta loja, pula
+            if (funnel.store_id) {
+              const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+              const { data: recent } = await supabase
+                .from("diagnostics_v3")
+                .select("id")
+                .eq("user_id", userId)
+                .eq("store_id", funnel.store_id)
+                .gte("created_at", fiveMinAgo)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (recent) {
+                console.info("[analisando] Diagnóstico recente encontrado, indo direto pro /resultado");
+                goToResultado(500);
+                return;
+              }
+            }
 
             // === Enriquecimento opcional do payload ===
             // Cada bloco roda em allSettled — qualquer falha individual não bloqueia o diagnóstico.
@@ -222,7 +242,34 @@ export default function Analisando() {
                 ticket_medio: funnel.ticket_medio,
                 meta_conversao: benchRef,
                 ...(funnel.segmento ? { segmento: funnel.segmento } : {}),
+                ...(funnel.field_provenance ? { field_provenance: funnel.field_provenance } : {}),
+                ...(typeof funnel.real_signals_pct === "number" ? { real_signals_pct_client: funnel.real_signals_pct } : {}),
                 ...enriched,
+              },
+            });
+
+            // B3. Telemetria de qualidade do diagnóstico
+            const totalMs = Date.now() - invokeStartedAt;
+            const enrichedKeys = Object.keys(enriched);
+            const payloadFields = [
+              funnel.visitantes, funnel.produto_visto, funnel.carrinho,
+              funnel.checkout, funnel.pedido, funnel.ticket_medio,
+            ];
+            const completeness = Math.round(
+              (payloadFields.filter((v) => Number(v) > 0).length / payloadFields.length) * 100,
+            );
+            const respMeta = (data as { diagnostico?: { meta?: Record<string, unknown> } } | null)?.diagnostico?.meta;
+            void trackFunnelEvent({
+              event: "diagnostic_viewed",
+              metadata: {
+                phase: "diagnostic_generated",
+                payload_completeness_pct: completeness,
+                fallback_mode: Boolean(respMeta?.fallback_mode),
+                parse_retry: Boolean(respMeta?.parse_retry),
+                cached: Boolean(respMeta?.cached),
+                total_ms: totalMs,
+                enriched_fields: enrichedKeys,
+                error_message: error?.message ?? null,
               },
             });
 
@@ -254,7 +301,24 @@ export default function Analisando() {
               }
               goToResultado(800);
             } else {
+              // B4. Mensagem de erro orientada a ação
               console.warn("Diagnostic generation failed:", error?.message || "unknown");
+              const dq = (enriched as { data_quality?: { ga4_diff_pct?: number | null } }).data_quality;
+              const ga4Diff = dq?.ga4_diff_pct ?? null;
+              const noChannels = !(enriched as { canais_conectados?: string[] }).canais_conectados?.length;
+              if (typeof ga4Diff === "number" && Math.abs(ga4Diff) > 30) {
+                toast.error("GA4 reporta valores muito divergentes da sua loja. Reconecte em /integrações.", {
+                  duration: 8000,
+                });
+              } else if (noChannels) {
+                toast.error("Nenhum canal conectado — diagnóstico ficará limitado. Conecte sua loja em /integrações.", {
+                  duration: 8000,
+                });
+              } else {
+                toast.error("Diagnóstico demorou mais que o esperado. Tentaremos novamente em 2 minutos.", {
+                  duration: 6000,
+                });
+              }
               setTimeout(() => goToResultado(0), 3000);
             }
           } catch (e) {
