@@ -1301,6 +1301,24 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_config: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       customer_cohorts: {
         Row: {
           cohort_month: string
