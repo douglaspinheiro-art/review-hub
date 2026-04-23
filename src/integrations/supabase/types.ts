@@ -3176,6 +3176,7 @@ export type Database = {
       }
       prescriptions: {
         Row: {
+          autopilot_triggered_at: string | null
           behavioral_profile_target: string | null
           created_at: string | null
           description: string | null
@@ -3195,6 +3196,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          autopilot_triggered_at?: string | null
           behavioral_profile_target?: string | null
           created_at?: string | null
           description?: string | null
@@ -3214,6 +3216,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          autopilot_triggered_at?: string | null
           behavioral_profile_target?: string | null
           created_at?: string | null
           description?: string | null
