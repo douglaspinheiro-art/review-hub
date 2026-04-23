@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
+import EmailHealthCard from "@/components/dashboard/EmailHealthCard";
 
 import {
   useCanaisPageData,
