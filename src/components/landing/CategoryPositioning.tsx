@@ -30,7 +30,7 @@ export default function CategoryPositioning() {
               </h2>
               <p className="text-sm text-muted-foreground max-w-3xl">
                 Não é dashboard, não é chatbot, não é consultoria. É o loop fechado entre os três sistemas da sua operação
-                — plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dize), GA4 e canal (WhatsApp/Email)
+                — plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dizy), GA4 e canal (WhatsApp/Email)
                 — com a receita devolvida ao seu Analytics e validada pelo pedido pago na sua loja.
               </p>
             </div>
