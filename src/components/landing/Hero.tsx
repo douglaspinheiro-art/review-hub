@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Star, Sparkles, BarChart3, Bot, MessageCircle, ArrowDown, RefreshCw, ShoppingBag } from "lucide-react";
+import { ArrowRight, Sparkles, BarChart3, Bot, MessageCircle, ArrowDown, RefreshCw, ShoppingBag, Zap } from "lucide-react";
 
 export default function Hero() {
   return (
@@ -11,12 +11,9 @@ export default function Hero() {
           {/* Coluna esquerda — copy */}
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-semibold px-4 py-2 rounded-full border border-primary/20">
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <Star key={s} className="w-3 h-3 fill-primary" />
-                ))}
-              </div>
-              Avaliado 4.9/5 por 200+ lojistas
+              <Zap className="w-3.5 h-3.5 fill-primary" />
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+              Loop fechado em produção · GA4 + Meta Cloud API oficial
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold leading-[1.05] tracking-tight">
