@@ -165,7 +165,7 @@ export default function Calculator({ onPerdaChange }: CalculatorProps) {
         </Button>
 
         <div className="flex items-center justify-center gap-6 mt-8 text-[9px] font-black text-muted-foreground/40 uppercase tracking-[0.2em]">
-          <span className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500 opacity-50" /> 14 dias grátis</span>
+          <span className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500 opacity-50" /> Setup guiado</span>
           <span className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500 opacity-50" /> Sem cartão</span>
           <span className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500 opacity-50" /> Setup em 10 min</span>
         </div>
