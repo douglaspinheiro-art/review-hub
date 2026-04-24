@@ -183,8 +183,8 @@ export default function Planos({
             </div>
             <h1 className="text-3xl md:text-5xl font-bold tracking-tight">Quanto custa fechar o loop na sua loja?</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Todos os planos incluem o loop completo: GA4 nativo, IA de execução e mensuração de volta no seu Analytics.
-              A diferença está no volume de contatos e mensagens.
+              Todos os planos incluem o loop completo: sua plataforma de e-commerce + GA4 nativo, IA de execução e mensuração
+              de volta no seu Analytics. A diferença está no volume de contatos e mensagens.
             </p>
           </div>
 
@@ -195,7 +195,7 @@ export default function Planos({
             <div className="grid md:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <p className="text-xs font-bold text-primary">🔗 Entrada do loop</p>
-                <p className="text-xs text-muted-foreground">GA4 nativo, plataforma e-commerce, WhatsApp Cloud oficial.</p>
+                <p className="text-xs text-muted-foreground">Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Shopee + GA4 + WhatsApp Cloud oficial.</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-bold text-primary">🧠 Decisão da IA</p>
@@ -203,7 +203,7 @@ export default function Planos({
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-bold text-primary">📊 Saída do loop</p>
-                <p className="text-xs text-muted-foreground">Atribuição com UTM própria devolvida no SEU GA4. Auditável.</p>
+                <p className="text-xs text-muted-foreground">UTM própria no SEU GA4, validada pelo pedido pago na sua plataforma. Auditável.</p>
               </div>
             </div>
           </div>
@@ -399,7 +399,8 @@ export default function Planos({
                   { q: "Vocês substituem meu GA4?", a: "Não. Somos um cliente do seu Google Analytics 4. Lemos os dados, executamos as ações e devolvemos a receita atribuída no MESMO GA4 que seu time já usa." },
                   { q: "E se eu já tenho ferramenta de WhatsApp?", a: "Migramos sem perder histórico via Meta Cloud API oficial. O número fica em sua conta Meta — você não fica refém da gente." },
                   { q: "Como sei que a receita veio de vocês?", a: "Cada campanha sai com UTM própria (utm_source=ltvboost). A conversão aparece no relatório de aquisição do seu GA4 — auditável pelo seu time de mídia." },
-                  { q: "O que está incluído em todos os planos?", a: "O loop completo: conexão GA4 + plataforma e-commerce, IA de decisão (Claude Sonnet), execução em WhatsApp/Email e atribuição de volta no GA4. Os planos variam em volume." },
+                  { q: "E se minha loja é Shopify, Nuvemshop ou VTEX?", a: "Suportamos Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray e Shopee via OAuth oficial. Em 1 clique sincronizamos contatos, pedidos, catálogo e eventos de carrinho via webhook. Sem export de CSV, sem script manual." },
+                  { q: "O que está incluído em todos os planos?", a: "O loop completo: conexão da sua plataforma de e-commerce + GA4, IA de decisão (Claude Sonnet), execução em WhatsApp/Email e atribuição de volta no GA4 validada pelo pedido pago. Os planos variam em volume." },
                 ].map(({ q, a }) => (
                   <div key={q} className="space-y-1">
                     <p className="font-semibold text-sm">{q}</p>

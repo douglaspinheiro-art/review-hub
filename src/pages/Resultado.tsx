@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check, Lock, Percent, Share2,
-  BarChart3, Bot, MessageCircle, RefreshCw,
+  BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1108,6 +1108,12 @@ function ClosedLoopTimeline({
 
   const steps = [
     {
+      icon: ShoppingBag,
+      when: "Setup",
+      label: "00 — Conecta sua loja",
+      desc: "Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray) por OAuth e puxamos seus últimos 90 dias de pedidos.",
+    },
+    {
       icon: BarChart3,
       when: "Hoje",
       label: "01 — Lê do seu GA4",
@@ -1129,7 +1135,7 @@ function ClosedLoopTimeline({
       icon: RefreshCw,
       when: "Em 30 dias",
       label: "04 — Volta para o GA4",
-      desc: "A receita aparece no SEU Analytics, auditável pelo time de mídia. O loop recalibra para o próximo ciclo.",
+      desc: "A receita aparece no SEU Analytics e é validada pelo pedido pago na sua plataforma. O loop recalibra para o próximo ciclo.",
     },
   ];
 
@@ -1144,12 +1150,12 @@ function ClosedLoopTimeline({
             O loop fechado entra em ação na sua loja
           </h3>
           <p className="text-sm text-muted-foreground max-w-2xl mt-1">
-            GA4 → IA → WhatsApp/Email → GA4. Sem dashboard paralelo, sem dado inventado, auditável pelo seu time.
+            Sua loja + GA4 → IA → WhatsApp/Email → resultado de volta. O loop atravessa três sistemas seus (e-commerce, GA4 e canal) e é auditável pelo seu time.
           </p>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-4 gap-3">
+      <div className="grid md:grid-cols-5 gap-3">
         {steps.map((s, i) => (
           <div
             key={s.label}

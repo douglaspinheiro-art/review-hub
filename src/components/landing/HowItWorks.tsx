@@ -1,8 +1,14 @@
 import { useInView } from "@/hooks/useInView";
-import { BarChart3, Bot, MessageCircle, RefreshCw } from "lucide-react";
+import { BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const steps = [
+  {
+    icon: ShoppingBag,
+    step: "00",
+    title: "Conecta sua loja",
+    desc: "Conectamos sua plataforma (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray) por OAuth em 1 clique. Sincronizamos contatos, pedidos, catálogo e eventos de carrinho via webhook oficial.",
+  },
   {
     icon: BarChart3,
     step: "01",
@@ -13,7 +19,7 @@ const steps = [
     icon: Bot,
     step: "02",
     title: "IA decide",
-    desc: "Claude Sonnet identifica o gargalo de maior impacto financeiro e decide quem abordar, quando e com qual oferta.",
+    desc: "Claude Sonnet cruza RFM da sua plataforma com comportamento do GA4 e decide quem abordar, quando e com qual oferta.",
   },
   {
     icon: MessageCircle,
@@ -25,7 +31,7 @@ const steps = [
     icon: RefreshCw,
     step: "04",
     title: "Volta para o GA4",
-    desc: "Cada conversão é atribuída de volta no seu GA4 com UTMs próprias. O loop recalibra timing, copy e segmentação a cada ciclo.",
+    desc: "Cada conversão é atribuída no seu GA4 com UTMs próprias e validada pelo pedido pago na sua plataforma. O loop recalibra timing, copy e segmentação a cada ciclo.",
   },
 ];
 
@@ -41,17 +47,17 @@ export default function HowItWorks() {
         )}>
           <p className="text-primary font-semibold text-sm mb-3 uppercase tracking-widest">Como funciona</p>
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-            O loop fechado em <span className="text-gradient">4 etapas</span>
+            O loop fechado em <span className="text-gradient">5 etapas</span>
           </h2>
           <p className="text-muted-foreground text-lg">
-            GA4 → IA → WhatsApp/Email → GA4. Sem dashboard paralelo. Sem dado inventado. O ciclo recalibra sozinho.
+            Sua loja + GA4 → IA → WhatsApp/Email → resultado de volta. O loop atravessa três sistemas seus (e-commerce, GA4 e canal) e recalibra sozinho.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-6 max-w-5xl mx-auto relative">
-          {/* Closed loop line: from step 1 through step 4 and back */}
-          <div className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-primary/30 via-primary/70 to-primary/30" />
-          <div className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-8 border-t-0 border-l border-r border-b border-dashed border-primary/30 rounded-b-3xl translate-y-[-2.25rem]" aria-hidden />
+        <div className="grid md:grid-cols-5 gap-4 max-w-6xl mx-auto relative">
+          {/* Closed loop line: from step 0 through step 4 and back */}
+          <div className="hidden md:block absolute top-12 left-[10%] right-[10%] h-px bg-gradient-to-r from-primary/30 via-primary/70 to-primary/30" />
+          <div className="hidden md:block absolute top-12 left-[10%] right-[10%] h-8 border-t-0 border-l border-r border-b border-dashed border-primary/30 rounded-b-3xl translate-y-[-2.25rem]" aria-hidden />
 
           {steps.map((s, idx) => (
             <div
