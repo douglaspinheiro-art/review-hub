@@ -259,8 +259,29 @@ serve(async (req) => {
   const originCheck = validateBrowserOrigin(req);
   if (originCheck) return originCheck;
 
-  const auth = await verifyJwt(req);
-  if (!auth.ok) return auth.response;
+  // ── Internal call path (cron weekly-diagnostic-cron) ────────────────────
+  // Bypass JWT quando a chamada vem do cron interno com x-internal-secret válido.
+  // Nesse caso o user_id é tirado do body (validado contra stores depois).
+  const internalSecretHeader = req.headers.get("x-internal-secret");
+  const expectedInternalSecret = Deno.env.get("WEEKLY_DIAGNOSTIC_SECRET");
+  let internalCallerUserId: string | null = null;
+  if (internalSecretHeader && expectedInternalSecret && internalSecretHeader === expectedInternalSecret) {
+    try {
+      const peekBody = await req.clone().json();
+      const candidate = peekBody?.user_id;
+      if (typeof candidate === "string" && /^[0-9a-f-]{36}$/i.test(candidate)) {
+        internalCallerUserId = candidate;
+      }
+    } catch { /* ignore */ }
+    if (!internalCallerUserId) {
+      return new Response(JSON.stringify({ success: false, error: "Internal call missing user_id" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+    }
+  }
+
+  const auth = internalCallerUserId
+    ? { ok: true as const, userId: internalCallerUserId }
+    : await verifyJwt(req);
+  if (!auth.ok) return (auth as { response: Response }).response;
 
   try {
     const supabase = createClient(
