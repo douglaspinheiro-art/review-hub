@@ -152,7 +152,13 @@ export default function ProtectedRoute({ children, requiredPlan, requireStepUp, 
   }
 
   if (requirePaidSubscription) {
-    if (!profile || profile.subscription_status !== "active") {
+    const status = profile?.subscription_status;
+    // "pending_activation" = pagou mas aguarda ativação manual.
+    // Deixa o DashboardLayout decidir: ele renderiza PendingActivationScreen
+    // para rotas bloqueadas e libera apenas /dashboard/billing e
+    // /dashboard/configuracoes para o cliente ver fatura / dados.
+    const allowedForPending = status === "pending_activation";
+    if (!profile || (status !== "active" && !allowedForPending)) {
       void trackFunnelEvent({
         event: "paywall_blocked",
         route: location.pathname,
