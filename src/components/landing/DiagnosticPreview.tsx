@@ -42,9 +42,9 @@ export default function DiagnosticPreview() {
             <p className="text-primary font-semibold text-sm uppercase tracking-widest">
               Diagnóstico com IA
             </p>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold leading-[1.1]">
-              A IA aponta onde está vazando — <span className="text-gradient">em reais, por mês.</span>
-            </h2>
+             <h2 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold leading-[1.1]">
+               A IA aponta onde está vazando - <span className="text-gradient">em reais, por mês.</span>
+             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
               Não é mais um dashboard bonito. É um raio-X que classifica cada problema por severidade e mostra o impacto financeiro mensal de cada um.
             </p>

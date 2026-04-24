@@ -137,8 +137,8 @@ export default function CompetitorComparison() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6 max-w-2xl mx-auto">
-          Comparação baseada em capacidades públicas das categorias mencionadas. Só a LTV Boost atravessa os três sistemas
-          do lojista — e-commerce, GA4 e canal — em um único loop auditável.
+         Comparação baseada em capacidades públicas das categorias mencionadas. Só a LTV Boost atravessa os três sistemas
+         do lojista - e-commerce, GA4 e canal - em um único loop auditável.
         </p>
       </div>
     </section>

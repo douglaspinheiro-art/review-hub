@@ -20,10 +20,10 @@ export default function ClosedLoopProof() {
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
             Você audita a receita no <span className="text-gradient">seu próprio GA4</span>
           </h2>
-          <p className="text-muted-foreground text-lg">
-            Não somos um dashboard paralelo. Cada campanha LTV Boost aparece no Google Analytics da sua loja com UTM
-            própria — pronta para o seu time de mídia conferir.
-          </p>
+           <p className="text-muted-foreground text-lg">
+             Não somos um dashboard paralelo. Cada campanha LTV Boost aparece no Google Analytics da sua loja com UTM
+             própria - pronta para o seu time de mídia conferir.
+           </p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
