@@ -27,7 +27,6 @@ function formatDate(iso: string | null): string {
 function DeltaPill({ value, suffix, invert = false }: { value: number; suffix: string; invert?: boolean }) {
   // invert=true → diminuir é bom (ex.: perda em R$)
   const positive = invert ? value < 0 : value > 0;
-  const negative = invert ? value > 0 : value < 0;
   const Icon = value === 0 ? ArrowRight : positive ? TrendingUp : TrendingDown;
   const color = value === 0
     ? "text-muted-foreground"
