@@ -15,7 +15,20 @@ import {
   buildActivationMessage,
   buildActivationWhatsAppUrl,
 } from "@/lib/admin-contact";
-import { trackFunnelEvent } from "@/lib/funnel-telemetry";
+
+/**
+ * Telemetria leve via audit_logs — não usamos funnel-telemetry porque os
+ * eventos do paywall têm enum tipado e estes são específicos da ativação.
+ */
+function logActivationEvent(action: string, metadata: Record<string, unknown> = {}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  void (supabase as any)
+    .from("audit_logs")
+    .insert({ action, resource: "profiles", result: "info", metadata })
+    .then(({ error }: { error: { message?: string } | null }) => {
+      if (error) console.warn("[pending-activation] audit log failed:", error.message);
+    });
+}
 
 /**
  * Tela exibida quando o pagamento foi aprovado mas a loja ainda não foi
@@ -52,7 +65,7 @@ export default function PendingActivationScreen() {
   );
 
   async function markAsSent(eventName: "activation_message_clicked" | "activation_message_marked_sent") {
-    void trackFunnelEvent({ event: eventName, metadata: { plan: profile?.plan ?? null } });
+    logActivationEvent(eventName, { plan: profile?.plan ?? null });
     if (messageSent) return;
     setMarking(true);
     try {
