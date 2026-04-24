@@ -8,7 +8,7 @@ export default function Hero() {
 
       <div className="container mx-auto px-4 relative">
         <div className="grid lg:grid-cols-2 gap-16 items-center">
-          {/* Coluna esquerda — copy */}
+          {/* Coluna esquerda - copy */}
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-semibold px-4 py-2 rounded-full border border-primary/20">
               <Zap className="w-3.5 h-3.5 fill-primary" />
@@ -24,7 +24,7 @@ export default function Hero() {
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
               Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dizy) e seu GA4,
               identificamos receita parada, executamos a recuperação por WhatsApp/Email e devolvemos a conversão
-              mensurada no seu próprio Analytics — validada também pelo pedido pago na sua loja.
+              mensurada no seu próprio Analytics - validada também pelo pedido pago na sua loja.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -58,7 +58,7 @@ export default function Hero() {
             </div>
           </div>
 
-          {/* Coluna direita — diagrama do loop fechado */}
+          {/* Coluna direita - diagrama do loop fechado */}
           <div className="relative">
             <div className="absolute -inset-8 bg-primary/10 blur-[80px] rounded-full opacity-40" />
 
@@ -78,7 +78,7 @@ export default function Hero() {
                 {/* Nó 0: Conecta loja */}
                 <LoopNode
                   icon={ShoppingBag}
-                  label="00 — Conecta sua loja"
+                  label="00 - Conecta sua loja"
                   title="Shopify · Nuvemshop · VTEX · WooCommerce · Yampi · Tray · Dizy"
                   meta="OAuth oficial · pedidos, contatos e catálogo sincronizados"
                 />
@@ -86,7 +86,7 @@ export default function Hero() {
                 {/* Nó 1: GA4 lê */}
                 <LoopNode
                   icon={BarChart3}
-                  label="01 — Lê do GA4"
+                  label="01 - Lê do GA4"
                   title="3.472 sessões abandonaram checkout"
                   meta="Fonte: seu GA4 · últimas 24h"
                 />
@@ -94,7 +94,7 @@ export default function Hero() {
                 {/* Nó 2: IA decide */}
                 <LoopNode
                   icon={Bot}
-                  label="02 — IA decide"
+                  label="02 - IA decide"
                   title="847 contatos do segmento Em Risco priorizados"
                   meta="Claude Sonnet · RFM da plataforma + comportamento do GA4"
                 />
@@ -102,7 +102,7 @@ export default function Hero() {
                 {/* Nó 3: Executa */}
                 <LoopNode
                   icon={MessageCircle}
-                  label="03 — Executa no canal"
+                  label="03 - Executa no canal"
                   title="WhatsApp + Email disparados"
                   meta="Meta Cloud API oficial · UTM ltvboost_winback"
                 />
@@ -110,7 +110,7 @@ export default function Hero() {
                 {/* Nó 4: Volta para GA4 */}
                 <LoopNode
                   icon={RefreshCw}
-                  label="04 — Mensura no GA4"
+                  label="04 - Mensura no GA4"
                   title="R$ 5.840 atribuídos no seu Analytics"
                   meta="GA4 + pedido `paid` na sua plataforma · sem dupla contagem"
                   highlight
