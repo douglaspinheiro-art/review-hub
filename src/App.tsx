@@ -9,6 +9,7 @@ import { BetaLimitedPageGuard } from "./components/BetaLimitedPageGuard.tsx";
 import ProtectedRoute from "./components/ProtectedRoute.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import AdminStaffRoute from "./components/AdminStaffRoute.tsx";
+import MetaPixelTracker from "./components/MetaPixelTracker.tsx";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
 import { useIsAdmin } from "@/hooks/useAdminCheck";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
@@ -158,6 +159,7 @@ const App = () => (
       <BrowserRouter>
         <MercadoPagoCheckoutProvider>
         <ErrorBoundary>
+        <MetaPixelTracker />
         <Suspense fallback={<PageLoader />}>
         <MaintenanceWrapper>
         <Routes>
