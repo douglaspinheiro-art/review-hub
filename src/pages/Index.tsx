@@ -60,11 +60,11 @@ const Index = () => {
       <Header />
       <main>
         <Hero />
+        <CompetitorComparison />
         <CategoryPositioning />
         <ClientLogos />
         <HowItWorks />
         <ClosedLoopProof />
-        <CompetitorComparison />
         <DiagnosticPreview />
         <Solutions />
         <Metrics />
