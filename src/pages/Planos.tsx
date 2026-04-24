@@ -181,10 +181,31 @@ export default function Planos({
               <Zap className="w-3.5 h-3.5" />
               {fromDiagnostico ? "Ative seu diagnóstico — sem trial em planos pagos" : "Investimento por resultado"}
             </div>
-            <h1 className="text-3xl md:text-5xl font-bold tracking-tight">Investimento por Resultado</h1>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Cobrança orientada por valor incremental capturado. Sua assinatura se paga em média nas primeiras 48h de operação.
+            <h1 className="text-3xl md:text-5xl font-bold tracking-tight">Quanto custa fechar o loop na sua loja?</h1>
+            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+              Todos os planos incluem o loop completo: GA4 nativo, IA de execução e mensuração de volta no seu Analytics.
+              A diferença está no volume de contatos e mensagens.
             </p>
+          </div>
+
+          <div className="max-w-4xl mx-auto rounded-2xl border border-primary/20 bg-primary/5 p-5 md:p-6">
+            <p className="text-[10px] font-black uppercase tracking-widest text-primary text-center mb-4">
+              O que está em todos os planos
+            </p>
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-primary">🔗 Entrada do loop</p>
+                <p className="text-xs text-muted-foreground">GA4 nativo, plataforma e-commerce, WhatsApp Cloud oficial.</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-primary">🧠 Decisão da IA</p>
+                <p className="text-xs text-muted-foreground">Copy gerada, segmentação RFM, timing e oferta priorizadas por impacto.</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-primary">📊 Saída do loop</p>
+                <p className="text-xs text-muted-foreground">Atribuição com UTM própria devolvida no SEU GA4. Auditável.</p>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-16">
