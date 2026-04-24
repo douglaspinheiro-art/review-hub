@@ -375,6 +375,10 @@ export default function Planos({
                   { q: "Posso mudar de plano depois?", a: "Sim, upgrade ou downgrade a qualquer momento. O valor é ajustado proporcionalmente." },
                   { q: "O que acontece após o diagnóstico?", a: "Você escolhe um plano para ativar a execução. Sem assinatura, o acesso à plataforma fica pausado e seus dados ficam salvos por 30 dias." },
                   { q: "As mensagens do WhatsApp têm custo extra?", a: "Além da assinatura há o custo da API Meta. Ajudamos na configuração." },
+                  { q: "Vocês substituem meu GA4?", a: "Não. Somos um cliente do seu Google Analytics 4. Lemos os dados, executamos as ações e devolvemos a receita atribuída no MESMO GA4 que seu time já usa." },
+                  { q: "E se eu já tenho ferramenta de WhatsApp?", a: "Migramos sem perder histórico via Meta Cloud API oficial. O número fica em sua conta Meta — você não fica refém da gente." },
+                  { q: "Como sei que a receita veio de vocês?", a: "Cada campanha sai com UTM própria (utm_source=ltvboost). A conversão aparece no relatório de aquisição do seu GA4 — auditável pelo seu time de mídia." },
+                  { q: "O que está incluído em todos os planos?", a: "O loop completo: conexão GA4 + plataforma e-commerce, IA de decisão (Claude Sonnet), execução em WhatsApp/Email e atribuição de volta no GA4. Os planos variam em volume." },
                 ].map(({ q, a }) => (
                   <div key={q} className="space-y-1">
                     <p className="font-semibold text-sm">{q}</p>
