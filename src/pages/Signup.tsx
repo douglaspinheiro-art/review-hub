@@ -67,6 +67,14 @@ export default function Signup() {
       });
       return;
     }
+    // Meta Pixel: account successfully created.
+    void import("@/lib/meta-pixel").then(({ trackPixel }) =>
+      trackPixel("CompleteRegistration", {
+        content_name: "Account Created",
+        status: true,
+        ...(isPilot ? { content_category: "pilot" } : {}),
+      }),
+    );
     sessionStorage.setItem("ltv_show_community", "1");
     navigate("/onboarding", { replace: true });
   }
