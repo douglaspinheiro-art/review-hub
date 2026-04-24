@@ -275,13 +275,13 @@ async function fetchShopifyCatalog(config: Record<string, string>, storeId: stri
   let url: string | null = `https://${shop}/admin/api/2024-01/products.json?fields=id,title,variants,status&limit=250`;
 
   while (url && allProducts.length < 10_000) {
-    const res = await fetch(url, { headers });
+    const res: Response = await fetch(url, { headers });
     if (!res.ok) break;
     const { products } = await res.json();
     allProducts = allProducts.concat(products ?? []);
-    const linkHeader = res.headers.get("link") ?? "";
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    url = nextMatch ? nextMatch[1] : null;
+    const linkHeader: string = res.headers.get("link") ?? "";
+    const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    url = nextMatch ? (nextMatch[1] as string) : null;
   }
 
   const rows: any[] = [];

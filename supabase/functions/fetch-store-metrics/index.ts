@@ -55,7 +55,7 @@ async function fetchShopify(config: Record<string, string>) {
     `${base}/orders.json?status=any&financial_status=paid&created_at_min=${since}&limit=250&fields=total_price,created_at`;
 
   while (url && allOrders.length < 10_000) {
-    const res = await fetch(url, { headers });
+    const res: Response = await fetch(url, { headers });
     if (!res.ok) {
       if (res.status === 429) {
         const retryAfter = Number(res.headers.get("retry-after") || "2");
@@ -68,9 +68,9 @@ async function fetchShopify(config: Record<string, string>) {
     allOrders = allOrders.concat(orders ?? []);
 
     // Parse Link header for pagination
-    const linkHeader = res.headers.get("link") ?? "";
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    url = nextMatch ? nextMatch[1] : null;
+    const linkHeader: string = res.headers.get("link") ?? "";
+    const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    url = nextMatch ? (nextMatch[1] as string) : null;
   }
 
   const faturamento = allOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);

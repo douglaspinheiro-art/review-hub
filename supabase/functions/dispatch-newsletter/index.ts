@@ -238,11 +238,11 @@ async function getLatestCartContextByCustomer(
   for (const row of (carts ?? []) as Array<Record<string, unknown>>) {
     if (!byCustomer.has(row.customer_id as string)) {
       byCustomer.set(row.customer_id as string, {
-        cart_value: row.cart_value ?? null,
-        recovery_url: row.recovery_url ?? null,
-        utm_source: row.utm_source ?? null,
-        payment_failure_reason: row.payment_failure_reason ?? null,
-        created_at: row.created_at ?? null,
+        cart_value: (row.cart_value as number | null | undefined) ?? null,
+        recovery_url: (row.recovery_url as string | null | undefined) ?? null,
+        utm_source: (row.utm_source as string | null | undefined) ?? null,
+        payment_failure_reason: (row.payment_failure_reason as string | null | undefined) ?? null,
+        created_at: (row.created_at as string | null | undefined) ?? null,
       });
     }
   }
