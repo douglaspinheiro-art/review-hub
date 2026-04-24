@@ -20,6 +20,10 @@ type Cell = boolean | "partial";
 
 const ROWS: { capability: string; values: Record<Column["key"], Cell> }[] = [
   {
+    capability: "Conecta plataforma e-commerce nativamente",
+    values: { dashboards: false, consultorias: "partial", chatbots: "partial", ltv: true },
+  },
+  {
     capability: "Lê dado real do GA4 da loja",
     values: { dashboards: false, consultorias: "partial", chatbots: false, ltv: true },
   },
@@ -133,8 +137,8 @@ export default function CompetitorComparison() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6 max-w-2xl mx-auto">
-          Comparação baseada em capacidades públicas das categorias mencionadas. Dados auditáveis no relatório de
-          aquisição do GA4 da sua loja após ativação.
+          Comparação baseada em capacidades públicas das categorias mencionadas. Só a LTV Boost atravessa os três sistemas
+          do lojista — e-commerce, GA4 e canal — em um único loop auditável.
         </p>
       </div>
     </section>
