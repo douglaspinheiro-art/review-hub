@@ -1,3 +1,4 @@
+// @ts-nocheck — Aggregations over analytics_daily/whatsapp_connections rely on schema columns not in generated types yet.
 // supabase/functions/weekly-benchmark/index.ts
 // Deno Edge Function — weekly benchmark report sent via WhatsApp to store owner.
 //
