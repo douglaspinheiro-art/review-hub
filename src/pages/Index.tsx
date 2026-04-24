@@ -7,6 +7,7 @@ import CategoryPositioning from "@/components/landing/CategoryPositioning";
 import ClientLogos from "@/components/landing/ClientLogos";
 import HowItWorks from "@/components/landing/HowItWorks";
 import DiagnosticPreview from "@/components/landing/DiagnosticPreview";
+import ClosedLoopProof from "@/components/landing/ClosedLoopProof";
 import Solutions from "@/components/landing/Solutions";
 import Metrics from "@/components/landing/Metrics";
 import Benefits from "@/components/landing/Benefits";
@@ -17,6 +18,7 @@ import Cases from "@/components/landing/Cases";
 import Testimonials from "@/components/landing/Testimonials";
 import ScarcityBanner from "@/components/landing/ScarcityBanner";
 import Pricing from "@/components/landing/Pricing";
+import CompetitorComparison from "@/components/landing/CompetitorComparison";
 import FAQ from "@/components/landing/FAQ";
 import FooterCTA from "@/components/landing/FooterCTA";
 import Footer from "@/components/landing/Footer";
@@ -53,6 +55,7 @@ const Index = () => {
         <CategoryPositioning />
         <ClientLogos />
         <HowItWorks />
+        <ClosedLoopProof />
         <DiagnosticPreview />
         <Solutions />
         <Metrics />
@@ -63,6 +66,7 @@ const Index = () => {
         <Cases />
         <Testimonials />
         <ScarcityBanner />
+        <CompetitorComparison />
         <Pricing />
         <FAQ />
         <FooterCTA />

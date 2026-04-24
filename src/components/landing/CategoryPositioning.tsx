@@ -24,13 +24,13 @@ export default function CategoryPositioning() {
         >
           <div className="flex flex-col lg:flex-row gap-5 lg:items-center justify-between">
             <div className="space-y-2">
-              <Badge className="bg-primary/10 text-primary border-primary/20">Categoria</Badge>
+              <Badge className="bg-primary/10 text-primary border-primary/20">Nova categoria</Badge>
               <h2 className="text-2xl md:text-3xl font-display font-bold">
-                O Sistema Operacional de Retenção para e-commerce no Brasil
+                Closed-Loop Revenue Recovery para e-commerce
               </h2>
               <p className="text-sm text-muted-foreground max-w-3xl">
-                Você não compra automação isolada. Você liga um ritmo diário de receita, com playbooks, operação de inbox, IA
-                de decisão e atribuição de impacto no mesmo lugar.
+                Não é dashboard, não é chatbot, não é consultoria. É o loop fechado entre o GA4 da sua loja, IA de decisão
+                e execução em WhatsApp/Email — com a receita devolvida ao seu Analytics, auditável.
               </p>
             </div>
             <Button asChild className="h-11 px-6 gap-1.5">
