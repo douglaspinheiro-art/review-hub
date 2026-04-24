@@ -144,21 +144,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const requiresPayment = !!profile && profile.subscription_status !== "active";
   const navigate = useNavigate();
 
-  // Pending activation: pagou mas a equipe ainda não configurou a Meta WhatsApp.
-  // Bloqueia o produto inteiro; libera apenas billing e configurações.
-  const PENDING_ALLOWED_PATHS = ["/dashboard/billing", "/dashboard/configuracoes"];
-  const isPendingActivation = profile?.subscription_status === "pending_activation";
-  const showPendingScreen =
-    isPendingActivation && !PENDING_ALLOWED_PATHS.some((p) => pathname.startsWith(p));
-
-  if (showPendingScreen) {
-    return (
-      <ErrorBoundary>
-        <PendingActivationScreen />
-      </ErrorBoundary>
-    );
-  }
-
   const activeProfile = profile;
 
   const visibleNav = useMemo(() => {
@@ -194,6 +179,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  // Pending activation: pagou mas a equipe ainda não configurou a Meta WhatsApp.
+  // Bloqueia o produto inteiro; libera apenas billing e configurações.
+  // (Avaliado APÓS todos os hooks para respeitar as regras de hooks.)
+  const PENDING_ALLOWED_PATHS = ["/dashboard/billing", "/dashboard/configuracoes"];
+  const isPendingActivation = profile?.subscription_status === "pending_activation";
+  const showPendingScreen =
+    isPendingActivation && !PENDING_ALLOWED_PATHS.some((p) => pathname.startsWith(p));
+
+  if (showPendingScreen) {
+    return (
+      <ErrorBoundary>
+        <PendingActivationScreen />
+      </ErrorBoundary>
+    );
+  }
 
   async function handleSignOut() {
     await signOut();
