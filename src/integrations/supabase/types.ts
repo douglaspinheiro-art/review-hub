@@ -3409,6 +3409,11 @@ export type Database = {
       }
       profiles: {
         Row: {
+          activated_at: string | null
+          activated_by: string | null
+          activation_message_sent_at: string | null
+          activation_notes: string | null
+          activation_requested_at: string | null
           ai_model: string | null
           avatar_url: string | null
           company: string | null
@@ -3446,6 +3451,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          activated_at?: string | null
+          activated_by?: string | null
+          activation_message_sent_at?: string | null
+          activation_notes?: string | null
+          activation_requested_at?: string | null
           ai_model?: string | null
           avatar_url?: string | null
           company?: string | null
@@ -3483,6 +3493,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          activated_at?: string | null
+          activated_by?: string | null
+          activation_message_sent_at?: string | null
+          activation_notes?: string | null
+          activation_requested_at?: string | null
           ai_model?: string | null
           avatar_url?: string | null
           company?: string | null
@@ -5586,6 +5601,27 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_activate_store: {
+        Args: { notes?: string; target_user_id: string }
+        Returns: undefined
+      }
+      admin_get_pending_activations: {
+        Args: never
+        Returns: {
+          activation_message_sent_at: string
+          activation_requested_at: string
+          company_name: string
+          email: string
+          full_name: string
+          plan: string
+          platform: string
+          store_id: string
+          store_name: string
+          store_phone: string
+          store_url: string
+          user_id: string
+        }[]
+      }
       append_chs_history: {
         Args: { new_label: string; new_score: number }
         Returns: Json
@@ -5944,6 +5980,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      mark_activation_message_sent: { Args: never; Returns: undefined }
       mark_low_conversion_diagnostics: { Args: never; Returns: number }
       prune_api_request_logs: {
         Args: { p_retention_days?: number }
