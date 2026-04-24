@@ -29,8 +29,9 @@ export default function CategoryPositioning() {
                 Closed-Loop Revenue Recovery para e-commerce
               </h2>
               <p className="text-sm text-muted-foreground max-w-3xl">
-                Não é dashboard, não é chatbot, não é consultoria. É o loop fechado entre o GA4 da sua loja, IA de decisão
-                e execução em WhatsApp/Email — com a receita devolvida ao seu Analytics, auditável.
+                Não é dashboard, não é chatbot, não é consultoria. É o loop fechado entre os três sistemas da sua operação
+                — plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray), GA4 e canal (WhatsApp/Email)
+                — com a receita devolvida ao seu Analytics e validada pelo pedido pago na sua loja.
               </p>
             </div>
             <Button asChild className="h-11 px-6 gap-1.5">
