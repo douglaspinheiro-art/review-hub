@@ -1,64 +1,57 @@
 
-# Plano: corrigir dados de `/resultado` (todos os blocos com problema)
+# Plano: gate de paywall em `/resultado` (Plano de Ação + Oportunidades), mantendo "Sua Projeção" visível
 
-Como você confirmou que **tudo** está errado (R$, CVR, recomendações da IA, plano sugerido) e a **fonte** é desconhecida, o plano agora é uma auditoria end-to-end do funil `Onboarding → Analisando → gerar-diagnostico → Resultado`, mapear cada número exibido até sua fórmula/origem, e corrigir num PR único.
+## Comportamento final
 
-## Etapa 1 — Auditoria (read-only, eu faço ao aprovar)
-
-Vou ler e mapear cada widget de `/resultado` à sua origem:
-
-1. `src/pages/Resultado.tsx` — fluxo de carregamento, props passadas a `RecommendationsSimulator`, formatadores.
-2. `src/pages/Analisando.tsx` — payload enviado a `gerar-diagnostico` e onde grava (`diagnostics_v3.diagnostic_json`?).
-3. `src/pages/Onboarding.tsx` + `src/lib/funnel-validation.ts` — escala/unidade dos campos coletados (visitantes mensais? abandono em 0–1 ou 0–100? ticket em reais?).
-4. `src/lib/diagnostico-logic.ts` — `calcDiagnostico` (carrinhos perdidos, receita perdida, plano).
-5. `supabase/functions/gerar-diagnostico/index.ts` — system prompt, escala de `impacto_pp` e `impacto_reais`, parsing.
-6. `src/components/resultado/RecommendationsSimulator.tsx` — já mapeado; valido apenas as **props recebidas**.
-7. **Banco** (via `supabase--read_query`): última linha em `diagnostics_v3` + `funnel_metrics_v3` + `diagnostics` da minha conta de teste para ver os números reais que estão alimentando a tela.
-
-Entrego uma **tabela "número exibido → fórmula → fonte → status (ok/bug)"** antes de codar.
-
-## Etapa 2 — Bugs prováveis a confirmar
-
-| # | Bug suspeito | Sintoma na tela |
+| Seção | Acesso | Como exibir |
 |---|---|---|
-| A | `cvrAtualPct` passado como fração (0.014) em vez de % (1.4) | "CVR atual" mostrando 0.01% e projeção absurda |
-| B | `taxa_abandono` salvo em 0–100 mas usado como 0–1 (ou inverso) em `calcDiagnostico` | Receita perdida 100× maior/menor |
-| C | `visitantes` no simulador vindo de campo diário/anual mas tratado como mensal | Receita extra fora de escala |
-| D | IA devolvendo `impacto_pp` em escala inconsistente (0.82 vs 82) | Recomendações com +pp absurdos / soma > 100 |
-| E | `Resultado` lendo de `diagnostics` (legado) em vez de `diagnostics_v3` | Mostra mock antigo, ignora o que `Analisando` salvou |
-| F | `gerar-diagnostico` falhando em parse → fallback mock silencioso | Recomendações genéricas sempre iguais |
-| G | `planoSugerido` baseado em faturamento/clientes mensais, mas recebendo valor anual (ou vice-versa) | Plano sempre "scale" ou sempre "starter" |
-| H | `ticketMedio` em centavos vs reais em algum ponto da cadeia | Receita perdida 100× errada |
+| KPIs, CHS, Funil, Problemas (#1 já liberado) | Como hoje | sem mudança |
+| **Sua Projeção** (slider de simulação de ganho) | **Sempre visível** | Movida para fora do `RecommendationsSimulator` |
+| **Plano de Ação** (cards #1/#2/#3) | **Bloqueado** se `profile.subscription_status !== "active"` | Blur 6px + overlay escuro + cadeado + CTA "Desbloquear plano de ação" → rola para `#planos-inline` |
+| **Oportunidades adicionais** | **Bloqueado** mesma regra | Mesmo tratamento (blur + overlay + cadeado + CTA) |
+| Projeção 30 dias / planos inline / etc. | Como hoje | sem mudança |
 
-## Etapa 3 — Correções (no modo default, num único commit)
+Regra de destrava: **qualquer plano pago** (`growth` ou `scale`) — uso `isActive = profile?.subscription_status === "active"` que já existe no arquivo (linha 111) e é o mesmo padrão do gate de problemas (linhas 654–688). Visitante anônimo e usuário em trial/starter veem bloqueado.
 
-Para cada bug confirmado:
-- **Padronizar escalas no contrato**: visitantes = mensais; CVR = %; abandono = 0–1; ticket = reais; `impacto_pp` = pontos percentuais (ex.: 0.82). Documentar com JSDoc nos tipos.
-- **Endurecer `gerar-diagnostico`**:
-  - Prompt explícito: "números sem separador de milhar, `impacto_pp` em pp (ex.: 0.5 = meio ponto), `impacto_reais` em reais inteiros".
-  - Verificar `stop_reason` da Anthropic; se `max_tokens`/`length`, subir limite e re-tentar.
-  - `extractJSON` robusto (sem regex destrutivo) + validação Zod do shape antes de salvar.
-  - Fallback NÃO-silencioso: se IA falhar, gravar `status='failed'` em vez de mock, e a UI mostra retry.
-- **`Resultado.tsx`**: ler **sempre** o último `diagnostics_v3` do usuário (`order by created_at desc limit 1`) com `.maybeSingle()`. Se vazio, redirecionar para `/analisando`. Adicionar badge de proveniência (real vs estimated) usando `data-provenance.ts`.
-- **`calcDiagnostico`**: adicionar testes unitários (Vitest) cobrindo casos-limite (abandono 0, 1, ticket 1, visitantes 0) e os bugs B/C/H acima — todos baseados em fixtures reais do seu banco.
-- **Validações cruzadas** (inspirado no padrão sugerido): após calcular, verificar `receita_perdida ≈ carrinhos_perdidos × ticket` (±1%) e `Σ impacto_pp ≤ 100 - cvr_atual`. Se romper, logar `client_error_events` e mostrar warning no card.
+## Arquivos a editar
 
-## Etapa 4 — Verificação
+### 1. `src/components/resultado/RecommendationsSimulator.tsx`
+- **Refator mínimo**: extrair o bloco "Sua Projeção" (cabeçalho, número simulado, slider/legendas) num sub-componente exportado `<ProjectionPreview ... />` que recebe os mesmos cálculos (`visitantes`, `ticketMedio`, `cvrAtualPct`, `recomendacoes`, estado do slider).
+- O `RecommendationsSimulator` continua exportando o bloco "Plano de ação · simule seu ganho" (lista de cards #1/#2/#3) — sem a projeção dentro.
+- Exportar também `<ProjectionPreview />` (named export) para o `Resultado.tsx` consumir.
+- **Não mudo escalas nem cálculos** — só recolocação de JSX. Zero impacto no que está correto hoje.
 
-- `npm run test` (Vitest) — incluindo novos casos de `diagnostico-logic`.
-- Reproduzir o fluxo na minha conta de teste via `browser--navigate_to_sandbox`: `/onboarding` → `/analisando` → `/resultado`, confirmando cada KPI vs valor calculado à mão.
-- Comparar com o registro novo em `diagnostics_v3` (`supabase--read_query`).
+### 2. `src/pages/Resultado.tsx`
+- Reordenar a seção "Recommendations" (linha ~693) para:
+  1. **`<ProjectionPreview />`** (sempre visível, fora de qualquer gate)
+  2. **Bloco do Plano de Ação** com gate:
+     - Se `isActive` → renderizar `<RecommendationsSimulator />` normal.
+     - Senão → wrapper `relative`, conteúdo com `filter blur-[6px] opacity-60 pointer-events-none select-none`, overlay `bg-gradient-to-b ... rounded-2xl`, e card central com cadeado + título "Desbloqueie seu plano de ação completo" + subtítulo "+X recomendações priorizadas por impacto e esforço" + botão "Desbloquear plano de ação" que faz `scrollIntoView` no `#planos-inline` (mesmo padrão das linhas 668–687).
+- Aplicar **o mesmo wrapper de gate** ao bloco "Oportunidades adicionais" (linha 705):
+  - Se `isActive` → render normal.
+  - Senão → blur + overlay + card "Desbloqueie X oportunidades adicionais (+R$ Y/mês potencial)" com botão idêntico.
+- Sem mudanças na lógica de dados, fetch, recomendação de plano, cálculo de CVR/perda, ou checkout.
 
-## Arquivos provavelmente editados
+### 3. Telemetria (não bloqueia)
+- Disparar `trackFunnelEvent("resultado_paywall_view", { section: "plano_acao" | "oportunidades" })` quando o gate aparecer (1× por sessão, via `useEffect` com guard).
+- Disparar `trackFunnelEvent("resultado_paywall_cta_click", { section, target: "planos-inline" })` no botão "Desbloquear".
+- Já existe `trackFunnelEvent` importado (linha 15), reaproveito.
 
-- `src/pages/Resultado.tsx`
-- `src/pages/Analisando.tsx` (se persistência for o ponto)
-- `src/lib/diagnostico-logic.ts` + novo `src/lib/__tests__/diagnostico-logic.test.ts` (ou expandir o existente)
-- `supabase/functions/gerar-diagnostico/index.ts`
-- `src/components/resultado/RecommendationsSimulator.tsx` (apenas se as escalas das props mudarem)
+## Não-objetivos (fora do escopo)
+- Não mudo o conteúdo dos cards (texto, números, ordenação).
+- Não toco no `gerar-diagnostico`, em `diagnostico-logic.ts`, no DB, em RLS, ou em Edge Functions.
+- Não adiciono nova rota nem novo componente de paywall (uso o padrão local, igual ao gate de problemas que já está no arquivo).
+- Não mexo no `PaywallModal.tsx` (ele é usado por outras rotas; o de `/resultado` é um banner inline, mais discreto e converte melhor que um modal interruptor numa página de resultado público).
+- Sem mudanças em `pricing-constants` ou `recommendPlan`.
 
-Sem mudanças de schema. Nenhum secret novo.
+## Verificação
+- `npx tsc --noEmit` (tipos).
+- `npm run test` (Vitest — nenhum teste atual cobre essa seção, mas garante que nada quebrou).
+- Inspeção visual em viewport 1395px (atual) e mobile 390px:
+  - Anônimo + trial/starter → vê **Sua Projeção** clara, **Plano de Ação** borrado com CTA, **Oportunidades** borradas com CTA.
+  - Conta com `subscription_status = "active"` → tudo liberado.
 
-## Antes de aprovar
+## Risco
+Baixo. Refator é localizado em 2 arquivos, o gate replica um padrão já em produção no mesmo arquivo, e a "Sua Projeção" sai intacta — só muda de lugar no DOM.
 
-Se quiser acelerar, me diga **qual loja/usuário** posso usar para inspecionar os registros reais (ou autorize que eu pegue o último diagnóstico da sua conta automaticamente). Sem isso, eu uso o usuário mais recente da tabela `diagnostics_v3` como amostra para reproduzir.
+Posso aprovar e implementar?
