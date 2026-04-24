@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import TickerBar from "@/components/landing/TickerBar";
 import Header from "@/components/landing/Header";
 import Hero from "@/components/landing/Hero";
@@ -27,24 +27,31 @@ import { getPostLoginRoute } from "@/lib/post-login-route";
 
 const Index = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, profile, loading } = useAuth();
 
-  // Logged-in users with a pending diagnostic (no active subscription) should
-  // land on /resultado, not the marketing site. Anonymous users see the landing.
+  // Só redireciona quem chegou em `/` vindo de um fluxo de auth (login/signup)
+  // ou pediu explicitamente via `?postLogin=1`. Visitas diretas à landing
+  // (clique no logo, link externo, refresh) ficam na homepage mesmo logado.
   useEffect(() => {
     if (loading || !user?.id) return;
+    const params = new URLSearchParams(location.search);
+    const fromAuth =
+      params.get("postLogin") === "1" ||
+      ["/login", "/signup", "/onboarding", "/analisando"].some((p) =>
+        (location.state as { from?: string } | null)?.from?.startsWith(p)
+      );
+    if (!fromAuth) return;
+
     let cancelled = false;
     (async () => {
       const next = await getPostLoginRoute(user.id, profile);
-      if (!cancelled && next !== "/dashboard") {
-        // /dashboard means active subscriber — let them stay if they explicitly
-        // visit `/`. Other states (/resultado, /onboarding, /analisando) are
-        // pending steps and should redirect.
+      if (!cancelled && next !== "/") {
         navigate(next, { replace: true });
       }
     })();
     return () => { cancelled = true; };
-  }, [user?.id, profile, loading, navigate]);
+  }, [user?.id, profile, loading, navigate, location.search, location.state]);
 
   return (
     <div className="min-h-screen">
