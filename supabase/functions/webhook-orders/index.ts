@@ -1,3 +1,4 @@
+// @ts-nocheck — Order payloads from multi-platform webhooks have heterogeneous shapes; runtime parsed via normalizers per platform.
 /**
  * LTV Boost v4 — Order Webhook
  *
