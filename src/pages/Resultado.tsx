@@ -1089,3 +1089,92 @@ export default function Resultado() {
     </div>
   );
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Bloco "O que acontece quando você ativa o loop" — visível antes do paywall.
+// Usa a perda real do diagnóstico para mostrar o ciclo GA4 → IA → Canal → GA4.
+// ──────────────────────────────────────────────────────────────────────────────
+function ClosedLoopTimeline({
+  perdaMensal,
+  segmentoFoco,
+}: {
+  perdaMensal: number;
+  segmentoFoco?: string;
+}) {
+  const perdaFmt = perdaMensal > 0
+    ? `R$ ${perdaMensal.toLocaleString("pt-BR")}/mês`
+    : "receita parada na sua base";
+  const foco = segmentoFoco?.trim() || "o segmento de maior impacto financeiro";
+
+  const steps = [
+    {
+      icon: BarChart3,
+      when: "Hoje",
+      label: "01 — Lê do seu GA4",
+      desc: `Conectamos seu Google Analytics 4 e confirmamos a perda de ${perdaFmt} em ${foco}.`,
+    },
+    {
+      icon: Bot,
+      when: "Em 24h",
+      label: "02 — IA decide",
+      desc: "A IA prioriza os contatos com maior propensão e gera copy + oferta segmentada por RFM.",
+    },
+    {
+      icon: MessageCircle,
+      when: "Em 7 dias",
+      label: "03 — Executa no canal",
+      desc: "Disparamos WhatsApp (Meta Cloud API oficial) e Email com UTM ltvboost_winback.",
+    },
+    {
+      icon: RefreshCw,
+      when: "Em 30 dias",
+      label: "04 — Volta para o GA4",
+      desc: "A receita aparece no SEU Analytics, auditável pelo time de mídia. O loop recalibra para o próximo ciclo.",
+    },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 md:p-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+        <div>
+          <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-black tracking-widest uppercase">
+            O que acontece quando você ativa
+          </Badge>
+          <h3 className="text-xl md:text-2xl font-black font-syne tracking-tighter mt-3">
+            O loop fechado entra em ação na sua loja
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-2xl mt-1">
+            GA4 → IA → WhatsApp/Email → GA4. Sem dashboard paralelo, sem dado inventado, auditável pelo seu time.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-4 gap-3">
+        {steps.map((s, i) => (
+          <div
+            key={s.label}
+            className="rounded-xl border border-border/50 bg-card p-4 space-y-3 relative"
+          >
+            <div className="flex items-center justify-between">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                <s.icon className="w-4 h-4 text-primary" />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                {s.when}
+              </span>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                {s.label}
+              </p>
+              <p className="text-sm font-bold leading-snug">{s.desc}</p>
+            </div>
+            {i < steps.length - 1 && (
+              <div className="hidden md:block absolute top-1/2 -right-2 w-4 h-px bg-primary/30" aria-hidden />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
