@@ -2,7 +2,14 @@ import { useInView } from "@/hooks/useInView";
 import { cn } from "@/lib/utils";
 import { Check, X, Sparkles } from "lucide-react";
 
-const COLUMNS = [
+type Column = {
+  key: "dashboards" | "consultorias" | "chatbots" | "ltv";
+  label: string;
+  sub: string;
+  highlight?: boolean;
+};
+
+const COLUMNS: readonly Column[] = [
   { key: "dashboards", label: "Dashboards", sub: "(painéis paralelos)" },
   { key: "consultorias", label: "Consultorias CRO", sub: "(humano + planilha)" },
   { key: "chatbots", label: "Chatbots", sub: "(atendimento)" },
@@ -11,7 +18,7 @@ const COLUMNS = [
 
 type Cell = boolean | "partial";
 
-const ROWS: { capability: string; values: Record<typeof COLUMNS[number]["key"], Cell> }[] = [
+const ROWS: { capability: string; values: Record<Column["key"], Cell> }[] = [
   {
     capability: "Lê dado real do GA4 da loja",
     values: { dashboards: false, consultorias: "partial", chatbots: false, ltv: true },
