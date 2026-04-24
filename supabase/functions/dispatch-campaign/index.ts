@@ -23,14 +23,15 @@ const DISPATCH_CAMPAIGN_SECRET = Deno.env.get("DISPATCH_CAMPAIGN_SECRET") ?? "";
 const BodySchema = z.object({ campaign_id: uuidSchema });
 
 async function canDispatchCampaign(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   requesterUserId: string,
   campaign: { user_id: string; store_id: string | null },
 ): Promise<boolean> {
   if (campaign.user_id === requesterUserId) return true;
   if (!campaign.store_id) return false;
   const { data: store } = await supabase.from("stores").select("user_id").eq("id", campaign.store_id).maybeSingle();
-  const ownerId = store?.user_id as string | undefined;
+  const ownerId = (store as { user_id?: string } | null)?.user_id;
   if (!ownerId) return false;
   if (ownerId === requesterUserId) return true;
   const { data: team } = await supabase
@@ -44,7 +45,8 @@ async function canDispatchCampaign(
 }
 
 async function validateInternalTenantScope(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   req: Request,
   campaign: { user_id: string; store_id: string | null },
 ): Promise<boolean> {
@@ -54,7 +56,8 @@ async function validateInternalTenantScope(
   if (!campaign.store_id || !internalStoreId || !internalOwnerId) return false;
   if (campaign.store_id !== internalStoreId) return false;
 
-  const { data: store } = await supabase.from("stores").select("user_id").eq("id", campaign.store_id).maybeSingle();
+  const { data: storeData } = await supabase.from("stores").select("user_id").eq("id", campaign.store_id).maybeSingle();
+  const store = storeData as { user_id?: string } | null;
   if (!store?.user_id) return false;
   if (store.user_id !== campaign.user_id) return false;
 

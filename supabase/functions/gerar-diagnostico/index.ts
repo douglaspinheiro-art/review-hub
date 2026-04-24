@@ -282,6 +282,7 @@ serve(async (req) => {
     ? { ok: true as const, userId: internalCallerUserId }
     : await verifyJwt(req);
   if (!auth.ok) return (auth as { response: Response }).response;
+  const authUserId: string = auth.userId;
 
   try {
     const supabase = createClient(
@@ -294,7 +295,7 @@ serve(async (req) => {
     // e atualiza `currentStep` baseado em etapas reais (não timer).
     async function emitProgress(stage: string, detail?: Record<string, unknown>) {
       try {
-        const ch = supabase.channel(`diagnostico-progress-${auth.userId}`);
+        const ch = supabase.channel(`diagnostico-progress-${authUserId}`);
         await ch.send({
           type: "broadcast",
           event: "progress",

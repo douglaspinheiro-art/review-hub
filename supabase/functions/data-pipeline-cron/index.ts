@@ -54,10 +54,12 @@ async function jobQuality(supabase: any, snapshotDate: string, stores: any[]) {
     let phoneOk = 0;
     if (ids.length > 0) {
       const { data: custs } = await supabase.from("customers_v3").select("id, phone").in("id", ids);
-      const pmap = new Map((custs ?? []).map((c: Record<string, unknown>) => [c.id as string, c.phone as string | null]));
+      const pmap = new Map<string, string | null>(
+        ((custs ?? []) as Array<Record<string, unknown>>).map((c) => [c.id as string, (c.phone as string | null) ?? null]),
+      );
       for (const o of list as Array<Record<string, unknown>>) {
         if (!o.cliente_id) continue;
-        const ph = pmap.get(o.cliente_id as string)?.replace(/\D/g, "") ?? "";
+        const ph = (pmap.get(o.cliente_id as string) ?? "").replace(/\D/g, "");
         if (ph.length >= 12) phoneOk++;
       }
     }
@@ -273,13 +275,13 @@ async function fetchShopifyCatalog(config: Record<string, string>, storeId: stri
   let url: string | null = `https://${shop}/admin/api/2024-01/products.json?fields=id,title,variants,status&limit=250`;
 
   while (url && allProducts.length < 10_000) {
-    const res = await fetch(url, { headers });
+    const res: Response = await fetch(url, { headers });
     if (!res.ok) break;
     const { products } = await res.json();
     allProducts = allProducts.concat(products ?? []);
-    const linkHeader = res.headers.get("link") ?? "";
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    url = nextMatch ? nextMatch[1] : null;
+    const linkHeader: string = res.headers.get("link") ?? "";
+    const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    url = nextMatch ? (nextMatch[1] as string) : null;
   }
 
   const rows: any[] = [];
