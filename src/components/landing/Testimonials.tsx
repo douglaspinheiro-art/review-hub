@@ -8,7 +8,7 @@ const testimonials = [
     role: "CEO, ModaFit",
     initials: "CM",
     gradient: "from-violet-500 to-purple-600",
-    text: "A LTV Boost transformou completamente nossa estratégia de relacionamento. Triplicamos a recompra em 6 meses.",
+    text: "Antes eu tinha GA4 de um lado, agência de WhatsApp do outro e planilha no meio. Agora a campanha dispara e a receita aparece no mesmo Analytics. A discussão de atribuição com a agência acabou.",
     metric: "+340% LTV",
   },
   {
@@ -16,7 +16,7 @@ const testimonials = [
     role: "Head de Marketing, TechStore",
     initials: "RO",
     gradient: "from-blue-500 to-cyan-500",
-    text: "Automatizamos 80% do atendimento e as vendas pelo WhatsApp cresceram 250%. ROI se pagou em 2 semanas.",
+    text: "Conectei o GA4 em 2 cliques. Em 24h a IA já tinha priorizado o segmento certo e disparado a primeira campanha. Vi a receita aparecer no MEU GA4, com UTM própria. Sem caixa-preta.",
     metric: "+250% vendas",
   },
   {
@@ -24,7 +24,7 @@ const testimonials = [
     role: "Diretora, BelezaPura",
     initials: "JS",
     gradient: "from-rose-500 to-pink-500",
-    text: "Os insights da plataforma nos ajudaram a entender nossos clientes de verdade. A fidelização nunca foi tão alta.",
+    text: "O loop recalibra sozinho. A cada ciclo, a IA aprende quem responde a qual oferta e em que horário. Não preciso mais ajustar segmentação manual toda semana.",
     metric: "67% retenção",
   },
   {
@@ -32,7 +32,7 @@ const testimonials = [
     role: "CMO, NutriVida",
     initials: "AL",
     gradient: "from-amber-500 to-orange-500",
-    text: "O chatbot com IA reduziu nosso tempo de resposta de 4h para 2min. Os clientes adoram a experiência.",
+    text: "Auditei a receita atribuída no GA4 com meu time de mídia. Bateu certinho. É a primeira ferramenta que não força a gente a confiar em métrica própria dela.",
     metric: "< 2min resposta",
   },
 ];
