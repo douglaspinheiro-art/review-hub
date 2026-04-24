@@ -1598,11 +1598,14 @@ export type Database = {
           created_at: string | null
           diagnostic_json: Json | null
           id: string
+          previous_diagnostic_id: string | null
           quality_label: string | null
           quality_marked_at: string | null
           recommended_plan: string | null
           store_id: string | null
+          trigger_source: string
           user_id: string | null
+          week_over_week: Json | null
         }
         Insert: {
           chs?: number | null
@@ -1610,11 +1613,14 @@ export type Database = {
           created_at?: string | null
           diagnostic_json?: Json | null
           id?: string
+          previous_diagnostic_id?: string | null
           quality_label?: string | null
           quality_marked_at?: string | null
           recommended_plan?: string | null
           store_id?: string | null
+          trigger_source?: string
           user_id?: string | null
+          week_over_week?: Json | null
         }
         Update: {
           chs?: number | null
@@ -1622,13 +1628,23 @@ export type Database = {
           created_at?: string | null
           diagnostic_json?: Json | null
           id?: string
+          previous_diagnostic_id?: string | null
           quality_label?: string | null
           quality_marked_at?: string | null
           recommended_plan?: string | null
           store_id?: string | null
+          trigger_source?: string
           user_id?: string | null
+          week_over_week?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "diagnostics_v3_previous_fk"
+            columns: ["previous_diagnostic_id"]
+            isOneToOne: false
+            referencedRelation: "diagnostics_v3"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "diagnostics_v3_store_id_fkey"
             columns: ["store_id"]
