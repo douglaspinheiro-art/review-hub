@@ -143,7 +143,7 @@ async function syncStore(
     const since = new Date(now.getTime() - options.backfillDays * 86_400_000);
     sinceIso = since.toISOString().slice(0, 19).replace("T", " ");
   } else if (state?.last_synced_at) {
-    sinceIso = new Date(state.last_synced_at).toISOString().slice(0, 19).replace("T", " ");
+      sinceIso = new Date(state.last_synced_at as string | number | Date).toISOString().slice(0, 19).replace("T", " ");
   } else {
     // Primeira execução incremental — últimas 24h
     sinceIso = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 19).replace("T", " ");
