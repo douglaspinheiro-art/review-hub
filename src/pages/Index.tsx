@@ -46,9 +46,10 @@ const Index = () => {
     let cancelled = false;
     (async () => {
       const next = await getPostLoginRoute(user.id, profile);
-      if (!cancelled && next !== "/") {
-        navigate(next, { replace: true });
-      }
+      if (cancelled) return;
+      // Só redireciona se houver passo pendente (ex.: /resultado, /onboarding).
+      // Assinantes ativos (/dashboard) também são levados, pois vieram de auth.
+      navigate(next, { replace: true });
     })();
     return () => { cancelled = true; };
   }, [user?.id, profile, loading, navigate, location.search, location.state]);
