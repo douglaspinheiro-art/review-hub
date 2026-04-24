@@ -20,6 +20,8 @@ import type { DataSource } from "@/lib/data-provenance";
 import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
 import { RecommendationsSimulator, ProjectionPreview } from "@/components/resultado/RecommendationsSimulator";
 import { pickAbVariant } from "@/lib/ab-variant";
+import { WeeklyEvolutionCard } from "@/components/resultado/WeeklyEvolutionCard";
+import { useWeeklyDiagnosticDelta } from "@/hooks/useWeeklyDiagnosticDelta";
 
 type DiagnosticData = {
   resumo?: string;
@@ -114,6 +116,7 @@ export default function Resultado() {
   const [missingDiagnostic, setMissingDiagnostic] = useState(false);
   const [diagnostic, setDiagnostic] = useState<DiagnosticData | null>(null);
   const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
+  const { data: weeklyDelta } = useWeeklyDiagnosticDelta();
   const [shareLoading, setShareLoading] = useState(false);
   const [chs, setChs] = useState(0);
   const [chsLabel, setChsLabel] = useState("Regular");
@@ -508,6 +511,14 @@ export default function Resultado() {
             />
           </div>
         </div>
+
+        {weeklyDelta?.hasDelta && weeklyDelta.weekOverWeek && (
+          <WeeklyEvolutionCard
+            weekOverWeek={weeklyDelta.weekOverWeek}
+            previousCreatedAt={weeklyDelta.previousCreatedAt}
+            currentCreatedAt={weeklyDelta.currentCreatedAt}
+          />
+        )}
 
         {/* Loss Block */}
         {perdaMensal > 0 && (
