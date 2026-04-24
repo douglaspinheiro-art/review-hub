@@ -9,6 +9,7 @@ import { PLANS } from "@/lib/pricing-constants";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { trackPixel } from "@/lib/meta-pixel";
 
 const ANNUAL_DISCOUNT = 0.2;
 const monthlyOf = (k: PlanKey) => PLANS[k].base;
@@ -96,6 +97,17 @@ export default function MercadoPagoCheckoutModal({ open, onOpenChange, request }
         selectedPlan: request.planKey,
         metadata: { source: request.source, billing_cycle: request.billingCycle, ui: "brick" },
       });
+      // Meta Pixel — user reached the checkout step.
+      trackPixel("InitiateCheckout", {
+        content_name: PLANS[request.planKey].name,
+        content_category: "subscription",
+        content_ids: [request.planKey],
+        currency: "BRL",
+        value: request.billingCycle === "annual"
+          ? annualOf(request.planKey)
+          : monthlyOf(request.planKey),
+        num_items: 1,
+      });
     })();
     return () => { cancelled = true; };
   }, [open, request]);
@@ -125,6 +137,17 @@ export default function MercadoPagoCheckoutModal({ open, onOpenChange, request }
           if (pollRef.current) window.clearInterval(pollRef.current);
           setPhase({ kind: "approved", paymentId });
           toast.success("Pagamento confirmado!");
+          // Meta Pixel — Purchase confirmed (PIX/boleto async path).
+          if (request) {
+            trackPixel("Purchase", {
+              content_name: PLANS[request.planKey].name,
+              content_ids: [request.planKey],
+              content_category: "subscription",
+              currency: "BRL",
+              value: amount,
+              num_items: 1,
+            });
+          }
           setTimeout(() => navigate("/dashboard?welcome=1"), 1500);
         }
       } catch { /* ignore polling errors */ }
@@ -156,6 +179,15 @@ export default function MercadoPagoCheckoutModal({ open, onOpenChange, request }
           event: "checkout_completed",
           selectedPlan: request.planKey,
           metadata: { payment_id: data.payment_id },
+        });
+        // Meta Pixel — Purchase confirmed (cartão sync path).
+        trackPixel("Purchase", {
+          content_name: PLANS[request.planKey].name,
+          content_ids: [request.planKey],
+          content_category: "subscription",
+          currency: "BRL",
+          value: amount,
+          num_items: 1,
         });
         setTimeout(() => navigate("/dashboard?welcome=1"), 1500);
         return;
