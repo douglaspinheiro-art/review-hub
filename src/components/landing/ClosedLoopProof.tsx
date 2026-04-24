@@ -1,6 +1,6 @@
 import { useInView } from "@/hooks/useInView";
 import { cn } from "@/lib/utils";
-import { BarChart3, ShieldCheck, Eye, Quote } from "lucide-react";
+import { BarChart3, ShieldCheck, Eye, Quote, ShoppingBag } from "lucide-react";
 
 export default function ClosedLoopProof() {
   const { ref, inView } = useInView();
@@ -96,6 +96,11 @@ export default function ClosedLoopProof() {
             )}
           >
             {[
+              {
+                icon: ShoppingBag,
+                title: "Validado em dois lugares",
+                desc: "Conversão confirmada no evento purchase do GA4 E no pedido paid da sua plataforma (Shopify, Nuvemshop, VTEX, etc.). Sem dupla contagem, sem dado órfão.",
+              },
               {
                 icon: Eye,
                 title: "Você vê no SEU GA4",
