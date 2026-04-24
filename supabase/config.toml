@@ -77,6 +77,10 @@ verify_jwt = true
 [functions.gerar-diagnostico]
 verify_jwt = false
 
+# Cron semanal de re-análise de diagnóstico — Authorization: Bearer CRON_SECRET.
+[functions.weekly-diagnostic-cron]
+verify_jwt = false
+
 [functions.fetch-store-metrics]
 verify_jwt = false
 

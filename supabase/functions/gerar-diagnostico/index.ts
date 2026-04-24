@@ -259,8 +259,29 @@ serve(async (req) => {
   const originCheck = validateBrowserOrigin(req);
   if (originCheck) return originCheck;
 
-  const auth = await verifyJwt(req);
-  if (!auth.ok) return auth.response;
+  // ── Internal call path (cron weekly-diagnostic-cron) ────────────────────
+  // Bypass JWT quando a chamada vem do cron interno com x-internal-secret válido.
+  // Nesse caso o user_id é tirado do body (validado contra stores depois).
+  const internalSecretHeader = req.headers.get("x-internal-secret");
+  const expectedInternalSecret = Deno.env.get("WEEKLY_DIAGNOSTIC_SECRET");
+  let internalCallerUserId: string | null = null;
+  if (internalSecretHeader && expectedInternalSecret && internalSecretHeader === expectedInternalSecret) {
+    try {
+      const peekBody = await req.clone().json();
+      const candidate = peekBody?.user_id;
+      if (typeof candidate === "string" && /^[0-9a-f-]{36}$/i.test(candidate)) {
+        internalCallerUserId = candidate;
+      }
+    } catch { /* ignore */ }
+    if (!internalCallerUserId) {
+      return new Response(JSON.stringify({ success: false, error: "Internal call missing user_id" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+    }
+  }
+
+  const auth = internalCallerUserId
+    ? { ok: true as const, userId: internalCallerUserId }
+    : await verifyJwt(req);
+  if (!auth.ok) return (auth as { response: Response }).response;
 
   try {
     const supabase = createClient(
@@ -312,7 +333,14 @@ serve(async (req) => {
       // C1. Novos campos opcionais vindos do client (proveniência)
       field_provenance = null,
       real_signals_pct_client = null,
+      // Onda 11 — Diagnóstico Continuado
+      trigger_source: trigger_source_input = "manual",
     } = bodyJson;
+
+    const triggerSource: "manual" | "weekly" | "onboarding" =
+      trigger_source_input === "weekly" || trigger_source_input === "onboarding"
+        ? trigger_source_input
+        : "manual";
 
     const storeUuid =
       typeof loja_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(loja_id)
@@ -745,14 +773,74 @@ ${data_quality ? `Qualidade de dados: utm_fill=${(data_quality as Record<string,
       }
       const storeUserId = storeData.user_id;
 
-      await supabase.from("diagnostics_v3").insert({
-        store_id: loja_id,
-        user_id: storeUserId,
-        diagnostic_json: diag,
-        chs,
-        chs_label,
-        recommended_plan: recommendedPlan,
-      });
+      // Onda 11 — Diagnóstico Continuado: busca o diag anterior (de qualquer trigger)
+      // para esta loja para calcular o delta semana a semana.
+      const { data: prevDiag } = await supabase
+        .from("diagnostics_v3")
+        .select("id,chs,created_at,diagnostic_json")
+        .eq("store_id", loja_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let weekOverWeek: Record<string, unknown> | null = null;
+      if (prevDiag && prevDiag.id) {
+        const prevJson = (prevDiag.diagnostic_json ?? {}) as Record<string, unknown>;
+        const prevChs = Number(prevDiag.chs ?? 0);
+        const prevPerda =
+          (prevJson.forecast_30d as Record<string, unknown> | undefined)?.com_prescricoes != null
+            ? Number((prevJson.forecast_30d as Record<string, unknown>).com_prescricoes)
+            : null;
+        const prevGargalo = typeof prevJson.perda_principal === "string" ? prevJson.perda_principal : null;
+        const currGargalo = typeof diag.perda_principal === "string" ? (diag.perda_principal as string) : null;
+
+        // Heurística "ação aplicada": se gargalo mudou ou CVR melhorou ≥0.15pp,
+        // assume que a primeira recomendação anterior foi efetivada.
+        const prevRecs = Array.isArray(prevJson.recomendacoes_ux) ? (prevJson.recomendacoes_ux as Array<{ titulo?: string }>) : [];
+        const cvrDeltaPp = Number((Number(conversao) - (Number(prevJson.cvr_ref ?? 0))).toFixed(2));
+        const chsDelta = chs - prevChs;
+        const gargaloChanged = Boolean(prevGargalo && currGargalo && prevGargalo !== currGargalo);
+        const appliedRecommendation = (gargaloChanged || chsDelta >= 5) && prevRecs[0]?.titulo
+          ? prevRecs[0].titulo
+          : null;
+
+        weekOverWeek = {
+          chs_anterior: prevChs,
+          chs_atual: chs,
+          chs_delta: chsDelta,
+          cvr_atual_pct: Number(conversao),
+          perda_anterior_brl: prevPerda,
+          perda_atual_brl: perda,
+          perda_delta_brl: prevPerda != null ? Math.round(perda - prevPerda) : null,
+          gargalo_anterior: prevGargalo,
+          gargalo_atual: currGargalo,
+          gargalo_changed: gargaloChanged,
+          applied_recommendation: appliedRecommendation,
+          previous_created_at: prevDiag.created_at ?? null,
+          previous_diagnostic_id: prevDiag.id,
+        };
+      }
+
+      // Salva CVR de referência dentro do diagnostic_json para próxima comparação
+      (diag as Record<string, unknown>).cvr_ref = Number(conversao);
+
+      const { data: insertedDiag } = await supabase
+        .from("diagnostics_v3")
+        .insert({
+          store_id: loja_id,
+          user_id: storeUserId,
+          diagnostic_json: diag,
+          chs,
+          chs_label,
+          recommended_plan: recommendedPlan,
+          // Onda 11 — campos novos
+          trigger_source: triggerSource,
+          previous_diagnostic_id: weekOverWeek?.previous_diagnostic_id ?? null,
+          week_over_week: weekOverWeek,
+        })
+        .select("id")
+        .maybeSingle();
+      void insertedDiag;
 
       // Atualizar CHS da loja — rpc() não é serializável dentro de .update(),
       // então atualizamos o score e executamos o RPC separadamente
