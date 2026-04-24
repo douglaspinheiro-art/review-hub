@@ -323,10 +323,24 @@ export default function Analisando() {
               const chs = Math.min(100, Math.max(0, Math.round(conversao / (benchRef || 2.5) * 50)));
               const chsLabel = chs >= 70 ? "Bom" : chs >= 40 ? "Regular" : "Em risco";
 
+              // Defensivo: garantir que o objeto persistido sempre tenha `meta`,
+              // mesmo se a edge tiver retornado um payload incompleto. Isso é o que
+              // permite ao /resultado mostrar o badge "Modo fallback" corretamente.
+              const diagToPersist = (data.diagnostico && typeof data.diagnostico === "object")
+                ? {
+                    ...(data.diagnostico as Record<string, unknown>),
+                    meta: {
+                      ...((data.diagnostico as { meta?: Record<string, unknown> }).meta ?? {}),
+                      generated_at: ((data.diagnostico as { meta?: { generated_at?: string } }).meta?.generated_at) ?? new Date().toISOString(),
+                      persisted_via: "client_fallback",
+                    },
+                  }
+                : data.diagnostico;
+
               const { error: insertErr } = await supabase.from("diagnostics_v3").insert({
                 user_id: userId,
                 store_id: storeId || null,
-                diagnostic_json: data.diagnostico,
+                diagnostic_json: diagToPersist,
                 chs,
                 chs_label: chsLabel,
                 recommended_plan: (data as { recommended_plan?: "growth" | "scale" }).recommended_plan,
