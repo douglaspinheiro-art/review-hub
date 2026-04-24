@@ -1,31 +1,31 @@
 import { useInView } from "@/hooks/useInView";
-import { Link2, BarChart3, Zap, Rocket } from "lucide-react";
+import { BarChart3, Bot, MessageCircle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const steps = [
   {
-    icon: Link2,
-    step: "01",
-    title: "Conecte",
-    desc: "Integre loja e WhatsApp com setup guiado. Em 24h você entra em produção.",
-  },
-  {
     icon: BarChart3,
+    step: "01",
+    title: "Lê do GA4",
+    desc: "Conectamos seu Google Analytics 4 em 2 cliques. Lemos sessões, eventos do funil e atribuição reais — não estimamos, não inventamos.",
+  },
+  {
+    icon: Bot,
     step: "02",
-    title: "Analise",
-    desc: "A IA prioriza onde existe caixa travado e gera plano de ação diário por impacto.",
+    title: "IA decide",
+    desc: "Claude Sonnet identifica o gargalo de maior impacto financeiro e decide quem abordar, quando e com qual oferta.",
   },
   {
-    icon: Zap,
+    icon: MessageCircle,
     step: "03",
-    title: "Automatize",
-    desc: "Ative playbooks de carrinho, pos-venda, winback e reviews com presets por nicho.",
+    title: "Executa no canal",
+    desc: "Dispara WhatsApp (Meta Cloud API oficial) e Email com copy gerada por IA, segmentada por RFM e janela de propensão.",
   },
   {
-    icon: Rocket,
+    icon: RefreshCw,
     step: "04",
-    title: "Escale",
-    desc: "Escalone o que funciona com benchmark de coorte e recomendação de próxima melhor ação.",
+    title: "Volta para o GA4",
+    desc: "Cada conversão é atribuída de volta no seu GA4 com UTMs próprias. O loop recalibra timing, copy e segmentação a cada ciclo.",
   },
 ];
 
@@ -41,16 +41,17 @@ export default function HowItWorks() {
         )}>
           <p className="text-primary font-semibold text-sm mb-3 uppercase tracking-widest">Como funciona</p>
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-            De zero a resultados em <span className="text-gradient">4 passos</span>
+            O loop fechado em <span className="text-gradient">4 etapas</span>
           </h2>
           <p className="text-muted-foreground text-lg">
-            Setup completo em menos de 1 hora. Resultados já na primeira semana.
+            GA4 → IA → WhatsApp/Email → GA4. Sem dashboard paralelo. Sem dado inventado. O ciclo recalibra sozinho.
           </p>
         </div>
 
         <div className="grid md:grid-cols-4 gap-6 max-w-5xl mx-auto relative">
-          {/* Connecting line */}
-          <div className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-primary/30 via-primary/60 to-primary/30" />
+          {/* Closed loop line: from step 1 through step 4 and back */}
+          <div className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-primary/30 via-primary/70 to-primary/30" />
+          <div className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-8 border-t-0 border-l border-r border-b border-dashed border-primary/30 rounded-b-3xl translate-y-[-2.25rem]" aria-hidden />
 
           {steps.map((s, idx) => (
             <div
@@ -72,6 +73,10 @@ export default function HowItWorks() {
             </div>
           ))}
         </div>
+
+        <p className="text-center text-xs text-muted-foreground mt-10 max-w-2xl mx-auto">
+          O loop volta para o passo 01: o GA4 recebe a conversão atribuída e a IA usa o resultado para refinar o próximo ciclo.
+        </p>
       </div>
     </section>
   );

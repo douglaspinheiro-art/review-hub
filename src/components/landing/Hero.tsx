@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Star, Sparkles, ShoppingCart, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Star, Sparkles, BarChart3, Bot, MessageCircle, ArrowDown, RefreshCw } from "lucide-react";
 
 export default function Hero() {
   return (
@@ -20,19 +20,20 @@ export default function Hero() {
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold leading-[1.05] tracking-tight">
-              Descubra quanto sua loja perde{" "}
-              <span className="text-gradient">todo dia.</span>
+              O único loop fechado:{" "}
+              <span className="text-gradient">GA4 → IA → WhatsApp → GA4.</span>
             </h1>
 
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              A LTV Boost identifica o dinheiro parado na sua base e recupera automaticamente. Comece com um diagnóstico gratuito.
+              Conectamos o GA4 da sua loja, identificamos receita parada, executamos a recuperação por WhatsApp/Email
+              e devolvemos o resultado mensurado no seu próprio Analytics. Sem dashboard paralelo. Sem dado inventado.
             </p>
 
             <div className="flex flex-wrap gap-2">
               {[
-                "Moda: +22% recompra em 60 dias",
-                "Beleza: payback médio em 9 dias",
-                "Suplementos: +31% em reativação",
+                "Lê do seu GA4 (não estimamos)",
+                "IA decide e executa no canal",
+                "Receita atribuída de volta no GA4",
               ].map((proof) => (
                 <span
                   key={proof}
@@ -50,114 +51,121 @@ export default function Hero() {
                 className="h-14 px-8 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/25 hover:shadow-primary/40 transition-all"
               >
                 <a href="/signup">
-                  Ver quanto estou perdendo (grátis) <ArrowRight className="ml-2 w-5 h-5" />
+                  Ativar o loop na minha loja <ArrowRight className="ml-2 w-5 h-5" />
                 </a>
               </Button>
               <p className="text-[11px] text-muted-foreground">
-                • Leva menos de 1 minuto • Sem cartão • Resultado imediato
+                • Conexão GA4 em 2 cliques • Sem cartão • Primeira campanha em 24h
               </p>
             </div>
           </div>
 
-          {/* Coluna direita — mock do diagnóstico */}
+          {/* Coluna direita — diagrama do loop fechado */}
           <div className="relative">
             <div className="absolute -inset-8 bg-primary/10 blur-[80px] rounded-full opacity-40" />
 
-            {/* Badge flutuante: nova venda */}
-            <div className="absolute -top-4 -right-2 z-20 bg-card border border-primary/30 rounded-xl px-4 py-3 shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-700">
-              <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
-                <ShoppingCart className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-foreground leading-tight">Nova venda</p>
-                <p className="text-xs font-bold text-primary leading-tight">+ R$ 489</p>
-              </div>
-            </div>
-
             <div className="relative bg-card border border-border/50 rounded-2xl p-6 md:p-8 shadow-2xl">
-              <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-6">
-                <Sparkles className="w-3.5 h-3.5 text-primary" />
-                Diagnóstico da loja
-              </div>
-
-              {/* Score + perda */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div>
-                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-2">
-                    Score
-                  </p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-5xl font-display font-extrabold text-primary leading-none">68</span>
-                    <span className="text-lg font-bold text-muted-foreground">/100</span>
-                  </div>
-                  <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-500 text-[10px] font-bold uppercase tracking-wider">
-                    Regular
-                  </span>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-2">
-                    Você está perdendo
-                  </p>
-                  <p className="text-3xl md:text-4xl font-display font-extrabold text-destructive leading-none">
-                    R$ 7.856
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">/mês</p>
-                </div>
-              </div>
-
-              {/* Métricas */}
-              <div className="grid grid-cols-3 gap-2 mb-5">
-                <div className="bg-secondary/40 border border-border/40 rounded-lg p-3 text-center">
-                  <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-muted-foreground mb-1">
-                    Sua CVR
-                  </p>
-                  <p className="text-lg font-display font-extrabold">1,40%</p>
-                </div>
-                <div className="bg-secondary/40 border border-border/40 rounded-lg p-3 text-center">
-                  <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-muted-foreground mb-1">
-                    Benchmark
-                  </p>
-                  <p className="text-lg font-display font-extrabold text-primary">2,50%</p>
-                </div>
-                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <AlertTriangle className="w-3 h-3 text-destructive" />
-                    <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-destructive">
-                      Gargalo: Checkout
-                    </p>
-                  </div>
-                  <p className="text-xs font-bold text-destructive">– R$ 5.8K/mês</p>
-                </div>
-              </div>
-
-              {/* Análise da IA */}
-              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground">
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-primary">
-                    Análise da IA
-                  </span>
+                  Loop fechado em produção
                 </div>
-                <p className="text-sm text-foreground/90 leading-relaxed">
-                  Seu checkout converte 44% abaixo do benchmark. Recupere até{" "}
-                  <span className="font-bold text-primary">R$ 5.800/mês</span> com 3 ações
-                </p>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-primary">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                  Ao vivo
+                </div>
               </div>
 
-              {/* Badge flutuante: carrinho recuperado */}
-              <div className="absolute -bottom-4 -left-2 bg-card border border-primary/30 rounded-xl px-4 py-3 shadow-xl flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
-                  <CheckCircle2 className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-foreground leading-tight">Carrinho recuperado</p>
-                  <p className="text-[10px] text-muted-foreground leading-tight">Automação WhatsApp</p>
-                </div>
+              <div className="space-y-3">
+                {/* Nó 1: GA4 lê */}
+                <LoopNode
+                  icon={BarChart3}
+                  label="01 — Lê do GA4"
+                  title="3.472 sessões abandonaram checkout"
+                  meta="Fonte: seu GA4 · últimas 24h"
+                />
+                <LoopArrow />
+                {/* Nó 2: IA decide */}
+                <LoopNode
+                  icon={Bot}
+                  label="02 — IA decide"
+                  title="847 contatos do segmento Em Risco priorizados"
+                  meta="Claude Sonnet · janela 7d · oferta winback 12%"
+                />
+                <LoopArrow />
+                {/* Nó 3: Executa */}
+                <LoopNode
+                  icon={MessageCircle}
+                  label="03 — Executa no canal"
+                  title="WhatsApp + Email disparados"
+                  meta="Meta Cloud API oficial · UTM ltvboost_winback"
+                />
+                <LoopArrow />
+                {/* Nó 4: Volta para GA4 */}
+                <LoopNode
+                  icon={RefreshCw}
+                  label="04 — Mensura no GA4"
+                  title="R$ 5.840 atribuídos no seu Analytics"
+                  meta="Auditável pelo seu time · sem caixa-preta"
+                  highlight
+                />
+              </div>
+
+              <div className="mt-5 bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center justify-between">
+                <span className="text-[11px] font-bold text-primary uppercase tracking-wider">
+                  Loop recalibra automaticamente
+                </span>
+                <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin-slow" />
               </div>
             </div>
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function LoopNode({
+  icon: Icon,
+  label,
+  title,
+  meta,
+  highlight,
+}: {
+  icon: typeof BarChart3;
+  label: string;
+  title: string;
+  meta: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-xl border p-3 ${
+        highlight ? "border-primary/40 bg-primary/5" : "border-border/50 bg-secondary/30"
+      }`}
+    >
+      <div
+        className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+          highlight ? "bg-primary/20" : "bg-primary/10"
+        }`}
+      >
+        <Icon className="w-4 h-4 text-primary" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[9px] font-bold tracking-[0.18em] uppercase text-muted-foreground mb-0.5">
+          {label}
+        </p>
+        <p className="text-sm font-bold leading-tight">{title}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">{meta}</p>
+      </div>
+    </div>
+  );
+}
+
+function LoopArrow() {
+  return (
+    <div className="flex justify-center">
+      <ArrowDown className="w-3.5 h-3.5 text-primary/50" />
+    </div>
   );
 }
