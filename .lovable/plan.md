@@ -1,57 +1,64 @@
 
+# Plano: corrigir dados de `/resultado` (todos os blocos com problema)
 
-# Smoke test completo da plataforma — plano
+Como você confirmou que **tudo** está errado (R$, CVR, recomendações da IA, plano sugerido) e a **fonte** é desconhecida, o plano agora é uma auditoria end-to-end do funil `Onboarding → Analisando → gerar-diagnostico → Resultado`, mapear cada número exibido até sua fórmula/origem, e corrigir num PR único.
 
-Como estou em modo plan (read-only), não consigo executar `npm run test` / `tsc` / `build` agora. Aprovando, eu rodo a bateria abaixo no modo default e te entrego o relatório consolidado.
+## Etapa 1 — Auditoria (read-only, eu faço ao aprovar)
 
-## Escopo
+Vou ler e mapear cada widget de `/resultado` à sua origem:
 
-### 1. Static / type checks
-- `npx tsc --noEmit` — checagem de tipos em todo o projeto
-- `npm run lint:changed` — ESLint nos arquivos tocados nas últimas tarefas
+1. `src/pages/Resultado.tsx` — fluxo de carregamento, props passadas a `RecommendationsSimulator`, formatadores.
+2. `src/pages/Analisando.tsx` — payload enviado a `gerar-diagnostico` e onde grava (`diagnostics_v3.diagnostic_json`?).
+3. `src/pages/Onboarding.tsx` + `src/lib/funnel-validation.ts` — escala/unidade dos campos coletados (visitantes mensais? abandono em 0–1 ou 0–100? ticket em reais?).
+4. `src/lib/diagnostico-logic.ts` — `calcDiagnostico` (carrinhos perdidos, receita perdida, plano).
+5. `supabase/functions/gerar-diagnostico/index.ts` — system prompt, escala de `impacto_pp` e `impacto_reais`, parsing.
+6. `src/components/resultado/RecommendationsSimulator.tsx` — já mapeado; valido apenas as **props recebidas**.
+7. **Banco** (via `supabase--read_query`): última linha em `diagnostics_v3` + `funnel_metrics_v3` + `diagnostics` da minha conta de teste para ver os números reais que estão alimentando a tela.
 
-### 2. Smoke files & gates
-- `node scripts/ci/smoke-checks.mjs` — valida arquivos críticos (ProtectedRoute, webhooks, edge functions)
-- `npm run release:check` — bateria de release readiness
+Entrego uma **tabela "número exibido → fórmula → fonte → status (ok/bug)"** antes de codar.
 
-### 3. Unit + integration (Vitest, 92 testes hoje)
-- `npm run test` em modo único
-- Foco esperado:
-  - `ProtectedRoute.test.tsx` (já cobre `pending_activation` indiretamente via `requiredPlan`)
-  - `Dashboard smoke suite` (renders sem `ReferenceError`)
-  - `useConvertIQ`, `useAiAgentConfig`, `attribution-scope`, `funnel-validation`, `dispatch-newsletter-client`, `campaign-dispatch-status`, `review-metrics`, etc.
+## Etapa 2 — Bugs prováveis a confirmar
 
-### 4. Edge functions (Deno)
-- `supabase functions test` (via `supabase--test_edge_functions`) nos shared:
-  - `_shared/inject-utm.test.ts`
-  - `_shared/order-payment-status.test.ts`
-  - `_shared/normalize-webhook.test.ts`
-  - `meta-wa-oauth/oauth_test.ts`
+| # | Bug suspeito | Sintoma na tela |
+|---|---|---|
+| A | `cvrAtualPct` passado como fração (0.014) em vez de % (1.4) | "CVR atual" mostrando 0.01% e projeção absurda |
+| B | `taxa_abandono` salvo em 0–100 mas usado como 0–1 (ou inverso) em `calcDiagnostico` | Receita perdida 100× maior/menor |
+| C | `visitantes` no simulador vindo de campo diário/anual mas tratado como mensal | Receita extra fora de escala |
+| D | IA devolvendo `impacto_pp` em escala inconsistente (0.82 vs 82) | Recomendações com +pp absurdos / soma > 100 |
+| E | `Resultado` lendo de `diagnostics` (legado) em vez de `diagnostics_v3` | Mostra mock antigo, ignora o que `Analisando` salvou |
+| F | `gerar-diagnostico` falhando em parse → fallback mock silencioso | Recomendações genéricas sempre iguais |
+| G | `planoSugerido` baseado em faturamento/clientes mensais, mas recebendo valor anual (ou vice-versa) | Plano sempre "scale" ou sempre "starter" |
+| H | `ticketMedio` em centavos vs reais em algum ponto da cadeia | Receita perdida 100× errada |
 
-### 5. Build de produção
-- `npm run build` (Vite) — confirma tree-shake + chunks ok com as mudanças de Pixel/PendingActivation/Admin
+## Etapa 3 — Correções (no modo default, num único commit)
 
-### 6. Supabase linter
-- `supabase--linter` — pega RLS desabilitada / policies abertas após as migrations novas (`pending_activation`, `admin_get_pending_activations`)
+Para cada bug confirmado:
+- **Padronizar escalas no contrato**: visitantes = mensais; CVR = %; abandono = 0–1; ticket = reais; `impacto_pp` = pontos percentuais (ex.: 0.82). Documentar com JSDoc nos tipos.
+- **Endurecer `gerar-diagnostico`**:
+  - Prompt explícito: "números sem separador de milhar, `impacto_pp` em pp (ex.: 0.5 = meio ponto), `impacto_reais` em reais inteiros".
+  - Verificar `stop_reason` da Anthropic; se `max_tokens`/`length`, subir limite e re-tentar.
+  - `extractJSON` robusto (sem regex destrutivo) + validação Zod do shape antes de salvar.
+  - Fallback NÃO-silencioso: se IA falhar, gravar `status='failed'` em vez de mock, e a UI mostra retry.
+- **`Resultado.tsx`**: ler **sempre** o último `diagnostics_v3` do usuário (`order by created_at desc limit 1`) com `.maybeSingle()`. Se vazio, redirecionar para `/analisando`. Adicionar badge de proveniência (real vs estimated) usando `data-provenance.ts`.
+- **`calcDiagnostico`**: adicionar testes unitários (Vitest) cobrindo casos-limite (abandono 0, 1, ticket 1, visitantes 0) e os bugs B/C/H acima — todos baseados em fixtures reais do seu banco.
+- **Validações cruzadas** (inspirado no padrão sugerido): após calcular, verificar `receita_perdida ≈ carrinhos_perdidos × ticket` (±1%) e `Σ impacto_pp ≤ 100 - cvr_atual`. Se romper, logar `client_error_events` e mostrar warning no card.
 
-### 7. Verificações pontuais (read-only) que já vou fazer agora
-- Conferir o warning de `forwardRef` no `ProtectedRoute` que apareceu no console (`Function components cannot be given refs`) — provavelmente vindo do `<Navigate>` dentro de `<Suspense>`. Vou inspecionar e listar como achado, não corrijo no plan.
-- Conferir se `MetaPixelTracker` está montado dentro do `<Router>` (pra `useLocation` funcionar) e se não quebra SSR/hydration.
-- Conferir se a tela `PendingActivationScreen` cobre o caso de `profile` sem `plan` definido.
+## Etapa 4 — Verificação
 
-### 8. E2E (opcional, mais lento ~3 min)
-- `npm run test:e2e` (Playwright) — `smoke-routes.spec.ts` + `critical-flows.spec.ts` + `funnel-paywall.spec.ts`
-- Só rodo se você quiser; aumenta bastante o tempo.
+- `npm run test` (Vitest) — incluindo novos casos de `diagnostico-logic`.
+- Reproduzir o fluxo na minha conta de teste via `browser--navigate_to_sandbox`: `/onboarding` → `/analisando` → `/resultado`, confirmando cada KPI vs valor calculado à mão.
+- Comparar com o registro novo em `diagnostics_v3` (`supabase--read_query`).
 
-## Entregáveis
+## Arquivos provavelmente editados
 
-- Tabela final: cada bateria → ✅/❌ + tempo + nº de testes
-- Lista de achados (warnings, flakes, regressões) com arquivo + linha
-- Se houver falha vermelha, paro e te mostro antes de tentar corrigir
+- `src/pages/Resultado.tsx`
+- `src/pages/Analisando.tsx` (se persistência for o ponto)
+- `src/lib/diagnostico-logic.ts` + novo `src/lib/__tests__/diagnostico-logic.test.ts` (ou expandir o existente)
+- `supabase/functions/gerar-diagnostico/index.ts`
+- `src/components/resultado/RecommendationsSimulator.tsx` (apenas se as escalas das props mudarem)
 
-## Pergunta rápida antes de seguir
+Sem mudanças de schema. Nenhum secret novo.
 
-Quer que eu inclua o **E2E Playwright** (etapa 8) na bateria? Ele custa ~3 min a mais mas valida `/login`, `/`, `/signup`, dashboard auth e checkout de campanha de ponta a ponta.
+## Antes de aprovar
 
-Sem ajustes na sua resposta, eu rodo **etapas 1–7** (sem Playwright) ao aprovar.
-
+Se quiser acelerar, me diga **qual loja/usuário** posso usar para inspecionar os registros reais (ou autorize que eu pegue o último diagnóstico da sua conta automaticamente). Sem isso, eu uso o usuário mais recente da tabela `diagnostics_v3` como amostra para reproduzir.
