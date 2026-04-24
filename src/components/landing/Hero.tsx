@@ -25,7 +25,7 @@ export default function Hero() {
             </h1>
 
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray) e seu GA4,
+              Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dize) e seu GA4,
               identificamos receita parada, executamos a recuperação por WhatsApp/Email e devolvemos a conversão
               mensurada no seu próprio Analytics — validada também pelo pedido pago na sua loja.
             </p>

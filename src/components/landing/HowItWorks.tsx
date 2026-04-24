@@ -7,7 +7,7 @@ const steps = [
     icon: ShoppingBag,
     step: "00",
     title: "Conecta sua loja",
-    desc: "Conectamos sua plataforma (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray) por OAuth em 1 clique. Sincronizamos contatos, pedidos, catálogo e eventos de carrinho via webhook oficial.",
+    desc: "Conectamos sua plataforma (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dize) por OAuth em 1 clique. Sincronizamos contatos, pedidos, catálogo e eventos de carrinho via webhook oficial.",
   },
   {
     icon: BarChart3,
