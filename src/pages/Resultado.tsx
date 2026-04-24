@@ -20,6 +20,8 @@ import type { DataSource } from "@/lib/data-provenance";
 import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
 import { RecommendationsSimulator, ProjectionPreview } from "@/components/resultado/RecommendationsSimulator";
 import { pickAbVariant } from "@/lib/ab-variant";
+import { WeeklyEvolutionCard } from "@/components/resultado/WeeklyEvolutionCard";
+import { useWeeklyDiagnosticDelta } from "@/hooks/useWeeklyDiagnosticDelta";
 
 type DiagnosticData = {
   resumo?: string;
