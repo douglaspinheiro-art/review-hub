@@ -13,7 +13,7 @@ export default function Hero() {
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-semibold px-4 py-2 rounded-full border border-primary/20">
               <Zap className="w-3.5 h-3.5 fill-primary" />
               <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />
-              Loop fechado em produção · GA4 + Meta Cloud API oficial
+              Loop fechado em produção · GA4 + WhatsApp API oficial
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold leading-[1.05] tracking-tight">
