@@ -82,7 +82,7 @@ export default function Hero() {
                 <LoopNode
                   icon={ShoppingBag}
                   label="00 — Conecta sua loja"
-                  title="Shopify · Nuvemshop · VTEX · WooCommerce · Yampi · Tray"
+                  title="Shopify · Nuvemshop · VTEX · WooCommerce · Yampi · Tray · Dize"
                   meta="OAuth oficial · pedidos, contatos e catálogo sincronizados"
                 />
                 <LoopArrow />
