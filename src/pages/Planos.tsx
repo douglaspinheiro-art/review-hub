@@ -195,7 +195,7 @@ export default function Planos({
             <div className="grid md:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <p className="text-xs font-bold text-primary">🔗 Entrada do loop</p>
-                <p className="text-xs text-muted-foreground">Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dize, Shopee + GA4 + WhatsApp Cloud oficial.</p>
+                <p className="text-xs text-muted-foreground">Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dizy, Shopee + GA4 + WhatsApp Cloud oficial.</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-bold text-primary">🧠 Decisão da IA</p>
@@ -399,7 +399,7 @@ export default function Planos({
                   { q: "Vocês substituem meu GA4?", a: "Não. Somos um cliente do seu Google Analytics 4. Lemos os dados, executamos as ações e devolvemos a receita atribuída no MESMO GA4 que seu time já usa." },
                   { q: "E se eu já tenho ferramenta de WhatsApp?", a: "Migramos sem perder histórico via Meta Cloud API oficial. O número fica em sua conta Meta — você não fica refém da gente." },
                   { q: "Como sei que a receita veio de vocês?", a: "Cada campanha sai com UTM própria (utm_source=ltvboost). A conversão aparece no relatório de aquisição do seu GA4 — auditável pelo seu time de mídia." },
-                  { q: "E se minha loja é Shopify, Nuvemshop ou VTEX?", a: "Suportamos Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dize e Shopee via OAuth oficial. Em 1 clique sincronizamos contatos, pedidos, catálogo e eventos de carrinho via webhook. Sem export de CSV, sem script manual." },
+                  { q: "E se minha loja é Shopify, Nuvemshop ou VTEX?", a: "Suportamos Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dizy e Shopee via OAuth oficial. Em 1 clique sincronizamos contatos, pedidos, catálogo e eventos de carrinho via webhook. Sem export de CSV, sem script manual." },
                   { q: "O que está incluído em todos os planos?", a: "O loop completo: conexão da sua plataforma de e-commerce + GA4, IA de decisão (Claude Sonnet), execução em WhatsApp/Email e atribuição de volta no GA4 validada pelo pedido pago. Os planos variam em volume." },
                 ].map(({ q, a }) => (
                   <div key={q} className="space-y-1">
