@@ -174,11 +174,13 @@ Deno.serve(async (req) => {
       status: "active",
     }));
 
-    await supabaseSvc
-      .from("contacts")
-      .upsert(contactRows, { onConflict: "store_id,phone", ignoreDuplicates: true })
-      .then(() => {}) // ignore contacts errors (backward compat table)
-      .catch(() => {});
+    try {
+      await supabaseSvc
+        .from("contacts")
+        .upsert(contactRows, { onConflict: "store_id,phone", ignoreDuplicates: true });
+    } catch {
+      // ignore contacts errors (backward compat table)
+    }
 
     imported += batch.length;
   }
