@@ -119,6 +119,12 @@ export default function Resultado() {
   const [chsLabel, setChsLabel] = useState("Regular");
   const [storeName, setStoreName] = useState("Sua Loja");
   const [persistedPlan, setPersistedPlan] = useState<"growth" | "scale" | null>(null);
+  // Fonte canônica de funil quando o sessionStorage está vazio (ex.: usuário voltou a /resultado em outra aba/dispositivo).
+  const [dbFunnel, setDbFunnel] = useState<{
+    visitantes?: number;
+    pedido?: number;
+    ticket_medio?: number;
+  } | null>(null);
 
   /** Aguarda o insert em `diagnostics_v3` (pós-/analisando) sem mandar o usuário para /dashboard/diagnostico (paywall). */
   const POLL_MS = 1000;
@@ -162,6 +168,24 @@ export default function Resultado() {
           setChsLabel(diagData.chs_label ?? "Regular");
           const rp = (diagData as { recommended_plan?: string | null }).recommended_plan;
           if (rp === "growth" || rp === "scale") setPersistedPlan(rp);
+          // Backfill canônico do funil a partir do banco (cobre o caso de sessionStorage vazio).
+          const { data: fmRow } = await supabase
+            .from("funnel_metrics")
+            .select("visitantes,compras,receita")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (fmRow) {
+            const v = Number((fmRow as { visitantes?: number }).visitantes) || 0;
+            const c = Number((fmRow as { compras?: number }).compras) || 0;
+            const r = Number((fmRow as { receita?: number }).receita) || 0;
+            setDbFunnel({
+              visitantes: v > 0 ? v : undefined,
+              pedido: c > 0 ? c : undefined,
+              ticket_medio: c > 0 && r > 0 ? Math.round(r / c) : undefined,
+            });
+          }
           setLoading(false);
           setMissingDiagnostic(false);
           void trackFunnelEvent({
@@ -194,9 +218,10 @@ export default function Resultado() {
 
   // Compute loss from funnel data — parse seguro evita quebra por payload corrompido.
   const funnel = safeParseFunnel();
-  const ticketMedio = funnel?.ticket_medio || 250;
-  const visitantesNum = funnel?.visitantes || 12400;
-  const pedidosNum = funnel?.pedido ?? 174;
+  // Prioridade: sessionStorage (acabou de gerar) → banco (funnel_metrics) → null (sem mock fictício).
+  const ticketMedio = funnel?.ticket_medio || dbFunnel?.ticket_medio || 250;
+  const visitantesNum = funnel?.visitantes || dbFunnel?.visitantes || 0;
+  const pedidosNum = funnel?.pedido ?? dbFunnel?.pedido ?? 0;
   const hasTaxaConversaoField = typeof funnel?.taxa_conversao === "number";
   const derivedCvrPct =
     visitantesNum > 0 ? (pedidosNum / visitantesNum) * 100 : null;
