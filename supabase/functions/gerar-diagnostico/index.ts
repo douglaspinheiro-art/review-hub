@@ -333,7 +333,14 @@ serve(async (req) => {
       // C1. Novos campos opcionais vindos do client (proveniência)
       field_provenance = null,
       real_signals_pct_client = null,
+      // Onda 11 — Diagnóstico Continuado
+      trigger_source: trigger_source_input = "manual",
     } = bodyJson;
+
+    const triggerSource: "manual" | "weekly" | "onboarding" =
+      trigger_source_input === "weekly" || trigger_source_input === "onboarding"
+        ? trigger_source_input
+        : "manual";
 
     const storeUuid =
       typeof loja_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(loja_id)
