@@ -64,6 +64,7 @@ const Index = () => {
         <ClientLogos />
         <HowItWorks />
         <ClosedLoopProof />
+        <CompetitorComparison />
         <DiagnosticPreview />
         <Solutions />
         <Metrics />
@@ -74,7 +75,6 @@ const Index = () => {
         <Cases />
         <Testimonials />
         <ScarcityBanner />
-        <CompetitorComparison />
         <Pricing />
         <FAQ />
         <FooterCTA />
