@@ -9,7 +9,8 @@
  */
 
 import { Inngest } from "https://esm.sh/inngest@3";
-import { serve } from "https://esm.sh/inngest@3?deno-std=0.168.0&target=deno&exports=serve";
+// Inngest's Deno-compatible serve handler lives under /deno
+import { serve } from "https://esm.sh/inngest@3/deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const inngest = new Inngest({ id: "ltv-boost" });

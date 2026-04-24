@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
       store_id: storeId,
       user_id: store.user_id,
       platform,
-      payload_normalized: normalized as Record<string, unknown>,
+      payload_normalized: normalized as unknown as Record<string, unknown>,
       status: "pending",
       ...(externalId ? { external_id: externalId } : {}),
     };

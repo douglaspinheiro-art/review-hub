@@ -252,7 +252,8 @@ Deno.serve(async (req) => {
       connected_at: metaPhoneNumberId ? nowIso : null,
     };
 
-    let inserted: { id: string; instance_name: string; status: string; meta_phone_number_id: string | null } | null = null;
+    type InsertedRow = { id: string; instance_name: string; status: string; meta_phone_number_id: string | null };
+    let inserted: InsertedRow | null = null;
     let upsertErr: { message: string } | null = null;
 
     if (metaPhoneNumberId) {
@@ -261,7 +262,7 @@ Deno.serve(async (req) => {
         .upsert(baseRow, { onConflict: "store_id,meta_phone_number_id" })
         .select("id, instance_name, status, meta_phone_number_id")
         .single();
-      inserted = result.data as typeof inserted;
+      inserted = result.data as unknown as InsertedRow | null;
       upsertErr = result.error;
     } else {
       // Sem phone_number_id não existe chave única — apenas insere.
@@ -270,7 +271,7 @@ Deno.serve(async (req) => {
         .insert(baseRow)
         .select("id, instance_name, status, meta_phone_number_id")
         .single();
-      inserted = result.data as typeof inserted;
+      inserted = result.data as unknown as InsertedRow | null;
       upsertErr = result.error;
     }
 

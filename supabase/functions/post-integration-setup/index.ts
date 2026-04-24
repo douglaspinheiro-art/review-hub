@@ -3,7 +3,11 @@
  * Mantém os mesmos defaults que `src/lib/automations-meta.ts` + `src/lib/journey-defaults.ts` (sincronizar ao alterar).
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// Loose client type — schema generics from supabase-js v2 narrow `from()` to `never`
+// when used in mixed-version edge runtimes; we want a permissive client here.
+type LooseClient = SupabaseClient<any, "public", any>;
 
 function cors(): Record<string, string> {
   return {
@@ -14,7 +18,7 @@ function cors(): Record<string, string> {
 }
 
 async function runSeeding(
-  client: ReturnType<typeof createClient>,
+  client: LooseClient,
   userId: string,
 ): Promise<{ automationsSeeded: boolean; journeysStoresSeeded: number }> {
   let automationsSeeded = false;
@@ -50,7 +54,7 @@ async function runSeeding(
   let journeysStoresSeeded = 0;
   const nowIso = new Date().toISOString();
 
-  for (const row of stores ?? []) {
+  for (const row of (stores ?? []) as Array<{ id: string }>) {
     const { count: jc, error: jcErr } = await client
       .from("journeys_config")
       .select("id", { count: "exact", head: true })
