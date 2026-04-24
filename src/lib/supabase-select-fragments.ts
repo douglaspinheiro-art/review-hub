@@ -11,7 +11,7 @@ export const CAMPAIGN_MESSAGE_TEMPLATE_SELECT =
 
 /** Perfil mínimo para sessão / guards (AuthContext + Configurações baseline). */
 export const PROFILE_SESSION_SELECT =
-  "id,full_name,company_name,plan,role,trial_ends_at,onboarding_completed,subscription_status,ia_negotiation_enabled,ia_max_discount_pct,social_proof_enabled,pix_key";
+  "id,full_name,company_name,plan,role,trial_ends_at,onboarding_completed,subscription_status,ia_negotiation_enabled,ia_max_discount_pct,social_proof_enabled,pix_key,activation_requested_at,activation_message_sent_at,activated_at";
 
 export const STORE_V3_PUBLIC_SELECT =
   "id,user_id,name,segment,conversion_health_score,chs_history,pix_key,brand_primary_color,email_from_address,email_reply_to,created_at,updated_at";
