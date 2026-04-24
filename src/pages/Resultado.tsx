@@ -713,6 +713,12 @@ export default function Resultado() {
         )}
 
         {/* Plano de Ação — gated para usuários sem plano ativo */}
+        {recomendacoes.length > 0 && !isActive && (
+          <ClosedLoopTimeline
+            perdaMensal={perdaMensal}
+            segmentoFoco={diagnostic?.perda_principal}
+          />
+        )}
         {recomendacoes.length > 0 && (
           isActive ? (
             <RecommendationsSimulator
