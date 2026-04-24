@@ -21,8 +21,15 @@ export interface NextStepInput {
  */
 export function getNextStep({ profile, hasDiagnostic }: NextStepInput): NextStepRoute {
   if (!profile) return "/onboarding";
-  // Paid users skip the funnel entirely — go straight to dashboard.
-  if (profile.subscription_status === "active") return "/dashboard";
+  // Paid users (active OR pending_activation) skip the funnel — vão para
+  // /dashboard, e o DashboardLayout decide se mostra a tela de bloqueio
+  // PendingActivationScreen ou o produto.
+  if (
+    profile.subscription_status === "active" ||
+    profile.subscription_status === "pending_activation"
+  ) {
+    return "/dashboard";
+  }
   if (!profile.onboarding_completed) return "/onboarding";
   if (!hasDiagnostic) return "/analisando";
   return "/resultado";
