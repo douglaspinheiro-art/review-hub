@@ -39,6 +39,15 @@ type DiagnosticData = {
     prazo_semanas: number;
     tipo: string;
   }>;
+  /** Campo real retornado pela edge `gerar-diagnostico` (e pelo fallback local). */
+  recomendacoes_ux?: Array<{
+    titulo: string;
+    descricao: string;
+    esforco: string;
+    impacto_pp: number;
+    prazo_semanas: number;
+    tipo: string;
+  }>;
   oportunidades?: Array<{
     titulo: string;
     descricao: string;
@@ -326,7 +335,12 @@ export default function Resultado() {
   }
 
   const problemas = diagnostic?.problemas || [];
-  const recomendacoes = diagnostic?.recomendacoes || [];
+  // A edge `gerar-diagnostico` (e o fallback local) gravam em `recomendacoes_ux`.
+  // Mantemos `recomendacoes` como fallback para diagnósticos antigos / payloads alternativos.
+  const recomendacoes =
+    diagnostic?.recomendacoes_ux?.length
+      ? diagnostic.recomendacoes_ux
+      : diagnostic?.recomendacoes || [];
   const oportunidades = diagnostic?.oportunidades || [];
   const forecast = diagnostic?.forecast_30d;
   const meta = diagnostic?.meta;
