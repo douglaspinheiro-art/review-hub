@@ -18,7 +18,7 @@ import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 import type { DataSource } from "@/lib/data-provenance";
 import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
-import { RecommendationsSimulator } from "@/components/resultado/RecommendationsSimulator";
+import { RecommendationsSimulator, ProjectionPreview } from "@/components/resultado/RecommendationsSimulator";
 import { pickAbVariant } from "@/lib/ab-variant";
 
 type DiagnosticData = {
