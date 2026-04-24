@@ -21,6 +21,7 @@ import { supabase } from "@/lib/supabase";
 import { useSistemaConfig } from "@/hooks/useSistemaConfig";
 import { useIsAdmin } from "@/hooks/useAdminCheck";
 import { MultiTenantAudit } from "@/components/admin/MultiTenantAudit";
+import { PendingActivations } from "@/components/admin/PendingActivations";
 import { toast } from "sonner";
 
 // ─── Pilot Monitor Tab ─────────────────────────────────────────────────────────
@@ -427,7 +428,10 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue="manutencao" className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4 h-auto p-1 rounded-xl mb-6">
+        <TabsList className="grid w-full max-w-3xl grid-cols-5 h-auto p-1 rounded-xl mb-6">
+          <TabsTrigger value="aprovacoes" className="rounded-lg text-xs py-2.5 font-bold">
+            ✅ Aprovações
+          </TabsTrigger>
           <TabsTrigger value="manutencao" className="rounded-lg text-xs py-2.5 font-bold">
             ⚙️ Manutenção
           </TabsTrigger>
@@ -441,6 +445,10 @@ export default function Admin() {
             🛡️ Multi-tenant
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="aprovacoes" className="outline-none">
+          <PendingActivations />
+        </TabsContent>
 
         <TabsContent value="manutencao" className="space-y-6 outline-none">
           <Card className="border-border/60">

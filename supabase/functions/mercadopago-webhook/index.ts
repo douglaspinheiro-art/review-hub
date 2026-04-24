@@ -201,8 +201,11 @@ serve(async (req) => {
       if (status === "approved") {
         if (plan) patch.plan = plan;
         if (mpCustomerId) patch.mp_customer_id = mpCustomerId;
-        patch.subscription_status = "active";
-        console.log(`[mp-webhook] payment approved for user ${userId}, plan: ${plan}`);
+        // NOVO: pagamento aprovado entra em "pending_activation" — a loja
+        // só é liberada quando o admin clicar em "Ativar loja" no painel.
+        patch.subscription_status = "pending_activation";
+        patch.activation_requested_at = new Date().toISOString();
+        console.log(`[mp-webhook] payment approved for user ${userId}, plan: ${plan} → pending_activation`);
       } else if (status === "cancelled" || status === "refunded" || status === "rejected") {
         patch.plan = "starter";
         patch.mp_subscription_id = null;
@@ -298,8 +301,9 @@ serve(async (req) => {
           if (status === "authorized" || status === "active") {
             patch.mp_subscription_id = sub.id;
             if (resolvedPlan) patch.plan = resolvedPlan;
-            patch.subscription_status = "active";
-            console.log(`[mp-webhook] subscription ${status} for user ${userId}, plan: ${resolvedPlan}`);
+            patch.subscription_status = "pending_activation";
+            patch.activation_requested_at = new Date().toISOString();
+            console.log(`[mp-webhook] subscription ${status} for user ${userId}, plan: ${resolvedPlan} → pending_activation`);
           } else if (status === "cancelled" || status === "paused") {
             patch.mp_subscription_id = null;
             patch.subscription_status = status === "paused" ? "past_due" : "canceled";

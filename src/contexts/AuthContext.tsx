@@ -3,7 +3,12 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { PROFILE_SESSION_SELECT } from "@/lib/supabase-select-fragments";
 
-export type SubscriptionStatus = "diagnostic_only" | "active" | "past_due" | "canceled";
+export type SubscriptionStatus =
+  | "diagnostic_only"
+  | "pending_activation"
+  | "active"
+  | "past_due"
+  | "canceled";
 
 export interface Profile {
   id: string;
@@ -19,6 +24,12 @@ export interface Profile {
   ia_max_discount_pct: number | null;
   social_proof_enabled: boolean | null;
   pix_key: string | null;
+  /** Set quando MP webhook aprova pagamento; cliente entra em "pending_activation". */
+  activation_requested_at?: string | null;
+  /** Set quando o cliente clica em "Já enviei" / abre o WhatsApp. */
+  activation_message_sent_at?: string | null;
+  /** Set quando o admin ativa via RPC admin_activate_store. */
+  activated_at?: string | null;
 }
 
 interface AuthContextType {

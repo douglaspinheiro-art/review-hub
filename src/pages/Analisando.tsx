@@ -80,13 +80,14 @@ export default function Analisando() {
         metadata: {},
       });
 
-      // Guard: paid users should never sit on /analisando — send them straight to dashboard.
+      // Guard: paid users (active OR pending_activation) never sit on /analisando.
       const { data: profileRow } = await supabase
         .from("profiles")
         .select("subscription_status")
         .eq("id", userId)
         .maybeSingle();
-      if ((profileRow as { subscription_status?: string } | null)?.subscription_status === "active") {
+      const subStatus = (profileRow as { subscription_status?: string } | null)?.subscription_status;
+      if (subStatus === "active" || subStatus === "pending_activation") {
         navigatedToResultadoRef.current = true;
         navigate("/dashboard", { replace: true });
         return;
