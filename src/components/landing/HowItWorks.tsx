@@ -13,7 +13,7 @@ const steps = [
     icon: BarChart3,
     step: "01",
     title: "Lê do GA4",
-    desc: "Conectamos seu Google Analytics 4 em 2 cliques. Lemos sessões, eventos do funil e atribuição reais — não estimamos, não inventamos.",
+     desc: "Conectamos seu Google Analytics 4 em 2 cliques. Lemos sessões, eventos do funil e atribuição reais - não estimamos, não inventamos.",
   },
   {
     icon: Bot,

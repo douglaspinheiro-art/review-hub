@@ -28,11 +28,11 @@ export default function CategoryPositioning() {
               <h2 className="text-2xl md:text-3xl font-display font-bold">
                 Closed-Loop Revenue Recovery para e-commerce
               </h2>
-              <p className="text-sm text-muted-foreground max-w-3xl">
-                Não é dashboard, não é chatbot, não é consultoria. É o loop fechado entre os três sistemas da sua operação
-                — plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dizy), GA4 e canal (WhatsApp/Email)
-                — com a receita devolvida ao seu Analytics e validada pelo pedido pago na sua loja.
-              </p>
+               <p className="text-sm text-muted-foreground max-w-3xl">
+                 Não é dashboard, não é chatbot, não é consultoria. É o loop fechado entre os três sistemas da sua operação
+                 - plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dizy), GA4 e canal (WhatsApp/Email)
+                 - com a receita devolvida ao seu Analytics e validada pelo pedido pago na sua loja.
+               </p>
             </div>
             <Button asChild className="h-11 px-6 gap-1.5">
               <a href="/signup">
