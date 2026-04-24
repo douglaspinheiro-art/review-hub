@@ -35,7 +35,7 @@ export default function FooterCTA() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Trial de 14 dias grátis · Sem cartão de crédito · Setup em 5 minutos
+              Sem cartão de crédito · Setup em 5 minutos
             </p>
           </div>
         </div>

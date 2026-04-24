@@ -10,18 +10,18 @@ const LANDING_PLANS = [
     key: "starter" as const,
     badge: undefined,
     highlight: false,
-    cta: "Iniciar trial de 14 dias",
+    cta: "Começar agora",
   },
   {
     key: "growth" as const,
     highlight: true,
     badge: "Mais popular",
-    cta: "Iniciar trial de 14 dias",
+    cta: "Começar agora",
   },
   {
     key: "scale" as const,
     highlight: false,
-    cta: "Iniciar trial de 14 dias",
+    cta: "Começar agora",
   },
 ];
 
