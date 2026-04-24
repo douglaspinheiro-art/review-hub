@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Star, Sparkles, BarChart3, Bot, MessageCircle, ArrowDown, RefreshCw } from "lucide-react";
+import { ArrowRight, Star, Sparkles, BarChart3, Bot, MessageCircle, ArrowDown, RefreshCw, ShoppingBag } from "lucide-react";
 
 export default function Hero() {
   return (
@@ -20,19 +20,20 @@ export default function Hero() {
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold leading-[1.05] tracking-tight">
-              O único loop fechado:{" "}
-              <span className="text-gradient">GA4 → IA → WhatsApp → GA4.</span>
+              Sua loja + GA4 → IA → WhatsApp →{" "}
+              <span className="text-gradient">resultado de volta no seu Analytics.</span>
             </h1>
 
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              Conectamos o GA4 da sua loja, identificamos receita parada, executamos a recuperação por WhatsApp/Email
-              e devolvemos o resultado mensurado no seu próprio Analytics. Sem dashboard paralelo. Sem dado inventado.
+              Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray) e seu GA4,
+              identificamos receita parada, executamos a recuperação por WhatsApp/Email e devolvemos a conversão
+              mensurada no seu próprio Analytics — validada também pelo pedido pago na sua loja.
             </p>
 
             <div className="flex flex-wrap gap-2">
               {[
+                "Conecta Shopify/Nuvemshop/VTEX em 1 clique",
                 "Lê do seu GA4 (não estimamos)",
-                "IA decide e executa no canal",
                 "Receita atribuída de volta no GA4",
               ].map((proof) => (
                 <span
@@ -76,7 +77,15 @@ export default function Hero() {
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2.5">
+                {/* Nó 0: Conecta loja */}
+                <LoopNode
+                  icon={ShoppingBag}
+                  label="00 — Conecta sua loja"
+                  title="Shopify · Nuvemshop · VTEX · WooCommerce · Yampi · Tray"
+                  meta="OAuth oficial · pedidos, contatos e catálogo sincronizados"
+                />
+                <LoopArrow />
                 {/* Nó 1: GA4 lê */}
                 <LoopNode
                   icon={BarChart3}
@@ -90,7 +99,7 @@ export default function Hero() {
                   icon={Bot}
                   label="02 — IA decide"
                   title="847 contatos do segmento Em Risco priorizados"
-                  meta="Claude Sonnet · janela 7d · oferta winback 12%"
+                  meta="Claude Sonnet · RFM da plataforma + comportamento do GA4"
                 />
                 <LoopArrow />
                 {/* Nó 3: Executa */}
@@ -106,7 +115,7 @@ export default function Hero() {
                   icon={RefreshCw}
                   label="04 — Mensura no GA4"
                   title="R$ 5.840 atribuídos no seu Analytics"
-                  meta="Auditável pelo seu time · sem caixa-preta"
+                  meta="GA4 + pedido `paid` na sua plataforma · sem dupla contagem"
                   highlight
                 />
               </div>
@@ -140,22 +149,22 @@ function LoopNode({
 }) {
   return (
     <div
-      className={`flex items-start gap-3 rounded-xl border p-3 ${
+      className={`flex items-start gap-3 rounded-xl border p-2.5 ${
         highlight ? "border-primary/40 bg-primary/5" : "border-border/50 bg-secondary/30"
       }`}
     >
       <div
-        className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
           highlight ? "bg-primary/20" : "bg-primary/10"
         }`}
       >
-        <Icon className="w-4 h-4 text-primary" />
+        <Icon className="w-3.5 h-3.5 text-primary" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[9px] font-bold tracking-[0.18em] uppercase text-muted-foreground mb-0.5">
           {label}
         </p>
-        <p className="text-sm font-bold leading-tight">{title}</p>
+        <p className="text-[13px] font-bold leading-tight">{title}</p>
         <p className="text-[10px] text-muted-foreground mt-0.5">{meta}</p>
       </div>
     </div>
