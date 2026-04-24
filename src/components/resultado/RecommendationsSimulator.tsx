@@ -24,6 +24,101 @@ interface Props {
 }
 
 /**
+ * Sub-componente reutilizável: painel "Sua projeção".
+ * Renderizado tanto dentro do `RecommendationsSimulator` (para usuários pagos
+ * que veem o plano de ação completo) quanto isoladamente em `/resultado`
+ * (para visitantes/trial — sempre visível, fora do gate).
+ *
+ * Quando exibido isoladamente, calcula a projeção assumindo TODAS as
+ * recomendações aplicadas (cenário "potencial total"), pois não há
+ * interação de seleção sem a lista de cards.
+ */
+export function ProjectionPreview({
+  recomendacoes,
+  visitantes,
+  ticketMedio,
+  cvrAtualPct,
+}: Props) {
+  const sim = useMemo(() => {
+    let liftPp = 0;
+    let prazoMaxSemanas = 0;
+    recomendacoes.forEach((r) => {
+      liftPp += Number(r.impacto_pp) || 0;
+      prazoMaxSemanas = Math.max(prazoMaxSemanas, Number(r.prazo_semanas) || 0);
+    });
+    const cvrProjetada = Math.max(0, cvrAtualPct + liftPp);
+    const pedidosAtuais = (cvrAtualPct / 100) * visitantes;
+    const pedidosProjetados = (cvrProjetada / 100) * visitantes;
+    const receitaExtraMes = Math.max(
+      0,
+      Math.round((pedidosProjetados - pedidosAtuais) * ticketMedio),
+    );
+    const receita90d = receitaExtraMes * 3;
+    return { liftPp, cvrProjetada, receitaExtraMes, receita90d, prazoMaxSemanas };
+  }, [recomendacoes, cvrAtualPct, visitantes, ticketMedio]);
+
+  if (!recomendacoes.length) return null;
+
+  return (
+    <div className="border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent rounded-2xl p-6 space-y-5">
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-emerald-500" />
+        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500/80">
+          Sua projeção
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          Receita extra em 90 dias
+        </p>
+        <p className="text-3xl md:text-4xl font-black font-jetbrains text-emerald-500 tracking-tighter leading-none">
+          R$ {sim.receita90d.toLocaleString("pt-BR")}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          R$ {sim.receitaExtraMes.toLocaleString("pt-BR")}/mês adicionais
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-emerald-500/15">
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+            CVR atual
+          </p>
+          <p className="text-base font-black font-jetbrains">{cvrAtualPct.toFixed(2)}%</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-500/80 mb-1">
+            CVR projetada
+          </p>
+          <p className="text-base font-black font-jetbrains text-emerald-500">
+            {sim.cvrProjetada.toFixed(2)}%
+          </p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+            Ganho total
+          </p>
+          <p className="text-base font-black font-jetbrains">+{sim.liftPp.toFixed(2)}pp</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+            Prazo
+          </p>
+          <p className="text-base font-black font-jetbrains">
+            {sim.prazoMaxSemanas > 0 ? `${sim.prazoMaxSemanas}sem` : "—"}
+          </p>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground italic leading-relaxed pt-3 border-t border-emerald-500/15">
+        Estimativa = Δpp × visitantes × ticket médio. Resultado real depende da execução de cada ação.
+      </p>
+    </div>
+  );
+}
+
+/**
  * 3.2 — Simulador interativo de recomendações.
  * O lojista marca quais ações pretende aplicar e vê em tempo real:
  *  - ganho projetado de CVR (em pp)

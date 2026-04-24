@@ -18,7 +18,7 @@ import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { FreshnessIndicator } from "@/components/dashboard/trust/FreshnessIndicator";
 import type { DataSource } from "@/lib/data-provenance";
 import { estimatePeerPercentile, type EcommerceVerticalKey } from "@/lib/industry-benchmarks";
-import { RecommendationsSimulator } from "@/components/resultado/RecommendationsSimulator";
+import { RecommendationsSimulator, ProjectionPreview } from "@/components/resultado/RecommendationsSimulator";
 import { pickAbVariant } from "@/lib/ab-variant";
 
 type DiagnosticData = {
@@ -690,9 +690,9 @@ export default function Resultado() {
           </div>
         )}
 
-        {/* Recommendations */}
+        {/* Sua projeção — sempre visível (fora do paywall) */}
         {recomendacoes.length > 0 && (
-          <RecommendationsSimulator
+          <ProjectionPreview
             recomendacoes={recomendacoes}
             visitantes={visitantesNum}
             ticketMedio={ticketMedio}
@@ -700,10 +700,61 @@ export default function Resultado() {
           />
         )}
 
+        {/* Plano de Ação — gated para usuários sem plano ativo */}
+        {recomendacoes.length > 0 && (
+          isActive ? (
+            <RecommendationsSimulator
+              recomendacoes={recomendacoes}
+              visitantes={visitantesNum}
+              ticketMedio={ticketMedio}
+              cvrAtualPct={taxaConversaoAtual}
+            />
+          ) : (
+            <div className="relative">
+              <div className="filter blur-[6px] opacity-60 pointer-events-none select-none">
+                <RecommendationsSimulator
+                  recomendacoes={recomendacoes}
+                  visitantes={visitantesNum}
+                  ticketMedio={ticketMedio}
+                  cvrAtualPct={taxaConversaoAtual}
+                />
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0F1614]/70 to-[#0F1614]/95 rounded-2xl flex items-end justify-center p-6">
+                <div className="border border-emerald-500/30 bg-[#0F1614]/95 backdrop-blur-xl rounded-2xl p-6 md:p-8 text-center space-y-4 shadow-[0_0_40px_rgba(16,185,129,0.15)] max-w-md w-full">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30">
+                    <Lock className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-lg md:text-xl font-black font-syne tracking-tighter">
+                      Desbloqueie seu plano de ação completo
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {recomendacoes.length} recomendações priorizadas por impacto e esforço
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      void trackFunnelEvent({
+                        event: "resultado_cta_clicked",
+                        metadata: { section: "plano_acao", target: "planos-inline" },
+                      });
+                      document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black tracking-widest uppercase text-xs px-6 h-11 border-0 shadow-lg shadow-emerald-900/30"
+                  >
+                    <Lock className="w-3.5 h-3.5 mr-2" /> Desbloquear plano de ação
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )
+        )}
 
-        {/* Inline checkout — 3 plans, monthly/annual toggle, recommended highlighted */}
+
+        {/* Oportunidades adicionais — gated para usuários sem plano ativo */}
         {oportunidades.length > 0 && (
-          <div className="space-y-4">
+          isActive ? (
+            <div className="space-y-4">
             <h2 className="text-xl font-bold font-syne uppercase tracking-tighter flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-primary" /> Oportunidades adicionais
             </h2>
@@ -727,7 +778,56 @@ export default function Resultado() {
                 </div>
               ))}
             </div>
-          </div>
+            </div>
+          ) : (() => {
+            const totalPotencial = oportunidades.reduce((sum, o) => sum + (o.potencial_reais ?? 0), 0);
+            return (
+              <div className="relative">
+                <div className="filter blur-[6px] opacity-60 pointer-events-none select-none space-y-4">
+                  <h2 className="text-xl font-bold font-syne uppercase tracking-tighter flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-primary" /> Oportunidades adicionais
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {oportunidades.map((o, i) => (
+                      <div key={i} className="border border-primary/20 bg-primary/5 rounded-2xl p-5 space-y-2 min-h-[120px]">
+                        <h3 className="text-sm font-bold">{o.titulo}</h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{o.descricao}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0F1614]/70 to-[#0F1614]/95 rounded-2xl flex items-center justify-center p-6">
+                  <div className="border border-emerald-500/30 bg-[#0F1614]/95 backdrop-blur-xl rounded-2xl p-6 md:p-8 text-center space-y-4 shadow-[0_0_40px_rgba(16,185,129,0.15)] max-w-md w-full">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30">
+                      <Lock className="w-5 h-5 text-emerald-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h3 className="text-lg md:text-xl font-black font-syne tracking-tighter">
+                        Desbloqueie {oportunidades.length} oportunidades adicionais
+                      </h3>
+                      {totalPotencial > 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          +R$ {totalPotencial.toLocaleString("pt-BR")}/mês de potencial bloqueado
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      onClick={() => {
+                        void trackFunnelEvent({
+                          event: "resultado_cta_clicked",
+                          metadata: { section: "oportunidades", target: "planos-inline" },
+                        });
+                        document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-black tracking-widest uppercase text-xs px-6 h-11 border-0 shadow-lg shadow-emerald-900/30"
+                    >
+                      <Lock className="w-3.5 h-3.5 mr-2" /> Desbloquear oportunidades
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
         )}
 
         {forecast && (forecast.minimo || forecast.maximo || forecast.com_prescricoes) && (
