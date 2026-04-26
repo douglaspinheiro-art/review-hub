@@ -27,6 +27,10 @@ Deno.serve(async (req) => {
   const requestId = crypto.randomUUID();
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
+  // Support both query-style (?action=callback) and path-style (/callback) callbacks.
+  // Shopify Partners requires the redirect_uri host to match the App URL host; using a
+  // path segment keeps the URL cleaner and easier to whitelist.
+  const isPathCallback = url.pathname.endsWith("/callback");
 
   // ── START: Generate Shopify OAuth URL ────────────────────────────────────
   if (action === "start") {
@@ -62,7 +66,8 @@ Deno.serve(async (req) => {
       extra_data: { shop: shopDomain },
     });
 
-    const callbackUrl = `${SUPABASE_URL}/functions/v1/oauth-shopify?action=callback`;
+    const callbackUrl = `${SUPABASE_URL}/functions/v1/oauth-shopify/callback`;
+    console.log(JSON.stringify({ request_id: requestId, platform: "shopify", phase: "start", redirect_uri: callbackUrl }));
     const authUrl = `https://${shopDomain}/admin/oauth/authorize?client_id=${SHOPIFY_CLIENT_ID}&scope=${SCOPES}&redirect_uri=${encodeURIComponent(callbackUrl)}&state=${stateToken}`;
 
     logOAuth(requestId, "start", { store_id: storeId, ok: true });
@@ -70,7 +75,7 @@ Deno.serve(async (req) => {
   }
 
   // ── CALLBACK: Exchange code for permanent token ──────────────────────────
-  if (action === "callback") {
+  if (action === "callback" || isPathCallback) {
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     const shop = url.searchParams.get("shop");
