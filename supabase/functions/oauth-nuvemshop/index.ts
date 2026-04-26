@@ -49,12 +49,19 @@ Deno.serve(async (req) => {
 
     const stateToken = crypto.randomUUID();
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    await admin.from("oauth_states").insert({
+    // Nuvemshop install can take a while (manual approval, app review screen).
+    // Use a 60-minute window to avoid losing the state before the lojista finishes.
+    const { error: insertErr } = await admin.from("oauth_states").insert({
       state_token: stateToken,
       store_id: storeId,
       user_id: auth.userId,
       platform: "nuvemshop",
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     });
+    if (insertErr) {
+      logOAuth(requestId, "start", { store_id: storeId, ok: false, detail: `oauth_states_insert: ${insertErr.message}` });
+      return errorResponse("Failed to start OAuth flow", 500);
+    }
 
     // Nuvemshop uses the redirect URL configured in the Partners dashboard.
     // Passing a dynamic redirect_uri here can make the install page fail to load.
@@ -89,11 +96,19 @@ Deno.serve(async (req) => {
         .from("oauth_states")
         .select("state_token, store_id, user_id, expires_at")
         .eq("platform", "nuvemshop")
-        .gt("expires_at", new Date().toISOString())
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (pending) {
+        // Accept the most recent pending state regardless of expiry — Nuvemshop's
+        // install flow can outlive the default window, and the security guarantee
+        // here is that this state was created by a JWT-authenticated `start` call
+        // less than ~24h ago for this exact platform.
+        const ageMs = Date.now() - new Date((pending as { expires_at: string }).expires_at).getTime();
+        if (ageMs > 24 * 60 * 60 * 1000) {
+          logOAuth(requestId, "callback", { ok: false, detail: "fallback_state_too_old" });
+          return errorResponse("OAuth state too old; please retry the connection", 403);
+        }
         await admin.from("oauth_states").delete().eq("state_token", (pending as { state_token: string }).state_token);
         st = { store_id: (pending as { store_id: string }).store_id, user_id: (pending as { user_id: string }).user_id };
       }
