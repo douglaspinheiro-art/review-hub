@@ -1,0 +1,31 @@
+# shopify.app.toml — registrado via Shopify CLI (shopify app deploy)
+# Substitua <SHOPIFY_CLIENT_ID> pelo Client ID real do Partner Dashboard antes de rodar `shopify app deploy`.
+client_id = "<SHOPIFY_CLIENT_ID>"
+name = "LTV Boost"
+application_url = "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify"
+embedded = false
+
+[access_scopes]
+scopes = "read_orders,read_customers,read_products,read_checkouts"
+
+[auth]
+redirect_urls = [
+  "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-04"
+
+[[webhooks.subscriptions]]
+compliance_topics = [
+  "customers/data_request",
+  "customers/redact",
+  "shop/redact"
+]
+uri = "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/shopify-compliance-webhooks"
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true

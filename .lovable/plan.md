@@ -1,47 +1,106 @@
-## Diagnóstico das screenshots
+## Objetivo
+Passar nos 3 itens reprovados do automated check da Shopify:
+1. **Webhooks de conformidade obrigatórios** — declarar `compliance_topics` no app
+2. **Verificação HMAC** — garantir 401 em assinatura inválida, 200 em válida (já implementado, mas precisa estar registrado)
+3. **Redirect para UI do lojista após autenticação** — não cair em `postMessage`/`window.close` no fluxo de install
 
-A maior parte da configuração está correta, mas **3 pontos precisam de ajuste** no Shopify Partners (e não exigem mudança de código nosso):
+---
 
-### ✅ Já está correto
-- **URL do app**: `https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify`
-- **URLs de redirecionamento**: `.../oauth-shopify/callback`
-- **"Usar fluxo de instalação legado"** marcado — combina com o nosso código (OAuth clássico).
-- **Versão da API de webhooks**: `2026-04`
-- **Escopos**: a lista é gigantesca. Nosso código só usa `read_orders, read_customers, read_products, read_checkouts`. **Sugestão:** reduzir para esses 4 — escopos demais fazem a Shopify reprovar no review ("requesting more access than necessary").
+## 1. Criar `shopify.app.toml` na raiz do projeto
 
-### ⚠️ Precisa ajustar no Partners (você faz, sem código)
+A Shopify lê esse arquivo via `shopify app deploy` para registrar os webhooks de compliance no Partner Dashboard. Sem ele, o scanner reporta "compliance webhooks ausentes" mesmo se a function existir e responder corretamente.
 
-**1. URL de preferências** está apontando para o callback OAuth:
+Conteúdo (raiz do repo):
+
+```toml
+# shopify.app.toml — registrado via Shopify CLI (shopify app deploy)
+client_id = "<SHOPIFY_CLIENT_ID>"   # mesmo do Partner
+name = "LTV Boost"
+application_url = "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify"
+embedded = false
+
+[access_scopes]
+scopes = "read_orders,read_customers,read_products,read_checkouts"
+
+[auth]
+redirect_urls = [
+  "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-04"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/shopify-compliance-webhooks"
+
+[app_proxy]
+# (omitido — não usamos)
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true
 ```
-❌ atual:  https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify?action=callback
-✅ trocar: https://ltvboost.com.br/dashboard/integracoes
+
+**Importante:** depois de commitar o arquivo, **você** precisa rodar localmente uma vez:
+```bash
+npm i -g @shopify/cli @shopify/app
+shopify app config link    # vincula ao app já criado no Partner
+shopify app deploy         # publica o config + webhooks de compliance
 ```
-Quando o lojista clica em "App preferences" no Admin, ele cai no callback sem `code`/`state` → erro 400. Tem que ser uma página da nossa UI.
 
-**2. "Incorporar app no admin da Shopify"** está marcado, mas **nosso app não é embedded** (não usa App Bridge nem session tokens). Isso reprova no automated check de embedded apps. Duas opções:
-- **Recomendado agora:** desmarcar essa caixa → vira app standalone (abre fora do Admin). Passa nos checks sem código novo.
-- Alternativa (trabalho grande): manter marcado e construir uma página embedded com App Bridge. Não vale a pena para MVP.
+Sem o `shopify app deploy`, o Partner Dashboard não fica sabendo dos topics — e o scanner continua reprovando.
 
-**3. Compliance webhooks (GDPR)** — não aparecem nas screenshots. Precisa adicionar em **Configuration → Compliance webhooks** os 3 endpoints, todos apontando para o mesmo URL:
+---
+
+## 2. Verificar function `shopify-compliance-webhooks` (já existe, validar contrato)
+
+Reler `supabase/functions/shopify-compliance-webhooks/index.ts` e garantir:
+- Lê `req.arrayBuffer()` (raw) **antes** de qualquer parse JSON ✅ (já faz)
+- Valida `X-Shopify-Hmac-Sha256` com `SHOPIFY_CLIENT_SECRET` (mesmo segredo do app) ✅ (já faz)
+- HMAC inválido → 401 ✅
+- HMAC válido + topic suportado → 200 com ack rápido (<5s) ✅
+- HMAC válido + topic desconhecido → atualmente retorna 401; **mudar para 200** com log, para evitar reprovação caso a Shopify mande um topic novo no futuro
+
+**Mudança pequena no código:** em `shopify-compliance-webhooks/index.ts`, quando `!SUPPORTED_TOPICS.has(topic)` mas HMAC já passou, retornar `jsonOk()` em vez de `unauthorized()`. Topics não suportados não são erro de auth.
+
+---
+
+## 3. Corrigir redirect pós-OAuth em `oauth-shopify/index.ts`
+
+O fluxo de install (Shopify chama App URL com `?shop=&hmac=`) hoje termina em uma das duas situações:
+- `isInstallFlow=true` → redireciona para `https://{shop}/admin/apps/{CLIENT_ID}` (URL embedded — não funciona, app é non-embedded)
+- Caso geral → `redirectHtml()` com `window.opener.postMessage` + `window.close()` (não há opener no fluxo de install direto, então cai no fallback `APP_URL/onboarding?oauth=connected`)
+
+O scanner espera **redirect HTTP 302 imediato** para a UI do app após o callback. Mudanças:
+
+**a)** No callback, quando `isInstallFlow === true`, redirecionar 302 para:
 ```
-Customer data request URL: https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/shopify-compliance-webhooks
-Customer data erasure URL: https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/shopify-compliance-webhooks
-Shop data erasure URL:     https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/shopify-compliance-webhooks
+${APP_URL}/dashboard/integracoes?shop={shop}&oauth=connected
 ```
-A function `shopify-compliance-webhooks` já existe no projeto e valida HMAC com `SHOPIFY_CLIENT_SECRET`.
+(URL pública nossa, não a do admin Shopify, pois `embedded = false`)
 
-### 🔧 Mudança de código necessária
-**Nenhuma.** O backend Shopify (oauth-shopify, shopify-compliance-webhooks, webhook-cart com HMAC, _shared/shopify-hmac.ts) já está implementado e deployado da rodada anterior.
+**b)** Manter `redirectHtml()` apenas para o fluxo "conectar de dentro do dashboard" (onde existe `window.opener` real do popup).
 
-## Checklist final no Partners
-1. Reduzir escopos para `read_orders,read_customers,read_products,read_checkouts`
-2. Trocar URL de preferências para `https://ltvboost.com.br/dashboard/integracoes`
-3. Desmarcar "Incorporar app no admin da Shopify"
-4. Adicionar os 3 compliance webhook URLs
-5. Confirmar que o secret `SHOPIFY_CLIENT_SECRET` está definido nas Edge Function Secrets do Supabase
-6. Rodar "Automated checks" no Partners de novo
+---
+
+## 4. Confirmação no Partner Dashboard (você faz, sem código)
+
+Depois do `shopify app deploy`:
+- Em **Configuração → Webhooks de conformidade**: as 3 URLs aparecem preenchidas automaticamente
+- Em **Distribuição**: confirmar **"Use Shopify managed installation" desmarcado** (você precisa do legacy install flow, que já está marcado ✅)
+- Rodar **"Executar verificações"** novamente
+
+---
 
 ## Critério de pronto
-- Os 5 automated checks ficam ✅
-- Instalar via link de loja de teste leva para OAuth e devolve para `/onboarding?oauth=connected`
-- `curl` para `shopify-compliance-webhooks` com HMAC inválido retorna 401
+- `shopify.app.toml` commitado na raiz
+- Function `shopify-compliance-webhooks` retorna 200 em topics desconhecidos com HMAC válido
+- `oauth-shopify` callback redireciona 302 para `${APP_URL}/dashboard/integracoes?...` no install flow
+- Após `shopify app deploy` (manual, do seu lado), os 5 automated checks ficam ✅
+
+## Fora do escopo
+- Tornar o app embedded (App Bridge) — fica para depois, não é necessário para passar no review
+- Implementar o export real de dados de cliente (`customers/data_request`) — a Shopify só exige ack <5s; o export real você produz manualmente em até 30 dias
