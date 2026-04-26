@@ -81,7 +81,7 @@ export async function verifyShopifyBodyHmac(
   secret: string,
 ): Promise<boolean> {
   if (!secret) return false;
-  const provided = req.headers.get("x-shopify-hmac-sha256");
+  const provided = req.headers.get("x-shopify-hmac-sha256")?.trim();
   if (!provided) return false;
   const expected = await hmacSha256Base64(secret, rawBody);
   return timingSafeEqualStr(expected, provided);
