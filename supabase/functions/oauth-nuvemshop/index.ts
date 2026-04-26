@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
   if (action === "callback") {
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    if (!code || !state) return errorResponse("Missing code or state", 400);
+    if (!code) return errorResponse("Missing code", 400);
     if (!NS_CLIENT_ID || !NS_CLIENT_SECRET) {
       return new Response(redirectHtml(APP_URL, false, "Credenciais Nuvemshop não configuradas"), {
         status: 200, headers: { "Content-Type": "text/html" },
@@ -76,8 +76,28 @@ Deno.serve(async (req) => {
     }
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: states } = await admin.rpc("consume_oauth_state", { p_token: state });
-    const st = states?.[0];
+    // Nuvemshop does NOT echo `state` back in the install redirect — it only returns `code`.
+    // If state is present, consume it normally; otherwise fall back to the most recent
+    // pending nuvemshop oauth_state (created seconds ago by ?action=start).
+    let st: { store_id: string; user_id: string } | null = null;
+    if (state) {
+      const { data: states } = await admin.rpc("consume_oauth_state", { p_token: state });
+      st = (states?.[0] as { store_id: string; user_id: string } | undefined) ?? null;
+    }
+    if (!st) {
+      const { data: pending } = await admin
+        .from("oauth_states")
+        .select("state_token, store_id, user_id, expires_at")
+        .eq("platform", "nuvemshop")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (pending) {
+        await admin.from("oauth_states").delete().eq("state_token", (pending as { state_token: string }).state_token);
+        st = { store_id: (pending as { store_id: string }).store_id, user_id: (pending as { user_id: string }).user_id };
+      }
+    }
     if (!st) return errorResponse("Invalid or expired state", 403);
 
     // Exchange code for token
