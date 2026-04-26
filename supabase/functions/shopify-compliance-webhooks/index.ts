@@ -22,6 +22,7 @@ import { verifyShopifyBodyHmac } from "../_shared/shopify-hmac.ts";
 const SHOPIFY_CLIENT_SECRET = Deno.env.get("SHOPIFY_CLIENT_SECRET") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPPORTED_TOPICS = new Set(["customers/data_request", "customers/redact", "shop/redact"]);
 
 function jsonOk(body: Record<string, unknown> = { ok: true }) {
   return new Response(JSON.stringify(body), {
@@ -71,6 +72,11 @@ Deno.serve(async (req) => {
   if (!hmacOk) {
     logCompliance({ ok: false, error: "invalid_hmac", topic, shop: shopDomain });
     return unauthorized("Invalid HMAC");
+  }
+
+  if (!SUPPORTED_TOPICS.has(topic)) {
+    logCompliance({ ok: false, error: "unsupported_topic", topic, shop: shopDomain });
+    return unauthorized("Unsupported compliance topic");
   }
 
   let payload: Record<string, unknown> = {};
@@ -138,7 +144,7 @@ Deno.serve(async (req) => {
       const email = customer.email ?? null;
       const phone = customer.phone ?? null;
       // Anonymize: clear PII columns instead of hard-deleting (preserves aggregates).
-      const redacted = { full_name: "REDACTED", email: null, phone: null, notes: null };
+      const redacted = { name: "REDACTED", email: null, phone: null, notes: null };
       if (email) {
         await admin.from("contacts").update(redacted).eq("store_id", storeId).eq("email", email);
       }
