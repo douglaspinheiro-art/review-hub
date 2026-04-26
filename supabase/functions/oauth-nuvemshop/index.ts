@@ -166,12 +166,13 @@ Deno.serve(async (req) => {
 });
 
 function redirectHtml(appUrl: string, success: boolean, error?: string): string {
+  const base = appUrl.replace(/\/+$/, "");
   return `<!DOCTYPE html><html><body><script>
     if (window.opener) {
       window.opener.postMessage({ type: "oauth_result", platform: "nuvemshop", success: ${success}, error: ${JSON.stringify(error || null)} }, "*");
       window.close();
     } else {
-      window.location.href = "${appUrl}/onboarding?oauth=${success ? "connected" : "error"}";
+      window.location.href = "${base}/onboarding?oauth=${success ? "connected" : "error"}";
     }
   </script><p>Redirecionando...</p></body></html>`;
 }
