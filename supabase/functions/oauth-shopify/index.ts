@@ -166,12 +166,13 @@ Deno.serve(async (req) => {
     invokePostIntegrationSetupFromCallback(st.user_id).catch(() => {});
     invokeRegisterWebhooksFromCallback(st.store_id, st.user_id, "shopify").catch(() => {});
 
-    // Install-flow callback: redirect into the embedded Shopify Admin app surface.
-    // Required by Shopify automated check "redirects to app UI after authentication".
+    // Install-flow callback: o app é non-embedded, então redirecionamos 302 para
+    // a UI pública do lojista — requisito do Shopify automated check
+    // "redirects to app UI after authentication".
     const isInstallFlow = (st.extra_data as { install_flow?: boolean } | null)?.install_flow === true;
     if (isInstallFlow) {
-      const adminAppUrl = `https://${shop}/admin/apps/${SHOPIFY_CLIENT_ID}`;
-      return new Response(null, { status: 302, headers: { Location: adminAppUrl } });
+      const target = `${APP_URL}/dashboard/integracoes?shop=${encodeURIComponent(shop)}&oauth=connected`;
+      return new Response(null, { status: 302, headers: { Location: target } });
     }
 
     return new Response(redirectHtml(APP_URL, true), {

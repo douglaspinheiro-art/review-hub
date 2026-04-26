@@ -75,8 +75,10 @@ Deno.serve(async (req) => {
   }
 
   if (!SUPPORTED_TOPICS.has(topic)) {
-    logCompliance({ ok: false, error: "unsupported_topic", topic, shop: shopDomain });
-    return unauthorized("Unsupported compliance topic");
+    // HMAC válido mas topic desconhecido: ack 200 (não é erro de auth).
+    // Evita reprovação caso a Shopify adicione novos topics no futuro.
+    logCompliance({ ok: true, note: "unsupported_topic_ack", topic, shop: shopDomain });
+    return jsonOk({ ok: true, note: "topic_not_handled" });
   }
 
   let payload: Record<string, unknown> = {};
