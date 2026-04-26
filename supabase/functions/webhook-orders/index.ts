@@ -46,7 +46,7 @@ import { isOrderPaid } from "../_shared/order-payment-status.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret, x-shopify-hmac-sha256, x-shopify-topic, x-shopify-shop-domain",
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -457,14 +457,15 @@ Deno.serve(async (req) => {
   }
 
   // ── Auth ────────────────────────────────────────────────────────────────────
+  const isShopifyWebhook = Boolean(req.headers.get("x-shopify-hmac-sha256") || req.headers.get("x-shopify-topic"));
   const expectedSecret = Deno.env.get("WEBHOOK_ORDERS_SECRET") ?? "";
   const providedSecret = req.headers.get("x-webhook-secret") ?? "";
-  if (!expectedSecret) {
+  if (!isShopifyWebhook && !expectedSecret) {
     return new Response(JSON.stringify({ error: "WEBHOOK_ORDERS_SECRET is not configured" }), {
       status: 503, headers: corsHeaders,
     });
   }
-  if (!timingSafeEqual(providedSecret, expectedSecret)) {
+  if (!isShopifyWebhook && !timingSafeEqual(providedSecret, expectedSecret)) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 

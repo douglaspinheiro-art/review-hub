@@ -33,7 +33,7 @@ import {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret, x-shopify-hmac-sha256, x-shopify-topic, x-shopify-shop-domain",
 };
 
 Deno.serve(async (req) => {
@@ -46,13 +46,14 @@ Deno.serve(async (req) => {
   }
 
   // ── Shared-secret gate (blanket auth for all platforms) ────────────────────
+  const isShopifyWebhook = Boolean(req.headers.get("x-shopify-hmac-sha256") || req.headers.get("x-shopify-topic"));
   const expectedSecret = Deno.env.get("WEBHOOK_CART_SECRET") ?? "";
   const providedSecret = req.headers.get("x-webhook-secret") ?? "";
 
-  if (!expectedSecret) {
+  if (!isShopifyWebhook && !expectedSecret) {
     return new Response(JSON.stringify({ error: "Webhook secret is not configured" }), { status: 503, headers: corsHeaders });
   }
-  if (!timingSafeEqual(providedSecret, expectedSecret)) {
+  if (!isShopifyWebhook && !timingSafeEqual(providedSecret, expectedSecret)) {
     return new Response(JSON.stringify({ error: "Unauthorized webhook" }), { status: 401, headers: corsHeaders });
   }
 
