@@ -149,6 +149,11 @@ Deno.serve(async (req) => {
         type: "shopify",
         name: "Shopify",
         config: { shop_url: shop, access_token: accessToken },
+        // The Shopify app's client secret doubles as the HMAC signing secret
+        // for product/order/cart webhooks (X-Shopify-Hmac-Sha256). Persisting
+        // it per-store lets webhook-cart / webhook-orders / webhook-refunds
+        // verify signatures without needing a global env lookup.
+        webhook_secret: SHOPIFY_CLIENT_SECRET,
         is_active: true,
         connection_mode: "oauth",
         connection_status: "connected",
