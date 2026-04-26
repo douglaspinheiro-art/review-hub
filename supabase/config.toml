@@ -219,3 +219,7 @@ verify_jwt = false
 
 [functions.oauth-token-refresh]
 verify_jwt = false
+
+# Shopify GDPR/Compliance webhooks — auth via X-Shopify-Hmac-Sha256 (HMAC com SHOPIFY_CLIENT_SECRET).
+[functions.shopify-compliance-webhooks]
+verify_jwt = false
