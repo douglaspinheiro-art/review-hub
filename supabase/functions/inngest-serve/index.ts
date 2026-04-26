@@ -8,11 +8,9 @@
  * Deploy this edge function, then sync with Inngest so it discovers the functions.
  */
 
-import { Inngest } from "https://esm.sh/inngest@3";
-// Inngest exports `serve` at runtime via the package entry, but the published
-// Deno typings drop it. Suppress the type error — runtime resolution is correct.
+import { Inngest } from "npm:inngest@3";
 // @ts-ignore — runtime export exists; types index omits it
-import { serve } from "https://esm.sh/inngest@3?deno-std=0.168.0&target=deno&exports=serve";
+import { serve } from "npm:inngest@3/deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const inngest = new Inngest({ id: "ltv-boost" });
