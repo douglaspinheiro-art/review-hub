@@ -1,0 +1,27 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "6d373736c5bb85d81b67fc809ded1d0b"
+application_url = "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify"
+embedded = false
+name = "LTV Boost - Oficial"
+
+[webhooks]
+api_version = "2026-04"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/shopify-compliance-webhooks"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_analytics,read_assigned_fulfillment_orders,read_audit_events,read_customer_events,read_cart_transforms,read_all_cart_transforms,read_validations,read_cash_tracking,read_channels,read_checkout_and_accounts_configurations,read_checkout_branding_settings,write_checkouts,read_companies,read_custom_fulfillment_services,read_custom_pixels,read_customers,read_gift_cards,read_orders,read_products,read_purchase_options,write_reports,read_shopify_payments_accounts,read_shopify_payments_payouts,read_content,read_store_credit_account_transactions,read_store_credit_accounts,read_pixels,customer_read_companies,customer_read_customers,customer_read_orders,customer_read_quick_sale"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify/callback"
+]
+
+[app_preferences]
+url = "https://ltvboost.com.br/dashboard/integracoes"

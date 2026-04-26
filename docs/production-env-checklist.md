@@ -66,10 +66,18 @@ Ajuste em **Authentication → URL configuration** do projeto:
 | `INTEGRATION_GATEWAY_SECRET` | `integration-gateway` (`x-webhook-secret`) |
 | `WEBHOOK_CART_SECRET` | `webhook-cart` |
 | `FLOW_ENGINE_SECRET` | `flow-engine` / encadeamento interno |
+| `SHOPIFY_CLIENT_ID` / `SHOPIFY_CLIENT_SECRET` | `oauth-shopify` e `shopify-compliance-webhooks` — o **client secret** deve ser **idêntico** ao *Client secret* do app no [Partners](https://partners.shopify.com); o compliance exige HMAC e falha a verificação automática se estiver vazio. |
+| `APP_URL` (relevante a OAuth) | Já listado acima: em `oauth-shopify` defina a URL pública de produção (ex.: `https://ltvboost.com.br`, coerente com `app_preferences` no TOML do app Shopify) para o redirect 302 após a instalação, sem enviar o utilizador para outro domínio. |
 
 **Recomendados** (conforme funções ligadas): `RESEND_DEFAULT_FROM`, `RESEND_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `DISPATCH_NEWSLETTER_INTERNAL_SECRET`, `SMS_DEV_TOKEN`, `LOGTAIL_SOURCE_TOKEN`.
 
 **WhatsApp Cloud API (Meta)** — `META_WHATSAPP_VERIFY_TOKEN` (webhook GET challenge) e `META_APP_SECRET` (assinatura `X-Hub-Signature-256`). Deploy: `meta-whatsapp-webhook`, `meta-whatsapp-send`. Guia: `docs/meta-whatsapp-cloud-setup.md`.
+
+## Shopify (App + compliance)
+
+1. **TOML:** `shopify.app.*.toml` com `[[webhooks.subscriptions]]` e `compliance_topics` + `uri` absoluta para `.../shopify-compliance-webhooks`.
+2. **Deploy:** `shopify app deploy` (ou fluxo de CI) para sincronizar com o Partners.
+3. **Smoke:** `POST` em `/functions/v1/shopify-compliance-webhooks` sem `X-Shopify-Hmac-Sha256` válido → **401**; com corpo e HMAC assinado com o *client secret* → **200**.
 
 ## Health Checks rápidos
 
