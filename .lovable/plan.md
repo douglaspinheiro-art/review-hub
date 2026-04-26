@@ -1,72 +1,59 @@
+## Diagnóstico
 
-# Plano: Incluir plataforma de e-commerce no loop fechado
+O Shopify retornou:
 
-## Decisões aprovadas
-1. **5 nós separados** no diagrama do Hero (E-commerce, GA4, IA, WhatsApp/Email, Mensuração).
-2. Nova **headline mestre**: "Sua loja + GA4 → IA → WhatsApp → resultado de volta".
-3. Aplicar em **todos os 7 arquivos** (Hero, HowItWorks, ClosedLoopProof, CompetitorComparison, CategoryPositioning, Resultado, Planos).
+> Oauth error invalid_request: The redirect_uri and application url must have matching hosts
 
----
+Isso acontece porque o Shopify exige que o **host** do `redirect_uri` enviado no início do OAuth seja **exatamente o mesmo host** configurado nos campos **App URL** e **Allowed redirection URL(s)** do app no Shopify Partners.
 
-## Mudanças por arquivo
+No nosso código (`supabase/functions/oauth-shopify/index.ts`), a `redirect_uri` é construída assim:
 
-### 1. `src/components/landing/Hero.tsx`
-- **Headline**: "Sua loja + GA4 → IA → WhatsApp → resultado de volta no seu Analytics."
-- **Subheadline**: ajustar para mencionar que sincronizamos pedidos/contatos/catálogo da plataforma.
-- **Diagrama (coluna direita)**: passar de 4 para 5 `LoopNode`:
-  - **00 — Conecta sua loja** (`ShoppingBag`): "Shopify · Nuvemshop · VTEX · WooCommerce · Yampi · Tray" — meta: "OAuth oficial · pedidos, contatos e catálogo sincronizados"
-  - **01 — Lê do GA4** (`BarChart3`)
-  - **02 — IA decide** (`Bot`) — ajustar meta para "RFM da plataforma + comportamento do GA4"
-  - **03 — Executa** (`MessageCircle`)
-  - **04 — Mensura** (`RefreshCw`, highlight) — "no GA4 + pedido `paid` confirmado na plataforma"
-- Compactar `LoopNode` (padding `p-2.5`, ícone `w-8 h-8`) para caber 5 nós sem alongar muito.
-- Atualizar chips de prova: incluir "Conecta Shopify/Nuvemshop/VTEX em 1 clique".
+```ts
+const callbackUrl = `${SUPABASE_URL}/functions/v1/oauth-shopify?action=callback`;
+```
 
-### 2. `src/components/landing/HowItWorks.tsx`
-- Passar de 4 para 5 etapas (mesma sequência do Hero).
-- Mudar grid de `md:grid-cols-4` para `md:grid-cols-5`.
-- Atualizar a linha de loop circular para abranger 5 nós (ajustar `left/right` do gradient).
-- Ajustar parágrafo do header para "loop fechado em 5 etapas".
-- Texto novo do passo 00:
-  > "Conectamos sua plataforma (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray) por OAuth em 1 clique. Sincronizamos contatos, pedidos, catálogo e eventos de carrinho via webhook oficial."
+Ou seja, o host enviado é:
 
-### 3. `src/components/landing/ClosedLoopProof.tsx`
-- Adicionar bullet de dupla validação: "Conversão validada em **dois lugares**: evento `purchase` no GA4 + pedido `paid` na sua plataforma. Sem dupla contagem, sem dado órfão."
-- Mencionar plataformas no mock/copy quando relevante.
+```
+https://ydkglitowqlpizpnnofy.supabase.co
+```
 
-### 4. `src/components/landing/CompetitorComparison.tsx`
-- Adicionar nova linha à tabela `ROWS`:
-  - "Conecta plataforma e-commerce nativamente": dashboards `false`, consultorias `partial`, chatbots `partial`, ltv `true`.
-- Atualizar parágrafo de fechamento para citar "três sistemas: e-commerce, GA4 e canal".
+(o domínio do projeto Supabase: `ydkglitowqlpizpnnofy.supabase.co`).
 
-### 5. `src/components/landing/CategoryPositioning.tsx`
-- Reescrever descrição da categoria "Closed-Loop Revenue Recovery" para deixar claro que o loop atravessa **3 sistemas do lojista** (e-commerce + GA4 + canal).
-- Manter blocos de ICP/parceiros existentes.
+Mas no Shopify Partners, a **App URL** provavelmente está apontando para outro host (por exemplo `https://ltvboost.com.br` ou `https://ltvboost.lovable.app`). Por isso o Shopify rejeita com "matching hosts".
 
-### 6. `src/pages/Resultado.tsx`
-- No `ClosedLoopTimeline`, adicionar passo zero de setup:
-  > "Hoje (setup): conectamos sua [plataforma do diagnóstico] em 2 cliques e puxamos seus últimos 90 dias de pedidos."
-- Passar a usar `formData.plataforma` (já capturado no diagnóstico) — fallback "sua plataforma".
-
-### 7. `src/pages/Planos.tsx`
-- No bloco "🔗 Conexão (entrada do loop)" de cada plano: listar explicitamente plataformas suportadas — "Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Shopee".
-- Atualizar hero/subhead se ainda mencionar só "GA4 + WhatsApp".
-- Atualizar FAQ: trocar/adicionar pergunta "E se minha loja é Shopify/Nuvemshop/VTEX?" → resposta sobre OAuth + sincronização.
+> Importante: o problema **não é de código** — o código está correto. O problema é de **configuração no painel do Shopify Partners**. Eu não consigo alterar isso por você; precisa ser feito manualmente no painel do Shopify.
 
 ---
 
-## Verificações pós-implementação
-- `tsc --noEmit` para garantir zero erros de tipo.
-- Conferir responsivo do Hero em 1280px (5 nós empilhados verticalmente já — ok) e do HowItWorks em md (`grid-cols-5` pode ficar apertado; usar `gap-4` em vez de `gap-6` se necessário).
-- Smoke visual rápido em `/`, `/resultado`, `/planos`.
+## Plano de correção
 
-## Arquivos editados
-- `src/components/landing/Hero.tsx`
-- `src/components/landing/HowItWorks.tsx`
-- `src/components/landing/ClosedLoopProof.tsx`
-- `src/components/landing/CompetitorComparison.tsx`
-- `src/components/landing/CategoryPositioning.tsx`
-- `src/pages/Resultado.tsx`
-- `src/pages/Planos.tsx`
+### 1. Ajustar configuração no Shopify Partners (você faz)
 
-Nenhum arquivo novo. Sem mudanças de schema, env vars ou edge functions.
+No painel do app em [partners.shopify.com](https://partners.shopify.com) → seu app → **Configuration**:
+
+- **App URL**:
+  ```
+  https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify
+  ```
+- **Allowed redirection URL(s)** (adicione esta linha):
+  ```
+  https://ydkglitowqlpizpnnofy.supabase.co/functions/v1/oauth-shopify?action=callback
+  ```
+
+O **host** dos dois campos precisa ser idêntico: `ydkglitowqlpizpnnofy.supabase.co`.
+
+Salve e tente conectar de novo.
+
+### 2. (Opcional) Verificar secrets no Supabase
+
+Confirmar que estão setados nas Secrets das Edge Functions:
+- `SHOPIFY_CLIENT_ID`
+- `SHOPIFY_CLIENT_SECRET`
+- `APP_URL` (usada só no redirect final pós-callback — não afeta o erro atual)
+
+### 3. (Opcional, melhoria futura) Logar a `redirect_uri`
+
+Para facilitar debug em casos similares, eu posso adicionar um `console.log` da `callbackUrl` na fase `start` da função `oauth-shopify` — assim, em qualquer erro futuro você consegue conferir nos logs da Edge Function exatamente qual host foi enviado ao Shopify.
+
+Se quiser que eu aplique essa melhoria de logging quando você aprovar o plano, eu faço junto. A correção principal (passo 1) é manual no painel da Shopify.
