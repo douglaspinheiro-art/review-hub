@@ -56,8 +56,9 @@ Deno.serve(async (req) => {
       platform: "nuvemshop",
     });
 
-    const callbackUrl = `${SUPABASE_URL}/functions/v1/oauth-nuvemshop?action=callback`;
-    const authUrl = `https://www.tiendanube.com/apps/${NS_CLIENT_ID}/authorize?state=${stateToken}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+    // Nuvemshop uses the redirect URL configured in the Partners dashboard.
+    // Passing a dynamic redirect_uri here can make the install page fail to load.
+    const authUrl = `https://www.nuvemshop.com.br/apps/${encodeURIComponent(NS_CLIENT_ID)}/authorize?state=${encodeURIComponent(stateToken)}`;
 
     logOAuth(requestId, "start", { store_id: storeId, ok: true });
     return jsonResponse({ url: authUrl });
@@ -68,6 +69,11 @@ Deno.serve(async (req) => {
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     if (!code || !state) return errorResponse("Missing code or state", 400);
+    if (!NS_CLIENT_ID || !NS_CLIENT_SECRET) {
+      return new Response(redirectHtml(APP_URL, false, "Credenciais Nuvemshop não configuradas"), {
+        status: 200, headers: { "Content-Type": "text/html" },
+      });
+    }
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: states } = await admin.rpc("consume_oauth_state", { p_token: state });
@@ -75,7 +81,7 @@ Deno.serve(async (req) => {
     if (!st) return errorResponse("Invalid or expired state", 403);
 
     // Exchange code for token
-    const tokenRes = await fetch("https://www.tiendanube.com/apps/authorize/token", {
+    const tokenRes = await fetch("https://www.nuvemshop.com.br/apps/authorize/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -127,7 +133,7 @@ Deno.serve(async (req) => {
 function redirectHtml(appUrl: string, success: boolean, error?: string): string {
   return `<!DOCTYPE html><html><body><script>
     if (window.opener) {
-      window.opener.postMessage({ type: "oauth_result", platform: "nuvemshop", success: ${success}, error: ${JSON.stringify(error || null)} }, "${appUrl}");
+      window.opener.postMessage({ type: "oauth_result", platform: "nuvemshop", success: ${success}, error: ${JSON.stringify(error || null)} }, "*");
       window.close();
     } else {
       window.location.href = "${appUrl}/onboarding?oauth=${success ? "connected" : "error"}";
