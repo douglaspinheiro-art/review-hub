@@ -4,6 +4,7 @@ import {
   invokePostIntegrationSetupFromCallback,
   invokeRegisterWebhooksFromCallback,
 } from "../_shared/internal-callback.ts";
+import { verifyShopifyQueryHmac, isValidShopDomain } from "../_shared/shopify-hmac.ts";
 
 const SHOPIFY_CLIENT_ID = Deno.env.get("SHOPIFY_CLIENT_ID") ?? "";
 const SHOPIFY_CLIENT_SECRET = Deno.env.get("SHOPIFY_CLIENT_SECRET") ?? "";
@@ -31,6 +32,36 @@ Deno.serve(async (req) => {
   // Shopify Partners requires the redirect_uri host to match the App URL host; using a
   // path segment keeps the URL cleaner and easier to whitelist.
   const isPathCallback = url.pathname.endsWith("/callback");
+
+  // ── INSTALL FLOW: Shopify hits the App URL directly with ?shop=&hmac=&host= ──
+  // No JWT, no action — must validate HMAC and redirect to /admin/oauth/authorize
+  // immediately to pass Shopify automated checks ("authenticates immediately on install").
+  const shopParam = url.searchParams.get("shop");
+  const hmacParam = url.searchParams.get("hmac");
+  if (!action && !isPathCallback && shopParam && hmacParam && req.method === "GET") {
+    if (!isValidShopDomain(shopParam)) return errorResponse("Invalid shop domain", 400);
+    if (!SHOPIFY_CLIENT_ID || !SHOPIFY_CLIENT_SECRET) {
+      return errorResponse("Shopify app not configured", 500);
+    }
+    const hmacOk = await verifyShopifyQueryHmac(url, SHOPIFY_CLIENT_SECRET);
+    if (!hmacOk) {
+      logOAuth(requestId, "start", { ok: false, detail: "install_hmac_invalid", shop: shopParam });
+      return errorResponse("Invalid HMAC", 401);
+    }
+    const stateToken = crypto.randomUUID();
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await admin.from("oauth_states").insert({
+      state_token: stateToken,
+      store_id: null,
+      user_id: null,
+      platform: "shopify",
+      extra_data: { shop: shopParam, install_flow: true, host: url.searchParams.get("host") },
+    });
+    const callbackUrl = `${SUPABASE_URL}/functions/v1/oauth-shopify/callback`;
+    const authUrl = `https://${shopParam}/admin/oauth/authorize?client_id=${SHOPIFY_CLIENT_ID}&scope=${SCOPES}&redirect_uri=${encodeURIComponent(callbackUrl)}&state=${stateToken}`;
+    logOAuth(requestId, "start", { ok: true, install_flow: true, shop: shopParam });
+    return new Response(null, { status: 302, headers: { Location: authUrl } });
+  }
 
   // ── START: Generate Shopify OAuth URL ────────────────────────────────────
   if (action === "start") {
@@ -129,6 +160,14 @@ Deno.serve(async (req) => {
 
     invokePostIntegrationSetupFromCallback(st.user_id).catch(() => {});
     invokeRegisterWebhooksFromCallback(st.store_id, st.user_id, "shopify").catch(() => {});
+
+    // Install-flow callback: redirect into the embedded Shopify Admin app surface.
+    // Required by Shopify automated check "redirects to app UI after authentication".
+    const isInstallFlow = (st.extra_data as { install_flow?: boolean } | null)?.install_flow === true;
+    if (isInstallFlow) {
+      const adminAppUrl = `https://${shop}/admin/apps/${SHOPIFY_CLIENT_ID}`;
+      return new Response(null, { status: 302, headers: { Location: adminAppUrl } });
+    }
 
     return new Response(redirectHtml(APP_URL, true), {
       status: 200, headers: { "Content-Type": "text/html" },
