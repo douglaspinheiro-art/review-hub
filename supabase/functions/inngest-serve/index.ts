@@ -10,7 +10,7 @@
 
 import { Inngest } from "https://esm.sh/inngest@3.27.4";
 // @ts-ignore — runtime export exists; types index omits it
-import { serve } from "https://esm.sh/inngest@3.27.4/deno";
+import { serve } from "https://esm.sh/inngest@3.27.4?target=deno&exports=serve";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const inngest = new Inngest({ id: "ltv-boost" });
