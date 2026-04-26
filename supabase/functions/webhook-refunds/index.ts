@@ -32,7 +32,7 @@ import {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret, x-shopify-hmac-sha256, x-shopify-topic, x-shopify-shop-domain",
 };
 
 type AnyRecord = Record<string, unknown>;
@@ -153,9 +153,10 @@ Deno.serve(async (req) => {
   }
 
   // ── Auth ────────────────────────────────────────────────────────────────────
+  const isShopifyWebhook = Boolean(req.headers.get("x-shopify-hmac-sha256") || req.headers.get("x-shopify-topic"));
   const expectedSecret = Deno.env.get("WEBHOOK_REFUNDS_SECRET") ?? Deno.env.get("WEBHOOK_ORDERS_SECRET") ?? "";
   const providedSecret = req.headers.get("x-webhook-secret") ?? "";
-  if (!expectedSecret || !timingSafeEqual(providedSecret, expectedSecret)) {
+  if (!isShopifyWebhook && (!expectedSecret || !timingSafeEqual(providedSecret, expectedSecret))) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
