@@ -1006,7 +1006,7 @@ export default function Onboarding() {
                   setIntegrationConfig({}); setIntegrationValid(false);
                   setFaturamento(""); setTicketMedio("250"); setNumClientes("");
                   setVisitantes(""); setCarrinho(""); setCheckout(""); setPedidos("");
-                  setMetaConversao("2.5"); setGa4PropertyId(""); setGa4Token("");
+                  setMetaConversao("2.5");
                   toast.success("Rascunho descartado.");
                 }}
               >
