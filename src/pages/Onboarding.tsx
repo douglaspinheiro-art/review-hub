@@ -887,6 +887,12 @@ export default function Onboarding() {
     }
   }, [getPrimaryStoreId]);
 
+  // Keep ref in sync so the OAuth poller can call the latest version
+  // without creating a circular dependency.
+  useEffect(() => {
+    fetchGa4PropertiesRef.current = fetchGa4Properties;
+  }, [fetchGa4Properties]);
+
   // Listen for OAuth popup callback
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -895,14 +901,14 @@ export default function Onboarding() {
       if (event.data.success) {
         setGa4ConnectedEmail(event.data.email ?? "Conta Google conectada");
         toast.success("✅ Google conectado! Carregando propriedades…");
-        void fetchGa4Properties();
+        fetchGa4PropertiesRef.current?.();
       } else {
         toast.error(event.data.error || "Falha na conexão com o Google.");
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [fetchGa4Properties]);
+  }, []);
 
   const handleSelectGa4Property = useCallback(async (propertyId: string) => {
     setGa4PropertyId(propertyId);
