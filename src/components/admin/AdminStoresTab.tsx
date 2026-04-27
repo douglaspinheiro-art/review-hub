@@ -41,8 +41,9 @@ export function AdminStoresTab() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin-list-stores", debounced],
     queryFn: async (): Promise<AdminStoreRow[]> => {
+      const trimmed = debounced.trim();
       const { data, error } = await supabase.rpc("admin_list_stores", {
-        p_search: debounced.trim() || null,
+        p_search: trimmed || undefined,
       });
       if (error) throw error;
       return (data ?? []) as AdminStoreRow[];
