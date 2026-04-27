@@ -3,11 +3,13 @@ import { useNavigate, useLocation } from "react-router-dom";
 import TickerBar from "@/components/landing/TickerBar";
 import Header from "@/components/landing/Header";
 import Hero from "@/components/landing/Hero";
+import CategoryComparison from "@/components/landing/CategoryComparison";
 import CategoryPositioning from "@/components/landing/CategoryPositioning";
 import ClientLogos from "@/components/landing/ClientLogos";
 import HowItWorks from "@/components/landing/HowItWorks";
 import DiagnosticPreview from "@/components/landing/DiagnosticPreview";
 import ClosedLoopProof from "@/components/landing/ClosedLoopProof";
+import FiveDimensions from "@/components/landing/FiveDimensions";
 import Solutions from "@/components/landing/Solutions";
 import Metrics from "@/components/landing/Metrics";
 import Benefits from "@/components/landing/Benefits";
@@ -19,6 +21,7 @@ import Testimonials from "@/components/landing/Testimonials";
 import ScarcityBanner from "@/components/landing/ScarcityBanner";
 import Pricing from "@/components/landing/Pricing";
 import CompetitorComparison from "@/components/landing/CompetitorComparison";
+import SuccessFeeModel from "@/components/landing/SuccessFeeModel";
 import FAQ from "@/components/landing/FAQ";
 import FooterCTA from "@/components/landing/FooterCTA";
 import Footer from "@/components/landing/Footer";
@@ -60,21 +63,24 @@ const Index = () => {
       <Header />
       <main>
         <Hero />
-        <CompetitorComparison />
+        <CategoryComparison />
         <CategoryPositioning />
         <ClientLogos />
         <HowItWorks />
         <ClosedLoopProof />
+        <FiveDimensions />
         <DiagnosticPreview />
         <Solutions />
         <Metrics />
         <Benefits />
         <TrustBadges />
+        <CompetitorComparison />
         <CTASection />
         <Integrations />
         <Cases />
         <Testimonials />
         <ScarcityBanner />
+        <SuccessFeeModel />
         <Pricing />
         <FAQ />
         <FooterCTA />

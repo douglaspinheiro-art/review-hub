@@ -1,8 +1,16 @@
 import { useInView } from "@/hooks/useInView";
-import { BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag } from "lucide-react";
+import { BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const steps = [
+type Step = {
+  icon: typeof BarChart3;
+  step: string;
+  title: string;
+  desc: string;
+  exclusive?: boolean;
+};
+
+const steps: Step[] = [
   {
     icon: ShoppingBag,
     step: "00",
@@ -32,6 +40,7 @@ const steps = [
     step: "04",
     title: "Volta para o GA4",
     desc: "Cada conversão é atribuída no seu GA4 com UTMs próprias e validada pelo pedido pago na sua plataforma. O loop recalibra timing, copy e segmentação a cada ciclo.",
+    exclusive: true,
   },
 ];
 
@@ -45,12 +54,15 @@ export default function HowItWorks() {
           "text-center max-w-2xl mx-auto mb-16 transition-all duration-700",
           inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
         )}>
-          <p className="text-primary font-semibold text-sm mb-3 uppercase tracking-widest">Como funciona</p>
+          <p className="text-primary font-semibold text-sm mb-3 uppercase tracking-widest">O método proprietário LTV Boost</p>
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-            O loop fechado em <span className="text-gradient">5 etapas</span>
+            Closed-Loop Revenue Recovery: o único{" "}
+            <span className="text-gradient">loop fechado de ponta a ponta</span> no Brasil
           </h2>
           <p className="text-muted-foreground text-lg">
-            Sua loja + GA4 → IA → WhatsApp/Email → resultado de volta. O loop atravessa três sistemas seus (e-commerce, GA4 e canal) e recalibra sozinho.
+            Cada uma das 5 etapas existe isoladamente em outras ferramentas.{" "}
+            <strong className="text-foreground">A LTV Boost é a única que executa as 5 conectadas</strong>,
+            no mesmo motor, com atribuição auditável.
           </p>
         </div>
 
@@ -68,11 +80,22 @@ export default function HowItWorks() {
               )}
               style={{ transitionDelay: `${idx * 150}ms` }}
             >
-              <div className="w-20 h-20 rounded-2xl bg-secondary border border-border/50 flex items-center justify-center mx-auto relative group hover:border-primary/50 hover:bg-primary/5 transition-all">
+              <div className={cn(
+                "w-20 h-20 rounded-2xl border flex items-center justify-center mx-auto relative group transition-all",
+                s.exclusive
+                  ? "bg-primary/10 border-primary/50 ring-2 ring-primary/30"
+                  : "bg-secondary border-border/50 hover:border-primary/50 hover:bg-primary/5"
+              )}>
                 <s.icon className="w-8 h-8 text-primary" />
                 <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
                   {s.step}
                 </div>
+                {s.exclusive && (
+                  <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 bg-primary text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shadow-md uppercase tracking-wider">
+                    <Lock className="w-2.5 h-2.5" />
+                    Exclusivo
+                  </div>
+                )}
               </div>
               <h3 className="font-display font-bold text-lg">{s.title}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
@@ -80,8 +103,9 @@ export default function HowItWorks() {
           ))}
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-10 max-w-2xl mx-auto">
-          O loop volta para o passo 01: o GA4 recebe a conversão atribuída e a IA usa o resultado para refinar o próximo ciclo.
+        <p className="text-center text-sm text-muted-foreground mt-12 max-w-3xl mx-auto">
+          Nenhuma outra ferramenta no mercado brasileiro fecha esse ciclo nas 5 dimensões com atribuição no GA4 do cliente.
+          É essa combinação que define nossa categoria.
         </p>
       </div>
     </section>

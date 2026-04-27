@@ -73,14 +73,15 @@ export default function CompetitorComparison() {
           )}
         >
           <p className="text-primary font-semibold text-sm mb-3 uppercase tracking-widest">
-            Por que somos diferentes
+            Por que somos únicos
           </p>
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-            Ninguém mais <span className="text-gradient">fecha o loop</span>
+            4 critérios. Nenhum concorrente atende aos 4.{" "}
+            <span className="text-gradient">Nós atendemos desde o dia 1.</span>
           </h2>
           <p className="text-muted-foreground text-lg">
-            Plataformas de painel mostram. Consultorias recomendam. Chatbots respondem. Só a LTV Boost lê do GA4,
-            decide com IA, executa no canal e devolve a métrica auditável.
+            Comparativo objetivo entre as 3 categorias existentes e a LTV Boost.
+            Cada linha é uma capacidade auditável — não promessa de marketing.
           </p>
         </div>
 
