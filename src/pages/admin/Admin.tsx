@@ -22,6 +22,7 @@ import { useSistemaConfig } from "@/hooks/useSistemaConfig";
 import { useIsAdmin } from "@/hooks/useAdminCheck";
 import { MultiTenantAudit } from "@/components/admin/MultiTenantAudit";
 import { PendingActivations } from "@/components/admin/PendingActivations";
+import { AdminStoresTab } from "@/components/admin/AdminStoresTab";
 import { toast } from "sonner";
 
 // ─── Pilot Monitor Tab ─────────────────────────────────────────────────────────
@@ -428,7 +429,7 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue="manutencao" className="w-full">
-        <TabsList className="grid w-full max-w-3xl grid-cols-5 h-auto p-1 rounded-xl mb-6">
+        <TabsList className="grid w-full max-w-4xl grid-cols-6 h-auto p-1 rounded-xl mb-6">
           <TabsTrigger value="aprovacoes" className="rounded-lg text-xs py-2.5 font-bold">
             ✅ Aprovações
           </TabsTrigger>
@@ -443,6 +444,9 @@ export default function Admin() {
           </TabsTrigger>
           <TabsTrigger value="multitenant" className="rounded-lg text-xs py-2.5 font-bold">
             🛡️ Multi-tenant
+          </TabsTrigger>
+          <TabsTrigger value="lojas" className="rounded-lg text-xs py-2.5 font-bold">
+            🏪 Lojas
           </TabsTrigger>
         </TabsList>
 
