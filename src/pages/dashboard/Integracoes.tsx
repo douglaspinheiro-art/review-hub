@@ -67,6 +67,8 @@ const CATALOG: CatalogCategory[] = [
       { type: "vtex", name: "VTEX", icon: Layers, iconClassName: "text-orange-500", validation: "api", fields: [{ key: "account_name", label: "Account Name", placeholder: "minha-loja" }, { key: "app_key", label: "App Key", placeholder: "vtexappkey-..." }, { key: "app_token", label: "App Token", placeholder: "..." }] },
       { type: "woocommerce", name: "WooCommerce", icon: ShoppingBasket, iconClassName: "text-violet-600", validation: "api", fields: [{ key: "site_url", label: "URL do site", placeholder: "https://minha-loja.com.br" }, { key: "consumer_key", label: "Consumer Key", placeholder: "ck_..." }, { key: "consumer_secret", label: "Consumer Secret", placeholder: "cs_..." }] },
       { type: "dizy", name: "Dizy Commerce", icon: Flame, iconClassName: "text-orange-600", validation: "api", fields: [{ key: "base_url", label: "URL da loja", placeholder: "https://minhaloja.com.br" }, { key: "api_key", label: "API Key", placeholder: "Chave da API Dizy" }] },
+      { type: "tray", name: "Tray Commerce", icon: ShoppingBag, iconClassName: "text-blue-500", validation: "api", fields: [{ key: "api_address", label: "Endereço da API", placeholder: "minha-loja.commercesuite.com.br" }] },
+      { type: "yampi", name: "Yampi", icon: ShoppingBag, iconClassName: "text-purple-500", validation: "api", fields: [{ key: "alias", label: "Alias da loja", placeholder: "minha-loja" }, { key: "token", label: "Token de usuário", placeholder: "seu-token-yampi" }, { key: "webhook_secret", label: "Webhook Secret (você cria e cola também no painel Yampi)", placeholder: "ex: ltvb_w3bh00k_secret_forte" }] },
     ],
   },
   {
@@ -151,11 +153,11 @@ function formatConnectedSubtitle(integration: Integration): string | null {
 }
 
 function supportsOauthConnect(type: string): boolean {
-  return type === "shopify" || type === "nuvemshop" || type === "woocommerce";
+  return type === "shopify" || type === "nuvemshop" || type === "woocommerce" || type === "tray";
 }
 
 function isAssistedOnlyPlatform(type: string): boolean {
-  return type === "vtex" || type === "tray";
+  return type === "vtex";
 }
 
 export default function Integracoes() {
@@ -412,14 +414,21 @@ export default function Integracoes() {
           .catch(() => { /* best-effort */ });
       }
 
-      return { name, replaced: !!existingRow?.id };
+      return { name, replaced: !!existingRow?.id, type };
     },
-    onSuccess: ({ name, replaced }) => {
+    onSuccess: ({ name, replaced, type }) => {
       toast.success(replaced ? `${name} atualizado` : `${name} conectado`, {
         description: replaced
           ? "Credenciais validadas e substituídas na sua conta."
           : "Credenciais validadas. Jornadas padrão ativadas quando aplicável.",
       });
+      if (type === "vtex") {
+        toast.info("VTEX conectada — configure o webhook manualmente", {
+          description:
+            "Acesse o painel VTEX → Master Data → Triggers e aponte para a URL do webhook da sua loja.",
+          duration: 8000,
+        });
+      }
       setConnecting(null);
       setFormData({});
       setValidationState({ status: "idle", detail: "" });
