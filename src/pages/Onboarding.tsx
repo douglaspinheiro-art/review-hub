@@ -186,17 +186,9 @@ export default function Onboarding() {
   const [importedPlatform, setImportedPlatform] = useState<string>("");
   const [zeroFields, setZeroFields] = useState<string[]>([]);
 
-  // Step 4 — GA4 (OAuth flow + manual fallback)
-  const [ga4PropertyId, setGa4PropertyId] = useState("");
-  const [ga4Token, setGa4Token] = useState("");
-  const [ga4Testing, setGa4Testing] = useState(false);
-  const [ga4Result, setGa4Result] = useState<{ ok: boolean; visitors?: number } | null>(null);
-  const [ga4OauthConnecting, setGa4OauthConnecting] = useState(false);
-  const [ga4ConnectedEmail, setGa4ConnectedEmail] = useState<string | null>(null);
-  const [ga4Properties, setGa4Properties] = useState<Array<{ id: string; name: string; account_name: string }>>([]);
-  const [ga4LoadingProperties, setGa4LoadingProperties] = useState(false);
-  const [ga4ManualMode, setGa4ManualMode] = useState(false);
-  const fetchGa4PropertiesRef = useRef<(() => Promise<void>) | null>(null);
+  // GA4 removido do onboarding durante a verificação Google.
+  // A conexão continua disponível em /dashboard/configuracoes para lojas
+  // liberadas como test users no Google Cloud Console.
 
   const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
