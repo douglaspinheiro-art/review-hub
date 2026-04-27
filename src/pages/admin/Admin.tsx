@@ -568,6 +568,10 @@ export default function Admin() {
         <TabsContent value="multitenant" className="outline-none">
           <MultiTenantAudit />
         </TabsContent>
+
+        <TabsContent value="lojas" className="outline-none">
+          <AdminStoresTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
