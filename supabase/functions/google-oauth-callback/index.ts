@@ -11,11 +11,37 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-};
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://ltvboost.com.br",
+  "https://www.ltvboost.com.br",
+  "https://ltvboost.lovable.app",
+  "https://review-hub-dusky.vercel.app",
+];
+
+function getCorsHeaders(req?: Request): Record<string, string> {
+  const origin = req?.headers.get("Origin") ?? "";
+  const configuredOrigins = (Deno.env.get("ALLOWED_ORIGIN") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins]);
+
+  let allowOrigin = allowedOrigins.has(origin) ? origin : "*";
+  try {
+    const hostname = new URL(origin).hostname;
+    if (hostname.endsWith(".lovable.app") || hostname.endsWith(".lovableproject.com") || hostname === "localhost") {
+      allowOrigin = origin;
+    }
+  } catch {
+    // Non-browser requests do not send Origin; wildcard is safe for those.
+  }
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  };
+}
 
 const SCOPES = [
   "https://www.googleapis.com/auth/analytics.readonly",
@@ -27,7 +53,7 @@ function callbackUrl(): string {
   return `${supabaseUrl}/functions/v1/google-oauth-callback`;
 }
 
-function htmlResponse(payload: Record<string, unknown>): Response {
+function htmlResponse(payload: Record<string, unknown>, req?: Request): Response {
   const json = JSON.stringify(payload);
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>GA4 Connected</title></head>
 <body style="font-family:system-ui;background:#0A0A0F;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
@@ -44,10 +70,11 @@ function htmlResponse(payload: Record<string, unknown>): Response {
     setTimeout(() => window.close(), 800);
   </script>
 </body></html>`;
-  return new Response(html, { headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } });
+  return new Response(html, { headers: { ...getCorsHeaders(req), "Content-Type": "text/html; charset=utf-8" } });
 }
 
 serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const url = new URL(req.url);
@@ -199,11 +226,11 @@ serve(async (req: Request) => {
         .eq("user_id", userId);
       if (upErr) throw new Error(`Failed to save tokens: ${upErr.message}`);
 
-      return htmlResponse({ success: true, email });
+      return htmlResponse({ success: true, email }, req);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("google-oauth-callback error:", msg);
-      return htmlResponse({ success: false, error: msg });
+      return htmlResponse({ success: false, error: msg }, req);
     }
   }
 
