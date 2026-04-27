@@ -196,6 +196,7 @@ export default function Onboarding() {
   const [ga4Properties, setGa4Properties] = useState<Array<{ id: string; name: string; account_name: string }>>([]);
   const [ga4LoadingProperties, setGa4LoadingProperties] = useState(false);
   const [ga4ManualMode, setGa4ManualMode] = useState(false);
+  const fetchGa4PropertiesRef = useRef<(() => Promise<void>) | null>(null);
 
   const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
