@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles, BarChart3, Bot, MessageCircle, ArrowDown, RefreshCw, ShoppingBag, Zap } from "lucide-react";
+import { ArrowRight, Sparkles, BarChart3, Bot, MessageCircle, ArrowDown, RefreshCw, ShoppingBag, Lock } from "lucide-react";
 
 export default function Hero() {
   return (
@@ -11,27 +11,33 @@ export default function Hero() {
           {/* Coluna esquerda - copy */}
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-semibold px-4 py-2 rounded-full border border-primary/20">
-              <Zap className="w-3.5 h-3.5 fill-primary" />
+              <Lock className="w-3.5 h-3.5" />
               <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />
-              Loop fechado em produção · GA4 + WhatsApp API oficial
+              A única plataforma de Closed-Loop Revenue Recovery do Brasil
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold leading-[1.05] tracking-tight">
-              Sua loja + GA4 → IA → WhatsApp →{" "}
-              <span className="text-gradient">resultado de volta no seu Analytics.</span>
+              Recupere a receita que sua loja já gerou —{" "}
+              <span className="text-gradient">mas nunca capturou.</span>
             </h1>
 
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Dizy) e seu GA4,
-              identificamos receita parada, executamos a recuperação por WhatsApp/Email e devolvemos a conversão
-              mensurada no seu próprio Analytics - validada também pelo pedido pago na sua loja.
+              Conectamos ao seu GA4, identificamos perda em <strong className="text-foreground">5 dimensões críticas</strong>{" "}
+              e executamos as campanhas que trazem essa receita de volta — com cada real recuperado{" "}
+              <strong className="text-foreground">medido e atribuído no seu próprio Analytics</strong>.
             </p>
+
+            <div className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
+              <Lock className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="text-xs font-bold text-primary">
+                Único modelo do mercado: Lê → Decide → Executa → Prova no GA4
+              </span>
+            </div>
 
             <div className="flex flex-wrap gap-2">
               {[
-                "Conecta Shopify/Nuvemshop/VTEX em 1 clique",
-                "Lê do seu GA4 (não estimamos)",
-                "Receita atribuída de volta no GA4",
+                "Para operadores D2C R$ 80k–3M/mês",
+                "Shopify · Nuvemshop · VTEX · WooCommerce · Yampi · Tray",
               ].map((proof) => (
                 <span
                   key={proof}
@@ -49,11 +55,11 @@ export default function Hero() {
                 className="h-14 px-8 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl shadow-xl shadow-primary/25 hover:shadow-primary/40 transition-all"
               >
                 <a href="/signup">
-                  Ativar o loop na minha loja <ArrowRight className="ml-2 w-5 h-5" />
+                  Solicitar diagnóstico gratuito <ArrowRight className="ml-2 w-5 h-5" />
                 </a>
               </Button>
               <p className="text-[11px] text-muted-foreground">
-                • Conexão GA4 em 2 cliques • Sem cartão • Primeira campanha em 48h
+                • Sem cartão • Sem instalação • Diagnóstico entregue em 7 dias
               </p>
             </div>
           </div>
