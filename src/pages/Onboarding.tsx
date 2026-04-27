@@ -819,13 +819,48 @@ export default function Onboarding() {
       if (!popup) {
         toast.error("Popup bloqueado. Permita popups para este site.");
         setGa4OauthConnecting(false);
+        return;
       }
+
+      // COOP fallback: if postMessage is blocked by cross-origin isolation,
+      // poll the DB to detect that tokens were saved, then proceed.
+      const pollStart = Date.now();
+      const pollInterval = window.setInterval(async () => {
+        // Stop after 3 minutes
+        if (Date.now() - pollStart > 3 * 60 * 1000) {
+          window.clearInterval(pollInterval);
+          setGa4OauthConnecting(false);
+          return;
+        }
+        // If popup closed, check DB once and stop polling regardless
+        let popupClosed = false;
+        try { popupClosed = popup.closed; } catch { popupClosed = true; }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data } = await supabase
+          .from("stores")
+          .select("ga4_account_email, ga4_access_token")
+          .eq("id", storeId)
+          .maybeSingle() as any;
+        if (data?.ga4_access_token) {
+          window.clearInterval(pollInterval);
+          setGa4OauthConnecting(false);
+          setGa4ConnectedEmail(data.ga4_account_email ?? "Conta Google conectada");
+          toast.success("✅ Google conectado! Carregando propriedades…");
+          void fetchGa4Properties();
+          return;
+        }
+        if (popupClosed) {
+          window.clearInterval(pollInterval);
+          setGa4OauthConnecting(false);
+        }
+      }, 1500);
     } catch (e) {
       console.error("GA4 OAuth error:", e);
       toast.error("Erro ao conectar com Google.");
       setGa4OauthConnecting(false);
     }
-  }, [user?.id, getPrimaryStoreId]);
+  }, [user?.id, getPrimaryStoreId, fetchGa4Properties]);
 
   const fetchGa4Properties = useCallback(async () => {
     const storeId = await getPrimaryStoreId();
