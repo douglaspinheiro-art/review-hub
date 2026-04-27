@@ -194,6 +194,33 @@ export type Database = {
           },
         ]
       }
+      admin_active_sessions: {
+        Row: {
+          admin_user_id: string
+          expires_at: string
+          started_at: string
+          target_store_id: string
+          target_user_id: string
+          write_enabled: boolean
+        }
+        Insert: {
+          admin_user_id: string
+          expires_at?: string
+          started_at?: string
+          target_store_id: string
+          target_user_id: string
+          write_enabled?: boolean
+        }
+        Update: {
+          admin_user_id?: string
+          expires_at?: string
+          started_at?: string
+          target_store_id?: string
+          target_user_id?: string
+          write_enabled?: boolean
+        }
+        Relationships: []
+      }
       affiliate_referrals: {
         Row: {
           commission_brl: number | null
@@ -5627,6 +5654,19 @@ export type Database = {
         Args: { notes?: string; target_user_id: string }
         Returns: undefined
       }
+      admin_can_access_user: {
+        Args: { p_target_user_id: string; p_write: boolean }
+        Returns: boolean
+      }
+      admin_enter_store: {
+        Args: { p_store_id: string }
+        Returns: {
+          expires_at: string
+          target_store_name: string
+          target_user_id: string
+        }[]
+      }
+      admin_exit_store: { Args: never; Returns: undefined }
       admin_get_pending_activations: {
         Args: never
         Returns: {
@@ -5644,6 +5684,21 @@ export type Database = {
           user_id: string
         }[]
       }
+      admin_list_stores: {
+        Args: { p_search?: string }
+        Returns: {
+          onboarding_completed: boolean
+          plan: string
+          store_created_at: string
+          store_id: string
+          store_name: string
+          store_user_id: string
+          subscription_status: string
+          user_email: string
+          user_full_name: string
+        }[]
+      }
+      admin_set_write_mode: { Args: { p_enabled: boolean }; Returns: boolean }
       append_chs_history: {
         Args: { new_label: string; new_score: number }
         Returns: Json
