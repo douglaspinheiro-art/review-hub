@@ -336,7 +336,6 @@ export default function Onboarding() {
         plataforma: string; integrationConfig: Record<string, string>; integrationValid: boolean;
         faturamento: string; ticketMedio: string; numClientes: string; visitantes: string;
         carrinho: string; checkout: string; pedidos: string; metaConversao: string;
-        ga4PropertyId: string; ga4Token: string;
         assistedStep: number; showManualOAuthFallback: boolean;
       }>;
       if (parsed && typeof parsed === "object" && "version" in parsed && "data" in parsed) {
@@ -367,8 +366,6 @@ export default function Onboarding() {
       if (s.checkout) setCheckout(s.checkout);
       if (s.pedidos) setPedidos(s.pedidos);
       if (s.metaConversao) setMetaConversao(s.metaConversao);
-      if (s.ga4PropertyId) setGa4PropertyId(s.ga4PropertyId);
-      if (s.ga4Token) setGa4Token(s.ga4Token);
       if (s.step && s.step >= 1 && s.step <= TOTAL_STEPS) setStep(s.step);
       if (s.assistedStep && s.assistedStep >= 1 && s.assistedStep <= 4) setAssistedStep(s.assistedStep);
       if (typeof s.showManualOAuthFallback === "boolean") setShowManualOAuthFallback(s.showManualOAuthFallback);
