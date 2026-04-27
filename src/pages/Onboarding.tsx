@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight, ArrowLeft, Loader2, Shield, Sparkles, Info,
-  Store, BarChart3, Globe, TrendingUp, Plug, CheckCircle2, ExternalLink, AlertCircle, Clock, X
+  Store, BarChart3, Plug, CheckCircle2, ExternalLink, AlertCircle, Clock, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ import {
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 
 /** Formata "há X minutos/horas/dias" em pt-BR para o banner de retomada. */
 function formatRelativeTime(iso: string): string {
@@ -186,17 +186,9 @@ export default function Onboarding() {
   const [importedPlatform, setImportedPlatform] = useState<string>("");
   const [zeroFields, setZeroFields] = useState<string[]>([]);
 
-  // Step 4 — GA4 (OAuth flow + manual fallback)
-  const [ga4PropertyId, setGa4PropertyId] = useState("");
-  const [ga4Token, setGa4Token] = useState("");
-  const [ga4Testing, setGa4Testing] = useState(false);
-  const [ga4Result, setGa4Result] = useState<{ ok: boolean; visitors?: number } | null>(null);
-  const [ga4OauthConnecting, setGa4OauthConnecting] = useState(false);
-  const [ga4ConnectedEmail, setGa4ConnectedEmail] = useState<string | null>(null);
-  const [ga4Properties, setGa4Properties] = useState<Array<{ id: string; name: string; account_name: string }>>([]);
-  const [ga4LoadingProperties, setGa4LoadingProperties] = useState(false);
-  const [ga4ManualMode, setGa4ManualMode] = useState(false);
-  const fetchGa4PropertiesRef = useRef<(() => Promise<void>) | null>(null);
+  // GA4 removido do onboarding durante a verificação Google.
+  // A conexão continua disponível em /dashboard/configuracoes para lojas
+  // liberadas como test users no Google Cloud Console.
 
   const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
@@ -228,13 +220,7 @@ export default function Onboarding() {
   const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const [draftBannerDismissed, setDraftBannerDismissed] = useState(false);
 
-  // 1.4 Validação cruzada GA4 ↔ plataforma (gate bloqueante).
-  // - storeOrders: pedidos derivados da plataforma (faturamento / ticketMedio).
-  // - ga4Orders: pedidos vindos do GA4 (purchase event).
-  // - Se ambos > 0 e divergência relativa > 30%, bloqueia avanço até o lojista
-  //   reconfigurar GA4 ou marcar explicitamente "ignorar e usar só dados da loja".
-  const [crossValidationOverride, setCrossValidationOverride] = useState(false);
-  const [crossValidationModalOpen, setCrossValidationModalOpen] = useState(false);
+  // GA4 fora do onboarding: validação cruzada GA4↔plataforma não é mais necessária aqui.
 
   // Resolver loja para chave de rascunho (multi-tenant por store_id).
   useEffect(() => {
@@ -344,7 +330,6 @@ export default function Onboarding() {
         plataforma: string; integrationConfig: Record<string, string>; integrationValid: boolean;
         faturamento: string; ticketMedio: string; numClientes: string; visitantes: string;
         carrinho: string; checkout: string; pedidos: string; metaConversao: string;
-        ga4PropertyId: string; ga4Token: string;
         assistedStep: number; showManualOAuthFallback: boolean;
       }>;
       if (parsed && typeof parsed === "object" && "version" in parsed && "data" in parsed) {
@@ -375,8 +360,6 @@ export default function Onboarding() {
       if (s.checkout) setCheckout(s.checkout);
       if (s.pedidos) setPedidos(s.pedidos);
       if (s.metaConversao) setMetaConversao(s.metaConversao);
-      if (s.ga4PropertyId) setGa4PropertyId(s.ga4PropertyId);
-      if (s.ga4Token) setGa4Token(s.ga4Token);
       if (s.step && s.step >= 1 && s.step <= TOTAL_STEPS) setStep(s.step);
       if (s.assistedStep && s.assistedStep >= 1 && s.assistedStep <= 4) setAssistedStep(s.assistedStep);
       if (typeof s.showManualOAuthFallback === "boolean") setShowManualOAuthFallback(s.showManualOAuthFallback);
@@ -437,14 +420,14 @@ export default function Onboarding() {
           step, storeName, storeUrl, vertical, plataforma,
           integrationConfig: safeIntegrationConfig, integrationValid,
           faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-          metaConversao, ga4PropertyId,
+          metaConversao,
           assistedStep, showManualOAuthFallback,
         },
       }));
     } catch { /* quota or private mode */ }
   }, [user, progressStorageKey, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
       faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-      metaConversao, ga4PropertyId, assistedStep, showManualOAuthFallback]);
+      metaConversao, assistedStep, showManualOAuthFallback]);
 
   // Pre-load existing active integration for esta loja (evita cruzar tenant/loja).
   useEffect(() => {
@@ -542,9 +525,9 @@ export default function Onboarding() {
     }
   }, [platformInfo, integrationValid]);
 
-  // Auto-fetch metrics when entering the Funnel step (now Step 4) with valid integration
+  // Auto-fetch metrics when entering the Funnel step (Step 3) with valid integration
   useEffect(() => {
-    if (step === 4 && integrationValid && !metricsFetched && !metricsLoading) {
+    if (step === 3 && integrationValid && !metricsFetched && !metricsLoading) {
       fetchStoreMetrics(false);
     }
   }, [step, integrationValid, metricsFetched, metricsLoading, fetchStoreMetrics]);
@@ -785,201 +768,6 @@ export default function Onboarding() {
     setStep(3);
   };
 
-  // Step 3 is now GA4 connection (optional → can always advance)
-  const handleStep3Next = () => {
-    setStep(4);
-  };
-
-  const handleGA4Connect = useCallback(async () => {
-    if (!user?.id) return;
-    const storeId = await getPrimaryStoreId();
-    if (!storeId) {
-      toast.error("Crie sua loja primeiro (passo 1).");
-      return;
-    }
-    setGa4OauthConnecting(true);
-    try {
-      const session = (await supabase.auth.getSession()).data.session;
-      const supabaseUrl = supabasePublicUrl;
-      const res = await fetch(
-        `${supabaseUrl}/functions/v1/google-oauth-callback?action=start&store_id=${storeId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-            apikey: supabasePublishableKey,
-          },
-        },
-      );
-      const json = await res.json();
-      if (!json?.url) {
-        toast.error("Não foi possível iniciar o OAuth do Google.");
-        setGa4OauthConnecting(false);
-        return;
-      }
-      const popup = window.open(json.url, "google-oauth", "width=520,height=640,scrollbars=yes");
-      if (!popup) {
-        toast.error("Popup bloqueado. Permita popups para este site.");
-        setGa4OauthConnecting(false);
-        return;
-      }
-
-      // COOP fallback: if postMessage is blocked by cross-origin isolation,
-      // poll the DB to detect that tokens were saved, then proceed.
-      const pollStart = Date.now();
-      const pollInterval = window.setInterval(async () => {
-        // Stop after 3 minutes
-        if (Date.now() - pollStart > 3 * 60 * 1000) {
-          window.clearInterval(pollInterval);
-          setGa4OauthConnecting(false);
-          return;
-        }
-        // If popup closed, check DB once and stop polling regardless
-        let popupClosed = false;
-        try { popupClosed = popup.closed; } catch { popupClosed = true; }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data } = await supabase
-          .from("stores")
-          .select("ga4_account_email, ga4_access_token")
-          .eq("id", storeId)
-          .maybeSingle() as any;
-        if (data?.ga4_access_token) {
-          window.clearInterval(pollInterval);
-          setGa4OauthConnecting(false);
-          setGa4ConnectedEmail(data.ga4_account_email ?? "Conta Google conectada");
-          toast.success("✅ Google conectado! Carregando propriedades…");
-          fetchGa4PropertiesRef.current?.();
-          return;
-        }
-        if (popupClosed) {
-          window.clearInterval(pollInterval);
-          setGa4OauthConnecting(false);
-        }
-      }, 1500);
-    } catch (e) {
-      console.error("GA4 OAuth error:", e);
-      toast.error("Erro ao conectar com Google.");
-      setGa4OauthConnecting(false);
-    }
-  }, [user?.id, getPrimaryStoreId]);
-
-  const fetchGa4Properties = useCallback(async () => {
-    const storeId = await getPrimaryStoreId();
-    if (!storeId) return;
-    setGa4LoadingProperties(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("list-ga4-properties", {
-        body: { store_id: storeId },
-      });
-      if (error || !data?.success) {
-        toast.error(data?.error || "Não foi possível listar suas propriedades GA4.");
-        return;
-      }
-      setGa4Properties(data.properties ?? []);
-      if (!data.properties?.length) {
-        toast.info("Nenhuma propriedade GA4 encontrada nesta conta Google.");
-      }
-    } catch (e) {
-      console.error("list-ga4-properties failed:", e);
-      toast.error("Erro ao buscar propriedades GA4.");
-    } finally {
-      setGa4LoadingProperties(false);
-    }
-  }, [getPrimaryStoreId]);
-
-  // Keep ref in sync so the OAuth poller can call the latest version
-  // without creating a circular dependency.
-  useEffect(() => {
-    fetchGa4PropertiesRef.current = fetchGa4Properties;
-  }, [fetchGa4Properties]);
-
-  // Listen for OAuth popup callback
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.type !== "ga4_oauth_result") return;
-      setGa4OauthConnecting(false);
-      if (event.data.success) {
-        setGa4ConnectedEmail(event.data.email ?? "Conta Google conectada");
-        toast.success("✅ Google conectado! Carregando propriedades…");
-        fetchGa4PropertiesRef.current?.();
-      } else {
-        toast.error(event.data.error || "Falha na conexão com o Google.");
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
-
-  const handleSelectGa4Property = useCallback(async (propertyId: string) => {
-    setGa4PropertyId(propertyId);
-    const storeId = await getPrimaryStoreId();
-    if (!storeId) return;
-    // ga4_property_id is a new column; types may not be regenerated yet
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await supabase.from("stores").update({ ga4_property_id: propertyId } as any).eq("id", storeId);
-    setGa4Testing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("buscar-ga4", {
-        body: { store_id: storeId, periodo: "30d" },
-      });
-      if (error || !data?.success) {
-        setGa4Result({ ok: false });
-        toast.error("Propriedade selecionada, mas não foi possível buscar dados.");
-        return;
-      }
-      const m = data.metrics ?? data.metricas ?? {};
-      const visitors = m.visitors ?? m.visitantes;
-      setGa4Result({ ok: true, visitors });
-      if (visitors) {
-        setVisitantes(String(visitors));
-        setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
-        setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
-        setPedidos(String(m.purchases ?? m.pedido ?? ""));
-        setImportedFields(prev => ({ ...prev, visitantes: true, carrinho: true, checkout: true, pedidos: true }));
-      }
-      toast.success(`✅ ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados nos últimos 30 dias.`);
-    } catch {
-      setGa4Result({ ok: false });
-      toast.error("Erro ao testar GA4.");
-    } finally {
-      setGa4Testing(false);
-    }
-  }, [getPrimaryStoreId]);
-
-  const handleTestGA4 = async () => {
-    if (!ga4PropertyId.trim() || !ga4Token.trim()) {
-      toast.error("Preencha o Property ID e o Access Token.");
-      return;
-    }
-    setGa4Testing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("buscar-ga4", {
-        body: { ga4_property_id: ga4PropertyId, access_token: ga4Token, periodo: "30d" },
-      });
-      if (error || !data?.success) {
-        setGa4Result({ ok: false });
-        toast.error("Não foi possível conectar ao GA4. Verifique as credenciais.");
-      } else {
-        const m = data.metrics ?? data.metricas ?? {};
-        const visitors = m.visitors ?? m.visitantes;
-        setGa4Result({ ok: true, visitors });
-        if (visitors) {
-          setVisitantes(String(visitors));
-          setCarrinho(String(m.add_to_cart ?? m.carrinho ?? ""));
-          setCheckout(String(m.begin_checkout ?? m.checkout ?? ""));
-          setPedidos(String(m.purchases ?? m.pedido ?? ""));
-          setImportedFields(prev => ({ ...prev, visitantes: true, carrinho: true, checkout: true, pedidos: true }));
-        }
-        toast.success(`✅ GA4 conectado! ${visitors?.toLocaleString("pt-BR") ?? 0} visitantes encontrados.`);
-      }
-    } catch {
-      setGa4Result({ ok: false });
-      toast.error("Erro ao testar conexão GA4.");
-    } finally {
-      setGa4Testing(false);
-    }
-  };
-
   const handleFinish = async () => {
     if (!faturamento || Number(faturamento) <= 0) {
       toast.error("Informe seu faturamento mensal aproximado.");
@@ -1015,29 +803,6 @@ export default function Onboarding() {
       if (!user?.id) {
         toast.error("Sessão expirada. Faça login novamente.");
         return;
-      }
-
-      // 1.4 — Validação cruzada GA4 ↔ plataforma. Só aplica se temos ambas as fontes.
-      const fatNum = Number(faturamento) || 0;
-      const tmNum2 = Number(ticketMedio) || 250;
-      const platformOrders = fatNum > 0 && tmNum2 > 0 ? Math.round(fatNum / tmNum2) : 0;
-      const ga4Orders = pedidos ? Number(pedidos) : 0;
-      if (
-        !crossValidationOverride &&
-        ga4Result?.ok &&
-        platformOrders > 0 &&
-        ga4Orders > 0
-      ) {
-        const diff = Math.abs(ga4Orders - platformOrders) / Math.max(platformOrders, ga4Orders);
-        if (diff > 0.3) {
-          setCrossValidationModalOpen(true);
-          setIsSubmitting(false);
-          void trackFunnelEvent({
-            event: "ga4_platform_divergence_blocked",
-            metadata: { ga4_orders: ga4Orders, platform_orders: platformOrders, diff_pct: Math.round(diff * 100) },
-          });
-          return;
-        }
       }
 
       const funnelVisitorsPreview = visitantes ? Number(visitantes) : estimatedVisitors;
@@ -1141,9 +906,9 @@ export default function Onboarding() {
         field_provenance: fieldProvenance,
         real_signals_pct: realSignalsPct,
         data_source_summary: {
-          ga4: Boolean(ga4Result?.ok || ga4PropertyId),
+          ga4: false,
           loja: integrationValid,
-          manual: !integrationValid && !ga4Result?.ok,
+          manual: !integrationValid,
         },
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
@@ -1167,7 +932,7 @@ export default function Onboarding() {
           vertical: vertical ?? null,
           plataforma: plataforma || null,
           integration_connected: integrationValid,
-          ga4_connected: Boolean(ga4Result?.ok || ga4PropertyId),
+          ga4_connected: false,
           real_signals_pct: realSignalsPct,
           imported_fields: Object.keys(importedFields).filter((k) => (importedFields as Record<string, boolean>)[k]),
         },
@@ -1212,84 +977,6 @@ export default function Onboarding() {
           <Progress value={Math.round((step / TOTAL_STEPS) * 100)} className="h-1 bg-muted/40" />
         </div>
 
-        {/* 1.4 Modal bloqueante de divergência GA4 ↔ plataforma */}
-        {crossValidationModalOpen && (() => {
-          const fatN = Number(faturamento) || 0;
-          const tmN = Number(ticketMedio) || 250;
-          const platOrd = fatN > 0 && tmN > 0 ? Math.round(fatN / tmN) : 0;
-          const ga4Ord = pedidos ? Number(pedidos) : 0;
-          const diffPct = platOrd > 0 ? Math.round((Math.abs(ga4Ord - platOrd) / Math.max(platOrd, ga4Ord)) * 100) : 0;
-          return (
-            <div
-              className="fixed inset-0 z-[80] bg-background/80 backdrop-blur-sm flex items-center justify-center p-6"
-              role="dialog"
-              aria-modal="true"
-            >
-              <div className="max-w-md w-full bg-[#13131A] border border-amber-500/30 rounded-2xl p-6 space-y-5 shadow-2xl">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-                    <AlertCircle className="w-5 h-5 text-amber-500" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-black font-syne tracking-tighter">Divergência detectada</h3>
-                    <p className="text-xs text-muted-foreground">
-                      GA4 e sua plataforma estão reportando números muito diferentes — antes de gerar o diagnóstico, vale conferir.
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-background/40 border border-[#2A2A38] rounded-xl p-4 space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">GA4 reporta</span>
-                    <span className="font-bold font-jetbrains">{ga4Ord.toLocaleString("pt-BR")} pedidos</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Plataforma reporta</span>
-                    <span className="font-bold font-jetbrains">{platOrd.toLocaleString("pt-BR")} pedidos</span>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-[#2A2A38]">
-                    <span className="text-muted-foreground">Divergência</span>
-                    <span className="font-bold text-amber-500">{diffPct}%</span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-snug">
-                  Possíveis causas: GA4 sem filtro de bot, propriedade errada, eventos
-                  duplicados ou pedidos cancelados não excluídos. Reconfigure GA4 ou
-                  ignore para usar apenas dados da loja.
-                </p>
-                <div className="flex flex-col-reverse sm:flex-row gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-11 rounded-xl text-xs font-bold"
-                    onClick={() => {
-                      setCrossValidationModalOpen(false);
-                      setStep(3);
-                      setGa4Result(null);
-                      setGa4PropertyId("");
-                      toast.info("Reconecte o GA4 ou pule a etapa.");
-                    }}
-                  >
-                    Reconfigurar GA4
-                  </Button>
-                  <Button
-                    className="flex-1 h-11 rounded-xl text-xs font-bold"
-                    onClick={() => {
-                      setCrossValidationOverride(true);
-                      setCrossValidationModalOpen(false);
-                      void trackFunnelEvent({
-                        event: "ga4_platform_divergence_ignored",
-                        metadata: { ga4_orders: ga4Ord, platform_orders: platOrd, diff_pct: diffPct },
-                      });
-                      toast.success("Usaremos apenas os dados da loja. Avance novamente.");
-                    }}
-                  >
-                    Ignorar e usar só a loja
-                  </Button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
         {/* 1.2 Banner de retomada de draft */}
         {draftRestoredAt && !draftBannerDismissed && step > 1 && (
           <div className="flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -1319,7 +1006,7 @@ export default function Onboarding() {
                   setIntegrationConfig({}); setIntegrationValid(false);
                   setFaturamento(""); setTicketMedio("250"); setNumClientes("");
                   setVisitantes(""); setCarrinho(""); setCheckout(""); setPedidos("");
-                  setMetaConversao("2.5"); setGa4PropertyId(""); setGa4Token("");
+                  setMetaConversao("2.5");
                   toast.success("Rascunho descartado.");
                 }}
               >
@@ -1899,199 +1586,6 @@ export default function Onboarding() {
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: GA4 Optional — connect first so funnel auto-fills */}
-        {step === 3 && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div className="text-center space-y-4">
-              <div className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 text-[10px] font-black px-3 py-1 rounded-full border border-blue-500/20 uppercase tracking-[0.2em]">
-                <Globe className="w-3 h-3" /> Passo 3 — Dados em Tempo Real (Opcional)
-              </div>
-              <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
-                Conectar Google Analytics 4
-              </h1>
-              <p className="text-muted-foreground max-w-lg mx-auto font-medium">
-                Com GA4, o diagnóstico usa dados reais do seu funil. Sem ele, a IA estima com base no faturamento informado.
-              </p>
-            </div>
-
-            {/* ── OAuth Flow (recommended) ── */}
-            {!ga4ManualMode && (
-              <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
-                {!ga4ConnectedEmail && ga4Properties.length === 0 && (
-                  <>
-                    <div className="text-center space-y-2">
-                      <p className="text-sm text-muted-foreground">
-                        Em 1 clique, autorizamos via Google e listamos suas propriedades GA4 automaticamente. Sem copiar Property IDs ou tokens.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleGA4Connect}
-                      disabled={ga4OauthConnecting}
-                      className="w-full h-14 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-base"
-                    >
-                      {ga4OauthConnecting ? (
-                        <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Conectando…</>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5 mr-2" viewBox="0 0 48 48" aria-hidden>
-                            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/>
-                            <path fill="#FF3D00" d="M6.3 14.1l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.1z"/>
-                            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.6 39.6 16.2 44 24 44z"/>
-                            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.3-4.1 5.6l6.2 5.2C42 35.3 44 30 44 24c0-1.3-.1-2.6-.4-3.5z"/>
-                          </svg>
-                          Conectar com Google
-                        </>
-                      )}
-                    </Button>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      Você será redirecionado ao Google para autorizar acesso de leitura ao Analytics. Nenhuma senha é compartilhada.
-                    </p>
-                  </>
-                )}
-
-                {ga4ConnectedEmail && (
-                  <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-muted-foreground">Conectado como</p>
-                      <p className="text-sm font-bold truncate">{ga4ConnectedEmail}</p>
-                    </div>
-                  </div>
-                )}
-
-                {ga4LoadingProperties && (
-                  <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Buscando propriedades GA4…
-                  </div>
-                )}
-
-                {ga4Properties.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                      Selecione a propriedade GA4
-                    </Label>
-                    <Select value={ga4PropertyId} onValueChange={handleSelectGa4Property}>
-                      <SelectTrigger className="h-12 rounded-xl bg-background/50 border-[#2E2E3E]">
-                        <SelectValue placeholder="Escolha uma propriedade…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ga4Properties.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} <span className="opacity-60">— {p.account_name}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {ga4Result && (
-                  <div className={cn(
-                    "rounded-xl p-4 flex items-center gap-3",
-                    ga4Result.ok ? "bg-emerald-500/10 border border-emerald-500/30" : "bg-red-500/10 border border-red-500/30"
-                  )}>
-                    {ga4Result.ok ? (
-                      <>
-                        <Sparkles className="w-5 h-5 text-emerald-500" />
-                        <div>
-                          <p className="text-sm font-bold text-emerald-400">Conectado!</p>
-                          <p className="text-xs text-muted-foreground">{ga4Result.visitors?.toLocaleString("pt-BR")} visitantes nos últimos 30 dias.</p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <Info className="w-5 h-5 text-red-400" />
-                        <p className="text-sm text-red-400">Falha ao buscar dados. Tente outra propriedade.</p>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setGa4ManualMode(true)}
-                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-                >
-                  Usar Property ID e Access Token manualmente
-                </button>
-              </div>
-            )}
-
-            {/* ── Manual fallback ── */}
-            {ga4ManualMode && (
-              <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">GA4 Property ID</Label>
-                  <Input
-                    placeholder="Ex: 123456789"
-                    value={ga4PropertyId}
-                    onChange={e => setGa4PropertyId(e.target.value)}
-                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Access Token</Label>
-                  <Input
-                    type="password"
-                    placeholder="ya29.a0..."
-                    value={ga4Token}
-                    onChange={e => setGa4Token(e.target.value)}
-                    className="h-12 rounded-xl bg-background/50 border-[#2E2E3E] font-mono"
-                  />
-                </div>
-
-                {ga4Result && (
-                  <div className={cn(
-                    "rounded-xl p-4 flex items-center gap-3",
-                    ga4Result.ok ? "bg-emerald-500/10 border border-emerald-500/30" : "bg-red-500/10 border border-red-500/30"
-                  )}>
-                    {ga4Result.ok ? (
-                      <>
-                        <Sparkles className="w-5 h-5 text-emerald-500" />
-                        <div>
-                          <p className="text-sm font-bold text-emerald-400">Conectado!</p>
-                          <p className="text-xs text-muted-foreground">{ga4Result.visitors?.toLocaleString("pt-BR")} visitantes nos últimos 30 dias.</p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <Info className="w-5 h-5 text-red-400" />
-                        <p className="text-sm text-red-400">Falha na conexão. Verifique as credenciais.</p>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3">
-                  <Button
-                    onClick={handleTestGA4}
-                    disabled={ga4Testing || !ga4PropertyId.trim() || !ga4Token.trim()}
-                    variant="outline"
-                    className="flex-1 h-11 rounded-xl border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
-                  >
-                    {ga4Testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <TrendingUp className="w-4 h-4 mr-2" />}
-                    Testar Conexão
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setGa4ManualMode(false)}
-                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-                  >
-                    ← Voltar para conexão automática
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-3">
-              <Sparkles className="w-5 h-5 text-primary shrink-0" />
-              <p className="text-xs text-primary/80 leading-relaxed font-medium">
-                Se preferir, pule esta etapa. A IA vai gerar o diagnóstico com os dados que você já informou e estimativas do benchmark do seu segmento.
-              </p>
             </div>
           </div>
         )}
