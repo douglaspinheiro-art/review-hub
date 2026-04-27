@@ -2,7 +2,15 @@ import { useInView } from "@/hooks/useInView";
 import { BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const steps = [
+type Step = {
+  icon: typeof BarChart3;
+  step: string;
+  title: string;
+  desc: string;
+  exclusive?: boolean;
+};
+
+const steps: Step[] = [
   {
     icon: ShoppingBag,
     step: "00",
