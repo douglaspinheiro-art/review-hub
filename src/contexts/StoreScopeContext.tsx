@@ -20,6 +20,38 @@ type StoreQueryResult = {
   effectiveUserId: string;
 };
 
+export type AdminImpersonation = {
+  targetUserId: string;
+  targetStoreId: string;
+  storeName: string;
+  expiresAt: string; // ISO
+  writeEnabled: boolean;
+};
+
+const ADMIN_IMP_KEY = "ltv_admin_imp";
+
+function readImpersonation(): AdminImpersonation | null {
+  try {
+    const raw = sessionStorage.getItem(ADMIN_IMP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AdminImpersonation;
+    if (!parsed?.expiresAt || new Date(parsed.expiresAt).getTime() <= Date.now()) {
+      sessionStorage.removeItem(ADMIN_IMP_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeImpersonation(value: AdminImpersonation | null) {
+  try {
+    if (value) sessionStorage.setItem(ADMIN_IMP_KEY, JSON.stringify(value));
+    else sessionStorage.removeItem(ADMIN_IMP_KEY);
+  } catch { /* noop */ }
+}
+
 type StoreScopeValue = {
   activeStoreId: string | null;
   storeOptions: StoreOption[];
@@ -29,6 +61,11 @@ type StoreScopeValue = {
   userId: string | null;
   /** The data-owner ID: equals `userId` for account owners, or the owner's ID when the user is a team member. */
   effectiveUserId: string | null;
+  /** Active admin impersonation session, if any. */
+  adminImpersonating: AdminImpersonation | null;
+  adminEnterStore: (storeId: string) => Promise<void>;
+  adminExitStore: () => Promise<void>;
+  adminSetWriteMode: (enabled: boolean) => Promise<void>;
 };
 
 const StoreScopeContext = createContext<StoreScopeValue | null>(null);
@@ -48,12 +85,26 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [activeStoreId, setActiveState] = useState<string | null>(null);
+  const [adminImp, setAdminImp] = useState<AdminImpersonation | null>(() => readImpersonation());
 
   const { data: storeData, isSuccess } = useQuery({
-    queryKey: ["dashboard-stores-list", user?.id ?? null],
+    queryKey: ["dashboard-stores-list", user?.id ?? null, adminImp?.targetUserId ?? null],
     enabled: !!user,
     queryFn: async (): Promise<StoreQueryResult> => {
       const uid = user!.id;
+      // Admin impersonation: scope all queries to the target user/store.
+      if (adminImp) {
+        const { data, error } = await supabase
+          .from("stores")
+          .select("id,name")
+          .eq("user_id", adminImp.targetUserId)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        return {
+          stores: (data ?? []) as StoreOption[],
+          effectiveUserId: adminImp.targetUserId,
+        };
+      }
       const { data: membership } = await supabase
         .from("team_members")
         .select("account_owner_id")
@@ -82,6 +133,11 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isSuccess) return;
+    // While impersonating, lock the active store to the impersonated one.
+    if (adminImp) {
+      setActiveState(adminImp.targetStoreId);
+      return;
+    }
     if (storeRows.length === 0) {
       setActiveState(null);
       writePersistedActiveStoreId(null);
@@ -91,7 +147,26 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
     const chosen = pickStoreIdFromList(ids, readPersistedActiveStoreId());
     setActiveState(chosen);
     if (chosen) writePersistedActiveStoreId(chosen);
-  }, [isSuccess, storeRows]);
+  }, [isSuccess, storeRows, adminImp]);
+
+  // Auto-expire impersonation: poll every 30s, exit when expired.
+  useEffect(() => {
+    if (!adminImp) return;
+    const checkExpiry = () => {
+      if (new Date(adminImp.expiresAt).getTime() <= Date.now()) {
+        writeImpersonation(null);
+        setAdminImp(null);
+        qc.clear();
+        try {
+          // best-effort server cleanup
+          void supabase.rpc("admin_exit_store");
+        } catch { /* noop */ }
+      }
+    };
+    checkExpiry();
+    const id = window.setInterval(checkExpiry, 30_000);
+    return () => window.clearInterval(id);
+  }, [adminImp, qc]);
 
   const setActiveStoreId = useCallback(
     (id: string) => {
@@ -113,6 +188,41 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
     [storeRows, qc, activeStoreId],
   );
 
+  const adminEnterStore = useCallback(async (storeId: string) => {
+    const { data, error } = await supabase.rpc("admin_enter_store", { p_store_id: storeId });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) throw new Error("admin_enter_store: empty response");
+    const next: AdminImpersonation = {
+      targetUserId: row.target_user_id as string,
+      targetStoreId: storeId,
+      storeName: (row.target_store_name as string) ?? "Loja",
+      expiresAt: new Date(row.expires_at as string).toISOString(),
+      writeEnabled: false,
+    };
+    writeImpersonation(next);
+    setAdminImp(next);
+    qc.clear();
+  }, [qc]);
+
+  const adminExitStore = useCallback(async () => {
+    try { await supabase.rpc("admin_exit_store"); } catch { /* swallow */ }
+    writeImpersonation(null);
+    setAdminImp(null);
+    qc.clear();
+  }, [qc]);
+
+  const adminSetWriteMode = useCallback(async (enabled: boolean) => {
+    const { error } = await supabase.rpc("admin_set_write_mode", { p_enabled: enabled });
+    if (error) throw error;
+    setAdminImp((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, writeEnabled: enabled };
+      writeImpersonation(next);
+      return next;
+    });
+  }, []);
+
   const value = useMemo((): StoreScopeValue => {
     if (!user) {
       return {
@@ -122,6 +232,10 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
         ready: true,
         userId: null,
         effectiveUserId: null,
+        adminImpersonating: null,
+        adminEnterStore: async () => {},
+        adminExitStore: async () => {},
+        adminSetWriteMode: async () => {},
       };
     }
     return {
@@ -131,8 +245,13 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
       ready: isSuccess,
       userId: user.id,
       effectiveUserId: resolvedEffectiveUserId ?? user.id,
+      adminImpersonating: adminImp,
+      adminEnterStore,
+      adminExitStore,
+      adminSetWriteMode,
     };
-  }, [user, activeStoreId, storeRows, setActiveStoreId, isSuccess, resolvedEffectiveUserId]);
+  }, [user, activeStoreId, storeRows, setActiveStoreId, isSuccess, resolvedEffectiveUserId,
+      adminImp, adminEnterStore, adminExitStore, adminSetWriteMode]);
 
   return <StoreScopeContext.Provider value={value}>{children}</StoreScopeContext.Provider>;
 }
