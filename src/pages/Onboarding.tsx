@@ -906,9 +906,9 @@ export default function Onboarding() {
         field_provenance: fieldProvenance,
         real_signals_pct: realSignalsPct,
         data_source_summary: {
-          ga4: Boolean(ga4Result?.ok || ga4PropertyId),
+          ga4: false,
           loja: integrationValid,
-          manual: !integrationValid && !ga4Result?.ok,
+          manual: !integrationValid,
         },
       };
       sessionStorage.setItem("ltv_funnel_data", JSON.stringify(funnelPayload));
@@ -932,7 +932,7 @@ export default function Onboarding() {
           vertical: vertical ?? null,
           plataforma: plataforma || null,
           integration_connected: integrationValid,
-          ga4_connected: Boolean(ga4Result?.ok || ga4PropertyId),
+          ga4_connected: false,
           real_signals_pct: realSignalsPct,
           imported_fields: Object.keys(importedFields).filter((k) => (importedFields as Record<string, boolean>)[k]),
         },
