@@ -1670,7 +1670,6 @@ export default function Onboarding() {
                 const source = provenanceSource(pct);
                 const realCount = Object.values(fieldProvenancePreview).filter((v) => v === "real").length;
                 const estCount = Object.values(fieldProvenancePreview).length - realCount;
-                const lojaOk = integrationValid;
                 return (
                   <div className="w-full max-w-md rounded-2xl border border-[#1E1E2E] bg-[#13131A] p-4 mb-2 space-y-3">
                     <div className="flex items-center justify-between">
