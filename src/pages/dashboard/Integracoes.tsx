@@ -6,7 +6,7 @@ import {
   ShoppingCart, BarChart3, MessageSquare, Star, Sparkles, ArrowRight,
   ShieldCheck, ShieldX, Store, Cloud, Layers, ShoppingBasket,
   Flame, Target, Radio, Mail, MapPin, MessageCircleWarning, Smartphone, Phone,
-  ShoppingBag, Webhook, Activity, Plug, type LucideIcon,
+  ShoppingBag, Webhook, Activity, Plug, Copy, type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -703,6 +703,27 @@ export default function Integracoes() {
                               <RefreshCw className="w-3 h-3" />
                             )}
                             Sincronizar histórico
+                          </Button>
+                        )}
+                        {item.type === "vtex" && integration?.store_id && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1.5 text-xs"
+                            onClick={() => {
+                              const url = `${supabasePublicUrl}/functions/v1/webhook-cart?source=vtex&store_id=${integration.store_id}`;
+                              navigator.clipboard.writeText(url).then(
+                                () => toast.success("URL do webhook copiada", {
+                                  description: "Cole no painel VTEX → Master Data → Triggers.",
+                                }),
+                                () => toast.error("Não foi possível copiar", { description: url }),
+                              );
+                            }}
+                            aria-label="Copiar URL do webhook VTEX"
+                          >
+                            <Copy className="w-3 h-3" />
+                            Copiar URL do webhook
                           </Button>
                         )}
                         <Button
