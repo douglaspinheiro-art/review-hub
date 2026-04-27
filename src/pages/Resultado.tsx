@@ -1111,7 +1111,7 @@ function ClosedLoopTimeline({
       icon: ShoppingBag,
       when: "Setup",
       label: "00 — Conecta sua loja",
-      desc: "Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Tray, Dizy) por OAuth e puxamos seus últimos 90 dias de pedidos.",
+      desc: "Conectamos sua plataforma de e-commerce (Shopify, Nuvemshop, VTEX, WooCommerce, Yampi, Dizy) por OAuth e puxamos seus últimos 90 dias de pedidos.",
     },
     {
       icon: BarChart3,
