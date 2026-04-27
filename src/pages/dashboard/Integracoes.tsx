@@ -414,7 +414,7 @@ export default function Integracoes() {
           .catch(() => { /* best-effort */ });
       }
 
-      return { name, replaced: !!existingRow?.id };
+      return { name, replaced: !!existingRow?.id, type };
     },
     onSuccess: ({ name, replaced, type }) => {
       toast.success(replaced ? `${name} atualizado` : `${name} conectado`, {
