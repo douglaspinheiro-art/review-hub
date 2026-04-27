@@ -29,7 +29,7 @@ import {
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 
 /** Formata "há X minutos/horas/dias" em pt-BR para o banner de retomada. */
 function formatRelativeTime(iso: string): string {
