@@ -416,12 +416,19 @@ export default function Integracoes() {
 
       return { name, replaced: !!existingRow?.id };
     },
-    onSuccess: ({ name, replaced }) => {
+    onSuccess: ({ name, replaced, type }) => {
       toast.success(replaced ? `${name} atualizado` : `${name} conectado`, {
         description: replaced
           ? "Credenciais validadas e substituídas na sua conta."
           : "Credenciais validadas. Jornadas padrão ativadas quando aplicável.",
       });
+      if (type === "vtex") {
+        toast.info("VTEX conectada — configure o webhook manualmente", {
+          description:
+            "Acesse o painel VTEX → Master Data → Triggers e aponte para a URL do webhook da sua loja.",
+          duration: 8000,
+        });
+      }
       setConnecting(null);
       setFormData({});
       setValidationState({ status: "idle", detail: "" });
