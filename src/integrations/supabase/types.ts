@@ -6094,28 +6094,17 @@ export type Database = {
         }
         Returns: Json
       }
-      write_audit_log:
-        | {
-            Args: {
-              p_action: string
-              p_ip?: string
-              p_metadata?: Json
-              p_resource: string
-              p_store_id: string
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              p_action: string
-              p_ip?: string
-              p_metadata?: Json
-              p_resource: string
-              p_result?: string
-              p_store_id: string
-            }
-            Returns: undefined
-          }
+      write_audit_log: {
+        Args: {
+          p_action: string
+          p_ip?: string
+          p_metadata?: Json
+          p_resource: string
+          p_result?: string
+          p_store_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "editor" | "user"
