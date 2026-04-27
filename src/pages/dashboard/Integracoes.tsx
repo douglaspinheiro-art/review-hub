@@ -153,11 +153,11 @@ function formatConnectedSubtitle(integration: Integration): string | null {
 }
 
 function supportsOauthConnect(type: string): boolean {
-  return type === "shopify" || type === "nuvemshop" || type === "woocommerce";
+  return type === "shopify" || type === "nuvemshop" || type === "woocommerce" || type === "tray";
 }
 
 function isAssistedOnlyPlatform(type: string): boolean {
-  return type === "vtex" || type === "tray";
+  return type === "vtex";
 }
 
 export default function Integracoes() {
