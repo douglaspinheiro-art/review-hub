@@ -125,8 +125,8 @@ const UNSUPPORTED_PLATFORMS = ["Yampi", "Loja Integrada", "Outra", "Outro", ""];
 const OAUTH_PLATFORMS = ["Shopify", "Nuvemshop", "WooCommerce"] as const;
 type OAuthPlatform = typeof OAUTH_PLATFORMS[number];
 
-/** VTEX / Tray: conexão assistida (sem OAuth clássico). */
-const ASSISTED_PLATFORMS = ["VTEX", "Tray"] as const;
+/** VTEX: conexão assistida (sem OAuth clássico). */
+const ASSISTED_PLATFORMS = ["VTEX"] as const;
 type AssistedPlatform = typeof ASSISTED_PLATFORMS[number];
 
 function isOAuthPlatform(p: string): p is OAuthPlatform {
@@ -1446,7 +1446,6 @@ export default function Onboarding() {
                     <li>
                       Abra o painel da {plataforma} em outra aba e gere as chaves de API conforme a documentação.
                       {plataforma === "VTEX" && " Depois volte aqui e cole Account name, App Key e App Token."}
-                      {plataforma === "Tray" && " Depois volte aqui e cole o API Address e o Access Token."}
                     </li>
                     <li>Preencha os campos abaixo e use &quot;Conectar e validar&quot; — testamos a API antes de guardar.</li>
                     <li>Se o painel exigir URL de retorno ou webhook, use a Central de Integrações no dashboard após conectar.</li>
@@ -1535,7 +1534,7 @@ export default function Onboarding() {
                 </>
               )}
 
-              {/* ── Manual Flow (inclui fallback OAuth e VTEX/Tray assistido) ── */}
+              {/* ── Manual Flow (inclui fallback OAuth e VTEX assistido) ── */}
               {platformInfo && (!isOAuth || showManualOAuthFallback || isAssisted) && (
                 <>
                   {isOAuth && showManualOAuthFallback && (
@@ -1570,12 +1569,6 @@ export default function Onboarding() {
                           <li>Acesse o Admin VTEX → Configurações da conta → Chaves de aplicação</li>
                           <li>Clique em "Gerenciar chaves de aplicação" → "Gerar nova chave"</li>
                           <li>Copie o App Key e App Token gerados</li>
-                        </ol>
-                      )}
-                      {plataforma === "Tray" && (
-                        <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-                          <li>Acesse o Painel Tray → Integrações → API</li>
-                          <li>Copie o endereço da API e gere um token de acesso</li>
                         </ol>
                       )}
                       {plataforma === "Magento" && (
