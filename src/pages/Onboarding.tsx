@@ -785,11 +785,6 @@ export default function Onboarding() {
     setStep(3);
   };
 
-  // Step 3 is now GA4 connection (optional → can always advance)
-  const handleStep3Next = () => {
-    setStep(4);
-  };
-
   const handleGA4Connect = useCallback(async () => {
     if (!user?.id) return;
     const storeId = await getPrimaryStoreId();
