@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight, ArrowLeft, Loader2, Shield, Sparkles, Info,
@@ -196,6 +196,7 @@ export default function Onboarding() {
   const [ga4Properties, setGa4Properties] = useState<Array<{ id: string; name: string; account_name: string }>>([]);
   const [ga4LoadingProperties, setGa4LoadingProperties] = useState(false);
   const [ga4ManualMode, setGa4ManualMode] = useState(false);
+  const fetchGa4PropertiesRef = useRef<(() => Promise<void>) | null>(null);
 
   const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
@@ -819,7 +820,42 @@ export default function Onboarding() {
       if (!popup) {
         toast.error("Popup bloqueado. Permita popups para este site.");
         setGa4OauthConnecting(false);
+        return;
       }
+
+      // COOP fallback: if postMessage is blocked by cross-origin isolation,
+      // poll the DB to detect that tokens were saved, then proceed.
+      const pollStart = Date.now();
+      const pollInterval = window.setInterval(async () => {
+        // Stop after 3 minutes
+        if (Date.now() - pollStart > 3 * 60 * 1000) {
+          window.clearInterval(pollInterval);
+          setGa4OauthConnecting(false);
+          return;
+        }
+        // If popup closed, check DB once and stop polling regardless
+        let popupClosed = false;
+        try { popupClosed = popup.closed; } catch { popupClosed = true; }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data } = await supabase
+          .from("stores")
+          .select("ga4_account_email, ga4_access_token")
+          .eq("id", storeId)
+          .maybeSingle() as any;
+        if (data?.ga4_access_token) {
+          window.clearInterval(pollInterval);
+          setGa4OauthConnecting(false);
+          setGa4ConnectedEmail(data.ga4_account_email ?? "Conta Google conectada");
+          toast.success("✅ Google conectado! Carregando propriedades…");
+          fetchGa4PropertiesRef.current?.();
+          return;
+        }
+        if (popupClosed) {
+          window.clearInterval(pollInterval);
+          setGa4OauthConnecting(false);
+        }
+      }, 1500);
     } catch (e) {
       console.error("GA4 OAuth error:", e);
       toast.error("Erro ao conectar com Google.");
@@ -851,6 +887,12 @@ export default function Onboarding() {
     }
   }, [getPrimaryStoreId]);
 
+  // Keep ref in sync so the OAuth poller can call the latest version
+  // without creating a circular dependency.
+  useEffect(() => {
+    fetchGa4PropertiesRef.current = fetchGa4Properties;
+  }, [fetchGa4Properties]);
+
   // Listen for OAuth popup callback
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -859,14 +901,14 @@ export default function Onboarding() {
       if (event.data.success) {
         setGa4ConnectedEmail(event.data.email ?? "Conta Google conectada");
         toast.success("✅ Google conectado! Carregando propriedades…");
-        void fetchGa4Properties();
+        fetchGa4PropertiesRef.current?.();
       } else {
         toast.error(event.data.error || "Falha na conexão com o Google.");
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [fetchGa4Properties]);
+  }, []);
 
   const handleSelectGa4Property = useCallback(async (propertyId: string) => {
     setGa4PropertyId(propertyId);
