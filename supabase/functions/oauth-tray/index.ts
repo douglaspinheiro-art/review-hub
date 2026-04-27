@@ -138,7 +138,8 @@ Deno.serve(async (req) => {
     invokePostIntegrationSetupFromCallback(st.user_id).catch(() => {});
     invokeRegisterWebhooksFromCallback(st.store_id, st.user_id, "tray").catch(() => {});
 
-    return new Response(redirectHtml(APP_URL, true), {
+    const returnTo = (extra.return_to ?? "onboarding").replace(/^\/+/, "");
+    return new Response(redirectHtml(APP_URL, true, undefined, returnTo), {
       status: 200, headers: { "Content-Type": "text/html" },
     });
   }
@@ -146,13 +147,18 @@ Deno.serve(async (req) => {
   return errorResponse("Unknown action", 400);
 });
 
-function redirectHtml(appUrl: string, success: boolean, error?: string): string {
+function redirectHtml(appUrl: string, success: boolean, error?: string, returnTo = "onboarding"): string {
+  // Map known return_to keys to app routes; default keeps legacy behavior.
+  const path =
+    returnTo === "integracoes"
+      ? `/dashboard/integracoes?oauth=${success ? "connected" : "error"}&platform=tray`
+      : `/${returnTo}?oauth=${success ? "connected" : "error"}`;
   return `<!DOCTYPE html><html><body><script>
     if (window.opener) {
       window.opener.postMessage({ type: "oauth_result", platform: "tray", success: ${success}, error: ${JSON.stringify(error || null)} }, "${appUrl}");
       window.close();
     } else {
-      window.location.href = "${appUrl}/onboarding?oauth=${success ? "connected" : "error"}";
+      window.location.href = "${appUrl}${path}";
     }
   </script><p>Redirecionando...</p></body></html>`;
 }
