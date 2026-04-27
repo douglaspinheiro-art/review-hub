@@ -542,9 +542,9 @@ export default function Onboarding() {
     }
   }, [platformInfo, integrationValid]);
 
-  // Auto-fetch metrics when entering the Funnel step (now Step 4) with valid integration
+  // Auto-fetch metrics when entering the Funnel step (Step 3) with valid integration
   useEffect(() => {
-    if (step === 4 && integrationValid && !metricsFetched && !metricsLoading) {
+    if (step === 3 && integrationValid && !metricsFetched && !metricsLoading) {
       fetchStoreMetrics(false);
     }
   }, [step, integrationValid, metricsFetched, metricsLoading, fetchStoreMetrics]);
