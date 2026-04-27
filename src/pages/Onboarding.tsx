@@ -847,7 +847,7 @@ export default function Onboarding() {
           setGa4OauthConnecting(false);
           setGa4ConnectedEmail(data.ga4_account_email ?? "Conta Google conectada");
           toast.success("✅ Google conectado! Carregando propriedades…");
-          void fetchGa4Properties();
+          fetchGa4PropertiesRef.current?.();
           return;
         }
         if (popupClosed) {
@@ -860,7 +860,7 @@ export default function Onboarding() {
       toast.error("Erro ao conectar com Google.");
       setGa4OauthConnecting(false);
     }
-  }, [user?.id, getPrimaryStoreId, fetchGa4Properties]);
+  }, [user?.id, getPrimaryStoreId]);
 
   const fetchGa4Properties = useCallback(async () => {
     const storeId = await getPrimaryStoreId();
