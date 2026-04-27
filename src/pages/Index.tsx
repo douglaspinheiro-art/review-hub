@@ -63,12 +63,12 @@ const Index = () => {
       <Header />
       <main>
         <Hero />
+        <FiveDimensions />
         <CategoryComparison />
         <CategoryPositioning />
         <ClientLogos />
         <HowItWorks />
         <ClosedLoopProof />
-        <FiveDimensions />
         <DiagnosticPreview />
         <Solutions />
         <Metrics />
