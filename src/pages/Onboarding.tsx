@@ -426,14 +426,14 @@ export default function Onboarding() {
           step, storeName, storeUrl, vertical, plataforma,
           integrationConfig: safeIntegrationConfig, integrationValid,
           faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-          metaConversao, ga4PropertyId,
+          metaConversao,
           assistedStep, showManualOAuthFallback,
         },
       }));
     } catch { /* quota or private mode */ }
   }, [user, progressStorageKey, step, storeName, storeUrl, vertical, plataforma, integrationConfig, integrationValid,
       faturamento, ticketMedio, numClientes, visitantes, carrinho, checkout, pedidos,
-      metaConversao, ga4PropertyId, assistedStep, showManualOAuthFallback]);
+      metaConversao, assistedStep, showManualOAuthFallback]);
 
   // Pre-load existing active integration for esta loja (evita cruzar tenant/loja).
   useEffect(() => {
