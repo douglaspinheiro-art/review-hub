@@ -181,6 +181,26 @@ async function testMagento(config: Record<string, string>): Promise<{ ok: boolea
   }
 }
 
+async function testYampi(config: Record<string, string>): Promise<{ ok: boolean; detail: string }> {
+  const alias = config.alias?.trim();
+  const token = config.token?.trim();
+  if (!alias || !token) return { ok: false, detail: "Alias e Token são obrigatórios" };
+
+  try {
+    // Endpoint conservador: catálogo costuma estar disponível em todos os planos Yampi.
+    const res = await fetch(`https://api.dooki.com.br/v2/${alias}/catalog/products?limit=1`, {
+      headers: { "User-Token": token, "Content-Type": "application/json" },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, detail: "Credenciais Yampi inválidas. Verifique o alias e o token." };
+    }
+    if (!res.ok) return { ok: false, detail: `Yampi retornou ${res.status}. Verifique as credenciais.` };
+    return { ok: true, detail: "Yampi conectada com sucesso" };
+  } catch (e: unknown) {
+    return { ok: false, detail: `Erro ao conectar: ${(e as Error).message}` };
+  }
+}
+
 function logValidate(
   requestId: string,
   phase: "start" | "callback" | "persist",
