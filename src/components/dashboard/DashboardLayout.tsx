@@ -15,6 +15,7 @@ import { useTeamAccess, teamNavItemHidden } from "@/hooks/useTeamAccess";
 
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import { TeamCollaboratorPageGuard } from "@/components/TeamCollaboratorPageGuard";
+import AdminImpersonationBanner from "@/components/AdminImpersonationBanner";
 import PendingActivationScreen from "@/components/dashboard/PendingActivationScreen";
 import {
   BETA_LIMITED_BANNER_PT,
@@ -420,6 +421,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
               )}
               <div className="max-w-7xl mx-auto">
+                <AdminImpersonationBanner />
                 <TeamCollaboratorPageGuard>{children}</TeamCollaboratorPageGuard>
               </div>
             </main>
