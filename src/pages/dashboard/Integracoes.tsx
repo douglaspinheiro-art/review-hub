@@ -6,7 +6,7 @@ import {
   ShoppingCart, BarChart3, MessageSquare, Star, Sparkles, ArrowRight,
   ShieldCheck, ShieldX, Store, Cloud, Layers, ShoppingBasket,
   Flame, Target, Radio, Mail, MapPin, MessageCircleWarning, Smartphone, Phone,
-  ShoppingBag, Webhook, Activity, Plug, type LucideIcon,
+  ShoppingBag, Webhook, Activity, Plug, Copy, type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
