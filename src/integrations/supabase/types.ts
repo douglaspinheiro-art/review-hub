@@ -4569,6 +4569,383 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_alerts_log: {
+        Row: {
+          alert_type: string
+          cycle_start: string
+          id: string
+          sent_at: string
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          alert_type: string
+          cycle_start: string
+          id?: string
+          sent_at?: string
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          alert_type?: string
+          cycle_start?: string
+          id?: string
+          sent_at?: string
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_alerts_log_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_alerts_log_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_message_packs: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          id: string
+          messages_count: number
+          name: string
+          price_brl: number
+          sku: string
+          sort_order: number
+        }
+        Insert: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          id?: string
+          messages_count: number
+          name: string
+          price_brl: number
+          sku: string
+          sort_order?: number
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          id?: string
+          messages_count?: number
+          name?: string
+          price_brl?: number
+          sku?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      wa_message_pricing: {
+        Row: {
+          active: boolean
+          category: string
+          cost_brl: number
+          country: string
+          created_at: string
+          effective_from: string
+          id: string
+          price_brl: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          cost_brl?: number
+          country?: string
+          created_at?: string
+          effective_from?: string
+          id?: string
+          price_brl?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          cost_brl?: number
+          country?: string
+          created_at?: string
+          effective_from?: string
+          id?: string
+          price_brl?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      wa_pack_purchases: {
+        Row: {
+          created_at: string
+          credited_at: string | null
+          id: string
+          messages_credited: number
+          mp_external_reference: string | null
+          mp_payment_id: string | null
+          pack_id: string
+          paid_at: string | null
+          price_brl: number
+          status: string
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credited_at?: string | null
+          id?: string
+          messages_credited: number
+          mp_external_reference?: string | null
+          mp_payment_id?: string | null
+          pack_id: string
+          paid_at?: string | null
+          price_brl: number
+          status?: string
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credited_at?: string | null
+          id?: string
+          messages_credited?: number
+          mp_external_reference?: string | null
+          mp_payment_id?: string | null
+          pack_id?: string
+          paid_at?: string | null
+          price_brl?: number
+          status?: string
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_pack_purchases_pack_id_fkey"
+            columns: ["pack_id"]
+            isOneToOne: false
+            referencedRelation: "wa_message_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_pack_purchases_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_pack_purchases_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_usage_daily: {
+        Row: {
+          category: string
+          cost_brl_total: number
+          id: string
+          messages_count: number
+          price_brl_total: number
+          store_id: string
+          updated_at: string
+          usage_date: string
+          user_id: string
+        }
+        Insert: {
+          category: string
+          cost_brl_total?: number
+          id?: string
+          messages_count?: number
+          price_brl_total?: number
+          store_id: string
+          updated_at?: string
+          usage_date: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          cost_brl_total?: number
+          id?: string
+          messages_count?: number
+          price_brl_total?: number
+          store_id?: string
+          updated_at?: string
+          usage_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_usage_daily_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_usage_daily_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_usage_events: {
+        Row: {
+          category: string
+          charged_at: string
+          confirmed_at: string | null
+          cost_brl_internal: number
+          country: string
+          id: string
+          price_brl_charged: number
+          refund_reason: string | null
+          refunded_at: string | null
+          scheduled_message_id: string | null
+          source: string
+          status: string
+          store_id: string
+          user_id: string
+          wamid: string | null
+        }
+        Insert: {
+          category: string
+          charged_at?: string
+          confirmed_at?: string | null
+          cost_brl_internal?: number
+          country?: string
+          id?: string
+          price_brl_charged?: number
+          refund_reason?: string | null
+          refunded_at?: string | null
+          scheduled_message_id?: string | null
+          source: string
+          status?: string
+          store_id: string
+          user_id: string
+          wamid?: string | null
+        }
+        Update: {
+          category?: string
+          charged_at?: string
+          confirmed_at?: string | null
+          cost_brl_internal?: number
+          country?: string
+          id?: string
+          price_brl_charged?: number
+          refund_reason?: string | null
+          refunded_at?: string | null
+          scheduled_message_id?: string | null
+          source?: string
+          status?: string
+          store_id?: string
+          user_id?: string
+          wamid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_usage_events_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_usage_events_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wa_wallets: {
+        Row: {
+          auto_recharge_enabled: boolean
+          auto_recharge_pack_id: string | null
+          created_at: string
+          cycle_end: string
+          cycle_start: string
+          hard_limit_brl: number | null
+          included_quota: number
+          purchased_balance: number
+          soft_limit_pct: number
+          status: string
+          store_id: string
+          suspended_reason: string | null
+          updated_at: string
+          used_in_cycle: number
+          user_id: string
+        }
+        Insert: {
+          auto_recharge_enabled?: boolean
+          auto_recharge_pack_id?: string | null
+          created_at?: string
+          cycle_end?: string
+          cycle_start?: string
+          hard_limit_brl?: number | null
+          included_quota?: number
+          purchased_balance?: number
+          soft_limit_pct?: number
+          status?: string
+          store_id: string
+          suspended_reason?: string | null
+          updated_at?: string
+          used_in_cycle?: number
+          user_id: string
+        }
+        Update: {
+          auto_recharge_enabled?: boolean
+          auto_recharge_pack_id?: string | null
+          created_at?: string
+          cycle_end?: string
+          cycle_start?: string
+          hard_limit_brl?: number | null
+          included_quota?: number
+          purchased_balance?: number
+          soft_limit_pct?: number
+          status?: string
+          store_id?: string
+          suspended_reason?: string | null
+          updated_at?: string
+          used_in_cycle?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wa_wallets_auto_recharge_pack_id_fkey"
+            columns: ["auto_recharge_pack_id"]
+            isOneToOne: false
+            referencedRelation: "wa_message_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_wallets_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: true
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_wallets_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: true
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_logs: {
         Row: {
           created_at: string
@@ -6149,6 +6526,83 @@ export type Database = {
         }
         Returns: Json
       }
+      wa_admin_margin_report: {
+        Args: {
+          p_period_end: string
+          p_period_start: string
+          p_store_id?: string
+        }
+        Returns: {
+          cost_brl_total: number
+          margin_brl: number
+          margin_pct: number
+          messages_count: number
+          price_brl_total: number
+          store_id: string
+          store_name: string
+        }[]
+      }
+      wa_usage_summary_for_store: {
+        Args: { p_days?: number; p_store_id: string }
+        Returns: {
+          category: string
+          messages_count: number
+          price_brl_total: number
+          usage_date: string
+        }[]
+      }
+      wa_wallet_charge: {
+        Args: {
+          p_category: string
+          p_country?: string
+          p_scheduled_message_id: string
+          p_store_id: string
+        }
+        Returns: {
+          ok: boolean
+          price_brl_charged: number
+          reason: string
+          remaining_purchased: number
+          remaining_quota: number
+          source: string
+          usage_event_id: string
+        }[]
+      }
+      wa_wallet_confirm: {
+        Args: { p_usage_event_id: string; p_wamid: string }
+        Returns: boolean
+      }
+      wa_wallet_ensure: {
+        Args: { p_store_id: string }
+        Returns: {
+          auto_recharge_enabled: boolean
+          auto_recharge_pack_id: string | null
+          created_at: string
+          cycle_end: string
+          cycle_start: string
+          hard_limit_brl: number | null
+          included_quota: number
+          purchased_balance: number
+          soft_limit_pct: number
+          status: string
+          store_id: string
+          suspended_reason: string | null
+          updated_at: string
+          used_in_cycle: number
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "wa_wallets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      wa_wallet_refund: {
+        Args: { p_reason: string; p_usage_event_id: string }
+        Returns: boolean
+      }
+      wa_wallet_reset_cycle: { Args: never; Returns: number }
       write_audit_log: {
         Args: {
           p_action: string
