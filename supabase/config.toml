@@ -15,6 +15,10 @@ verify_jwt = false
 [functions.meta-whatsapp-webhook]
 verify_jwt = false
 
+# Webhook Meta Template Status — autenticação via x-hub-signature-256 (HMAC com META_APP_SECRET).
+[functions.meta-template-status]
+verify_jwt = false
+
 # Mensagens agendadas — autenticação via CRON_SECRET no handler.
 [functions.process-scheduled-messages]
 verify_jwt = false
