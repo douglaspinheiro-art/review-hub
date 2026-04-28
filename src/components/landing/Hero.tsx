@@ -59,7 +59,7 @@ export default function Hero() {
                 </a>
               </Button>
               <p className="text-[11px] text-muted-foreground">
-                • Sem cartão • Sem instalação • Diagnóstico entregue em 7 dias
+               • Sem cartão • Sem instalação • Diagnóstico entregue em 5 minutos
               </p>
             </div>
           </div>
