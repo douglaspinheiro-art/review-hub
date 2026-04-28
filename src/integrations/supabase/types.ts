@@ -2678,6 +2678,57 @@ export type Database = {
           },
         ]
       }
+      metricas_enriquecidas: {
+        Row: {
+          created_at: string
+          id: string
+          periodo: string
+          receita_travada_frete: number
+          receita_travada_pagamento: number
+          store_id: string
+          total_abandonos_frete: number
+          total_abandonos_pagamento: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          periodo?: string
+          receita_travada_frete?: number
+          receita_travada_pagamento?: number
+          store_id: string
+          total_abandonos_frete?: number
+          total_abandonos_pagamento?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          periodo?: string
+          receita_travada_frete?: number
+          receita_travada_pagamento?: number
+          store_id?: string
+          total_abandonos_frete?: number
+          total_abandonos_pagamento?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metricas_enriquecidas_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "metricas_enriquecidas_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mp_webhook_events: {
         Row: {
           created_at: string
