@@ -176,6 +176,7 @@ async function processStoreWaMessages(
   storeId: string,
   msgs: WaMessage[],
   antiSpamDelayMs: number,
+  billingEnabled: boolean,
 ): Promise<{ processed: number; errors: number }> {
   let processed = 0;
   let errors = 0;
@@ -199,6 +200,8 @@ async function processStoreWaMessages(
   const storeOwnerId = storeRow?.user_id ?? null;
 
   for (const msg of msgs) {
+    let usageEventId: string | null = null;
+    let chargeSource: string | null = null;
     try {
       // Atomic claim — skip if already claimed by another worker
       const { data: claim } = await supabase
@@ -211,6 +214,49 @@ async function processStoreWaMessages(
       if (!claim) continue;
 
       if (!conn) throw new Error("No active WhatsApp connection");
+
+      // ── WhatsApp billing — PRE-DEBIT (when WA_BILLING_ENABLED=true) ──────
+      // Reserva saldo ANTES do envio. Se sem saldo, marca blocked_no_balance
+      // e dispara alerta idempotente. Em falha de envio: refund mais abaixo.
+      const metaPre = (msg.metadata || {}) as Record<string, unknown>;
+      const isTemplatePre =
+        metaPre.content_type === "template" && !!metaPre.meta_template_name;
+      const categoryPre = String(
+        metaPre.wa_category ?? (isTemplatePre ? "marketing" : "service"),
+      );
+      if (billingEnabled && storeOwnerId) {
+        const { data: chargeRows, error: chargeErr } = await supabase.rpc(
+          "wa_wallet_charge",
+          {
+            p_store_id: storeId,
+            p_scheduled_message_id: msg.id,
+            p_category: categoryPre,
+            p_country: "BR",
+          },
+        );
+        const charge = Array.isArray(chargeRows) ? chargeRows[0] : chargeRows;
+        if (chargeErr || !charge?.ok) {
+          const reason = charge?.reason ?? chargeErr?.message ?? "charge_failed";
+          await supabase
+            .from("scheduled_messages")
+            .update({
+              status: "blocked_no_balance",
+              error_message: `wa_billing: ${reason}`,
+              processed_at: new Date().toISOString(),
+            })
+            .eq("id", msg.id);
+          // Alerta idempotente por ciclo.
+          await supabase.rpc("wa_alert_register", {
+            p_store_id: storeId,
+            p_alert_type:
+              reason === "wallet_suspended" ? "hard_limit_suspended" : "wallet_zero",
+          });
+          errors++;
+          continue;
+        }
+        usageEventId = charge.usage_event_id ?? null;
+        chargeSource = charge.source ?? null;
+      }
 
       const phone = (msg.customers_v3.phone || "").replace(/\D/g, "");
       const e164 = phone.startsWith("55") ? phone : `55${phone}`;
@@ -268,27 +314,30 @@ async function processStoreWaMessages(
         await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: msg.campaign_id });
       }
 
-      // ── WhatsApp billing — SHADOW MODE ──────────────────────────────────────
-      // Apenas mede consumo (registra evento + agregado diário) sem debitar saldo.
-      // Quando WA_BILLING_ENABLED=true, migrar para pre-debit via wa_wallet_charge.
+      // ── WhatsApp billing — confirmação ─────────────────────────────────────
+      // Billing ON: confirma o evento já reservado (com wamid).
+      // Billing OFF (shadow): registra uso sem debitar saldo.
       try {
-        if (storeOwnerId) {
-          const isTemplate = metadata.content_type === "template" && !!metadata.meta_template_name;
-          const category = String(metadata.wa_category ?? (isTemplate ? "marketing" : "service"));
-          const wamid =
-            (sendResult as { messages?: Array<{ id?: string }> } | null)?.messages?.[0]?.id ?? null;
+        const wamid =
+          (sendResult as { messages?: Array<{ id?: string }> } | null)?.messages?.[0]?.id ??
+          null;
+        if (billingEnabled && usageEventId) {
+          await supabase.rpc("wa_wallet_confirm", {
+            p_usage_event_id: usageEventId,
+            p_wamid: wamid,
+          });
+        } else if (storeOwnerId) {
           await supabase.rpc("wa_usage_record_shadow", {
             p_store_id: storeId,
             p_user_id: storeOwnerId,
             p_scheduled_message_id: msg.id,
             p_wamid: wamid,
-            p_category: category,
+            p_category: categoryPre,
             p_country: "BR",
           });
         }
       } catch (billingErr) {
-        // Nunca falhar envio por erro de billing/medição.
-        console.warn(`[wa-billing-shadow] msg ${msg.id} record failed:`, (billingErr as Error).message);
+        console.warn(`[wa-billing] msg ${msg.id} record failed:`, (billingErr as Error).message);
       }
 
       processed++;
@@ -296,6 +345,17 @@ async function processStoreWaMessages(
     } catch (e) {
       const err = e as Error;
       console.error(`[wa] msg ${msg.id} store ${storeId} error:`, err.message);
+      // Se já tinha pre-debitado, faz refund para não cobrar envio que falhou.
+      if (billingEnabled && usageEventId) {
+        try {
+          await supabase.rpc("wa_wallet_refund", {
+            p_usage_event_id: usageEventId,
+            p_reason: `send_failed: ${err.message.slice(0, 200)}`,
+          });
+        } catch (refundErr) {
+          console.warn(`[wa-billing] refund failed for ${msg.id}:`, (refundErr as Error).message);
+        }
+      }
       await supabase
         .from("scheduled_messages")
         .update({ status: "failed", error_message: err.message.slice(0, 500) })
