@@ -23,6 +23,7 @@ import { useIsAdmin } from "@/hooks/useAdminCheck";
 import { MultiTenantAudit } from "@/components/admin/MultiTenantAudit";
 import { PendingActivations } from "@/components/admin/PendingActivations";
 import { AdminStoresTab } from "@/components/admin/AdminStoresTab";
+import WhatsAppMarginTab from "@/components/admin/WhatsAppMarginTab";
 import { toast } from "sonner";
 
 // ─── Pilot Monitor Tab ─────────────────────────────────────────────────────────
@@ -429,7 +430,7 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue="manutencao" className="w-full">
-        <TabsList className="grid w-full max-w-4xl grid-cols-6 h-auto p-1 rounded-xl mb-6">
+        <TabsList className="grid w-full max-w-5xl grid-cols-7 h-auto p-1 rounded-xl mb-6">
           <TabsTrigger value="aprovacoes" className="rounded-lg text-xs py-2.5 font-bold">
             ✅ Aprovações
           </TabsTrigger>
@@ -447,6 +448,9 @@ export default function Admin() {
           </TabsTrigger>
           <TabsTrigger value="lojas" className="rounded-lg text-xs py-2.5 font-bold">
             🏪 Lojas
+          </TabsTrigger>
+          <TabsTrigger value="wa-margem" className="rounded-lg text-xs py-2.5 font-bold">
+            💬 Margem WA
           </TabsTrigger>
         </TabsList>
 
@@ -571,6 +575,10 @@ export default function Admin() {
 
         <TabsContent value="lojas" className="outline-none">
           <AdminStoresTab />
+        </TabsContent>
+
+        <TabsContent value="wa-margem" className="outline-none">
+          <WhatsAppMarginTab />
         </TabsContent>
       </Tabs>
     </div>

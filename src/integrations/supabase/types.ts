@@ -6527,20 +6527,26 @@ export type Database = {
         Returns: Json
       }
       wa_admin_margin_report: {
-        Args: {
-          p_period_end: string
-          p_period_start: string
-          p_store_id?: string
-        }
+        Args: { p_end: string; p_start: string; p_store_id?: string }
         Returns: {
-          cost_brl_total: number
+          cost_brl: number
           margin_brl: number
           margin_pct: number
           messages_count: number
-          price_brl_total: number
+          revenue_brl: number
           store_id: string
           store_name: string
         }[]
+      }
+      wa_pricing_upsert: {
+        Args: {
+          p_category: string
+          p_cost_brl: number
+          p_country: string
+          p_effective_from?: string
+          p_price_brl: number
+        }
+        Returns: string
       }
       wa_usage_record_shadow: {
         Args: {
