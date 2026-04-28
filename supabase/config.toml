@@ -49,6 +49,10 @@ verify_jwt = false
 [functions.mercadopago-public-key]
 verify_jwt = false
 
+# Cron de alertas de carteira WhatsApp — autenticado via CRON_SECRET no handler.
+[functions.wa-wallet-alerts]
+verify_jwt = false
+
 # Checkout transparente — JWT validado no handler.
 [functions.mercadopago-process-payment]
 verify_jwt = false
