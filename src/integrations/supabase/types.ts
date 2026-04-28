@@ -6542,6 +6542,17 @@ export type Database = {
           store_name: string
         }[]
       }
+      wa_usage_record_shadow: {
+        Args: {
+          p_category: string
+          p_country?: string
+          p_scheduled_message_id: string
+          p_store_id: string
+          p_user_id: string
+          p_wamid: string
+        }
+        Returns: string
+      }
       wa_usage_summary_for_store: {
         Args: { p_days?: number; p_store_id: string }
         Returns: {
