@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Lock, Loader2, CheckCircle2 } from "lucide-react";
+import { Lock, Loader2, CheckCircle2, LogOut } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ResetPassword() {
@@ -12,6 +12,7 @@ export default function ResetPassword() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,6 +22,14 @@ export default function ResetPassword() {
       toast.error("Link de recuperação inválido ou expirado.");
     }
   }, []);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await supabase.auth.signOut();
+    setSigningOut(false);
+    toast.success("Sessão encerrada.");
+    navigate("/login");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -57,7 +66,18 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={handleSignOut}
+        disabled={signingOut}
+        className="absolute top-4 right-4 gap-2 text-muted-foreground hover:text-foreground"
+      >
+        {signingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+        Sair
+      </Button>
       <div className="max-w-sm w-full space-y-6">
         <div className="text-center space-y-2">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
