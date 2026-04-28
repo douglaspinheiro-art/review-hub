@@ -192,10 +192,11 @@ async function processStoreWaMessages(
   // Fetch store URL once per store for UTM injection allowlist (R1).
   const { data: storeRow } = await supabase
     .from("stores")
-    .select("url")
+    .select("url, user_id")
     .eq("id", storeId)
-    .maybeSingle() as { data: { url: string | null } | null };
+    .maybeSingle() as { data: { url: string | null; user_id: string | null } | null };
   const storeUrl = storeRow?.url ?? null;
+  const storeOwnerId = storeRow?.user_id ?? null;
 
   for (const msg of msgs) {
     try {
@@ -256,7 +257,7 @@ async function processStoreWaMessages(
           ),
         );
       }
-      await sendWaWithRetry(waRow, e164, resolvedContent, metadata);
+      const sendResult = await sendWaWithRetry(waRow, e164, resolvedContent, metadata);
 
       await supabase
         .from("scheduled_messages")
@@ -265,6 +266,29 @@ async function processStoreWaMessages(
 
       if (msg.campaign_id) {
         await supabase.rpc("increment_campaign_sent_count", { p_campaign_id: msg.campaign_id });
+      }
+
+      // ── WhatsApp billing — SHADOW MODE ──────────────────────────────────────
+      // Apenas mede consumo (registra evento + agregado diário) sem debitar saldo.
+      // Quando WA_BILLING_ENABLED=true, migrar para pre-debit via wa_wallet_charge.
+      try {
+        if (storeOwnerId) {
+          const isTemplate = metadata.content_type === "template" && !!metadata.meta_template_name;
+          const category = String(metadata.wa_category ?? (isTemplate ? "marketing" : "service"));
+          const wamid =
+            (sendResult as { messages?: Array<{ id?: string }> } | null)?.messages?.[0]?.id ?? null;
+          await supabase.rpc("wa_usage_record_shadow", {
+            p_store_id: storeId,
+            p_user_id: storeOwnerId,
+            p_scheduled_message_id: msg.id,
+            p_wamid: wamid,
+            p_category: category,
+            p_country: "BR",
+          });
+        }
+      } catch (billingErr) {
+        // Nunca falhar envio por erro de billing/medição.
+        console.warn(`[wa-billing-shadow] msg ${msg.id} record failed:`, (billingErr as Error).message);
       }
 
       processed++;
