@@ -145,6 +145,39 @@ export default function WhatsAppMarginTab() {
           <CardTitle className="text-2xl">{totals.pct.toFixed(1)}%</CardTitle></CardHeader></Card>
       </div>
 
+      {/* Governance — toggle wa_billing_enabled */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Power className="w-4 h-4" /> Cobrança real de mensagens WhatsApp
+          </CardTitle>
+          <CardDescription>
+            Quando desligado (modo shadow), o consumo é registrado mas nenhuma loja é debitada.
+            Ligar passa o worker a fazer pre-débito via wallet (bloqueia envios sem saldo).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={billingFlagQ.data === true}
+                disabled={billingFlagQ.isLoading || toggleBilling.isPending}
+                onCheckedChange={(v) => toggleBilling.mutate(v)}
+              />
+              <div>
+                <p className="text-sm font-medium">
+                  {billingFlagQ.data === true ? "LIGADO — cobrança ativa" : "DESLIGADO — modo shadow"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Mudança imediata, próxima execução do worker já respeita o novo valor.
+                </p>
+              </div>
+            </div>
+            {toggleBilling.isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Margin table */}
       <Card>
         <CardHeader>
