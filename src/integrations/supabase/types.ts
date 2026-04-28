@@ -5228,6 +5228,8 @@ export type Database = {
           journey_key: string
           language: string
           last_used_at: string | null
+          meta_components_updated_at: string | null
+          meta_quality_score: string | null
           meta_rejection_reason: string | null
           meta_synced_at: string | null
           meta_template_id: string | null
@@ -5252,6 +5254,8 @@ export type Database = {
           journey_key: string
           language?: string
           last_used_at?: string | null
+          meta_components_updated_at?: string | null
+          meta_quality_score?: string | null
           meta_rejection_reason?: string | null
           meta_synced_at?: string | null
           meta_template_id?: string | null
@@ -5276,6 +5280,8 @@ export type Database = {
           journey_key?: string
           language?: string
           last_used_at?: string | null
+          meta_components_updated_at?: string | null
+          meta_quality_score?: string | null
           meta_rejection_reason?: string | null
           meta_synced_at?: string | null
           meta_template_id?: string | null
