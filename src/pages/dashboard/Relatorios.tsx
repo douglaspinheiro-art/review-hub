@@ -586,7 +586,7 @@ export default function Relatorios() {
               <h3 className="font-bold text-base mb-6 flex items-center gap-2">
                 <PieChart className="w-4 h-4 text-primary" /> Distribuição RFM (clientes na base)
               </h3>
-              {snapshot.rfm.total_customers === 0 && rfmScatterData.length === 0 && (
+              {(snapshot.rfm?.total_customers ?? 0) === 0 && rfmScatterData.length === 0 && (
                 <p className="text-sm text-muted-foreground">Sem clientes em customers_v3 para esta loja.</p>
               )}
               {rfmScatterData.length > 0 && (
