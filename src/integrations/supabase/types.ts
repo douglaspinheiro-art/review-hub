@@ -1478,6 +1478,66 @@ export type Database = {
           },
         ]
       }
+      data_health_v3: {
+        Row: {
+          alertas: Json | null
+          canais: Json | null
+          created_at: string
+          etapas: Json | null
+          id: string
+          metric_contract: Json | null
+          periodo: string
+          recomendacoes_confiaveis: Json | null
+          score: number | null
+          status: string | null
+          store_id: string
+          updated_at: string
+        }
+        Insert: {
+          alertas?: Json | null
+          canais?: Json | null
+          created_at?: string
+          etapas?: Json | null
+          id?: string
+          metric_contract?: Json | null
+          periodo?: string
+          recomendacoes_confiaveis?: Json | null
+          score?: number | null
+          status?: string | null
+          store_id: string
+          updated_at?: string
+        }
+        Update: {
+          alertas?: Json | null
+          canais?: Json | null
+          created_at?: string
+          etapas?: Json | null
+          id?: string
+          metric_contract?: Json | null
+          periodo?: string
+          recomendacoes_confiaveis?: Json | null
+          score?: number | null
+          status?: string | null
+          store_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_health_v3_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_health_v3_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       data_quality_snapshots: {
         Row: {
           created_at: string
