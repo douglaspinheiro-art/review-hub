@@ -29,7 +29,7 @@ type Wallet = {
 type Pack = {
   id: string;
   name: string;
-  messages_included: number;
+  messages_count: number;
   price_brl: number;
   category: string;
 };
@@ -51,7 +51,7 @@ function formatDate(iso: string): string {
 
 export default function WhatsAppConsumo() {
   const scope = useStoreScopeOptional();
-  const storeId = scope?.storeId ?? null;
+  const storeId = scope?.activeStoreId ?? null;
 
   const walletQ = useQuery({
     queryKey: ["wa-wallet", storeId],
@@ -81,9 +81,9 @@ export default function WhatsAppConsumo() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("wa_message_packs")
-        .select("id, name, messages_included, price_brl, category")
+        .select("id, name, messages_count, price_brl, category")
         .eq("active", true)
-        .order("messages_included", { ascending: true });
+        .order("messages_count", { ascending: true });
       if (error) throw error;
       return (data ?? []) as Pack[];
     },
@@ -252,7 +252,7 @@ export default function WhatsAppConsumo() {
                 <div>
                   <p className="text-sm text-muted-foreground">{pack.name}</p>
                   <p className="text-2xl font-mono font-semibold">
-                    {pack.messages_included.toLocaleString("pt-BR")}
+                    {pack.messages_count.toLocaleString("pt-BR")}
                   </p>
                   <p className="text-xs text-muted-foreground">mensagens · {CATEGORY_LABEL[pack.category] ?? pack.category}</p>
                 </div>
