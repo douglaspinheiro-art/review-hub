@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Loader2, MessageSquare, Package, AlertTriangle, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -258,8 +259,16 @@ export default function WhatsAppConsumo() {
                 </div>
                 <div className="flex items-end justify-between mt-auto">
                   <span className="text-lg font-semibold">{formatBRL(pack.price_brl)}</span>
-                  <Button size="sm" disabled title="Em breve">
-                    Em breve
+                  <Button
+                    size="sm"
+                    disabled={buyingId === pack.id || !activeStoreId}
+                    onClick={() => handleBuyPack(pack.id)}
+                  >
+                    {buyingId === pack.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Comprar"
+                    )}
                   </Button>
                 </div>
               </div>
