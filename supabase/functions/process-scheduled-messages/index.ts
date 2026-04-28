@@ -596,6 +596,19 @@ serve(async (req) => {
 
   // ── 2. WHATSAPP QUEUE — parallel per-store processing ────────────────────────
   if (enabledQueues.has("wa")) {
+  // Lê a flag de billing UMA vez por execução (evita 1 query por mensagem).
+  let waBillingEnabled = false;
+  try {
+    const { data: flagRow } = await supabase
+      .from("feature_flags")
+      .select("value")
+      .eq("key", "wa_billing_enabled")
+      .maybeSingle();
+    waBillingEnabled = flagRow?.value === true;
+  } catch (flagErr) {
+    console.warn("[wa-billing] flag read failed, defaulting OFF:", (flagErr as Error).message);
+  }
+
   const { data: pendingWA } = await supabase
     .from("scheduled_messages")
     .select("id, store_id, message_content, metadata, campaign_id, status, scheduled_for, customers_v3(id, phone, name, email)")
@@ -621,7 +634,7 @@ serve(async (req) => {
     const batch = storeEntries.slice(i, i + MAX_PARALLEL_STORES);
     const results = await Promise.allSettled(
       batch.map(([sid, msgs]) =>
-        processStoreWaMessages(supabase, sid, msgs, ANTI_SPAM_DELAY_MS)
+        processStoreWaMessages(supabase, sid, msgs, ANTI_SPAM_DELAY_MS, waBillingEnabled)
       ),
     );
     for (const result of results) {
