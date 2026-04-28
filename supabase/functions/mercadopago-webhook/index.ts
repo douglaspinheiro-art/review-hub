@@ -182,6 +182,83 @@ serve(async (req) => {
 
       const payment = await payRes.json();
       const status = String(payment.status ?? "").toLowerCase();
+
+      // ── Branch: compra de PACOTE WhatsApp ───────────────────────────────
+      // external_reference = { type:"wa_pack", user_id, store_id, pack_id }
+      let waPack: { type?: string; store_id?: string; pack_id?: string; user_id?: string } | null = null;
+      try {
+        const ref = payment.external_reference;
+        if (typeof ref === "string") {
+          const obj = JSON.parse(ref);
+          if (obj?.type === "wa_pack") waPack = obj;
+        }
+      } catch { /* not a wa_pack */ }
+      if (!waPack && payment.metadata?.type === "wa_pack") {
+        waPack = {
+          type: "wa_pack",
+          store_id: payment.metadata.store_id,
+          pack_id: payment.metadata.pack_id,
+          user_id: payment.metadata.user_id,
+        };
+      }
+
+      if (waPack) {
+        if (status !== "approved") {
+          console.log(`[mp-webhook] wa_pack payment ${dataId} status=${status} — ignored`);
+          return new Response(JSON.stringify({ received: true, type: "wa_pack", status }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (!waPack.store_id || !waPack.pack_id) {
+          console.warn("[mp-webhook] wa_pack missing store/pack ids", { dataId });
+          return new Response(JSON.stringify({ received: true, error: "wa_pack invalid ref" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const { data: creditRows, error: creditErr } = await admin.rpc("wa_wallet_credit_pack", {
+          p_store_id: waPack.store_id,
+          p_pack_id: waPack.pack_id,
+          p_mp_payment_id: String(dataId),
+          p_mp_external_reference: payment.external_reference ?? null,
+        });
+        const credit = Array.isArray(creditRows) ? creditRows[0] : creditRows;
+        if (creditErr || !credit?.ok) {
+          console.error("[mp-webhook] wa_pack credit failed:", creditErr?.message ?? credit?.reason);
+          await admin.from("audit_logs").insert({
+            user_id: waPack.user_id ?? null,
+            action: "wa_pack_credit_failed",
+            resource: "wa_pack_purchases",
+            result: "error",
+            metadata: {
+              payment_id: String(dataId),
+              store_id: waPack.store_id,
+              pack_id: waPack.pack_id,
+              reason: creditErr?.message ?? credit?.reason,
+            },
+          });
+        } else {
+          await admin.from("audit_logs").insert({
+            user_id: waPack.user_id ?? null,
+            action: "wa_pack_credited",
+            resource: "wa_pack_purchases",
+            result: "success",
+            metadata: {
+              payment_id: String(dataId),
+              store_id: waPack.store_id,
+              pack_id: waPack.pack_id,
+              messages_credited: credit.messages_credited,
+              new_balance: credit.purchased_balance,
+            },
+          });
+        }
+        return new Response(JSON.stringify({ received: true, type: "wa_pack", credited: credit?.ok ?? false }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const extRef = planFromExternalRef(payment.external_reference);
       const metaPlan = planFromMetadata(payment.metadata);
       const plan = metaPlan ?? extRef.plan;
