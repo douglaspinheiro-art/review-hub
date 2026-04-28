@@ -127,6 +127,7 @@ const Analytics = lazy(() => import("./pages/dashboard/Analytics.tsx"));
 const Configuracoes = lazy(() => import("./pages/dashboard/Configuracoes.tsx"));
 const Billing = lazy(() => import("./pages/dashboard/Billing.tsx"));
 const WhatsApp = lazy(() => import("./pages/dashboard/WhatsApp.tsx"));
+const WhatsAppConsumo = lazy(() => import("./pages/dashboard/WhatsAppConsumo.tsx"));
 const Automacoes = lazy(() => import("./pages/dashboard/Automacoes.tsx"));
 const CarrinhoAbandonado = lazy(() => import("./pages/dashboard/CarrinhoAbandonado.tsx"));
 const Reviews = lazy(() => import("./pages/dashboard/Reviews.tsx"));
@@ -224,6 +225,7 @@ const App = () => (
           <Route path="/dashboard/reviews" element={<DashboardRoute routeLabel="Gestão de Avaliações"><Reviews /></DashboardRoute>} />
           <Route path="/dashboard/analytics" element={<DashboardRoute routeLabel="Analytics e Insights"><Analytics /></DashboardRoute>} />
           <Route path="/dashboard/whatsapp" element={<DashboardRoute routeLabel="Integração WhatsApp"><BetaLimitedPageGuard><WhatsApp /></BetaLimitedPageGuard></DashboardRoute>} />
+          <Route path="/dashboard/whatsapp/consumo" element={<DashboardRoute routeLabel="Consumo do WhatsApp"><BetaLimitedPageGuard><WhatsAppConsumo /></BetaLimitedPageGuard></DashboardRoute>} />
           <Route path="/dashboard/configuracoes" element={<DashboardRoute routeLabel="Configurações da Conta"><Configuracoes /></DashboardRoute>} />
           <Route path="/dashboard/planos" element={<DashboardRoute routeLabel="Planos e preços"><PlanosPage embedInDashboard /></DashboardRoute>} />
           <Route path="/dashboard/planos/simulador" element={<DashboardRoute routeLabel="Simulador de impacto"><PlanosPage embedInDashboard defaultTab="simulador" /></DashboardRoute>} />
