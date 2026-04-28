@@ -53,7 +53,6 @@ export default function WhatsAppMarginTab() {
       const { data, error } = await supabase.rpc("wa_admin_margin_report", {
         p_start: range.start,
         p_end: range.end,
-        p_store_id: null,
       });
       if (error) throw error;
       return (data ?? []) as MarginRow[];
