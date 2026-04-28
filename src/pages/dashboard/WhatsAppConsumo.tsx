@@ -57,7 +57,7 @@ export default function WhatsAppConsumo() {
     queryKey: ["wa-wallet", storeId],
     enabled: !!storeId,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("wa_wallet_ensure", { p_store_id: storeId });
+      const { data, error } = await supabase.rpc("wa_wallet_ensure", { p_store_id: storeId as string });
       if (error) throw error;
       return data as unknown as Wallet;
     },
@@ -68,7 +68,7 @@ export default function WhatsAppConsumo() {
     enabled: !!storeId,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("wa_usage_summary_for_store", {
-        p_store_id: storeId,
+        p_store_id: storeId as string,
         p_days: 30,
       });
       if (error) throw error;
