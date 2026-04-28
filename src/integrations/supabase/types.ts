@@ -1867,6 +1867,30 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_flags: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       forecast_snapshots: {
         Row: {
           cenario_base: number | null
@@ -6538,6 +6562,11 @@ export type Database = {
           store_name: string
         }[]
       }
+      wa_alert_register: {
+        Args: { p_alert_type: string; p_store_id: string }
+        Returns: boolean
+      }
+      wa_billing_set_enabled: { Args: { p_enabled: boolean }; Returns: boolean }
       wa_pricing_upsert: {
         Args: {
           p_category: string
@@ -6588,6 +6617,21 @@ export type Database = {
       wa_wallet_confirm: {
         Args: { p_usage_event_id: string; p_wamid: string }
         Returns: boolean
+      }
+      wa_wallet_credit_pack: {
+        Args: {
+          p_mp_external_reference?: string
+          p_mp_payment_id: string
+          p_pack_id: string
+          p_store_id: string
+        }
+        Returns: {
+          messages_credited: number
+          ok: boolean
+          purchase_id: string
+          purchased_balance: number
+          reason: string
+        }[]
       }
       wa_wallet_ensure: {
         Args: { p_store_id: string }

@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, TrendingUp, DollarSign, Save } from "lucide-react";
+import { Loader2, TrendingUp, DollarSign, Save, Power } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -46,6 +47,33 @@ export default function WhatsAppMarginTab() {
   const qc = useQueryClient();
   const [period, setPeriod] = useState<"7d" | "30d" | "90d">("30d");
   const range = useMemo(() => periodRange(period), [period]);
+
+  const billingFlagQ = useQuery({
+    queryKey: ["wa-billing-flag"],
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from("feature_flags")
+        .select("value")
+        .eq("key", "wa_billing_enabled")
+        .maybeSingle();
+      if (error) throw error;
+      return data?.value === true;
+    },
+    staleTime: 30_000,
+  });
+
+  const toggleBilling = useMutation({
+    mutationFn: async (enabled: boolean): Promise<boolean> => {
+      const { data, error } = await supabase.rpc("wa_billing_set_enabled", { p_enabled: enabled });
+      if (error) throw error;
+      return data as boolean;
+    },
+    onSuccess: (val) => {
+      qc.invalidateQueries({ queryKey: ["wa-billing-flag"] });
+      toast.success(val ? "Cobrança WhatsApp LIGADA" : "Cobrança WhatsApp DESLIGADA (modo shadow)");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const marginQuery = useQuery({
     queryKey: ["wa-admin-margin", period],
@@ -116,6 +144,39 @@ export default function WhatsAppMarginTab() {
         <Card><CardHeader className="pb-2"><CardDescription>Margem %</CardDescription>
           <CardTitle className="text-2xl">{totals.pct.toFixed(1)}%</CardTitle></CardHeader></Card>
       </div>
+
+      {/* Governance — toggle wa_billing_enabled */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Power className="w-4 h-4" /> Cobrança real de mensagens WhatsApp
+          </CardTitle>
+          <CardDescription>
+            Quando desligado (modo shadow), o consumo é registrado mas nenhuma loja é debitada.
+            Ligar passa o worker a fazer pre-débito via wallet (bloqueia envios sem saldo).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={billingFlagQ.data === true}
+                disabled={billingFlagQ.isLoading || toggleBilling.isPending}
+                onCheckedChange={(v) => toggleBilling.mutate(v)}
+              />
+              <div>
+                <p className="text-sm font-medium">
+                  {billingFlagQ.data === true ? "LIGADO — cobrança ativa" : "DESLIGADO — modo shadow"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Mudança imediata, próxima execução do worker já respeita o novo valor.
+                </p>
+              </div>
+            </div>
+            {toggleBilling.isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Margin table */}
       <Card>

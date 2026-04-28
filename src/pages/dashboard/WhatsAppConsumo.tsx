@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Loader2, MessageSquare, Package, AlertTriangle, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,29 @@ function formatDate(iso: string): string {
 export default function WhatsAppConsumo() {
   const scope = useStoreScopeOptional();
   const storeId = scope?.activeStoreId ?? null;
+  const activeStoreId = storeId;
+  const [buyingId, setBuyingId] = useState<string | null>(null);
+
+  async function handleBuyPack(packId: string) {
+    if (!activeStoreId) return;
+    setBuyingId(packId);
+    try {
+      const { data, error } = await supabase.functions.invoke<{
+        init_point?: string;
+        sandbox_init_point?: string;
+        error?: string;
+      }>("wa-pack-purchase", {
+        body: { store_id: activeStoreId, pack_id: packId },
+      });
+      if (error) throw new Error(error.message);
+      const url = data?.init_point ?? data?.sandbox_init_point;
+      if (!url) throw new Error(data?.error ?? "Não foi possível iniciar o checkout");
+      window.location.href = url;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao iniciar compra");
+      setBuyingId(null);
+    }
+  }
 
   const walletQ = useQuery({
     queryKey: ["wa-wallet", storeId],
@@ -258,8 +282,16 @@ export default function WhatsAppConsumo() {
                 </div>
                 <div className="flex items-end justify-between mt-auto">
                   <span className="text-lg font-semibold">{formatBRL(pack.price_brl)}</span>
-                  <Button size="sm" disabled title="Em breve">
-                    Em breve
+                  <Button
+                    size="sm"
+                    disabled={buyingId === pack.id || !activeStoreId}
+                    onClick={() => handleBuyPack(pack.id)}
+                  >
+                    {buyingId === pack.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Comprar"
+                    )}
                   </Button>
                 </div>
               </div>
