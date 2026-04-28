@@ -21,11 +21,11 @@ export default function Hero() {
               <span className="text-gradient">mas nunca capturou.</span>
             </h1>
 
-            <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              Conectamos ao seu GA4, identificamos perda em <strong className="text-foreground">5 dimensões críticas</strong>{" "}
-              e executamos as campanhas que trazem essa receita de volta — com cada real recuperado{" "}
-              <strong className="text-foreground">medido e atribuído no seu próprio Analytics</strong>.
-            </p>
+             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
+               Conectamos na sua loja e no seu GA4, identificamos perda em <strong className="text-foreground">5 dimensões críticas</strong>{" "}
+               e executamos as campanhas que trazem essa receita de volta — com cada real recuperado{" "}
+               <strong className="text-foreground">medido e atribuído no seu próprio Analytics</strong>.
+             </p>
 
             <div className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
               <Lock className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -101,9 +101,9 @@ export default function Hero() {
                 <LoopNode
                   icon={Bot}
                   label="02 - IA decide"
-                  title="847 contatos do segmento Em Risco priorizados"
-                  meta="Claude Sonnet · RFM da plataforma + comportamento do GA4"
-                />
+                   title="847 contatos do segmento Em Risco priorizados"
+                   meta="AI + RFM da plataforma + comportamento do GA4"
+                 />
                 <LoopArrow />
                 {/* Nó 3: Executa */}
                 <LoopNode

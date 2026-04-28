@@ -27,7 +27,7 @@ const steps: Step[] = [
     icon: Bot,
     step: "02",
     title: "IA decide",
-    desc: "Claude Sonnet cruza RFM da sua plataforma com comportamento do GA4 e decide quem abordar, quando e com qual oferta.",
+     desc: "AI cruza RFM da sua plataforma com comportamento do GA4 e decide quem abordar, quando e com qual oferta.",
   },
   {
     icon: MessageCircle,
