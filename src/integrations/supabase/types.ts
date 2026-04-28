@@ -5214,6 +5214,96 @@ export type Database = {
           },
         ]
       }
+      whatsapp_templates: {
+        Row: {
+          body_text: string
+          buttons: Json | null
+          category: string
+          created_at: string
+          description: string | null
+          footer_text: string | null
+          header_content: string | null
+          header_type: string | null
+          id: string
+          journey_key: string
+          language: string
+          last_used_at: string | null
+          meta_rejection_reason: string | null
+          meta_synced_at: string | null
+          meta_template_id: string | null
+          meta_template_name: string | null
+          name: string
+          status: string
+          store_id: string | null
+          updated_at: string
+          usage_count: number
+          variables: Json | null
+        }
+        Insert: {
+          body_text: string
+          buttons?: Json | null
+          category: string
+          created_at?: string
+          description?: string | null
+          footer_text?: string | null
+          header_content?: string | null
+          header_type?: string | null
+          id?: string
+          journey_key: string
+          language?: string
+          last_used_at?: string | null
+          meta_rejection_reason?: string | null
+          meta_synced_at?: string | null
+          meta_template_id?: string | null
+          meta_template_name?: string | null
+          name: string
+          status?: string
+          store_id?: string | null
+          updated_at?: string
+          usage_count?: number
+          variables?: Json | null
+        }
+        Update: {
+          body_text?: string
+          buttons?: Json | null
+          category?: string
+          created_at?: string
+          description?: string | null
+          footer_text?: string | null
+          header_content?: string | null
+          header_type?: string | null
+          id?: string
+          journey_key?: string
+          language?: string
+          last_used_at?: string | null
+          meta_rejection_reason?: string | null
+          meta_synced_at?: string | null
+          meta_template_id?: string | null
+          meta_template_name?: string | null
+          name?: string
+          status?: string
+          store_id?: string | null
+          updated_at?: string
+          usage_count?: number
+          variables?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_templates_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_templates_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       white_label: {
         Row: {
           brand_logo_url: string | null
