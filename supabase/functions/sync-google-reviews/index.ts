@@ -112,8 +112,9 @@ serve(async (req) => {
       platform: "google",
       reviewer_name: rv.reviewer?.displayName ?? "Anônimo",
       rating: rv.starRating ? STAR_MAP[rv.starRating] ?? 0 : 0,
-      comment: rv.comment ?? "",
+      content: rv.comment ?? "",
       external_id: rv.reviewId,
+      status: "pending",
       created_at: rv.createTime ?? new Date().toISOString(),
     }));
 
@@ -121,7 +122,7 @@ serve(async (req) => {
     if (rows.length) {
       const { error: upErr, count } = await admin
         .from("reviews")
-        .upsert(rows, { onConflict: "external_id", count: "exact" });
+        .upsert(rows, { onConflict: "platform,external_id", count: "exact" });
       if (upErr) return json({ error: `Failed to save reviews: ${upErr.message}` }, 500);
       inserted = count ?? rows.length;
     }
