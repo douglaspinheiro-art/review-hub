@@ -48,11 +48,11 @@ export function GA4ConnectCard({ storeId, onConnected }: GA4ConnectCardProps) {
     if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
-  async function handleOAuthSuccess(incomingEmail: string | null) {
+  async function completePropertySelection(incomingEmail: string | null, showSuccessToast = false) {
     if (!storeId) return;
     setConnecting(false);
     if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
-    toast.success("Google Analytics 4 conectado!");
+    if (showSuccessToast) toast.success("Google Analytics 4 conectado!");
 
     // Refresh stored email/property
     const { data: store } = await supabase
@@ -93,6 +93,10 @@ export function GA4ConnectCard({ storeId, onConnected }: GA4ConnectCardProps) {
     }
   }
 
+  async function handleOAuthSuccess(incomingEmail: string | null) {
+    await completePropertySelection(incomingEmail, true);
+  }
+
   async function saveProperty(propId: string, knownEmail: string | null) {
     if (!storeId) return;
     setSavingProperty(true);
@@ -118,6 +122,11 @@ export function GA4ConnectCard({ storeId, onConnected }: GA4ConnectCardProps) {
       return;
     }
     setConnecting(true);
+
+    if (email && !propertyId) {
+      await completePropertySelection(email);
+      return;
+    }
 
     // BroadcastChannel fallback (works even if window.opener is null due to COOP)
     let bc: BroadcastChannel | null = null;
@@ -172,7 +181,7 @@ export function GA4ConnectCard({ storeId, onConnected }: GA4ConnectCardProps) {
           .select("ga4_account_email, ga4_token_expires_at")
           .eq("id", storeId)
           .maybeSingle();
-        if (data?.ga4_account_email && data.ga4_account_email !== email) {
+        if (data?.ga4_account_email || data?.ga4_token_expires_at) {
           handleOAuthSuccess(data.ga4_account_email);
         }
       }, 2500);
