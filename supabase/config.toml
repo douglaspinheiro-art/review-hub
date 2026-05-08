@@ -80,7 +80,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.buscar-ga4]
-verify_jwt = true
+verify_jwt = false
 
 [functions.gerar-diagnostico]
 verify_jwt = false
@@ -237,4 +237,4 @@ verify_jwt = false
 
 # Lista propriedades GA4 — autenticado via JWT do usuário.
 [functions.list-ga4-properties]
-verify_jwt = true
+verify_jwt = false
