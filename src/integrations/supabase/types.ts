@@ -317,6 +317,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_chat_messages: {
+        Row: {
+          context_used: Json | null
+          created_at: string
+          id: string
+          message: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          context_used?: Json | null
+          created_at?: string
+          id?: string
+          message: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          context_used?: Json | null
+          created_at?: string
+          id?: string
+          message?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_generated_coupons: {
         Row: {
           code: string
@@ -1130,6 +1157,38 @@ export type Database = {
           },
         ]
       }
+      completed_tasks: {
+        Row: {
+          completed_at: string
+          id: string
+          plan_id: string
+          task_key: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          id?: string
+          plan_id: string
+          task_key: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          id?: string
+          plan_id?: string
+          task_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "completed_tasks_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "thirty_day_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           created_at: string
@@ -1478,6 +1537,80 @@ export type Database = {
           },
         ]
       }
+      daily_message_count: {
+        Row: {
+          date: string
+          id: string
+          message_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          date: string
+          id?: string
+          message_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          date?: string
+          id?: string
+          message_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_tasks: {
+        Row: {
+          category: string | null
+          created_at: string
+          day_number: number
+          id: string
+          is_required: boolean | null
+          plan_id: string
+          task_description: string | null
+          task_title: string | null
+          time_of_day: string | null
+          user_id: string
+          week_number: number
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          day_number: number
+          id?: string
+          is_required?: boolean | null
+          plan_id: string
+          task_description?: string | null
+          task_title?: string | null
+          time_of_day?: string | null
+          user_id: string
+          week_number: number
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          day_number?: number
+          id?: string
+          is_required?: boolean | null
+          plan_id?: string
+          task_description?: string | null
+          task_title?: string | null
+          time_of_day?: string | null
+          user_id?: string
+          week_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_tasks_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "thirty_day_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       data_health_v3: {
         Row: {
           alertas: Json | null
@@ -1591,6 +1724,140 @@ export type Database = {
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diagnosis_answers: {
+        Row: {
+          answers_json: Json
+          available_time: string | null
+          created_at: string
+          current_skincare_routine: string | null
+          hair_concern: string | null
+          hair_type: string | null
+          hair_wash_frequency: string | null
+          has_chemical_treatment: string | null
+          id: string
+          main_difficulty: string | null
+          main_goal: string | null
+          monthly_budget: string | null
+          routine_preference: string | null
+          skin_concern: string | null
+          skin_type: string | null
+          sunscreen_use: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answers_json?: Json
+          available_time?: string | null
+          created_at?: string
+          current_skincare_routine?: string | null
+          hair_concern?: string | null
+          hair_type?: string | null
+          hair_wash_frequency?: string | null
+          has_chemical_treatment?: string | null
+          id?: string
+          main_difficulty?: string | null
+          main_goal?: string | null
+          monthly_budget?: string | null
+          routine_preference?: string | null
+          skin_concern?: string | null
+          skin_type?: string | null
+          sunscreen_use?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answers_json?: Json
+          available_time?: string | null
+          created_at?: string
+          current_skincare_routine?: string | null
+          hair_concern?: string | null
+          hair_type?: string | null
+          hair_wash_frequency?: string | null
+          has_chemical_treatment?: string | null
+          id?: string
+          main_difficulty?: string | null
+          main_goal?: string | null
+          monthly_budget?: string | null
+          routine_preference?: string | null
+          skin_concern?: string | null
+          skin_type?: string | null
+          sunscreen_use?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      diagnosis_results: {
+        Row: {
+          ai_full_response: Json | null
+          created_at: string
+          cuidados_capilares: Json | null
+          cuidados_recomendados: Json | null
+          diagnosis_id: string | null
+          evitar: Json | null
+          foco_30_dias: string | null
+          habitos_glow_up: Json | null
+          id: string
+          perfil_resumo: string | null
+          recomendacoes_cabelo: string | null
+          recomendacoes_pele: string | null
+          rotina_ideal: string | null
+          rotina_manha: Json | null
+          rotina_noite: Json | null
+          updated_at: string
+          user_id: string
+          visual_analysis: string | null
+        }
+        Insert: {
+          ai_full_response?: Json | null
+          created_at?: string
+          cuidados_capilares?: Json | null
+          cuidados_recomendados?: Json | null
+          diagnosis_id?: string | null
+          evitar?: Json | null
+          foco_30_dias?: string | null
+          habitos_glow_up?: Json | null
+          id?: string
+          perfil_resumo?: string | null
+          recomendacoes_cabelo?: string | null
+          recomendacoes_pele?: string | null
+          rotina_ideal?: string | null
+          rotina_manha?: Json | null
+          rotina_noite?: Json | null
+          updated_at?: string
+          user_id: string
+          visual_analysis?: string | null
+        }
+        Update: {
+          ai_full_response?: Json | null
+          created_at?: string
+          cuidados_capilares?: Json | null
+          cuidados_recomendados?: Json | null
+          diagnosis_id?: string | null
+          evitar?: Json | null
+          foco_30_dias?: string | null
+          habitos_glow_up?: Json | null
+          id?: string
+          perfil_resumo?: string | null
+          recomendacoes_cabelo?: string | null
+          recomendacoes_pele?: string | null
+          rotina_ideal?: string | null
+          rotina_manha?: Json | null
+          rotina_noite?: Json | null
+          updated_at?: string
+          user_id?: string
+          visual_analysis?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diagnosis_results_diagnosis_id_fkey"
+            columns: ["diagnosis_id"]
+            isOneToOne: true
+            referencedRelation: "diagnosis_answers"
             referencedColumns: ["id"]
           },
         ]
@@ -3714,6 +3981,62 @@ export type Database = {
         }
         Relationships: []
       }
+      progress_summary: {
+        Row: {
+          completed_tasks: number | null
+          current_day: number | null
+          glow_up_progress: number | null
+          hair_progress: number | null
+          id: string
+          last_activity_at: string | null
+          plan_id: string
+          progress_percentage: number | null
+          skincare_progress: number | null
+          streak_days: number | null
+          total_tasks: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_tasks?: number | null
+          current_day?: number | null
+          glow_up_progress?: number | null
+          hair_progress?: number | null
+          id?: string
+          last_activity_at?: string | null
+          plan_id: string
+          progress_percentage?: number | null
+          skincare_progress?: number | null
+          streak_days?: number | null
+          total_tasks?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_tasks?: number | null
+          current_day?: number | null
+          glow_up_progress?: number | null
+          hair_progress?: number | null
+          id?: string
+          last_activity_at?: string | null
+          plan_id?: string
+          progress_percentage?: number | null
+          skincare_progress?: number | null
+          streak_days?: number | null
+          total_tasks?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "progress_summary_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "thirty_day_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rate_limits: {
         Row: {
           id: string
@@ -4683,6 +5006,97 @@ export type Database = {
           },
         ]
       }
+      thirty_day_plans: {
+        Row: {
+          created_at: string
+          current_day: number
+          diagnosis_id: string | null
+          end_date: string | null
+          id: string
+          is_active: boolean
+          plan_data: Json
+          plan_generation_error: string | null
+          plan_summary: string | null
+          plan_title: string | null
+          start_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_day?: number
+          diagnosis_id?: string | null
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          plan_data?: Json
+          plan_generation_error?: string | null
+          plan_summary?: string | null
+          plan_title?: string | null
+          start_date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_day?: number
+          diagnosis_id?: string | null
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          plan_data?: Json
+          plan_generation_error?: string | null
+          plan_summary?: string | null
+          plan_title?: string | null
+          start_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thirty_day_plans_diagnosis_id_fkey"
+            columns: ["diagnosis_id"]
+            isOneToOne: false
+            referencedRelation: "diagnosis_answers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      uploaded_photos: {
+        Row: {
+          diagnosis_id: string
+          id: string
+          photo_path: string
+          photo_type: string
+          uploaded_at: string
+          user_id: string
+        }
+        Insert: {
+          diagnosis_id: string
+          id?: string
+          photo_path: string
+          photo_type: string
+          uploaded_at?: string
+          user_id: string
+        }
+        Update: {
+          diagnosis_id?: string
+          id?: string
+          photo_path?: string
+          photo_type?: string
+          uploaded_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "uploaded_photos_diagnosis_id_fkey"
+            columns: ["diagnosis_id"]
+            isOneToOne: false
+            referencedRelation: "diagnosis_answers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -5196,6 +5610,47 @@ export type Database = {
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weekly_reflections: {
+        Row: {
+          ai_insight: string | null
+          created_at: string
+          feeling: Json | null
+          id: string
+          notes: string | null
+          plan_id: string
+          user_id: string
+          week_number: number
+        }
+        Insert: {
+          ai_insight?: string | null
+          created_at?: string
+          feeling?: Json | null
+          id?: string
+          notes?: string | null
+          plan_id: string
+          user_id: string
+          week_number: number
+        }
+        Update: {
+          ai_insight?: string | null
+          created_at?: string
+          feeling?: Json | null
+          id?: string
+          notes?: string | null
+          plan_id?: string
+          user_id?: string
+          week_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_reflections_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "thirty_day_plans"
             referencedColumns: ["id"]
           },
         ]
