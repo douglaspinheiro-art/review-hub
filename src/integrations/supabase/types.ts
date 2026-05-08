@@ -4158,6 +4158,7 @@ export type Database = {
           ai_reply: string | null
           content: string | null
           created_at: string
+          external_id: string | null
           id: string
           platform: string
           rating: number | null
@@ -4173,6 +4174,7 @@ export type Database = {
           ai_reply?: string | null
           content?: string | null
           created_at?: string
+          external_id?: string | null
           id?: string
           platform?: string
           rating?: number | null
@@ -4188,6 +4190,7 @@ export type Database = {
           ai_reply?: string | null
           content?: string | null
           created_at?: string
+          external_id?: string | null
           id?: string
           platform?: string
           rating?: number | null
