@@ -4158,6 +4158,7 @@ export type Database = {
           ai_reply: string | null
           content: string | null
           created_at: string
+          external_id: string | null
           id: string
           platform: string
           rating: number | null
@@ -4173,6 +4174,7 @@ export type Database = {
           ai_reply?: string | null
           content?: string | null
           created_at?: string
+          external_id?: string | null
           id?: string
           platform?: string
           rating?: number | null
@@ -4188,6 +4190,7 @@ export type Database = {
           ai_reply?: string | null
           content?: string | null
           created_at?: string
+          external_id?: string | null
           id?: string
           platform?: string
           rating?: number | null
@@ -4823,6 +4826,8 @@ export type Database = {
           ga4_property_id: string | null
           ga4_refresh_token: string | null
           ga4_token_expires_at: string | null
+          google_business_account_id: string | null
+          google_business_location_id: string | null
           high_ticket_threshold_brl: number | null
           id: string
           isl_history: Json
@@ -4851,6 +4856,8 @@ export type Database = {
           ga4_property_id?: string | null
           ga4_refresh_token?: string | null
           ga4_token_expires_at?: string | null
+          google_business_account_id?: string | null
+          google_business_location_id?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
           isl_history?: Json
@@ -4879,6 +4886,8 @@ export type Database = {
           ga4_property_id?: string | null
           ga4_refresh_token?: string | null
           ga4_token_expires_at?: string | null
+          google_business_account_id?: string | null
+          google_business_location_id?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
           isl_history?: Json
