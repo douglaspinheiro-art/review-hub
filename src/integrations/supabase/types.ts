@@ -4823,6 +4823,8 @@ export type Database = {
           ga4_property_id: string | null
           ga4_refresh_token: string | null
           ga4_token_expires_at: string | null
+          google_business_account_id: string | null
+          google_business_location_id: string | null
           high_ticket_threshold_brl: number | null
           id: string
           isl_history: Json
@@ -4851,6 +4853,8 @@ export type Database = {
           ga4_property_id?: string | null
           ga4_refresh_token?: string | null
           ga4_token_expires_at?: string | null
+          google_business_account_id?: string | null
+          google_business_location_id?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
           isl_history?: Json
@@ -4879,6 +4883,8 @@ export type Database = {
           ga4_property_id?: string | null
           ga4_refresh_token?: string | null
           ga4_token_expires_at?: string | null
+          google_business_account_id?: string | null
+          google_business_location_id?: string | null
           high_ticket_threshold_brl?: number | null
           id?: string
           isl_history?: Json
