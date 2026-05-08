@@ -26,6 +26,7 @@ type RecoveryData = z.infer<typeof recoverySchema>;
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoverySent, setRecoverySent] = useState(false);
   const { signIn, user, profile, loading: authLoading } = useAuth();
@@ -88,6 +89,18 @@ export default function Login() {
       return;
     }
     setRecoverySent(true);
+  }
+
+  async function handleGoogleSignIn() {
+    setGoogleLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/login` },
+    });
+    if (error) {
+      setGoogleLoading(false);
+      toast({ title: "Erro com Google", description: error.message, variant: "destructive" });
+    }
   }
 
   if (authLoading) {
