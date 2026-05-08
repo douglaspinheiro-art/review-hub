@@ -28,6 +28,7 @@ import {
 } from "@/lib/funnel-validation";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
+import { GA4ConnectCard } from "@/components/onboarding/GA4ConnectCard";
 
 const TOTAL_STEPS = 3;
 
@@ -186,9 +187,9 @@ export default function Onboarding() {
   const [importedPlatform, setImportedPlatform] = useState<string>("");
   const [zeroFields, setZeroFields] = useState<string[]>([]);
 
-  // GA4 removido do onboarding durante a verificação Google.
-  // A conexão continua disponível em /dashboard/configuracoes para lojas
-  // liberadas como test users no Google Cloud Console.
+  // GA4 reativado no Step 4 como conexão opcional via popup OAuth
+  // (mesma edge function usada em /dashboard/configuracoes).
+  const [ga4Connected, setGa4Connected] = useState(false);
 
   const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
@@ -906,7 +907,7 @@ export default function Onboarding() {
         field_provenance: fieldProvenance,
         real_signals_pct: realSignalsPct,
         data_source_summary: {
-          ga4: false,
+          ga4: ga4Connected,
           loja: integrationValid,
           manual: !integrationValid,
         },
@@ -932,7 +933,7 @@ export default function Onboarding() {
           vertical: vertical ?? null,
           plataforma: plataforma || null,
           integration_connected: integrationValid,
-          ga4_connected: false,
+          ga4_connected: ga4Connected,
           real_signals_pct: realSignalsPct,
           imported_fields: Object.keys(importedFields).filter((k) => (importedFields as Record<string, boolean>)[k]),
         },
