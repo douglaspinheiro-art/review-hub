@@ -60,12 +60,6 @@ export function GoogleConnectionsCard() {
     }
     setConnecting(scopeSet === "ga4" ? "ga4" : "business");
     try {
-      const { data, error } = await supabase.functions.invoke("google-oauth-callback", {
-        method: "GET",
-        body: undefined,
-        // invoke doesn't support GET easily; use direct URL
-      });
-      // Fallback: build URL manually
       const base = `${(import.meta.env.VITE_SUPABASE_URL ?? "").replace(/\/$/, "")}/functions/v1/google-oauth-callback`;
       const session = (await supabase.auth.getSession()).data.session;
       if (!session) throw new Error("Sessão expirada");
@@ -73,7 +67,6 @@ export function GoogleConnectionsCard() {
       const r = await fetch(startUrl, { headers: { Authorization: `Bearer ${session.access_token}` } });
       if (!r.ok) throw new Error(`Falha ao iniciar OAuth (${r.status})`);
       const { url } = await r.json() as { url: string };
-      void data; void error; // suppress unused
 
       // Open OAuth popup
       const w = window.open(url, "google-oauth", "width=520,height=640");
