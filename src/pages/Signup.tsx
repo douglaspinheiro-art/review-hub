@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 
 const schema = z.object({
   full_name: z.string().trim().min(2, "Informe seu nome").max(100),
@@ -26,6 +27,7 @@ type FormData = z.infer<typeof schema>;
 
 export default function Signup() {
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [searchParams] = useSearchParams();
   const perda = searchParams.get("perda");
   const refParam = searchParams.get("ref");
@@ -77,6 +79,18 @@ export default function Signup() {
     );
     sessionStorage.setItem("ltv_show_community", "1");
     navigate("/onboarding", { replace: true });
+  }
+
+  async function handleGoogleSignIn() {
+    setGoogleLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/onboarding` },
+    });
+    if (error) {
+      setGoogleLoading(false);
+      toast({ title: "Erro com Google", description: error.message, variant: "destructive" });
+    }
   }
 
   return (
