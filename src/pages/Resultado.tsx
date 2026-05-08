@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check, Lock, Percent, Share2,
-  BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag,
+  BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag, LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -110,7 +110,7 @@ function safeParseFunnel(): {
 
 export default function Resultado() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const isActive = profile?.subscription_status === "active";
 
   const [loading, setLoading] = useState(true);
@@ -344,21 +344,43 @@ export default function Resultado() {
 
   if (missingDiagnostic || !diagnostic) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F] text-white flex flex-col items-center justify-center gap-6 p-6 text-center">
-        <AlertCircle className="w-12 h-12 text-amber-500" />
-        <div className="space-y-2 max-w-md">
-          <h1 className="text-2xl font-black font-syne tracking-tighter">Diagnóstico ainda não disponível</h1>
-          <p className="text-sm text-muted-foreground">
-            Não encontramos seu diagnóstico salvo. Isso pode acontecer se a análise ainda estiver finalizando ou se houve uma falha ao salvar.
-          </p>
+      <div className="min-h-screen bg-[#0A0A0F] text-white flex flex-col">
+        <div className="border-b border-[#1E1E2E] bg-background/50 backdrop-blur-md sticky top-0 z-50">
+          <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
+              <span className="font-bold tracking-tighter">LTV BOOST</span>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                await signOut();
+                navigate("/login");
+              }}
+              className="font-bold rounded-xl h-9 gap-1 text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sair
+            </Button>
+          </div>
         </div>
-        <Button
-          size="lg"
-          className="font-black rounded-xl gap-2"
-          onClick={() => navigate("/analisando", { replace: true })}
-        >
-          Tentar gerar novamente <ArrowRight className="w-4 h-4" />
-        </Button>
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6 text-center">
+          <AlertCircle className="w-12 h-12 text-amber-500" />
+          <div className="space-y-2 max-w-md">
+            <h1 className="text-2xl font-black font-syne tracking-tighter">Diagnóstico ainda não disponível</h1>
+            <p className="text-sm text-muted-foreground">
+              Não encontramos seu diagnóstico salvo. Isso pode acontecer se a análise ainda estiver finalizando ou se houve uma falha ao salvar.
+            </p>
+          </div>
+          <Button
+            size="lg"
+            className="font-black rounded-xl gap-2"
+            onClick={() => navigate("/analisando", { replace: true })}
+          >
+            Tentar gerar novamente <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
     );
   }
@@ -390,31 +412,44 @@ export default function Resultado() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
             <span className="font-bold tracking-tighter">LTV BOOST</span>
           </div>
-          {isActive ? (
+          <div className="flex items-center gap-2">
+            {isActive ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate("/dashboard")}
+                className="font-bold rounded-xl h-9 gap-1"
+              >
+                Ir para o painel <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => {
+                  void trackFunnelEvent({
+                    event: "resultado_cta_clicked",
+                    recommendedPlan: recommendation.tier,
+                    metadata: { chs, location: "header", urgency: ctaUrgencyLabel, ab_cta_variant: ctaVariant },
+                  });
+                  document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="font-bold rounded-xl h-9 gap-1"
+              >
+                {ctaCopy} <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            )}
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => navigate("/dashboard")}
-              className="font-bold rounded-xl h-9 gap-1"
-            >
-              Ir para o painel <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={() => {
-                void trackFunnelEvent({
-                  event: "resultado_cta_clicked",
-                  recommendedPlan: recommendation.tier,
-                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel, ab_cta_variant: ctaVariant },
-                });
-                document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              variant="ghost"
+              onClick={async () => {
+                await signOut();
+                navigate("/login");
               }}
-              className="font-bold rounded-xl h-9 gap-1"
+              className="font-bold rounded-xl h-9 gap-1 text-muted-foreground hover:text-foreground"
             >
-              {ctaCopy} <ArrowRight className="w-3.5 h-3.5" />
+              <LogOut className="w-3.5 h-3.5" />
             </Button>
-          )}
+          </div>
         </div>
       </div>
 
