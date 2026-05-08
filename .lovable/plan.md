@@ -1,35 +1,33 @@
 ## Problema
 
-Após o popup do Google fechar com "✓ Conectado!", o onboarding não importa os dados. Causas:
+O passo 3 do onboarding está quebrado:
 
-1. **Falta seleção de propriedade GA4.** O OAuth grava `ga4_account_email` + tokens, mas `ga4_property_id` permanece `NULL`. A `buscar-ga4` então retorna `400 "ga4_property_id missing for this store"` e nenhum dado entra no funil.
-2. **`postMessage` pode não chegar ao opener** quando o popup é cross-origin (Supabase ↔ Lovable) por COOP — sem fallback, o card fica em "conectando".
-3. **`google-oauth-callback` sem entrada em `supabase/config.toml`** (default = `verify_jwt=true`). Defensivo: declarar `verify_jwt=false`.
+- `TOTAL_STEPS = 3`, mas o bloco de dados do funil (faturamento, ticket médio, clientes, visitantes/checkout/pedidos, importação automática da loja) está renderizado em `{step === 4 && ...}` — uma etapa que nunca aparece.
+- O passo 3 atual mostra apenas o `GA4ConnectCard` dentro do passo de integração e o "Score de confiabilidade + Gerar diagnóstico", **sem** o campo de faturamento nem a revisão dos dados importados.
+- Resultado: o usuário clica em "Gerar diagnóstico com IA" e cai na validação `"Informe seu faturamento mensal aproximado."` sem nunca ter visto o campo.
 
-## Plano
+A intenção original (descrita pelo usuário) é: passo 3 = revisar dados da loja já importados + faturamento + confirmar e gerar o diagnóstico. GA4 continua como conexão opcional dentro desse passo (depois da loja).
 
-### 1. Selecionar propriedade GA4 após OAuth (essencial)
-Em `src/components/onboarding/GA4ConnectCard.tsx`:
-- Após receber `ga4_oauth_result.success`, chamar `supabase.functions.invoke("list-ga4-properties", { body: { store_id } })`.
-- Se vier **1 propriedade**: salvar automaticamente em `stores.ga4_property_id` e disparar `onConnected`.
-- Se vier **2+**: renderizar um `<Select>` inline ("Escolha a propriedade GA4") → ao confirmar, `update stores set ga4_property_id` e dispara `onConnected`.
-- Se vier **0**: toast de erro orientando criar/compartilhar acesso à property no GA4.
-- Estado conectado passa a exigir `ga4_property_id` (não só `email`), para refletir que está realmente pronto.
+## Mudanças
 
-### 2. Fallback de comunicação do popup
-- No `htmlResponse` do `google-oauth-callback/index.ts`: além de `window.opener.postMessage`, também emitir via `BroadcastChannel('ga4_oauth')` antes do `window.close()`.
-- No `GA4ConnectCard`: além do listener `message`, abrir um `BroadcastChannel('ga4_oauth')` e tratar o mesmo payload. Adicionar polling leve (a cada 2s, máx 60s) em `stores` checando `ga4_account_email` como último recurso.
+Apenas em `src/pages/Onboarding.tsx`:
 
-### 3. Hardening do callback
-- Adicionar bloco `[functions.google-oauth-callback]` com `verify_jwt = false` em `supabase/config.toml`.
-- Garantir `Content-Type: text/html; charset=utf-8` (já está) e adicionar `Cross-Origin-Opener-Policy: unsafe-none` para permitir `window.opener` em browsers estritos.
+1. **Unificar passo 3** — trocar o gate `{step === 4 && (...)}` (linhas ~1402–1624) para `{step === 3 && (...)}`, fazendo o bloco "Métricas do seu negócio" voltar a aparecer no passo 3 logo acima do score + CTA "Gerar diagnóstico".
+2. **Mover o `GA4ConnectCard`** de dentro do bloco de integração (passo 2, dentro do `integrationValid` em ~1339–1378) para o topo do passo 3, como card opcional acima do formulário de métricas. Mantém: ao conectar GA4, chama `buscar-ga4` e preenche visitantes/carrinho/checkout (mesma lógica atual). Mantém regra prévia "GA4 só depois de integrar a loja" porque o passo 3 só é alcançado após integração validada.
+3. **Ajustar header do passo 2** — remover o texto "Agora conecte o Google Analytics para enriquecer o diagnóstico" do card de sucesso da integração; trocar para "Loja conectada. No próximo passo você revisa as métricas e (opcionalmente) conecta o GA4."
+4. **Auto-fetch das métricas** (`useEffect` em ~529–531 que dispara `fetchStoreMetrics` quando `step === 3 && integrationValid`) já está correto — confirmar que continua disparando ao entrar no passo 3 unificado.
+5. **Garantir a ordem visual no passo 3**, de cima para baixo:
+   - Cabeçalho "Passo 3 — Revise e gere o diagnóstico"
+   - Banner "Dados importados de {plataforma}" (já existe)
+   - `GA4ConnectCard` (opcional, com badge "opcional — enriquece visitantes/checkout")
+   - Grid de campos (faturamento, ticket médio, clientes, conversão, abandono)
+   - Sub-grid do funil (visitantes, add to cart, checkout, pedidos)
+   - Card "Score de confiabilidade"
+   - Botão "Gerar diagnóstico com IA"
+6. **Sem mudanças** em: validações de `handleFinish`, edge functions, schema, `TOTAL_STEPS`, lógica de persistência de draft.
 
-### 4. Importação automática
-- Após `ga4_property_id` salvo, o `onConnected` do `Onboarding.tsx` continua chamando `buscar-ga4` (já existente) — agora vai funcionar e popular `visitantes/carrinho/checkout` com `importedFields = true`.
+## Fora de escopo
 
-## Arquivos afetados
-- `src/components/onboarding/GA4ConnectCard.tsx` — UI de seleção de propriedade, BroadcastChannel, polling, estado.
-- `supabase/functions/google-oauth-callback/index.ts` — BroadcastChannel + header COOP.
-- `supabase/config.toml` — entrada `[functions.google-oauth-callback]`.
-
-Sem alterações em business logic do funil; apenas plumbing OAuth → property → import.
+- Backend/edge functions
+- Lógica de cálculo de conversão/score
+- Visual do `GA4ConnectCard` em si
