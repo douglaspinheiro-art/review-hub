@@ -1337,45 +1337,13 @@ export default function Onboarding() {
 
               {/* Success state (shared) */}
               {integrationValid && (
-                <>
-                  <div className="rounded-xl p-4 flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                    <div>
-                      <p className="text-sm font-bold text-emerald-400">Conectado com sucesso!</p>
-                      <p className="text-xs text-muted-foreground">Agora conecte o Google Analytics para enriquecer o diagnóstico.</p>
-                    </div>
+                <div className="rounded-xl p-4 flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-400">Loja conectada!</p>
+                    <p className="text-xs text-muted-foreground">No próximo passo você revisa as métricas importadas e (opcionalmente) conecta o Google Analytics.</p>
                   </div>
-                  <GA4ConnectCard
-                    storeId={onboardingStoreId}
-                    onConnected={async ({ email }) => {
-                      setGa4Connected(true);
-                      try {
-                        const { data, error } = await supabase.functions.invoke("buscar-ga4", {
-                          body: { store_id: onboardingStoreId, periodo: "30d" },
-                        });
-                        if (error) throw error;
-                        const m = (data as { metricas?: { visitantes?: number; carrinho?: number; checkout?: number; pedido?: number } })?.metricas;
-                        if (m) {
-                          if (m.visitantes) setVisitantes(String(m.visitantes));
-                          if (m.carrinho) setCarrinho(String(m.carrinho));
-                          if (m.checkout) setCheckout(String(m.checkout));
-                          setImportedFields((prev) => ({
-                            ...prev,
-                            visitantes: !!m.visitantes,
-                            carrinho: !!m.carrinho,
-                            checkout: !!m.checkout,
-                          }));
-                          toast.success(`GA4 importado: ${m.visitantes ?? 0} visitantes`);
-                        } else {
-                          toast.info(`GA4 conectado (${email}). Ajuste os campos no próximo passo se necessário.`);
-                        }
-                      } catch (e) {
-                        toast.info(`GA4 conectado (${email}). Importação automática indisponível — preencha manualmente.`);
-                        console.warn("[onboarding] buscar-ga4 falhou", e);
-                      }
-                    }}
-                  />
-                </>
+                </div>
               )}
 
               {integrationError && (
@@ -1398,20 +1366,51 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* STEP 4: Funnel Data (auto-filled from GA4 + integration when available) */}
-        {step === 4 && (
+        {/* STEP 3: Review imported metrics, optionally connect GA4, confirm and generate diagnosis */}
+        {step === 3 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-500 text-[10px] font-black px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-[0.2em]">
-                <BarChart3 className="w-3 h-3" /> Passo 4 — Dados do Funil
+                <BarChart3 className="w-3 h-3" /> Passo 3 — Revise e gere o diagnóstico
               </div>
               <h1 className="text-4xl md:text-5xl font-black font-syne tracking-tighter">
-                Métricas do seu negócio
+                Confirme as métricas da sua loja
               </h1>
               <p className="text-muted-foreground max-w-lg mx-auto font-medium">
                 Com esses dados, a IA calcula seu Conversion Health Score e identifica gargalos.
               </p>
             </div>
+
+            <GA4ConnectCard
+              storeId={onboardingStoreId}
+              onConnected={async ({ email }) => {
+                setGa4Connected(true);
+                try {
+                  const { data, error } = await supabase.functions.invoke("buscar-ga4", {
+                    body: { store_id: onboardingStoreId, periodo: "30d" },
+                  });
+                  if (error) throw error;
+                  const m = (data as { metricas?: { visitantes?: number; carrinho?: number; checkout?: number; pedido?: number } })?.metricas;
+                  if (m) {
+                    if (m.visitantes) setVisitantes(String(m.visitantes));
+                    if (m.carrinho) setCarrinho(String(m.carrinho));
+                    if (m.checkout) setCheckout(String(m.checkout));
+                    setImportedFields((prev) => ({
+                      ...prev,
+                      visitantes: !!m.visitantes,
+                      carrinho: !!m.carrinho,
+                      checkout: !!m.checkout,
+                    }));
+                    toast.success(`GA4 importado: ${m.visitantes ?? 0} visitantes`);
+                  } else {
+                    toast.info(`GA4 conectado (${email}). Ajuste os campos abaixo se necessário.`);
+                  }
+                } catch (e) {
+                  toast.info(`GA4 conectado (${email}). Importação automática indisponível — preencha manualmente.`);
+                  console.warn("[onboarding] buscar-ga4 falhou", e);
+                }
+              }}
+            />
 
             <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
               {(metricsImported || metricsLoading) && (
