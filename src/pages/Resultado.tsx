@@ -110,7 +110,7 @@ function safeParseFunnel(): {
 
 export default function Resultado() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const isActive = profile?.subscription_status === "active";
 
   const [loading, setLoading] = useState(true);
