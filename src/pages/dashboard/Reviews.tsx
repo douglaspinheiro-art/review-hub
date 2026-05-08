@@ -343,24 +343,19 @@ export default function Reviews() {
               <DataSourceBadge
                 source="estimated"
                 origin="RPC get_reviews_bundle_v2"
-                note="Sync com Google Business Profile ainda não disponível — dados podem estar incompletos sem ingestão automática."
+                note="Conecte o Google Business em Configurações → Integrações para sincronizar avaliações reais."
               />
-              <Badge variant="outline" className="text-[9px] font-bold uppercase border-amber-500/40 text-amber-600">
-                Google · Offline
+              <Badge variant="outline" className="text-[9px] font-bold uppercase border-emerald-500/40 text-emerald-600">
+                Google · Disponível
               </Badge>
             </div>
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-block">
-                <Button variant="outline" size="sm" className="gap-2" type="button" disabled>
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Sincronizar Google
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>Em breve: sincronização automática com Google Business.</TooltipContent>
-          </Tooltip>
+          <Button variant="outline" size="sm" className="gap-2" type="button" asChild>
+            <Link to="/dashboard/configuracoes?tab=integracoes#google">
+              <RefreshCw className="w-3.5 h-3.5" />
+              Configurar Google
+            </Link>
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
