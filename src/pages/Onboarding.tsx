@@ -28,6 +28,7 @@ import {
 } from "@/lib/funnel-validation";
 import { DataSourceBadge } from "@/components/dashboard/trust/DataSourceBadge";
 import { trackFunnelEvent } from "@/lib/funnel-telemetry";
+import { GA4ConnectCard } from "@/components/onboarding/GA4ConnectCard";
 
 const TOTAL_STEPS = 3;
 
@@ -186,9 +187,9 @@ export default function Onboarding() {
   const [importedPlatform, setImportedPlatform] = useState<string>("");
   const [zeroFields, setZeroFields] = useState<string[]>([]);
 
-  // GA4 removido do onboarding durante a verificação Google.
-  // A conexão continua disponível em /dashboard/configuracoes para lojas
-  // liberadas como test users no Google Cloud Console.
+  // GA4 reativado no Step 4 como conexão opcional via popup OAuth
+  // (mesma edge function usada em /dashboard/configuracoes).
+  const [ga4Connected, setGa4Connected] = useState(false);
 
   const estimatedVisitors = visitantes ? Number(visitantes) : Math.round(Number(faturamento || 0) / Number(ticketMedio || 250) / 0.014);
   const estimatedCarrinho = carrinho ? Number(carrinho) : Math.round(estimatedVisitors * 0.28);
@@ -906,7 +907,7 @@ export default function Onboarding() {
         field_provenance: fieldProvenance,
         real_signals_pct: realSignalsPct,
         data_source_summary: {
-          ga4: false,
+          ga4: ga4Connected,
           loja: integrationValid,
           manual: !integrationValid,
         },
@@ -932,7 +933,7 @@ export default function Onboarding() {
           vertical: vertical ?? null,
           plataforma: plataforma || null,
           integration_connected: integrationValid,
-          ga4_connected: false,
+          ga4_connected: ga4Connected,
           real_signals_pct: realSignalsPct,
           imported_fields: Object.keys(importedFields).filter((k) => (importedFields as Record<string, boolean>)[k]),
         },
@@ -1381,6 +1382,38 @@ export default function Onboarding() {
             </div>
 
             <div className="bg-[#13131A] border border-[#1E1E2E] rounded-2xl p-6 space-y-5">
+              <GA4ConnectCard
+                storeId={onboardingStoreId}
+                onConnected={async ({ email }) => {
+                  setGa4Connected(true);
+                  // Try to auto-import GA4 funnel metrics for the active store.
+                  try {
+                    const { data, error } = await supabase.functions.invoke("buscar-ga4", {
+                      body: { store_id: onboardingStoreId, periodo: "30d" },
+                    });
+                    if (error) throw error;
+                    const m = (data as { metricas?: { visitantes?: number; carrinho?: number; checkout?: number; pedido?: number } })?.metricas;
+                    if (m) {
+                      if (m.visitantes) setVisitantes(String(m.visitantes));
+                      if (m.carrinho) setCarrinho(String(m.carrinho));
+                      if (m.checkout) setCheckout(String(m.checkout));
+                      setImportedFields((prev) => ({
+                        ...prev,
+                        visitantes: !!m.visitantes,
+                        carrinho: !!m.carrinho,
+                        checkout: !!m.checkout,
+                      }));
+                      toast.success(`GA4 importado: ${m.visitantes ?? 0} visitantes`);
+                    } else {
+                      toast.info(`GA4 conectado (${email}). Ajuste os campos abaixo se necessário.`);
+                    }
+                  } catch (e) {
+                    toast.info(`GA4 conectado (${email}). Importação automática indisponível — preencha manualmente.`);
+                    console.warn("[onboarding] buscar-ga4 falhou", e);
+                  }
+                }}
+              />
+
               {(metricsImported || metricsLoading) && (
                 <div className="rounded-xl p-4 flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/30">
                   <div className="flex items-center gap-3">
