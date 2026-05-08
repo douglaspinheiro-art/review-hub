@@ -390,31 +390,44 @@ export default function Resultado() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black">L</div>
             <span className="font-bold tracking-tighter">LTV BOOST</span>
           </div>
-          {isActive ? (
+          <div className="flex items-center gap-2">
+            {isActive ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate("/dashboard")}
+                className="font-bold rounded-xl h-9 gap-1"
+              >
+                Ir para o painel <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => {
+                  void trackFunnelEvent({
+                    event: "resultado_cta_clicked",
+                    recommendedPlan: recommendation.tier,
+                    metadata: { chs, location: "header", urgency: ctaUrgencyLabel, ab_cta_variant: ctaVariant },
+                  });
+                  document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="font-bold rounded-xl h-9 gap-1"
+              >
+                {ctaCopy} <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            )}
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => navigate("/dashboard")}
-              className="font-bold rounded-xl h-9 gap-1"
-            >
-              Ir para o painel <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={() => {
-                void trackFunnelEvent({
-                  event: "resultado_cta_clicked",
-                  recommendedPlan: recommendation.tier,
-                  metadata: { chs, location: "header", urgency: ctaUrgencyLabel, ab_cta_variant: ctaVariant },
-                });
-                document.getElementById("planos-inline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              variant="ghost"
+              onClick={async () => {
+                await signOut();
+                navigate("/login");
               }}
-              className="font-bold rounded-xl h-9 gap-1"
+              className="font-bold rounded-xl h-9 gap-1 text-muted-foreground hover:text-foreground"
             >
-              {ctaCopy} <ArrowRight className="w-3.5 h-3.5" />
+              <LogOut className="w-3.5 h-3.5" />
             </Button>
-          )}
+          </div>
         </div>
       </div>
 
