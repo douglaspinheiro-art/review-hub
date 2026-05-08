@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { PROFILE_SESSION_SELECT, SETTINGS_V3_SELECT } from "@/lib/supabase-select-fragments";
+import { GoogleConnectionsCard } from "@/components/dashboard/GoogleConnectionsCard";
 
 type SettingsV3Row = Database["public"]["Tables"]["settings_v3"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
@@ -790,6 +791,11 @@ export default function Configuracoes() {
                   Integrações
                 </Button>
               </div>
+            </div>
+
+            <div className="pt-6 border-t border-border/50">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-4">Conexões Google</p>
+              <GoogleConnectionsCard />
             </div>
 
             <div className="pt-6 border-t border-border/50">
