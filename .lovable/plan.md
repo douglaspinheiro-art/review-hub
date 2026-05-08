@@ -1,33 +1,25 @@
-## Problema
+Plano para corrigir o GA4 no passo 3 do onboarding:
 
-O passo 3 do onboarding está quebrado:
+1. Ajustar o contrato entre frontend e Edge Function
+- A função `buscar-ga4` retorna `metrics` com chaves em inglês (`visitors`, `add_to_cart`, `begin_checkout`, `purchases`, `revenue`).
+- O onboarding hoje lê `metricas` com chaves em português (`visitantes`, `carrinho`, `checkout`, `pedido`), por isso a conexão aparece correta, mas os campos continuam vazios/estimados.
+- Atualizar `src/pages/Onboarding.tsx` para aceitar o formato atual da função e preencher:
+  - Visitantes/mês <- `metrics.visitors`
+  - Add to cart <- `metrics.add_to_cart`
+  - Checkout <- `metrics.begin_checkout`
+  - Pedidos/mês <- `metrics.purchases`
+  - Faturamento <- `metrics.revenue`, apenas se a loja não tiver trazido faturamento real da plataforma
 
-- `TOTAL_STEPS = 3`, mas o bloco de dados do funil (faturamento, ticket médio, clientes, visitantes/checkout/pedidos, importação automática da loja) está renderizado em `{step === 4 && ...}` — uma etapa que nunca aparece.
-- O passo 3 atual mostra apenas o `GA4ConnectCard` dentro do passo de integração e o "Score de confiabilidade + Gerar diagnóstico", **sem** o campo de faturamento nem a revisão dos dados importados.
-- Resultado: o usuário clica em "Gerar diagnóstico com IA" e cai na validação `"Informe seu faturamento mensal aproximado."` sem nunca ter visto o campo.
+2. Importar GA4 também quando já estiver conectado
+- Hoje o callback `onConnected` só dispara ao clicar/conectar pelo card.
+- Como a conta e property já aparecem salvas (`ga4_account_email` e `ga4_property_id`), o passo 3 deve buscar automaticamente os dados do GA4 ao carregar quando a propriedade já existe.
+- Adicionar no `GA4ConnectCard` um callback opcional de “pronto/conectado” ao carregar o estado salvo, sem exigir novo clique.
 
-A intenção original (descrita pelo usuário) é: passo 3 = revisar dados da loja já importados + faturamento + confirmar e gerar o diagnóstico. GA4 continua como conexão opcional dentro desse passo (depois da loja).
+3. Melhorar feedback visual sem mudar o fluxo
+- Marcar os campos de visitantes, add-to-cart, checkout e pedidos como importados do GA4.
+- Exibir toast de sucesso com visitantes encontrados quando a importação funcionar.
+- Manter fallback amigável se a API do Google falhar: GA4 conectado, mas campos editáveis manualmente.
 
-## Mudanças
-
-Apenas em `src/pages/Onboarding.tsx`:
-
-1. **Unificar passo 3** — trocar o gate `{step === 4 && (...)}` (linhas ~1402–1624) para `{step === 3 && (...)}`, fazendo o bloco "Métricas do seu negócio" voltar a aparecer no passo 3 logo acima do score + CTA "Gerar diagnóstico".
-2. **Mover o `GA4ConnectCard`** de dentro do bloco de integração (passo 2, dentro do `integrationValid` em ~1339–1378) para o topo do passo 3, como card opcional acima do formulário de métricas. Mantém: ao conectar GA4, chama `buscar-ga4` e preenche visitantes/carrinho/checkout (mesma lógica atual). Mantém regra prévia "GA4 só depois de integrar a loja" porque o passo 3 só é alcançado após integração validada.
-3. **Ajustar header do passo 2** — remover o texto "Agora conecte o Google Analytics para enriquecer o diagnóstico" do card de sucesso da integração; trocar para "Loja conectada. No próximo passo você revisa as métricas e (opcionalmente) conecta o GA4."
-4. **Auto-fetch das métricas** (`useEffect` em ~529–531 que dispara `fetchStoreMetrics` quando `step === 3 && integrationValid`) já está correto — confirmar que continua disparando ao entrar no passo 3 unificado.
-5. **Garantir a ordem visual no passo 3**, de cima para baixo:
-   - Cabeçalho "Passo 3 — Revise e gere o diagnóstico"
-   - Banner "Dados importados de {plataforma}" (já existe)
-   - `GA4ConnectCard` (opcional, com badge "opcional — enriquece visitantes/checkout")
-   - Grid de campos (faturamento, ticket médio, clientes, conversão, abandono)
-   - Sub-grid do funil (visitantes, add to cart, checkout, pedidos)
-   - Card "Score de confiabilidade"
-   - Botão "Gerar diagnóstico com IA"
-6. **Sem mudanças** em: validações de `handleFinish`, edge functions, schema, `TOTAL_STEPS`, lógica de persistência de draft.
-
-## Fora de escopo
-
-- Backend/edge functions
-- Lógica de cálculo de conversão/score
-- Visual do `GA4ConnectCard` em si
+Arquivos previstos:
+- `src/pages/Onboarding.tsx`
+- `src/components/onboarding/GA4ConnectCard.tsx`

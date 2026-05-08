@@ -1390,18 +1390,29 @@ export default function Onboarding() {
                     body: { store_id: onboardingStoreId, periodo: "30d" },
                   });
                   if (error) throw error;
-                  const m = (data as { metricas?: { visitantes?: number; carrinho?: number; checkout?: number; pedido?: number } })?.metricas;
+                  const m = (data as {
+                    metrics?: {
+                      visitors?: number;
+                      add_to_cart?: number;
+                      begin_checkout?: number;
+                      purchases?: number;
+                      revenue?: number;
+                    };
+                  })?.metrics;
                   if (m) {
-                    if (m.visitantes) setVisitantes(String(m.visitantes));
-                    if (m.carrinho) setCarrinho(String(m.carrinho));
-                    if (m.checkout) setCheckout(String(m.checkout));
+                    if (m.visitors) setVisitantes(String(m.visitors));
+                    if (m.add_to_cart) setCarrinho(String(m.add_to_cart));
+                    if (m.begin_checkout) setCheckout(String(m.begin_checkout));
+                    if (m.purchases) setPedidos(String(m.purchases));
+                    if (m.revenue && !faturamento) setFaturamento(String(m.revenue));
                     setImportedFields((prev) => ({
                       ...prev,
-                      visitantes: !!m.visitantes,
-                      carrinho: !!m.carrinho,
-                      checkout: !!m.checkout,
+                      visitantes: !!m.visitors,
+                      carrinho: !!m.add_to_cart,
+                      checkout: !!m.begin_checkout,
+                      pedidos: !!m.purchases || prev.pedidos,
                     }));
-                    toast.success(`GA4 importado: ${m.visitantes ?? 0} visitantes`);
+                    toast.success(`GA4 importado: ${m.visitors ?? 0} visitantes (30d)`);
                   } else {
                     toast.info(`GA4 conectado (${email}). Ajuste os campos abaixo se necessário.`);
                   }

@@ -39,8 +39,14 @@ export function GA4ConnectCard({ storeId, onConnected }: GA4ConnectCardProps) {
       setEmail(data?.ga4_account_email ?? null);
       setPropertyId(data?.ga4_property_id ?? null);
       setLoaded(true);
+      // Se a loja já tem GA4 totalmente conectado, dispara importação automaticamente
+      // para preencher visitantes/carrinho/checkout/pedidos sem exigir novo clique.
+      if (data?.ga4_account_email && data?.ga4_property_id) {
+        onConnected?.({ email: data.ga4_account_email, propertyId: data.ga4_property_id });
+      }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
   // Cleanup polling on unmount
