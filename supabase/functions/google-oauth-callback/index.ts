@@ -43,10 +43,24 @@ function getCorsHeaders(req?: Request): Record<string, string> {
   };
 }
 
-const SCOPES = [
-  "https://www.googleapis.com/auth/analytics.readonly",
-  "https://www.googleapis.com/auth/userinfo.email",
-].join(" ");
+const SCOPE_SETS: Record<string, string[]> = {
+  ga4: [
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
+  ],
+  business: [
+    "https://www.googleapis.com/auth/business.manage",
+    "https://www.googleapis.com/auth/userinfo.email",
+  ],
+  all: [
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/business.manage",
+    "https://www.googleapis.com/auth/userinfo.email",
+  ],
+};
+function resolveScopes(set: string | null): string {
+  return (SCOPE_SETS[set ?? "ga4"] ?? SCOPE_SETS.ga4).join(" ");
+}
 
 function callbackUrl(): string {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -151,7 +165,7 @@ serve(async (req: Request) => {
       client_id: clientId,
       redirect_uri: callbackUrl(),
       response_type: "code",
-      scope: SCOPES,
+      scope: resolveScopes(url.searchParams.get("scope_set")),
       access_type: "offline",
       prompt: "consent",
       state: stateToken,
