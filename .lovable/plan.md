@@ -1,39 +1,35 @@
-# Reativar conexão GA4 no /onboarding
+## Problema
 
-## Contexto
-A conexão Google Analytics 4 foi removida do onboarding (comentários explícitos nas linhas 189-191 e 223 de `src/pages/Onboarding.tsx`) durante o processo de verificação Google. Atualmente, o usuário só consegue conectar o GA4 em `/dashboard/configuracoes` via `GoogleConnectionsCard`. O Step 4 (Dados do Funil) ainda exibe textos como "✨ GA4" mas não há fluxo para autorizar.
+Após o popup do Google fechar com "✓ Conectado!", o onboarding não importa os dados. Causas:
 
-## O que será feito
+1. **Falta seleção de propriedade GA4.** O OAuth grava `ga4_account_email` + tokens, mas `ga4_property_id` permanece `NULL`. A `buscar-ga4` então retorna `400 "ga4_property_id missing for this store"` e nenhum dado entra no funil.
+2. **`postMessage` pode não chegar ao opener** quando o popup é cross-origin (Supabase ↔ Lovable) por COOP — sem fallback, o card fica em "conectando".
+3. **`google-oauth-callback` sem entrada em `supabase/config.toml`** (default = `verify_jwt=true`). Defensivo: declarar `verify_jwt=false`.
 
-### 1. Card opcional "Conectar Google Analytics 4" no Step 4
-Adicionar acima dos inputs do funil (linha ~1383, dentro do bloco `{step === 4 && (...)}`) um card colapsável/opcional com:
-- Estado **não conectado**: ícone GA4, copy explicando que importar do GA4 substitui os dados estimados de visitantes/carrinho/checkout, botão "Conectar Google Analytics".
-- Estado **conectado**: badge verde com email da conta + property ID + botão "Desconectar / trocar conta".
-- Botão secundário "Pular — preencher manualmente" (mantém comportamento atual; GA4 segue opcional).
+## Plano
 
-### 2. Reaproveitar o fluxo OAuth existente
-- Usar a edge function `google-oauth-callback` com `scope_set=ga4` (mesmo padrão do `GoogleConnectionsCard.tsx`).
-- Abrir popup OAuth, escutar `postMessage` com `type: "ga4_oauth_result"`, recarregar dados da `stores` (`ga4_account_email`, `ga4_property_id`).
-- Após sucesso, disparar automaticamente a função `sync-funil-ga4` (ou `buscar-ga4`) para popular `visitantes`, `carrinho`, `checkout` no formulário e marcar `importedFields.visitantes/carrinho/checkout = true`.
+### 1. Selecionar propriedade GA4 após OAuth (essencial)
+Em `src/components/onboarding/GA4ConnectCard.tsx`:
+- Após receber `ga4_oauth_result.success`, chamar `supabase.functions.invoke("list-ga4-properties", { body: { store_id } })`.
+- Se vier **1 propriedade**: salvar automaticamente em `stores.ga4_property_id` e disparar `onConnected`.
+- Se vier **2+**: renderizar um `<Select>` inline ("Escolha a propriedade GA4") → ao confirmar, `update stores set ga4_property_id` e dispara `onConnected`.
+- Se vier **0**: toast de erro orientando criar/compartilhar acesso à property no GA4.
+- Estado conectado passa a exigir `ga4_property_id` (não só `email`), para refletir que está realmente pronto.
 
-### 3. Ajustar telemetria/payload
-- Atualizar `data_source_summary.ga4` (linha 909) e `ga4_connected` (linha 935) para refletir o estado real (`!!store.ga4_account_email`) em vez de hardcoded `false`.
-- Atualizar `field_provenance` para marcar `visitantes/produto_visto/carrinho/checkout` como `"real"` quando vierem do GA4.
+### 2. Fallback de comunicação do popup
+- No `htmlResponse` do `google-oauth-callback/index.ts`: além de `window.opener.postMessage`, também emitir via `BroadcastChannel('ga4_oauth')` antes do `window.close()`.
+- No `GA4ConnectCard`: além do listener `message`, abrir um `BroadcastChannel('ga4_oauth')` e tratar o mesmo payload. Adicionar polling leve (a cada 2s, máx 60s) em `stores` checando `ga4_account_email` como último recurso.
 
-### 4. Remover/atualizar comentários obsoletos
-Remover os comentários "GA4 removido do onboarding…" (linhas 189-191, 223) já que o fluxo volta a estar disponível.
+### 3. Hardening do callback
+- Adicionar bloco `[functions.google-oauth-callback]` com `verify_jwt = false` em `supabase/config.toml`.
+- Garantir `Content-Type: text/html; charset=utf-8` (já está) e adicionar `Cross-Origin-Opener-Policy: unsafe-none` para permitir `window.opener` em browsers estritos.
+
+### 4. Importação automática
+- Após `ga4_property_id` salvo, o `onConnected` do `Onboarding.tsx` continua chamando `buscar-ga4` (já existente) — agora vai funcionar e popular `visitantes/carrinho/checkout` com `importedFields = true`.
 
 ## Arquivos afetados
-- `src/pages/Onboarding.tsx` — adicionar card GA4 no Step 4, hook de OAuth + sync, ajustar payload/telemetria.
-- (Opcional) extrair lógica reutilizável para `src/components/onboarding/GA4ConnectCard.tsx` para manter `Onboarding.tsx` limpo, reaproveitando padrão do `GoogleConnectionsCard`.
+- `src/components/onboarding/GA4ConnectCard.tsx` — UI de seleção de propriedade, BroadcastChannel, polling, estado.
+- `supabase/functions/google-oauth-callback/index.ts` — BroadcastChannel + header COOP.
+- `supabase/config.toml` — entrada `[functions.google-oauth-callback]`.
 
-## Pré-requisitos (já existentes)
-- Edge `google-oauth-callback` com suporte a `scope_set=ga4` ✅
-- Secrets `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` ✅
-- Colunas `stores.ga4_account_email` / `ga4_property_id` ✅
-
-Nada novo a configurar do lado de infra — basta a UI voltar a oferecer o botão.
-
-## Fora de escopo
-- Mexer em GA4 nas demais áreas (`/dashboard/configuracoes` continua igual).
-- Alterar lógica de cálculo do `conversoComputedPct`.
+Sem alterações em business logic do funil; apenas plumbing OAuth → property → import.

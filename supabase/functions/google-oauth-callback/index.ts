@@ -81,10 +81,21 @@ function htmlResponse(payload: Record<string, unknown>, req?: Request): Response
         window.opener.postMessage({ type: 'ga4_oauth_result', ...${json} }, '*');
       }
     } catch (e) {}
+    try {
+      var bc = new BroadcastChannel('ga4_oauth');
+      bc.postMessage({ type: 'ga4_oauth_result', ...${json} });
+      setTimeout(function(){ try { bc.close(); } catch(e){} }, 200);
+    } catch (e) {}
     setTimeout(() => window.close(), 800);
   </script>
 </body></html>`;
-  return new Response(html, { headers: { ...getCorsHeaders(req), "Content-Type": "text/html; charset=utf-8" } });
+  return new Response(html, {
+    headers: {
+      ...getCorsHeaders(req),
+      "Content-Type": "text/html; charset=utf-8",
+      "Cross-Origin-Opener-Policy": "unsafe-none",
+    },
+  });
 }
 
 serve(async (req: Request) => {
