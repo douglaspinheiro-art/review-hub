@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Zap, TrendingUp, AlertCircle, Loader2, Sparkles, ArrowRight, Check, Lock, Percent, Share2,
-  BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag,
+  BarChart3, Bot, MessageCircle, RefreshCw, ShoppingBag, LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
