@@ -1,25 +1,39 @@
-Plano para corrigir o GA4 no passo 3 do onboarding:
+# Design System Pack — LTV Boost → ViaX
 
-1. Ajustar o contrato entre frontend e Edge Function
-- A função `buscar-ga4` retorna `metrics` com chaves em inglês (`visitors`, `add_to_cart`, `begin_checkout`, `purchases`, `revenue`).
-- O onboarding hoje lê `metricas` com chaves em português (`visitantes`, `carrinho`, `checkout`, `pedido`), por isso a conexão aparece correta, mas os campos continuam vazios/estimados.
-- Atualizar `src/pages/Onboarding.tsx` para aceitar o formato atual da função e preencher:
-  - Visitantes/mês <- `metrics.visitors`
-  - Add to cart <- `metrics.add_to_cart`
-  - Checkout <- `metrics.begin_checkout`
-  - Pedidos/mês <- `metrics.purchases`
-  - Faturamento <- `metrics.revenue`, apenas se a loja não tiver trazido faturamento real da plataforma
+Vou gerar um pacote portátil em `/mnt/documents/ltvboost-design-system/` que você baixa e cola no ViaX. Nenhum arquivo deste projeto (LTV Boost) será alterado.
 
-2. Importar GA4 também quando já estiver conectado
-- Hoje o callback `onConnected` só dispara ao clicar/conectar pelo card.
-- Como a conta e property já aparecem salvas (`ga4_account_email` e `ga4_property_id`), o passo 3 deve buscar automaticamente os dados do GA4 ao carregar quando a propriedade já existe.
-- Adicionar no `GA4ConnectCard` um callback opcional de “pronto/conectado” ao carregar o estado salvo, sem exigir novo clique.
+## O que vai no pack
 
-3. Melhorar feedback visual sem mudar o fluxo
-- Marcar os campos de visitantes, add-to-cart, checkout e pedidos como importados do GA4.
-- Exibir toast de sucesso com visitantes encontrados quando a importação funcionar.
-- Manter fallback amigável se a API do Google falhar: GA4 conectado, mas campos editáveis manualmente.
+```
+ltvboost-design-system/
+├── README.md                  Instruções passo-a-passo de instalação no ViaX
+├── index.css                  Tokens HSL (dark + light) + animações + utilitários
+├── tailwind.config.ts         Cores semânticas, fontFamily, radius, keyframes
+├── components.json            Config shadcn/ui (style "default", base "slate")
+├── DESIGN-TOKENS.md           Referência das cores, fontes, espaçamentos
+└── COMPONENT-GUIDE.md         Padrões: MetricCard, FunnelBar, SeverityBadge, ChannelIcon, RFMBadge, OpportunityCard, QuickWinBanner, AILoadingOverlay
+```
 
-Arquivos previstos:
-- `src/pages/Onboarding.tsx`
-- `src/components/onboarding/GA4ConnectCard.tsx`
+## Identidade capturada (resumo)
+
+- **Tema:** dark-first (background `220 25% 6%`), light opcional
+- **Primary:** emerald `160 84% 39%` (#10B981) — CTAs e accents
+- **Tipografia:** Inter (corpo) + Plus Jakarta Sans (display) + JetBrains Mono (números/KPIs)
+- **Radius:** 0.75rem
+- **Sidebar:** tokens próprios (fundo `220 25% 8%`)
+- **Animações:** `fade-up`, `float`, `shimmer`, `pulse-dot`, `word-rotate`, `scroll-left`, `ticker-scroll`
+- **Utilitário marcante:** `.text-gradient` (primary → emerald-400)
+
+## Como você usa no ViaX
+
+1. Baixar os artefatos
+2. Substituir `src/index.css`, `tailwind.config.ts`, `components.json` no ViaX
+3. Garantir que `tailwindcss-animate` está instalado (`npm i tailwindcss-animate`)
+4. Seguir `COMPONENT-GUIDE.md` para recriar os componentes-padrão (são pequenos e descritos com snippets prontos)
+
+## Observação técnica
+
+- Os componentes shadcn/ui em `src/components/ui/*` são gerados pela CLI do shadcn no ViaX — não precisam ser copiados, basta rodar `npx shadcn@latest add button card badge ...` lá e eles vão herdar os tokens automaticamente.
+- Logos/imagens específicas do LTV Boost **não** entram (não fazem parte da identidade replicável). Se quiser também a logo, me avise.
+
+Aprove para eu gerar o pack.
