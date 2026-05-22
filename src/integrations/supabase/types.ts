@@ -3266,8 +3266,8 @@ export type Database = {
           platform: string
           redirect_url: string | null
           state_token: string
-          store_id: string
-          user_id: string
+          store_id: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -3277,8 +3277,8 @@ export type Database = {
           platform: string
           redirect_url?: string | null
           state_token: string
-          store_id: string
-          user_id: string
+          store_id?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -3288,8 +3288,8 @@ export type Database = {
           platform?: string
           redirect_url?: string | null
           state_token?: string
-          store_id?: string
-          user_id?: string
+          store_id?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -4655,6 +4655,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      shopify_oauth_claims: {
+        Row: {
+          access_token: string
+          claim_token: string
+          created_at: string
+          expires_at: string
+          shop_domain: string
+          webhook_secret: string
+        }
+        Insert: {
+          access_token: string
+          claim_token?: string
+          created_at?: string
+          expires_at?: string
+          shop_domain: string
+          webhook_secret: string
+        }
+        Update: {
+          access_token?: string
+          claim_token?: string
+          created_at?: string
+          expires_at?: string
+          shop_domain?: string
+          webhook_secret?: string
+        }
+        Relationships: []
       }
       sms_connections: {
         Row: {
